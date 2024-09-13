@@ -8,6 +8,9 @@ from auth import login_with_credentials, link
 from client import add_client, generate_client_id
 from datetime import datetime, timedelta
 from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME
+from database import add_connection, DATABASE_PATH
+import uuid
+import aiosqlite
 
 
 
@@ -41,23 +44,43 @@ async def handle_text(message: types.Message, state: FSMContext):
         try:
             session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
 
+            # Параметры клиента
+            email = message.text
             tg_id = message.from_user.id
 
-            email = message.text
-            client_id = generate_client_id()
-            email = message.text
-            limit_ip = 1
-            total_gb = 0
-            current_time = datetime.utcnow()
-            expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
-            enable = True
-            flow = "xtls-rprx-vision"
+            # Проверяем наличие активного ключа
+            async with aiosqlite.connect(DATABASE_PATH) as db:
+                async with db.execute('''
+                    SELECT * FROM connections
+                    WHERE tg_id = ? AND expiry_time > ?
+                ''', (tg_id, int(datetime.utcnow().timestamp() * 1000))) as cursor:
+                    existing_key = await cursor.fetchone()
+            
+            if existing_key:
+                await message.reply("У вас уже есть активный ключ. Вы не можете создать больше одного ключа.")
+            else:
+                # Генерация нового ключа
+                client_id = str(uuid.uuid4())
+                limit_ip = 1
+                total_gb = 0
+                current_time = datetime.utcnow()
+                expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+                enable = True
+                flow = "xtls-rprx-vision"
 
-            add_client(session, client_id, email, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
-            connection_link = link(session, email)
+                # Добавление клиента (функция для создания клиента)
+                result = add_client(session, client_id, email, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
 
-            await message.reply(f"Ключ создан:\n<pre>{connection_link}</pre>", parse_mode="HTML")
+                # Сохранение данных в базу данных
+                await add_connection(tg_id, client_id, email, expiry_time)
 
+                # Получение ссылки на подключение
+                connection_link = link(session, email)
+
+                # Отправка ключа в виде цитаты
+                await message.reply(f"Ключ создан:\n<pre>{connection_link}</pre>", parse_mode="HTML")
+
+            # Сброс состояния
             await state.clear()
         except Exception as e:
             await message.reply(f"Произошла ошибка: {e}")

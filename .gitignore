@@ -2,3 +2,4 @@
 /__pycache__
 /vpn_users.db
 /config.py
+/database.db
