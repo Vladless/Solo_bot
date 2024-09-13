@@ -1,38 +1,27 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import datetime
+import aiosqlite
+from datetime import datetime
 
-DATABASE_URL = 'sqlite:///vpn_users.db'
+DATABASE_PATH = 'database.db'
 
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-session = Session()
-Base = declarative_base()
+async def init_db():
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS connections (
+                tg_id INTEGER NOT NULL,
+                client_id TEXT NOT NULL,
+                email TEXT NOT NULL,
+                expiry_time INTEGER NOT NULL,
+                PRIMARY KEY (tg_id, client_id)
+            )
+        ''')
+        await db.commit()
 
-class VPNUser(Base):
-    __tablename__ = 'vpn_users'
-    
-    id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)
-    username = Column(String)
-    subscription_end = Column(DateTime)
-    access_key = Column(String)
+async def add_connection(tg_id: int, client_id: str, email: str, expiry_time: int):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Добавляем новый ключ
+        await db.execute('''
+            INSERT INTO connections (tg_id, client_id, email, expiry_time)
+            VALUES (?, ?, ?, ?)
+        ''', (tg_id, client_id, email, expiry_time))
+        await db.commit()
 
-Base.metadata.create_all(engine)
-
-def add_user(telegram_id, username, access_key):
-    user = VPNUser(telegram_id=telegram_id, username=username, 
-                   subscription_end=datetime.datetime.now() + datetime.timedelta(days=30),
-                   access_key=access_key)
-    session.add(user)
-    session.commit()
-
-def get_user(telegram_id):
-    return session.query(VPNUser).filter(VPNUser.telegram_id == telegram_id).first()
-
-def update_subscription(telegram_id, days):
-    user = get_user(telegram_id)
-    if user:
-        user.subscription_end += datetime.timedelta(days=days)
-        session.commit()
