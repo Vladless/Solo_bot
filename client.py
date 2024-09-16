@@ -3,12 +3,6 @@ import json
 from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL
 import uuid
 
-import requests
-from config import ADMIN_USERNAME, ADMIN_PASSWORD
-
-import requests
-from config import ADMIN_USERNAME, ADMIN_PASSWORD
-
 def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
     url = 'https://solonet.pocomacho.ru:62553/solonet/panel/api/inbounds/addClient'
     
