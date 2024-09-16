@@ -26,7 +26,7 @@ def get_clients(session):
     else:
         raise Exception(f"Ошибка при получении клиентов: {response.status_code}, {response.text}")
 
-def link(session, client_id: str):
+def link(session, client_id: str, email: str):
     """
     Получение ссылки для подключения по ID клиента.
     :param session: requests.Session - авторизованная сессия
@@ -48,6 +48,6 @@ def link(session, client_id: str):
     flow = stream_settings.get('flow', 'xtls-rprx-vision')
     
     # Создание ссылки для подключения VLESS
-    val = f"vless://{client_id}@solonet.pocomacho.ru:443?type={tcp}&security={reality}&fp=chrome&pbk=Ik3cfHdM5RXYCuzTxhaFfo58Fzwjvw11AtKsz5-izxA&fp=chrome&sni=discord.com&sid=6fc9&spx=%2F&flow={flow}#VPN_F-{client_id}"
+    val = f"vless://{client_id}@solonet.pocomacho.ru:443?type={tcp}&security={reality}&pbk=Ik3cfHdM5RXYCuzTxhaFfo58Fzwjvw11AtKsz5-izxA&fp=chrome&sni=discord.com&sid=6fc9&spx=%2F&flow={flow}#SoloNet_DE-{email}"
     return val
 
