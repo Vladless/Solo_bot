@@ -7,7 +7,7 @@ session = None
 def login_with_credentials(username, password):
     global session
     session = requests.Session()
-    auth_url = "https://vpn.pocomacho.ru:34268/solonet/login/"
+    auth_url = "https://solonet.pocomacho.ru:62553/solonet/login/"
     data = {
         "username": username,
         "password": password
@@ -48,6 +48,6 @@ def link(session, client_id: str):
     flow = stream_settings.get('flow', 'xtls-rprx-vision')
     
     # Создание ссылки для подключения VLESS
-    val = f"vless://{client_id}@vpn.pocomacho.ru:443?type={tcp}&security={reality}&fp=chrome&pbk=ZIMoEnEd8-qMJkReVU5JxbiEj8CCSrvpm_ckvJ-46TE&sni=yahoo.com&sid=0fb4b595&spx=%2F&flow={flow}#VPN_F-{client_id}"
+    val = f"vless://{client_id}@solonet.pocomacho.ru:443?type={tcp}&security={reality}&fp=chrome&pbk=Ik3cfHdM5RXYCuzTxhaFfo58Fzwjvw11AtKsz5-izxA&fp=chrome&sni=discord.com&sid=6fc9&spx=%2F&flow={flow}#VPN_F-{client_id}"
     return val
 
