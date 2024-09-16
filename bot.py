@@ -1,6 +1,6 @@
 from aiogram import Bot, Dispatcher, Router, F, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -12,6 +12,13 @@ from database import add_connection, has_active_key, get_active_key_email, get_b
 import uuid
 import aiosqlite
 import re
+
+def escape_markdown(text: str) -> str:
+    """
+    Экранирование специальных символов для Markdown.
+    """
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(r'([%s])' % re.escape(escape_chars), r'\\\1', text)
 
 class Form(StatesGroup):
     waiting_for_key_name = State()
@@ -28,6 +35,10 @@ router = Router()
 # Создаем сессию при старте бота
 session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
 
+def create_main_menu_keyboard():
+    button_start = KeyboardButton(text="В начало")
+    return ReplyKeyboardMarkup(keyboard=[[button_start]], resize_keyboard=True)
+
 @dp.message(Command("start"))
 async def start_command(message: Message):
     welcome_text = "Добро пожаловать! Вы можете создать ключ для подключения VPN, просмотреть статистику использования, узнать дату окончания ключа или просмотреть ваш профиль."
@@ -43,7 +54,11 @@ async def start_command(message: Message):
         [button_view_profile]
     ])
     
+    main_menu_keyboard = create_main_menu_keyboard()
+    
     await message.reply(welcome_text, reply_markup=keyboard)
+    await message.answer("Чтобы вернуться в начало, нажмите кнопку ниже:", reply_markup=main_menu_keyboard)
+
 
 @dp.callback_query(F.data == 'view_profile')
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
@@ -98,18 +113,30 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
     
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
-            async with db.execute("SELECT email, expiry_time FROM connections WHERE tg_id = ?", (tg_id,)) as cursor:
-                records = await cursor.fetchall()
-                if records:
-                    keys_info = "\n".join([f"Email: {email}, Дата окончания: {datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}" for email, expiry_time in records])
+            # Извлекаем ключ для текущего пользователя по его Telegram ID
+            async with db.execute('''
+                SELECT k.key 
+                FROM keys k
+                JOIN connections c ON k.client_id = c.client_id
+                WHERE c.tg_id = ?
+            ''', (tg_id,)) as cursor:
+                record = await cursor.fetchone()
+                
+                if record:
+                    key = record[0]
+                    # Форматируем текст для цитаты
+                    response_message = f"Ваш ключ:\n<pre>{key}</pre>"
                 else:
-                    keys_info = "У вас нет ключей."
+                    response_message = "У вас нет ключей."
     
     except Exception as e:
-        keys_info = f"Ошибка при получении ключей: {e}"
+        response_message = f"Ошибка при получении ключей: {e}"
     
-    await callback_query.message.reply(f"Ваши ключи:\n{keys_info}")
+    # Отправляем сообщение
+    await bot.send_message(tg_id, response_message, parse_mode="HTML", reply_to_message_id=callback_query.message.message_id)
     await callback_query.answer()
+
+
 
 
 @dp.callback_query(F.data == 'create_key')
@@ -121,6 +148,10 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
 @dp.message()
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+
+    if message.text == "В начало":
+        await start_command(message)
+        return
     
     if current_state == Form.waiting_for_key_name.state:
         tg_id = message.from_user.id
