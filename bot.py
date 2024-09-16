@@ -15,6 +15,7 @@ import aiosqlite
 
 class Form(StatesGroup):
     waiting_for_key_name = State()
+    waiting_for_admin_confirmation = State()
     waiting_for_statistics = State()
     waiting_for_expiry_date = State()
 
@@ -25,6 +26,9 @@ router = Router()
 
 # Создаем сессию при старте бота
 session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+
+# ID администратора
+ADMIN_ID = 476217106  # Замените на ваш Telegram ID
 
 @dp.message(Command("start"))
 async def start_command(message: Message):
@@ -42,6 +46,74 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
     await callback_query.message.reply("Введите имя вашего профиля VPN:")
     await state.set_state(Form.waiting_for_key_name)
     await callback_query.answer()
+
+@dp.message()
+async def handle_text(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    
+    if current_state == Form.waiting_for_key_name.state:
+        tg_id = message.from_user.id
+        
+        if await has_active_key(tg_id):
+            await message.reply("У вас уже есть активный ключ. Вы не можете создать новый.")
+            await state.clear()
+            return
+        
+        # Сохраняем введенное имя профиля
+        profile_name = message.text
+        await state.update_data(profile_name=profile_name)
+        
+        # Отправляем запрос на подтверждение админу
+        admin_text = f"Пользователь {tg_id} запросил создание ключа для профиля '{profile_name}'. Подтвердите создание ключа (Да/Нет)."
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Да", callback_data=f'confirm_create_{tg_id}_{profile_name}')],
+            [InlineKeyboardButton(text="Нет", callback_data=f'reject_create_{tg_id}')]
+        ]))
+        
+        await message.reply("Запрос на создание ключа отправлен администратору для подтверждения.")
+        await state.set_state(Form.waiting_for_admin_confirmation)
+
+    elif current_state == Form.waiting_for_admin_confirmation.state:
+        await message.reply("Ожидание подтверждения от администратора.")
+        
+@dp.callback_query(F.data.startswith('confirm_create_'))
+async def process_admin_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
+    _, tg_id, profile_name = callback_query.data.split('_', 2)
+    tg_id = int(tg_id)
+    
+    try:
+        client_id = str(uuid.uuid4())
+        limit_ip = 1
+        total_gb = 0
+        current_time = datetime.utcnow()
+        expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+        enable = True
+        flow = "xtls-rprx-vision"
+
+        add_client(session, client_id, profile_name, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
+
+        connection_link = link(session, profile_name)
+
+        await add_connection(tg_id, client_id, profile_name, expiry_time)
+
+        user_message = f"Ключ создан:\n<pre>{connection_link}</pre>"
+        await bot.send_message(tg_id, user_message, parse_mode="HTML")
+        
+        await callback_query.message.reply("Ключ успешно создан и отправлен пользователю.")
+    except Exception as e:
+        await callback_query.message.reply(f"Ошибка при создании ключа: {e}")
+
+    await state.clear()
+
+@dp.callback_query(F.data.startswith('reject_create_'))
+async def process_admin_rejection(callback_query: types.CallbackQuery, state: FSMContext):
+    _, tg_id = callback_query.data.split('_', 1)
+    tg_id = int(tg_id)
+    
+    await bot.send_message(tg_id, "Создание ключа было отклонено администратором.")
+    await callback_query.message.reply("Запрос на создание ключа был отклонен.")
+    
+    await state.clear()
 
 @dp.callback_query(F.data == 'view_stats')
 async def process_callback_view_stats(callback_query: types.CallbackQuery, state: FSMContext):
@@ -95,44 +167,6 @@ async def process_callback_view_expiry(callback_query: types.CallbackQuery):
     await callback_query.message.reply(message_text)
     await callback_query.answer()
 
-@dp.message()
-async def handle_text(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-    
-    if current_state == Form.waiting_for_key_name.state:
-        tg_id = message.from_user.id
-        
-        # Проверка, есть ли уже активный ключ у клиента
-        if await has_active_key(tg_id):
-            await message.reply("У вас уже есть активный ключ. Вы не можете создать новый.")
-            await state.clear()
-            return
-        
-        try:
-            client_id = str(uuid.uuid4())
-            email = message.text
-            limit_ip = 1
-            total_gb = 0
-            current_time = datetime.utcnow()
-            expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
-            enable = True
-            flow = "xtls-rprx-vision"
-
-            # Создание клиента
-            add_client(session, client_id, email, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
-
-            # Получение ссылки на подключение
-            connection_link = link(session, email)
-
-            # Сохранение данных о ключе в базе данных
-            await add_connection(tg_id, client_id, email, expiry_time)
-
-            # Отправка ключа пользователю
-            await message.reply(f"Ключ создан:\n<pre>{connection_link}</pre>", parse_mode="HTML")
-
-            await state.clear()
-        except Exception as e:
-            await message.reply(f"Ошибка: {e}")
 
 
 async def main():
