@@ -4,14 +4,15 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from auth import login_with_credentials, link
+from auth import login_with_credentials, link, get_clients
 from client import add_client, generate_client_id
 from datetime import datetime, timedelta
 from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME
 from database import add_connection, DATABASE_PATH
 import uuid
 import aiosqlite
-
+import requests
+import re
 
 class Form(StatesGroup):
     waiting_for_key_name = State()
@@ -22,12 +23,13 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
+# Создаем сессию при старте бота
+session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+
 @dp.message(Command("start"))
 async def start_command(message: Message):
-    # Приветственное сообщение
     welcome_text = "Добро пожаловать! Вы можете создать ключ для подключения VPN или просмотреть статистику использования."
     
-    # Кнопки для меню
     button_create_key = InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
     button_view_stats = InlineKeyboardButton(text='Посмотреть статистику', callback_data='view_stats')
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[button_create_key], [button_view_stats]])
@@ -43,11 +45,28 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
 @dp.callback_query(F.data == 'view_stats')
 async def process_callback_view_stats(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
-    # Функция для получения статистики (вы должны реализовать эту функцию в соответствующем модуле)
-    # statistics = get_statistics(tg_id)
     
-    # Для примера
-    statistics = "Здесь будет ваша статистика"
+    try:
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute("SELECT email FROM connections WHERE tg_id = ? AND expiry_time > ?", (tg_id, int(datetime.utcnow().timestamp() * 1000))) as cursor:
+                record = await cursor.fetchone()
+                if record:
+                    email = record[0]
+                    connection_link = link(session, email)
+                    
+                    # Извлечение данных о загрузке и выгрузке из ссылки
+                    up_match = re.search(r'up=(\d+)', connection_link)
+                    down_match = re.search(r'down=(\d+)', connection_link)
+                    
+                    up = up_match.group(1) if up_match else "Неизвестно"
+                    down = down_match.group(1) if down_match else "Неизвестно"
+                    
+                    statistics = f"Статистика вашего ключа:\nЗагрузка: {up} MB\nВыгрузка: {down} MB"
+                else:
+                    statistics = "У вас нет активных ключей."
+    
+    except Exception as e:
+        statistics = f"Ошибка при получении статистики: {e}"
     
     await callback_query.message.reply(f"Ваша статистика:\n{statistics}")
     await callback_query.answer()
@@ -68,8 +87,6 @@ async def handle_text(message: types.Message, state: FSMContext):
                         await message.reply("У вас уже есть активный ключ. Один клиент может иметь только один активный ключ.")
                         return
             
-            session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-
             # Создание уникального ID клиента
             client_id = str(uuid.uuid4())
             email = message.text
@@ -96,7 +113,6 @@ async def handle_text(message: types.Message, state: FSMContext):
         except Exception as e:
             await message.reply(f"Ошибка: {e}")
 
-# Запуск бота
 async def main():
     dp.include_router(router)  # Подключение роутера
     await dp.start_polling(bot)  # Запуск поллинга
