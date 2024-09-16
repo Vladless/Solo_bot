@@ -63,3 +63,14 @@ def link(session, user_id: str):
     val = f"vless://{client_id}@{DOMEN}?type={tcp}&security={reality}&fp=chrome&pbk=ZIMoEnEd8-qMJkReVU5JxbiEj8CCSrvpm_ckvJ-46TE&sni=yahoo.com&sid=0fb4b595&spx=%2F&flow={flow}#VPN_F-{email}"
     
     return val
+
+def get_statistics(session, tg_id: int):
+    # Пример URL для получения статистики
+    STATS_URL = f"https://vpn.pocomacho.ru:34268/solonet/panel/api/inbounds/stats/{tg_id}"
+    response = session.get(STATS_URL)
+    if response.status_code == 200:
+        stats = response.json()
+        # Форматирование статистики для отображения
+        return f"Загрузка: {stats['upload']} MB\nВывод: {stats['download']} MB"
+    else:
+        raise Exception(f"Ошибка при получении статистики: {response.status_code}, {response.text}")
