@@ -1,7 +1,6 @@
 import aiosqlite
 from datetime import datetime
-
-DATABASE_PATH = 'database.db'
+from config import DATABASE_PATH
 
 async def init_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -18,10 +17,23 @@ async def init_db():
 
 async def add_connection(tg_id: int, client_id: str, email: str, expiry_time: int):
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        # Добавляем новый ключ
         await db.execute('''
             INSERT INTO connections (tg_id, client_id, email, expiry_time)
             VALUES (?, ?, ?, ?)
         ''', (tg_id, client_id, email, expiry_time))
         await db.commit()
+
+async def has_active_key(tg_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM connections WHERE tg_id = ? AND expiry_time > ?", 
+                              (tg_id, int(datetime.utcnow().timestamp() * 1000))) as cursor:
+            count = await cursor.fetchone()
+            return count[0] > 0
+
+async def get_active_key_email(tg_id: int) -> str:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT email FROM connections WHERE tg_id = ? AND expiry_time > ?", 
+                              (tg_id, int(datetime.utcnow().timestamp() * 1000))) as cursor:
+            record = await cursor.fetchone()
+            return record[0] if record else None
 
