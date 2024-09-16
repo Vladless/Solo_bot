@@ -1,6 +1,7 @@
 import aiosqlite
 from datetime import datetime
 from config import DATABASE_PATH
+import aiosqlite
 
 async def init_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:

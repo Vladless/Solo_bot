@@ -100,15 +100,14 @@ async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
     
     if current_state == Form.waiting_for_key_name.state:
+        tg_id = message.from_user.id
+        
+        if await has_active_key(tg_id):
+            await message.reply("У вас уже есть активный ключ. Вы не можете создать новый.")
+            await state.clear()
+            return
+        
         try:
-            tg_id = message.from_user.id
-            
-            # Проверка на наличие активного ключа
-            if await has_active_key(tg_id):
-                await message.reply("У вас уже есть активный ключ. Один клиент может иметь только один активный ключ.")
-                return
-            
-            # Создание уникального ID клиента
             client_id = str(uuid.uuid4())
             email = message.text
             limit_ip = 1
@@ -120,16 +119,13 @@ async def handle_text(message: types.Message, state: FSMContext):
 
             add_client(session, client_id, email, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
 
-            # Получение ссылки на подключение
-            connection_link = link(session, email)
+            # Используем client_id для получения ссылки
+            connection_link = link(session, client_id)
 
-            # Сохранение данных в базу данных
             await add_connection(tg_id, client_id, email, expiry_time)
 
-            # Отправка ключа в виде цитаты
             await message.reply(f"Ключ создан:\n<pre>{connection_link}</pre>", parse_mode="HTML")
 
-            # Сброс состояния
             await state.clear()
         except Exception as e:
             await message.reply(f"Ошибка: {e}")
