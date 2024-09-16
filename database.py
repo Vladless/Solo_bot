@@ -38,3 +38,12 @@ async def get_active_key_email(tg_id: int) -> str:
             record = await cursor.fetchone()
             return record[0] if record else None
 
+async def get_key_expiry_time(tg_id: int) -> datetime:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT expiry_time FROM connections WHERE tg_id = ? AND expiry_time > ?", 
+                              (tg_id, int(datetime.utcnow().timestamp() * 1000))) as cursor:
+            record = await cursor.fetchone()
+            if record:
+                expiry_time = record[0]
+                return datetime.utcfromtimestamp(expiry_time / 1000)
+            return None
