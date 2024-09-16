@@ -7,8 +7,8 @@ from aiogram.fsm.state import State, StatesGroup
 from auth import login_with_credentials, link
 from client import add_client
 from datetime import datetime, timedelta
-from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_PATH
-from database import add_connection, has_active_key, get_active_key_email
+from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME
+from database import add_connection, has_active_key, get_active_key_email, DATABASE_PATH
 import uuid
 import re
 import aiosqlite
@@ -102,6 +102,7 @@ async def handle_text(message: types.Message, state: FSMContext):
     if current_state == Form.waiting_for_key_name.state:
         tg_id = message.from_user.id
         
+        # Проверка, есть ли уже активный ключ у клиента
         if await has_active_key(tg_id):
             await message.reply("У вас уже есть активный ключ. Вы не можете создать новый.")
             await state.clear()
@@ -117,18 +118,22 @@ async def handle_text(message: types.Message, state: FSMContext):
             enable = True
             flow = "xtls-rprx-vision"
 
+            # Создание клиента
             add_client(session, client_id, email, tg_id, limit_ip, total_gb, expiry_time, enable, flow)
 
-            # Используем client_id для получения ссылки
-            connection_link = link(session, client_id)
+            # Получение ссылки на подключение
+            connection_link = link(session, email)
 
+            # Сохранение данных о ключе в базе данных
             await add_connection(tg_id, client_id, email, expiry_time)
 
+            # Отправка ключа пользователю
             await message.reply(f"Ключ создан:\n<pre>{connection_link}</pre>", parse_mode="HTML")
 
             await state.clear()
         except Exception as e:
             await message.reply(f"Ошибка: {e}")
+
 
 async def main():
     dp.include_router(router)  # Подключение роутера
