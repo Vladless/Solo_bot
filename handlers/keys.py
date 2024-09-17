@@ -2,6 +2,8 @@ from aiogram import types, Router
 import aiosqlite
 from config import DATABASE_PATH 
 from bot import bot
+from datetime import datetime
+
 router = Router()
 
 @router.callback_query(lambda c: c.data == 'view_keys')
@@ -11,7 +13,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute('''
-                SELECT k.key 
+                SELECT k.key, c.expiry_time 
                 FROM keys k
                 JOIN connections c ON k.client_id = c.client_id
                 WHERE c.tg_id = ?
@@ -20,7 +22,9 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 
                 if record:
                     key = record[0]
-                    response_message = f"Ваш ключ:\n<pre>{key}</pre>"
+                    expiry_time = record[1]
+                    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                    response_message = f"Ваш ключ:\n<pre>{key}</pre>\nДата окончания: <b>{expiry_date}</b>"
                 else:
                     response_message = "У вас нет ключей."
     

@@ -15,8 +15,10 @@ import re
 from bot import dp
 from handlers.start import start_command
 from bot import bot
+from handlers.profile import process_callback_view_profile
 
 router = Router()
+
 
 def escape_markdown(text: str) -> str:
     """
@@ -39,9 +41,22 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
     await state.set_state(Form.waiting_for_key_name)
     await callback_query.answer()
 
+
 @dp.message()
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+
+    if message.text == "Мой профиль":
+        # Создайте фейковый объект CallbackQuery для вызова функции
+        callback_query = types.CallbackQuery(
+            id="1",  # Используйте уникальный идентификатор
+            from_user=message.from_user,
+            chat_instance='',
+            data='view_profile',
+            message=message
+        )
+        await process_callback_view_profile(callback_query, state)
+        return
 
     if message.text == "/start":
         await start_command(message)
