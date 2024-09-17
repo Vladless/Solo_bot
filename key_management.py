@@ -15,7 +15,6 @@ import re
 from bot import dp
 from handlers.start import start_command
 from bot import bot
-from handlers.stats import session
 
 router = Router()
 
@@ -43,6 +42,10 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
 @dp.message()
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+
+    if message.text == "/start":
+        await start_command(message)
+        return
 
     if message.text == "В начало":
         await start_command(message)
@@ -88,7 +91,8 @@ async def handle_text(message: types.Message, state: FSMContext):
 async def handle_admin_confirmation(callback_query: CallbackQuery, state: FSMContext):
     if callback_query.message.chat.id != int(ADMIN_CHAT_ID):
         return
-
+    
+    session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
     data = callback_query.data.split('_', 3)
     tg_id = int(data[2])
     key_name = data[3]
