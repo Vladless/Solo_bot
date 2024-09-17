@@ -20,6 +20,7 @@ dp.include_router(stats.router)
 dp.include_router(expiry.router)
 dp.include_router(balance.router)
 dp.include_router(key_management_router)
+dp.include_router(pay.router)
 
 
 
