@@ -81,3 +81,12 @@ async def get_balance(tg_id: int) -> str:
         async with db.execute("SELECT balance FROM connections WHERE tg_id = ?", (tg_id,)) as cursor:
             record = await cursor.fetchone()
             return record[0] if record else "Неизвестно"
+
+async def update_balance(tg_id: int, amount: float):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute('''
+            UPDATE connections 
+            SET balance = balance + ? 
+            WHERE tg_id = ?
+        ''', (amount, tg_id))
+        await db.commit()

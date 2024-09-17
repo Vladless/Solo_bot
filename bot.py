@@ -8,7 +8,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import start, profile, keys, stats, expiry, balance
+from handlers import start, profile, keys, stats, expiry, balance, pay
 from key_management import router as key_management_router
 
 
@@ -20,6 +20,8 @@ dp.include_router(stats.router)
 dp.include_router(expiry.router)
 dp.include_router(balance.router)
 dp.include_router(key_management_router)
+
+
 
 async def on_startup(dispatcher: Dispatcher):
     await login_with_credentials()
