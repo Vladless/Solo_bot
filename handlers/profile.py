@@ -35,24 +35,32 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         balance = await get_balance(tg_id)
         profile_message = (
             f"Профиль \n\n"
-            f"ID: @{tg_id}\n"
-            f"Ключ: {email if email else 'Нет активного ключа'}\n"
+            f"ID: {tg_id}\n"
+            f"Ключ: {email if expiry_date else 'Нет активного ключа'}\n"
             f"Баланс: {balance} RUB\n"
         )
         
         # Кнопки для действий в профиле
+        button_create_key = InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
         button_view_keys = InlineKeyboardButton(text='Мои ключи', callback_data='view_keys')
         button_replenish_balance = InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[button_view_keys], [button_replenish_balance]])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [button_create_key],  # Добавляем кнопку "Создать ключ"
+            [button_view_keys],
+            [button_replenish_balance]
+        ])
 
-        profile_message += "\nВы можете просмотреть ваши ключи или пополнить баланс ниже:"
-    
     except Exception as e:
         profile_message = f"Ошибка при получении данных профиля: {e}"
         keyboard = None
     
     # Отправляем сообщение с клавиатурой
-    await callback_query.message.reply(profile_message, reply_markup=keyboard)
+    await callback_query.message.bot.send_message(
+        chat_id=callback_query.message.chat.id,
+        text=profile_message,
+        parse_mode='Markdown',
+        reply_markup=keyboard
+    )
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == 'view_profile')
