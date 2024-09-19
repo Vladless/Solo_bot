@@ -1,6 +1,7 @@
 import requests
 from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL
 import json
+import httpx
 
 session = None
 
@@ -18,6 +19,7 @@ def login_with_credentials(username, password):
         return session
     else:
         raise Exception(f"Ошибка авторизации: {response.status_code}, {response.text}")
+
 
 def get_clients(session):
     response = session.get(GET_INBOUNDS_URL)

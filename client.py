@@ -1,7 +1,10 @@
 import requests
 import json
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL
+from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL, DATABASE_PATH
 import uuid
+from auth import login_with_credentials
+from datetime import datetime, timedelta
+import aiosqlite
 
 def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
     url = 'https://solonet.pocomacho.ru:62553/solonet/panel/api/inbounds/addClient'
@@ -48,7 +51,65 @@ def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, t
     else:
         print(f"Ошибка при добавлении клиента: {response.status_code}, {response.text}")
 
+import json
 
+def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: int) -> bool:
+    # Получаем текущие данные клиента
+    response = session.get(f"https://solonet.pocomacho.ru:62553/solonet/panel/api/inbounds/getClientTraffics/{email}")
+    print(f"GET {response.url} Status: {response.status_code}")
+    print(f"GET Response: {response.text}")
+    
+    if response.status_code != 200:
+        print(f"Ошибка при получении данных клиента: {response.status_code} - {response.text}")
+        return False
+    
+    client_data = response.json().get("obj", {})
+    print(client_data)
 
-def generate_client_id():
-    return str(uuid.uuid4())
+    if not client_data:
+        print("Не удалось получить данные клиента.")
+        return False
+    
+    # Обновляем данные клиента
+    client_data['expiryTime'] = new_expiry_time
+    
+    # Формируем данные для обновления
+    payload = {
+        "id": 1,  # Если id динамически изменяется, замените это значение
+        "settings": json.dumps({
+            "clients": [
+                {
+                    "id": client_id,
+                    "alterId": 0,
+                    "email": client_data['email'],
+                    "limitIp": 1,
+                 #   "totalGB": 2,
+                    "expiryTime": new_expiry_time,
+                    "enable": client_data['enable'],
+                    "tgId": tg_id,
+                    "subId": '',
+                    "flow": 'xtls-rprx-vision'
+                }
+            ]
+        })
+    }
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        response = session.post(f"https://solonet.pocomacho.ru:62553/solonet/panel/api/inbounds/updateClient/{client_id}", json=payload, headers=headers)
+        print(f"POST {response.url} Status: {response.status_code}")
+        print(f"POST Request Data: {json.dumps(payload, indent=2)}")
+        print(f"POST Response: {response.text}")
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Ошибка при продлении ключа: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"Ошибка запроса: {e}")
+        return False

@@ -8,7 +8,8 @@ from auth import login_with_credentials, link
 from client import add_client
 from datetime import datetime, timedelta
 from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_CHAT_ID, DATABASE_PATH
-from database import add_connection, has_active_key, get_active_key_email, get_balance, store_key
+from database import add_connection, has_active_key, get_active_key_email, get_balance, store_key, update_balance
+from client import extend_client_key
 import uuid
 import aiosqlite
 import re
@@ -16,6 +17,8 @@ from bot import dp
 from handlers.start import start_command
 from bot import bot
 from handlers.profile import process_callback_view_profile
+import asyncio
+
 
 router = Router()
 
@@ -49,6 +52,7 @@ async def process_callback_create_key(callback_query: types.CallbackQuery, state
 @dp.message()
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+    print(f"Received message: {message.text}, Current state: {current_state}")
 
     if message.text == "Мой профиль":
         # Создайте фейковый объект CallbackQuery для вызова функции
@@ -121,7 +125,15 @@ async def handle_admin_confirmation(callback_query: CallbackQuery, state: FSMCon
         limit_ip = 1
         total_gb = 0
         current_time = datetime.utcnow()
-        expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+        
+        # Определяем время истечения ключа
+        if await has_active_key(tg_id):
+            # Если есть активный ключ, устанавливаем срок действия на 30 дней
+            expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+        else:
+            # Первый ключ устанавливаем на 1 день
+            expiry_time = int((current_time + timedelta(days=1)).timestamp() * 1000)
+        
         enable = True
         flow = "xtls-rprx-vision"
         balance = 0
@@ -151,7 +163,6 @@ async def handle_admin_confirmation(callback_query: CallbackQuery, state: FSMCon
     await callback_query.answer()
 
 
-
 @dp.callback_query(F.data == 'instructions')
 async def handle_instructions(callback_query: CallbackQuery):
     instructions_message = (
@@ -169,3 +180,28 @@ async def handle_instructions(callback_query: CallbackQuery):
         parse_mode='Markdown'
     )
     await callback_query.answer()
+
+async def renew_expired_keys():
+    while True:
+        current_time = datetime.utcnow()
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute('SELECT tg_id, client_id FROM connections WHERE expiry_time <= ?', (int(current_time.timestamp() * 1000),)) as cursor:
+                expired_keys = await cursor.fetchall()
+
+        for tg_id, client_id in expired_keys:
+            balance = await get_balance(tg_id)
+            if balance >= 100:
+                new_expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+                
+                async with aiosqlite.connect(DATABASE_PATH) as db:
+                    await db.execute('UPDATE connections SET expiry_time = ? WHERE tg_id = ? AND client_id = ?', (new_expiry_time, tg_id, client_id))
+                    await db.commit()
+
+                await update_balance(tg_id, -100)
+                await extend_client_key(client_id)
+                
+                print(f"Ключ для клиента {client_id} продлен на месяц и списано 100 рублей.")
+            else:
+                print(f"Недостаточно средств на балансе для клиента {client_id}.")
+
+        await asyncio.sleep(3600)
