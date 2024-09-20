@@ -2,7 +2,7 @@ from aiogram import types, Router
 import aiosqlite
 from bot import bot
 from datetime import datetime, timedelta
-from database import get_balance, update_balance
+from database import get_balance, update_balance, get_trial
 from client import extend_client_key, login_with_credentials
 from config import ADMIN_USERNAME, DATABASE_PATH, ADMIN_PASSWORD
 
@@ -16,7 +16,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute('''
-                SELECT email FROM connections WHERE tg_id = ?
+                SELECT email FROM keys WHERE tg_id = ?
             ''', (tg_id,)) as cursor:
                 records = await cursor.fetchall()
 
@@ -49,6 +49,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
+
 # Обработка запроса на просмотр информации о ключе
 @router.callback_query(lambda c: c.data.startswith('view_key_'))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
@@ -58,10 +59,10 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute('''
-                SELECT k.key, c.expiry_time 
+                SELECT k.key, k.expiry_time 
                 FROM keys k
-                JOIN connections c ON k.client_id = c.client_id
-                WHERE c.tg_id = ? AND c.email = ?
+                JOIN connections c ON k.tg_id = c.tg_id
+                WHERE k.tg_id = ? AND k.email = ?
             ''', (tg_id, key_name)) as cursor:
                 record = await cursor.fetchone()
 
@@ -105,7 +106,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
     
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
-            async with db.execute('SELECT client_id, email, expiry_time FROM connections WHERE tg_id = ?', (tg_id,)) as cursor:
+            async with db.execute('SELECT client_id, email, expiry_time FROM keys WHERE tg_id = ?', (tg_id,)) as cursor:
                 record = await cursor.fetchone()
 
                 if record:
@@ -145,7 +146,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
-            async with db.execute('SELECT client_id, email, expiry_time FROM connections WHERE tg_id = ?', (tg_id,)) as cursor:
+            async with db.execute('SELECT client_id, email, expiry_time FROM keys WHERE tg_id = ?', (tg_id,)) as cursor:
                 record = await cursor.fetchone()
                 
                 if record:
@@ -182,7 +183,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     
                     if success:
                         await update_balance(tg_id, -cost)  # Списание средств с баланса
-                        await db.execute('UPDATE connections SET expiry_time = ? WHERE client_id = ?', (new_expiry_time, client_id))
+                        await db.execute('UPDATE keys SET expiry_time = ? WHERE client_id = ?', (new_expiry_time, client_id))
                         await db.commit()
                         response_message = f"Ваш ключ был успешно продлен на {days_to_extend // 30} месяц(-)."
                         back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
