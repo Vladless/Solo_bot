@@ -33,25 +33,11 @@ async def start_command(message: types.Message):
         [button_channel]
     ])
 
-    reply_keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Меню")],
-        #    [KeyboardButton(text="Мой профиль")]
-        ],
-        resize_keyboard=True
-    )
-
     await message.bot.send_message(
         chat_id=message.chat.id,
         text=welcome_text,
         parse_mode='Markdown',
         reply_markup=inline_keyboard
-    )
-    
-    await message.bot.send_message(
-        chat_id=message.chat.id,
-        text="Выберите действие:",
-        reply_markup=reply_keyboard
     )
 
 @router.callback_query(lambda c: c.data == 'about_vpn')

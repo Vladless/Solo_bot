@@ -38,12 +38,14 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 # Редактируем сообщение с клавиатурой
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard)
             else:
-                # Если нет ключей, добавляем кнопку "Создать ключ"
+                # Если нет ключей, добавляем кнопку "Создать ключ" и "Назад"
                 response_message = "У вас нет ключей."
 
                 # Кнопка "Создать ключ"
                 create_key_button = types.InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[create_key_button]])
+                back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_profile')  # Измените на правильное значение для кнопки "Назад"
+                
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[create_key_button], [back_button]])
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
 

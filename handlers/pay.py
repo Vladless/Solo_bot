@@ -43,12 +43,14 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
 
     key_count = await get_key_count(tg_id)
     if key_count <= 0:
-        await send_message_with_deletion(tg_id, "У вас нет ключей. Пополнение баланса возможно только при наличии ключа.", state=state, message_key='key_error_message_id')
+        # Создаем кнопки "Создать ключ" и "Назад"
         create_key_button = InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[create_key_button]])
-        
+        back_button = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[create_key_button, back_button]])
+
         await callback_query.message.edit_text(
-            text="Пожалуйста, создайте ключ для продолжения.",
+            text="У вас нет ключей. Пополнение баланса возможно только при наличии ключа.\n"
+                 "Пожалуйста, создайте ключ для продолжения.",
             reply_markup=keyboard
         )
         return
@@ -64,6 +66,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         reply_markup=keyboard
     )
     await callback_query.answer()
+
 
 @router.callback_query(lambda c: c.data == 'back_to_profile')
 async def back_to_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
