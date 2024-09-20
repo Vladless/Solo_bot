@@ -10,7 +10,6 @@ from handlers.profile import process_callback_view_profile
 
 router = Router()
 
-# Определение состояний
 class ReplenishBalanceState(StatesGroup):
     choosing_transfer_method = State()
     choosing_amount = State()
@@ -18,7 +17,7 @@ class ReplenishBalanceState(StatesGroup):
 
 async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key='last_message_id'):
     """
-    Отправляет сообщение и удаляет предыдущее, если оно существует.
+    Отправляет новое сообщение и удаляет предыдущее сообщение (если оно существует), сохраненное в состоянии FSM.
     """
     if state:
         try:
@@ -29,7 +28,8 @@ async def send_message_with_deletion(chat_id, text, reply_markup=None, state=Non
                 await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
     
             sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-            await state.update_data({message_key: sent_message.message_id})
+            if state:
+                await state.update_data({message_key: sent_message.message_id})
     
         except Exception as e:
             print(f"Ошибка при удалении/отправке сообщения: {e}")
@@ -43,12 +43,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
 
     key_count = await get_key_count(tg_id)
     if key_count <= 0:
-        await send_message_with_deletion(
-            tg_id,
-            "У вас нет ключей. Пополнение баланса возможно только при наличии ключа.",
-            state=state,
-            message_key='key_error_message_id'
-        )
+        await send_message_with_deletion(tg_id, "У вас нет ключей. Пополнение баланса возможно только при наличии ключа.", state=state, message_key='key_error_message_id')
         create_key_button = InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[create_key_button]])
         
@@ -61,7 +56,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
     await state.set_state(ReplenishBalanceState.choosing_transfer_method)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='По реквизитам', callback_data='transfer_method_requisites')],
-        [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
+        [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]  # Кнопка "Назад"
     ])
     
     await callback_query.message.edit_text(
@@ -73,6 +68,8 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
 @router.callback_query(lambda c: c.data == 'back_to_profile')
 async def back_to_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
+
+
 
 @router.callback_query(lambda c: c.data.startswith('transfer_method_'))
 async def process_transfer_method_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -89,7 +86,7 @@ async def process_transfer_method_selection(callback_query: types.CallbackQuery,
             [InlineKeyboardButton(text='100 RUB', callback_data='amount_100')],
             [InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
             [InlineKeyboardButton(text='500 RUB', callback_data='amount_500')],
-            [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
+            [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]  # Кнопка "Назад"
         ])
         
         await callback_query.message.edit_text(
@@ -98,8 +95,11 @@ async def process_transfer_method_selection(callback_query: types.CallbackQuery,
         )
         await state.update_data(transfer_method=transfer_method)
         await state.set_state(ReplenishBalanceState.choosing_amount)
+    
     else:
         await send_message_with_deletion(callback_query.from_user.id, "Неверный метод перевода.", state=state, message_key='transfer_method_error_message_id')
+        return
+
 
 @router.callback_query(lambda c: c.data.startswith('amount_'))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -112,16 +112,18 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     amount_str = data[1]
     amount = int(amount_str)
 
-    # Удаляем сообщение с кнопками выбора суммы
+    # Получаем ID сообщения с кнопками выбора суммы
     state_data = await state.get_data()
     amount_selection_message_id = state_data.get('amount_selection_message_id')
 
+    # Удаляем сообщение с кнопками выбора суммы
     if amount_selection_message_id:
         try:
             await bot.delete_message(chat_id=callback_query.from_user.id, message_id=amount_selection_message_id)
         except Exception as e:
             print(f"Ошибка при удалении сообщения: {e}")
 
+    # Обновляем состояние и сохраняем выбранную сумму
     await state.update_data(amount=amount)
     await state.set_state(ReplenishBalanceState.waiting_for_admin_confirmation)
 
@@ -134,7 +136,11 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         "После перевода отправьте чек и дождитесь подтверждения."
     )
 
-    await callback_query.message.edit_text(text=message, reply_markup=None)
+    # Редактируем текущее сообщение
+    await callback_query.message.edit_text(
+        text=message,
+        reply_markup=None  # Или добавьте клавиатуру, если нужно
+    )
 
     admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='Подтвердить', callback_data=f'admin_confirm_{callback_query.from_user.id}_{transfer_method}_{amount}')],
@@ -151,6 +157,8 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await send_message_with_deletion(ADMIN_ID, admin_message, reply_markup=admin_keyboard, state=state, message_key='admin_request_message_id')
     await callback_query.answer()
 
+
+
 @router.callback_query(lambda c: c.data.startswith('admin_'))
 async def process_admin_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
     if callback_query.from_user.id != ADMIN_ID:
@@ -164,20 +172,38 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
         return
 
     action = data[1]
-    user_id = int(data[2])
+    user_id_str = data[2]
     transfer_method = data[3]
     amount = int(data[4])
 
     try:
+        user_id = int(user_id_str)
+
+        # Получаем данные из состояния для удаления сообщения с реквизитами
+        state_data = await state.get_data()
+        requisites_message_id = state_data.get('requisites_message_id')
+
+
         if action == 'confirm':
             async with aiosqlite.connect(DATABASE_PATH) as db:
                 await update_balance(user_id, amount)
                 await db.commit()
 
             balance = await get_balance(user_id)
-            
+
+            # Создаем клавиатуру с кнопкой "Профиль"
+            profile_button = InlineKeyboardButton(text='Профиль', callback_data='view_profile')
+            profile_keyboard = InlineKeyboardMarkup(inline_keyboard=[[profile_button]])
+
+            # Отправляем уведомление с кнопкой "Профиль" администратору
             await send_message_with_deletion(callback_query.from_user.id, f"Баланс пользователя успешно пополнен на {amount} RUB.\nТекущий баланс: {balance}", state=state, message_key='admin_confirm_message_id')
-            await bot.send_message(user_id, f"Ваш баланс был успешно пополнен на {amount} RUB.")
+
+            # Отправляем уведомление пользователю с кнопкой "Профиль"
+            await bot.send_message(
+                user_id, 
+                f"Ваш баланс был успешно пополнен на {amount} RUB.", 
+                reply_markup=profile_keyboard
+            )
 
             # Удаляем сообщение с реквизитами
             state_data = await state.get_data()
@@ -187,10 +213,6 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
                     await bot.delete_message(chat_id=user_id, message_id=requisites_message_id)
                 except Exception as e:
                     print(f"Ошибка при удалении сообщения с реквизитами: {e}")
-
-            profile_button = InlineKeyboardButton(text='Профиль', callback_data='view_profile')
-            profile_keyboard = InlineKeyboardMarkup(inline_keyboard=[[profile_button]])
-            await bot.send_message(user_id, "После пополнения баланса вы можете просмотреть свой профиль.", reply_markup=profile_keyboard)
 
         elif action == 'decline':
             await send_message_with_deletion(callback_query.from_user.id, "Пополнение баланса отклонено.", state=state, message_key='admin_decline_message_id')
@@ -202,6 +224,8 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
 
     await state.clear()
     await callback_query.answer()
+
+
 
 @router.message(lambda m: m.text and m.text.startswith('Недостаточно средств для продления'))
 async def handle_insufficient_funds(message: types.Message):

@@ -11,17 +11,18 @@ async def init_db():
                 client_id TEXT NOT NULL,
                 email TEXT NOT NULL,
                 expiry_time INTEGER NOT NULL,
-                balance REAL NOT NULL DEFAULT 0.0,  -- Добавлено поле для баланса
+                balance REAL NOT NULL DEFAULT 0.0,
                 PRIMARY KEY (tg_id, client_id)
             )
         ''')
         await db.execute('''
             CREATE TABLE IF NOT EXISTS keys (
+                tg_id INTEGER NOT NULL,  -- Добавлено поле tg_id
                 client_id TEXT NOT NULL,
                 email TEXT NOT NULL,
                 created_at INTEGER NOT NULL,
                 key TEXT NOT NULL,
-                PRIMARY KEY (client_id)
+                PRIMARY KEY (tg_id, client_id)  -- Изменено на (tg_id, client_id)
             )
         ''')
         await db.commit()
@@ -34,12 +35,12 @@ async def add_connection(tg_id: int, client_id: str, email: str, expiry_time: in
         ''', (tg_id, client_id, email, expiry_time, balance))
         await db.commit()
 
-async def store_key(client_id: str, email: str, key: str):
+async def store_key(tg_id: int, client_id: str, email: str, key: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute('''
-            INSERT INTO keys (client_id, email, created_at, key)
-            VALUES (?, ?, ?, ?)
-        ''', (client_id, email, int(datetime.utcnow().timestamp() * 1000), key))
+            INSERT INTO keys (tg_id, client_id, email, created_at, key)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (tg_id, client_id, email, int(datetime.utcnow().timestamp() * 1000), key))
         await db.commit()
 
 async def get_keys(tg_id: int):
@@ -50,7 +51,6 @@ async def get_keys(tg_id: int):
             WHERE tg_id = ?
         ''', (tg_id,)) as cursor:
             return await cursor.fetchall()
-
 
 async def has_active_key(tg_id: int) -> bool:
     async with aiosqlite.connect(DATABASE_PATH) as db:

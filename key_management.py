@@ -33,9 +33,43 @@ class Form(StatesGroup):
 # Обработка нажатия кнопки создания ключа
 @dp.callback_query(F.data == 'create_key')
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.edit_text("Вам будет выдан пробный ключ. Пожалуйста, выберите имя для вашего ключа:")
-    await state.set_state(Form.waiting_for_key_name)
+    tg_id = callback_query.from_user.id
+    
+    if await has_active_key(tg_id):
+        await callback_query.message.edit_text(
+            "У вас уже есть активный ключ. Вы можете создать новый ключ за дополнительную плату в размере 100 рублей. "
+            "Хотите продолжить?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Да, создать новый ключ', callback_data='confirm_create_new_key')],
+                [InlineKeyboardButton(text='Назад', callback_data='cancel_create_key')]  # Изменили текст на "Назад"
+            ])
+        )
+        await state.update_data(creating_new_key=True)  # Сохраняем состояние создания нового ключа
+    else:
+        await callback_query.message.edit_text("Вам будет выдан пробный ключ. Пожалуйста, выберите имя для вашего ключа:")
+        await state.set_state(Form.waiting_for_key_name)
+
     await callback_query.answer()
+
+@dp.callback_query(F.data == 'cancel_create_key')
+async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
+    await process_callback_view_profile(callback_query, state)  # Возвращаем в профиль
+    await callback_query.answer()
+
+
+
+@dp.callback_query(F.data == 'confirm_create_new_key')
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text("Пожалуйста, выберите имя для вашего нового ключа:")
+    await state.set_state(Form.waiting_for_key_name)
+    await state.update_data(creating_new_key=True)  # Убедитесь, что это состояние сохранено
+    await callback_query.answer()
+
+@dp.callback_query(F.data == 'cancel_create_key')
+async def cancel_create_key(callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Создание нового ключа отменено.")
+    await callback_query.answer()
+
 
 # Обработка текстовых сообщений
 @dp.message()
@@ -63,22 +97,18 @@ async def handle_text(message: Message, state: FSMContext):
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
 
-# Обработка ввода имени ключа
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     key_name = sanitize_key_name(message.text)
 
     if not key_name:
-        await message.reply("Имя профиля не указано. Введите имя на английском языке.")
+        await message.reply("Имя ключа не указано. Введите имя на английском языке.")
         await state.clear()
         return
 
-    if await has_active_key(tg_id):
-        await message.reply("У вас уже есть активный ключ. Вы не можете создать новый.")
-        await state.clear()
-        return
-
-    await state.update_data(key_name=key_name, tg_id=tg_id)
+    # Получаем данные состояния
+    data = await state.get_data()
+    creating_new_key = data.get('creating_new_key', False)
 
     session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
     client_id = str(uuid.uuid4())
@@ -86,13 +116,24 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     current_time = datetime.utcnow()
     expiry_time = int((current_time + timedelta(days=1)).timestamp() * 1000)
 
+    if creating_new_key:
+        balance = await get_balance(tg_id)
+        if balance < 100:
+            replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
+            await message.reply("Недостаточно средств на балансе для создания нового ключа.", reply_markup=keyboard)
+            await state.clear()
+            return
+        
+        await update_balance(tg_id, -100)  # Списание 100 рублей за новый ключ
+
     try:
         # Создание клиента и получение ссылки
         add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_time, enable=True, flow="xtls-rprx-vision")
         connection_link = link(session, client_id, email)
 
         await add_connection(tg_id, client_id, email, expiry_time, 0)
-        await store_key(client_id, email, connection_link)
+        await store_key(tg_id, client_id, email, connection_link)
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')],
@@ -106,6 +147,40 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         print(f"Ошибка при создании ключа: {e}")
 
     await state.clear()
+
+
+# Обработка нажатия кнопки создания ключа
+@dp.callback_query(F.data == 'create_key')
+async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
+    tg_id = callback_query.from_user.id
+    
+    if await has_active_key(tg_id):
+        await callback_query.message.edit_text(
+            "У вас уже есть активный ключ. Вы можете создать новый ключ за дополнительную плату в размере 100 рублей. "
+            "Хотите продолжить?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text='Да, создать новый ключ', callback_data='confirm_create_new_key')],
+                [InlineKeyboardButton(text='Нет, оставить текущий', callback_data='cancel_create_key')]
+            ])
+        )
+        await state.update_data(creating_new_key=True)  # Сохраняем состояние создания нового ключа
+    else:
+        await callback_query.message.edit_text("Вам будет выдан пробный ключ. Пожалуйста, выберите имя для вашего ключа:")
+        await state.set_state(Form.waiting_for_key_name)
+
+    await callback_query.answer()
+
+
+@dp.callback_query(F.data == 'confirm_create_new_key')
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text("Пожалуйста, выберите имя для вашего нового ключа:")
+    await state.set_state(Form.waiting_for_key_name)
+    await callback_query.answer()
+
+@dp.callback_query(F.data == 'cancel_create_key')
+async def cancel_create_key(callback_query: CallbackQuery):
+    await callback_query.message.edit_text("Создание нового ключа отменено.")
+    await callback_query.answer()
 
 # Обработка кнопки "Инструкции"
 @dp.callback_query(F.data == 'instructions')
