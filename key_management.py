@@ -28,12 +28,20 @@ class Form(StatesGroup):
     waiting_for_key_name = State()
     viewing_profile = State()
 
-# Обработка нажатия кнопки создания ключа
 @dp.callback_query(F.data == 'create_key')
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
-    
-    if await has_active_key(tg_id):
+
+    # Получаем данные о trial из базы данных
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', tg_id)
+    finally:
+        await conn.close()
+
+    trial_status = existing_connection['trial'] if existing_connection else 0
+
+    if trial_status == 1:
         await callback_query.message.edit_text(
             "У вас уже есть активный ключ. Вы можете создать новый ключ за дополнительную плату в размере 100 рублей. "
             "Хотите продолжить?",
@@ -49,16 +57,28 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
     await callback_query.answer()
 
-@dp.callback_query(F.data == 'cancel_create_key')
-async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
-    await process_callback_view_profile(callback_query, state)
-    await callback_query.answer()
-
 @dp.callback_query(F.data == 'confirm_create_new_key')
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
+    tg_id = callback_query.from_user.id
+
+    # Проверяем баланс перед созданием нового ключа
+    balance = await get_balance(tg_id)
+    if balance < 100:
+        replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
+        await callback_query.message.edit_text("Недостаточно средств на балансе для создания нового ключа.", reply_markup=keyboard)
+        await state.clear()
+        return
+
     await callback_query.message.edit_text("Пожалуйста, выберите имя для вашего нового ключа:")
     await state.set_state(Form.waiting_for_key_name)
     await state.update_data(creating_new_key=True)
+
+    await callback_query.answer()
+
+@dp.callback_query(F.data == 'cancel_create_key')
+async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
+    await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
 
 # Обработка текстовых сообщений
