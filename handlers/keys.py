@@ -13,21 +13,48 @@ router = Router()
 async def process_callback_view_keys(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
 
-    # Создаем клавиатуру
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')],
-        [types.InlineKeyboardButton(text='Продлить ключ', callback_data='renew_key')],
-        [types.InlineKeyboardButton(text='Назад', callback_data='view_profile')]
-    ])
-    
+    try:
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            async with db.execute('''
+                SELECT email FROM connections WHERE tg_id = ?
+            ''', (tg_id,)) as cursor:
+                records = await cursor.fetchall()
+
+                if records:
+                    # Создаем кнопки для каждого ключа
+                    buttons = []
+                    for record in records:
+                        key_name = record[0]  # Предполагается, что email - это название ключа
+                        button = types.InlineKeyboardButton(text=key_name, callback_data=f'view_key_{key_name}')
+                        buttons.append([button])
+
+                    # Создаем клавиатуру с кнопками
+                    inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+                    response_message = "Выберите ключ для просмотра информации:"
+                else:
+                    response_message = "У вас нет ключей."
+
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard)
+
+    except Exception as e:
+        await handle_error(tg_id, callback_query, f"Ошибка при получении ключей: {e}")
+
+    await callback_query.answer()
+
+# Обработка запроса на просмотр информации о ключе
+@router.callback_query(lambda c: c.data.startswith('view_key_'))
+async def process_callback_view_key(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    key_name = callback_query.data.split('_', 2)[2]  # Получаем имя ключа
+
     try:
         async with aiosqlite.connect(DATABASE_PATH) as db:
             async with db.execute('''
                 SELECT k.key, c.expiry_time 
                 FROM keys k
                 JOIN connections c ON k.client_id = c.client_id
-                WHERE c.tg_id = ?
-            ''', (tg_id,)) as cursor:
+                WHERE c.tg_id = ? AND c.email = ?
+            ''', (tg_id, key_name)) as cursor:
                 record = await cursor.fetchone()
 
                 if record:
@@ -41,16 +68,27 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                                         f"Дата окончания: <b>{expiry_date.strftime('%Y-%m-%d %H:%M:%S')}</b>\n"
                                         f"{days_left_message}")
 
-                else:
-                    response_message = "У вас нет ключей."
+                    # Кнопки для продления и инструкций
+                    renew_button = types.InlineKeyboardButton(text='Продлить ключ', callback_data='renew_key')
+                    instructions_button = types.InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')
+                    back_button = types.InlineKeyboardButton(text='Назад в профиль', callback_data='view_profile')
+                    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [back_button]])
 
-                await delete_previous_message(callback_query)
-                await bot.send_message(tg_id, response_message, parse_mode="HTML", reply_markup=keyboard)
+                    await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
+                else:
+                    await bot.edit_message_text("Информация о ключе не найдена.", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
 
     except Exception as e:
-        await handle_error(tg_id, callback_query, f"Ошибка при получении ключей: {e}")
+        await handle_error(tg_id, callback_query, f"Ошибка при получении информации о ключе: {e}")
 
     await callback_query.answer()
+
+# Остальные функции остаются без изменений...
+
+# Обработка ошибок
+async def handle_error(tg_id, callback_query, message):
+    await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
+
 
 # Обработка запроса на продление ключа
 @router.callback_query(lambda c: c.data == 'renew_key')
