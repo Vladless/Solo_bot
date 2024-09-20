@@ -18,7 +18,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             records = await conn.fetch('''
-                SELECT email FROM keys WHERE tg_id = $1
+                SELECT email, client_id FROM keys WHERE tg_id = $1
             ''', tg_id)
 
             if records:
@@ -26,7 +26,8 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 buttons = []
                 for record in records:
                     key_name = record['email']  # Предполагается, что email - это название ключа
-                    button = types.InlineKeyboardButton(text=key_name, callback_data=f'view_key_{key_name}')
+                    client_id = record['client_id']
+                    button = types.InlineKeyboardButton(text=key_name, callback_data=f'view_key_{key_name}_{client_id}')
                     buttons.append([button])
 
                 # Создаем клавиатуру с кнопками
@@ -58,7 +59,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith('view_key_'))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    key_name = callback_query.data.split('_', 2)[2]  # Получаем имя ключа
+    key_name, client_id = callback_query.data.split('_')[2], callback_query.data.split('_')[3]  # Получаем имя ключа и client_id
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -66,7 +67,6 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
             record = await conn.fetchrow('''
                 SELECT k.key, k.expiry_time 
                 FROM keys k
-                JOIN connections c ON k.tg_id = c.tg_id
                 WHERE k.tg_id = $1 AND k.email = $2
             ''', tg_id, key_name)
 
@@ -83,7 +83,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                                     f"{days_left_message}")
 
                 # Кнопки для продления и инструкций
-                renew_button = types.InlineKeyboardButton(text='Продлить ключ', callback_data='renew_key')
+                renew_button = types.InlineKeyboardButton(text='Продлить ключ', callback_data=f'renew_key_{client_id}')
                 instructions_button = types.InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')
                 back_button = types.InlineKeyboardButton(text='Назад в профиль', callback_data='view_profile')
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [back_button]])
@@ -102,17 +102,17 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
 
 # Обработка запроса на продление ключа
-@router.callback_query(lambda c: c.data == 'renew_key')
+@router.callback_query(lambda c: c.data.startswith('renew_key_'))
 async def process_callback_renew_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('_')[2]  # Получаем client_id
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT client_id, email, expiry_time FROM keys WHERE tg_id = $1', tg_id)
+            record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
 
             if record:
-                client_id = record['client_id']
                 email = record['email']
                 expiry_time = record['expiry_time']
                 current_time = datetime.utcnow().timestamp() * 1000
@@ -123,8 +123,8 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 
                 # Создаем клавиатуру для выбора плана продления
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text='Продлить на 1 месяц (100 руб.)', callback_data='renew_1_month')],
-                    [types.InlineKeyboardButton(text='Продлить на 3 месяца (250 руб.)', callback_data='renew_3_months')],
+                    [types.InlineKeyboardButton(text='Продлить на 1 месяц (100 руб.)', callback_data=f'renew_1_month_{client_id}')],
+                    [types.InlineKeyboardButton(text='Продлить на 3 месяца (250 руб.)', callback_data=f'renew_3_months_{client_id}')],
                     [types.InlineKeyboardButton(text='Назад', callback_data='view_profile')]
                 ])
 
@@ -149,16 +149,17 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith('renew_'))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    plan = callback_query.data.split('_')[1]  # '1' или '3'
+    plan, client_id = callback_query.data.split('_')[1], callback_query.data.split('_')[3]  # '1' или '3' и client_id
     days_to_extend = 30 * int(plan)  # 30 дней или 90 дней
+    print(plan, client_id, days_to_extend)
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT client_id, email, expiry_time FROM keys WHERE tg_id = $1', tg_id)
+            record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
+            print(record)
 
             if record:
-                client_id = record['client_id']
                 email = record['email']
                 expiry_time = record['expiry_time']
                 current_time = datetime.utcnow().timestamp() * 1000
