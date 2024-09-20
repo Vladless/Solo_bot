@@ -26,7 +26,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 # Создаем кнопки для каждого ключа
                 buttons = []
                 for record in records:
-                    key_name = record['email']  # Предполагается, что email - это название ключа
+                    key_name = record['email']
                     client_id = record['client_id']
                     button = types.InlineKeyboardButton(text=key_name, callback_data=f'view_key_{key_name}_{client_id}')
                     buttons.append([button])
@@ -100,63 +100,63 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
 # Обработка запроса на удаление ключа
 @router.callback_query(lambda c: c.data.startswith('delete_key_'))
 async def process_callback_delete_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split('_')[2]  # Получаем client_id
+    client_id = callback_query.data.split('_')[2]
 
     confirmation_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
         [types.InlineKeyboardButton(text='Да, удалить', callback_data=f'confirm_delete_{client_id}')],
         [types.InlineKeyboardButton(text='Нет, отменить', callback_data='view_keys')]
     ])
 
-    await bot.send_message(tg_id, "Вы уверены, что хотите удалить ключ?", reply_markup=confirmation_keyboard)
+    await bot.edit_message_text("Вы уверены, что хотите удалить ключ?", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=confirmation_keyboard)
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data.startswith('confirm_delete_'))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split('_')[2]  # Получаем client_id
+    client_id = callback_query.data.split('_')[2]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            # Получаем email для удаления через API
             record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
                 
-                # Создаем сессию для API-запросов
                 session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-
-                # Удаляем клиента через API
                 success = delete_client(session, client_id)
 
                 if success:
-                    # Удаляем ключ из базы данных
                     await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
-                    await bot.send_message(tg_id, "Ключ был успешно удален.")
+                    response_message = "Ключ был успешно удален."
                 else:
-                    await bot.send_message(tg_id, "Ошибка при удалении клиента через API.")
+                    response_message = "Ошибка при удалении клиента через API."
 
             else:
-                await bot.send_message(tg_id, "Ключ не найден или уже удален.")
+                response_message = "Ключ не найден или уже удален."
+
+            back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+
+            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
 
         finally:
             await conn.close()
 
     except Exception as e:
-        await bot.send_message(tg_id, f"Ошибка при удалении ключа: {e}")
+        await bot.edit_message_text(f"Ошибка при удалении ключа: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
 
     await callback_query.answer()
+
 
 @router.callback_query(lambda c: c.data.startswith('renew_key_'))
 async def process_callback_renew_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split('_')[2]  # Получаем client_id
+    client_id = callback_query.data.split('_')[2]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -169,10 +169,9 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                 current_time = datetime.utcnow().timestamp() * 1000
 
                 if expiry_time <= current_time:
-                    await callback_query.message.answer("Ваш ключ уже истек и не может быть продлен.")
+                    await bot.edit_message_text("Ваш ключ уже истек и не может быть продлен.", chat_id=tg_id, message_id=callback_query.message.message_id)
                     return
 
-                # Создаем клавиатуру для выбора плана продления
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
                     [types.InlineKeyboardButton(text='Продлить на 1 месяц (100 руб.)', callback_data=f'renew_1_month_{client_id}')],
                     [types.InlineKeyboardButton(text='Продлить на 3 месяца (250 руб.)', callback_data=f'renew_3_months_{client_id}')],
@@ -184,31 +183,27 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                                     f"Баланс: <b>{balance} руб.</b>\n"
                                     f"Действующий ключ истекает <b>{datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}</b>")
 
-                await delete_previous_message(callback_query)
-                await bot.send_message(tg_id, response_message, parse_mode="HTML", reply_markup=keyboard)
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
 
         finally:
             await conn.close()
 
     except Exception as e:
-        await callback_query.message.answer(f"Ошибка при выборе плана: {e}")
+        await bot.edit_message_text(f"Ошибка при выборе плана: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
 
     await callback_query.answer()
-
 
 # Обработка выбора плана продления
 @router.callback_query(lambda c: c.data.startswith('renew_'))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     plan, client_id = callback_query.data.split('_')[1], callback_query.data.split('_')[3]  # '1' или '3' и client_id
-    days_to_extend = 30 * int(plan)  # 30 дней или 90 дней
-    print(plan, client_id, days_to_extend)
+    days_to_extend = 30 * int(plan)
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
-            print(record)
 
             if record:
                 email = record['email']
@@ -216,58 +211,45 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 current_time = datetime.utcnow().timestamp() * 1000
 
                 if expiry_time <= current_time:
-                    await callback_query.message.answer("Ваш ключ уже истек и не может быть продлен.")
+                    await bot.edit_message_text("Ваш ключ уже истек и не может быть продлен.", chat_id=tg_id, message_id=callback_query.message.message_id)
                     return
 
-                # Рассчитываем новый срок окончания
                 new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
-
-                # Определяем стоимость продления
                 cost = 100 if plan == '1' else 250
 
-                # Проверка баланса
                 balance = await get_balance(tg_id)
                 if balance < cost:
                     replenish_button = types.InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')
                     back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
                     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[replenish_button], [back_button]])
 
-                    await callback_query.message.answer("Недостаточно средств для продления ключа.", reply_markup=keyboard)
+                    await bot.edit_message_text("Недостаточно средств для продления ключа.", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                     return
 
-                # Создаем сессию для API-запросов
                 session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-
-                # Обновляем ключ через API
                 success = extend_client_key(session, tg_id, client_id, email, new_expiry_time)
 
                 if success:
-                    await update_balance(tg_id, -cost)  # Списание средств с баланса
+                    await update_balance(tg_id, -cost)
                     await conn.execute('UPDATE keys SET expiry_time = $1 WHERE client_id = $2', new_expiry_time, client_id)
                     response_message = f"Ваш ключ был успешно продлен на {days_to_extend // 30} месяц(-)."
                     back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
                     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-                    await bot.send_message(tg_id, response_message, reply_markup=keyboard)
+                    await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                 else:
-                    await bot.send_message(tg_id, "Ошибка при продлении ключа.")
+                    await bot.edit_message_text("Ошибка при продлении ключа.", chat_id=tg_id, message_id=callback_query.message.message_id)
             else:
-                await bot.send_message(tg_id, "У вас нет ключей для продления.")
+                await bot.edit_message_text("У вас нет ключей для продления.", chat_id=tg_id, message_id=callback_query.message.message_id)
 
         finally:
             await conn.close()
 
     except Exception as e:
-        await bot.send_message(tg_id, f"Ошибка при продлении ключа: {e}")
+        await bot.edit_message_text(f"Ошибка при продлении ключа: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
 
     await callback_query.answer()
 
-
-# Удаление предыдущего сообщения
-async def delete_previous_message(callback_query: types.CallbackQuery):
-    if callback_query.message.message_id:
-        await bot.delete_message(chat_id=callback_query.from_user.id, message_id=callback_query.message.message_id)
-
 # Обработка ошибок
 async def handle_error(tg_id, callback_query, message):
-    await delete_previous_message(callback_query)
-    await bot.send_message(tg_id, message)
+    await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id)
+
