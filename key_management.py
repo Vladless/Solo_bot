@@ -2,8 +2,7 @@ import re
 import uuid
 import asyncio
 from datetime import datetime, timedelta
-from aiogram import Bot, Dispatcher, Router, types, F
-from aiogram.filters import Command
+from aiogram import Router, types, F
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup

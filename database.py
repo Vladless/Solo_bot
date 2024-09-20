@@ -1,6 +1,6 @@
 import asyncpg
 from datetime import datetime
-from config import DATABASE_URL  # Example: "postgresql://user:password@localhost:5432/dbname"
+from config import DATABASE_URL 
 
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)

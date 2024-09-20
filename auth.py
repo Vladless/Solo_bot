@@ -1,7 +1,6 @@
 import requests
 from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL
 import json
-import httpx
 
 session = None
 
