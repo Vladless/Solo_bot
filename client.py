@@ -1,10 +1,4 @@
-import requests
 import json
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL, DATABASE_PATH
-import uuid
-from auth import login_with_credentials
-from datetime import datetime, timedelta
-import aiosqlite
 
 def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
     url = 'https://solonet.pocomacho.ru:62553/solonet/panel/api/inbounds/addClient'

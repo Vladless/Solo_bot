@@ -3,8 +3,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import datetime
-import aiosqlite
-from config import DATABASE_PATH
 from database import get_balance, get_key_count
 
 router = Router()

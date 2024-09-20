@@ -3,10 +3,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 import aiosqlite
-from config import DATABASE_PATH, ADMIN_ID
+from config import ADMIN_ID, DATABASE_URL
 from database import get_balance, update_balance, get_key_count
 from bot import bot
 from handlers.profile import process_callback_view_profile
+import asyncpg
 
 router = Router()
 
@@ -183,36 +184,41 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
         state_data = await state.get_data()
         requisites_message_id = state_data.get('requisites_message_id')
 
-
         if action == 'confirm':
-            async with aiosqlite.connect(DATABASE_PATH) as db:
+            # Подключаемся к базе данных PostgreSQL
+            conn = await asyncpg.connect(DATABASE_URL)
+            try:
+                # Обновляем баланс пользователя
                 await update_balance(user_id, amount)
-                await db.commit()
 
-            balance = await get_balance(user_id)
+                # Получаем обновленный баланс
+                balance = await get_balance(user_id)
 
-            # Создаем клавиатуру с кнопкой "Профиль"
-            profile_button = InlineKeyboardButton(text='Профиль', callback_data='view_profile')
-            profile_keyboard = InlineKeyboardMarkup(inline_keyboard=[[profile_button]])
+                # Создаем клавиатуру с кнопкой "Профиль"
+                profile_button = InlineKeyboardButton(text='Профиль', callback_data='view_profile')
+                profile_keyboard = InlineKeyboardMarkup(inline_keyboard=[[profile_button]])
 
-            # Отправляем уведомление с кнопкой "Профиль" администратору
-            await send_message_with_deletion(callback_query.from_user.id, f"Баланс пользователя успешно пополнен на {amount} RUB.\nТекущий баланс: {balance}", state=state, message_key='admin_confirm_message_id')
+                # Отправляем уведомление с кнопкой "Профиль" администратору
+                await send_message_with_deletion(callback_query.from_user.id, f"Баланс пользователя успешно пополнен на {amount} RUB.\nТекущий баланс: {balance}", state=state, message_key='admin_confirm_message_id')
 
-            # Отправляем уведомление пользователю с кнопкой "Профиль"
-            await bot.send_message(
-                user_id, 
-                f"Ваш баланс был успешно пополнен на {amount} RUB.", 
-                reply_markup=profile_keyboard
-            )
+                # Отправляем уведомление пользователю с кнопкой "Профиль"
+                await bot.send_message(
+                    user_id, 
+                    f"Ваш баланс был успешно пополнен на {amount} RUB.", 
+                    reply_markup=profile_keyboard
+                )
 
-            # Удаляем сообщение с реквизитами
-            state_data = await state.get_data()
-            requisites_message_id = state_data.get('requisites_message_id')
-            if requisites_message_id:
-                try:
-                    await bot.delete_message(chat_id=user_id, message_id=requisites_message_id)
-                except Exception as e:
-                    print(f"Ошибка при удалении сообщения с реквизитами: {e}")
+                # Удаляем сообщение с реквизитами
+                requisites_message_id = state_data.get('requisites_message_id')
+                if requisites_message_id:
+                    try:
+                        await bot.delete_message(chat_id=user_id, message_id=requisites_message_id)
+                    except Exception as e:
+                        print(f"Ошибка при удалении сообщения с реквизитами: {e}")
+
+            finally:
+                # Закрываем соединение с базой данных
+                await conn.close()
 
         elif action == 'decline':
             await send_message_with_deletion(callback_query.from_user.id, "Пополнение баланса отклонено.", state=state, message_key='admin_decline_message_id')
@@ -224,7 +230,6 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
 
     await state.clear()
     await callback_query.answer()
-
 
 
 @router.message(lambda m: m.text and m.text.startswith('Недостаточно средств для продления'))

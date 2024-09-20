@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta
-import asyncio
 import re
 import uuid
-import aiosqlite
+import asyncio
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, Router, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
@@ -11,12 +10,13 @@ from aiogram.fsm.state import State, StatesGroup
 
 from auth import login_with_credentials, link
 from client import add_client
-from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_CHAT_ID, DATABASE_PATH
+from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_CHAT_ID, DATABASE_URL
 from database import add_connection, has_active_key, get_balance, store_key, update_balance
-from bot import dp
-from handlers.start import start_command
+from bot import dp, bot
 from handlers.profile import process_callback_view_profile
-from bot import bot
+from handlers.start import start_command
+
+import asyncpg
 
 router = Router()
 
@@ -118,14 +118,17 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         connection_link = link(session, client_id, email)
 
         # Проверка существующей записи
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            cursor = await db.execute('SELECT * FROM connections WHERE tg_id = ?', (tg_id,))
-            existing_connection = await cursor.fetchone()
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            existing_connection = await conn.fetchrow('SELECT * FROM connections WHERE tg_id = $1', tg_id)
 
             if existing_connection:
-                await db.execute('UPDATE connections SET trial = 1 WHERE tg_id = ?', (tg_id,))
+                await conn.execute('UPDATE connections SET trial = 1 WHERE tg_id = $1', tg_id)
             else:
                 await add_connection(tg_id, 0, 1)
+
+        finally:
+            await conn.close()
 
         await store_key(tg_id, client_id, email, expiry_time, connection_link)
 
@@ -168,20 +171,25 @@ async def handle_back_to_main(callback_query: CallbackQuery, state: FSMContext):
 async def renew_expired_keys():
     while True:
         current_time = datetime.utcnow()
-        async with aiosqlite.connect(DATABASE_PATH) as db:
-            async with db.execute('SELECT tg_id FROM connections WHERE trial > 0') as cursor:
-                active_keys = await cursor.fetchall()
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            active_keys = await conn.fetch('SELECT tg_id FROM connections WHERE trial > 0')
 
-        for tg_id, in active_keys:
+        finally:
+            await conn.close()
+
+        for record in active_keys:
+            tg_id = record['tg_id']
             balance = await get_balance(tg_id)
             if balance >= 100:
                 new_expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
 
-                async with aiosqlite.connect(DATABASE_PATH) as db:
-                    await db.execute('UPDATE keys SET expiry_time = ? WHERE tg_id = ?', (new_expiry_time, tg_id))
-                    await db.commit()
-
-                await update_balance(tg_id, -100)
+                conn = await asyncpg.connect(DATABASE_URL)
+                try:
+                    await conn.execute('UPDATE keys SET expiry_time = $1 WHERE tg_id = $2', new_expiry_time, tg_id)
+                    await update_balance(tg_id, -100)
+                finally:
+                    await conn.close()
 
                 print(f"Ключ для пользователя {tg_id} продлен на месяц и списано 100 рублей.")
             else:
