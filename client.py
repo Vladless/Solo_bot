@@ -69,10 +69,17 @@ def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: in
     if not client_data:
         print("Не удалось получить данные клиента.")
         return False
+
+    # Получаем текущий срок действия
+    current_expiry_time = client_data.get('expiryTime', 0)
     
-    # Обновляем данные клиента
-    client_data['expiryTime'] = new_expiry_time
-    
+    # Если нет текущего срока, используем новый срок
+    if current_expiry_time == 0:
+        current_expiry_time = new_expiry_time
+
+    # Определяем новый срок окончания
+    updated_expiry_time = max(current_expiry_time, new_expiry_time)
+
     # Формируем данные для обновления
     payload = {
         "id": 1,  # Если id динамически изменяется, замените это значение
@@ -81,14 +88,14 @@ def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: in
                 {
                     "id": client_id,
                     "alterId": 0,
-                    "email": client_data['email'],
-                    "limitIp": 1,
-                 #   "totalGB": 2,
-                    "expiryTime": new_expiry_time,
-                    "enable": client_data['enable'],
+                    "email": email.lower(),  # Приведение email к нижнему регистру
+                    "limitIp": 2,
+                    "totalGB": 429496729600000,
+                    "expiryTime": updated_expiry_time,
+                    "enable": True,
                     "tgId": tg_id,
-                    "subId": '',
-                    "flow": 'xtls-rprx-vision'
+                    "subId": "",
+                    "flow": "xtls-rprx-vision"
                 }
             ]
         })

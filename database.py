@@ -90,3 +90,9 @@ async def update_balance(tg_id: int, amount: float):
             WHERE tg_id = ?
         ''', (amount, tg_id))
         await db.commit()
+
+async def get_key_count(tg_id: int) -> int:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute('SELECT COUNT(*) FROM keys k JOIN connections c ON k.client_id = c.client_id WHERE c.tg_id = ?', (tg_id,)) as cursor:
+            count = await cursor.fetchone()
+            return count[0] if count else 0
