@@ -2,7 +2,6 @@ from aiogram import types, Router
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-import aiosqlite
 from config import ADMIN_ID, DATABASE_URL
 from database import get_balance, update_balance, get_key_count
 from bot import bot
