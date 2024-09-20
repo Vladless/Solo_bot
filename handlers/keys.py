@@ -6,6 +6,7 @@ from database import get_balance, update_balance, get_trial
 from client import extend_client_key
 from config import ADMIN_USERNAME, DATABASE_URL, ADMIN_PASSWORD
 from auth import login_with_credentials
+from client import extend_client_key, delete_client 
 
 router = Router()
 
@@ -54,12 +55,10 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
-# Обработка запроса на просмотр информации о ключе
 @router.callback_query(lambda c: c.data.startswith('view_key_'))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    key_name, client_id = callback_query.data.split('_')[2], callback_query.data.split('_')[3]  # Получаем имя ключа и client_id
+    key_name, client_id = callback_query.data.split('_')[2], callback_query.data.split('_')[3]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -82,11 +81,12 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                                     f"Дата окончания: <b>{expiry_date.strftime('%Y-%m-%d %H:%M:%S')}</b>\n"
                                     f"{days_left_message}")
 
-                # Кнопки для продления и инструкций
+                # Кнопки для продления, инструкций и удаления
                 renew_button = types.InlineKeyboardButton(text='Продлить ключ', callback_data=f'renew_key_{client_id}')
                 instructions_button = types.InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')
+                delete_button = types.InlineKeyboardButton(text='Удалить ключ', callback_data=f'delete_key_{client_id}')
                 back_button = types.InlineKeyboardButton(text='Назад в профиль', callback_data='view_profile')
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [back_button]])
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [delete_button], [back_button]])
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
             else:
@@ -101,7 +101,58 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-# Обработка запроса на продление ключа
+# Обработка запроса на удаление ключа
+@router.callback_query(lambda c: c.data.startswith('delete_key_'))
+async def process_callback_delete_key(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('_')[2]  # Получаем client_id
+
+    confirmation_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text='Да, удалить', callback_data=f'confirm_delete_{client_id}')],
+        [types.InlineKeyboardButton(text='Нет, отменить', callback_data='view_keys')]
+    ])
+
+    await bot.send_message(tg_id, "Вы уверены, что хотите удалить ключ?", reply_markup=confirmation_keyboard)
+    await callback_query.answer()
+
+@router.callback_query(lambda c: c.data.startswith('confirm_delete_'))
+async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('_')[2]  # Получаем client_id
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            # Получаем email для удаления через API
+            record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
+
+            if record:
+                email = record['email']
+                
+                # Создаем сессию для API-запросов
+                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+
+                # Удаляем клиента через API
+                success = delete_client(session, client_id)
+
+                if success:
+                    # Удаляем ключ из базы данных
+                    await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
+                    await bot.send_message(tg_id, "Ключ был успешно удален.")
+                else:
+                    await bot.send_message(tg_id, "Ошибка при удалении клиента через API.")
+
+            else:
+                await bot.send_message(tg_id, "Ключ не найден или уже удален.")
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        await bot.send_message(tg_id, f"Ошибка при удалении ключа: {e}")
+
+    await callback_query.answer()
+
 @router.callback_query(lambda c: c.data.startswith('renew_key_'))
 async def process_callback_renew_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
