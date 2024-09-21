@@ -1,21 +1,24 @@
+import asyncio
 import re
 import uuid
-import asyncio
 from datetime import datetime, timedelta
-from aiogram import Router, types, F
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-
-from auth import login_with_credentials, link
-from client import add_client
-from config import API_TOKEN, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_CHAT_ID, DATABASE_URL
-from database import add_connection, has_active_key, get_balance, store_key, update_balance
-from bot import dp, bot
-from handlers.profile import process_callback_view_profile
-from handlers.start import start_command
 
 import asyncpg
+from aiogram import F, Router, types
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, Message)
+
+from auth import link, login_with_credentials
+from bot import bot, dp
+from client import add_client
+from config import (ADMIN_CHAT_ID, ADMIN_PASSWORD, ADMIN_USERNAME, API_TOKEN,
+                    DATABASE_URL)
+from database import (add_connection, get_balance, has_active_key, store_key,
+                      update_balance)
+from handlers.profile import process_callback_view_profile
+from handlers.start import start_command
 
 router = Router()
 
