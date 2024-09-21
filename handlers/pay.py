@@ -1,12 +1,13 @@
-from aiogram import types, Router
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+import asyncpg
+from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import ADMIN_ID, DATABASE_URL
-from database import get_balance, update_balance, get_key_count
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from bot import bot
+from config import ADMIN_ID, DATABASE_URL
+from database import get_balance, get_key_count, update_balance
 from handlers.profile import process_callback_view_profile
-import asyncpg
 
 router = Router()
 

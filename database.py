@@ -1,6 +1,9 @@
-import asyncpg
 from datetime import datetime
-from config import DATABASE_URL 
+
+import asyncpg
+
+from config import DATABASE_URL
+
 
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)

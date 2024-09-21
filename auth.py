@@ -1,13 +1,15 @@
-import requests
-from config import ADMIN_USERNAME, ADMIN_PASSWORD, GET_INBOUNDS_URL
 import json
+
+import requests
+
+from config import GET_INBOUNDS_URL, API_URL
 
 session = None
 
 def login_with_credentials(username, password):
     global session
     session = requests.Session()
-    auth_url = "https://solonet.pocomacho.ru:62553/solonet/login/"
+    auth_url = f"{API_URL}/login/"
     data = {
         "username": username,
         "password": password
@@ -39,7 +41,7 @@ def link(session, client_id: str, email: str):
     if 'obj' not in response or len(response['obj']) == 0:
         raise Exception("Не удалось получить данные клиентов.")
     
-    inbounds = response['obj'][0]  # Убедитесь, что это правильный индекс
+    inbounds = response['obj'][0]
     settings = json.loads(inbounds['settings'])
     
     # Найти клиентский ID в настройках

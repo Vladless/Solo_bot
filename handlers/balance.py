@@ -1,5 +1,5 @@
-from aiogram import types, Router
 import aiosqlite
+from aiogram import Router, types
 
 router = Router()
 

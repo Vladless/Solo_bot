@@ -1,8 +1,10 @@
-from aiogram import types, Router
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime
+
+from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from datetime import datetime
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from database import get_balance, get_key_count
 
 router = Router()

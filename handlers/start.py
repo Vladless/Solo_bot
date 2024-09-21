@@ -1,10 +1,13 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, KeyboardButton, Message,
+                           ReplyKeyboardMarkup)
+
+from bot import bot
 from config import ADMIN_ID, CHANNEL_URL
-from bot import bot  # Убедитесь, что bot и dp импортируются из правильного места
 
 router = Router()
 
