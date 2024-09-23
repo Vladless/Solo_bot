@@ -250,3 +250,25 @@ async def renew_expired_keys():
 
         await asyncio.sleep(3600)
 
+
+async def notify_expiring_keys():
+    while True:
+        current_time = datetime.utcnow()
+        threshold_time = int((current_time + timedelta(hours=10)).timestamp() * 1000)
+
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            # Получаем пользователей с истекающими ключами
+            expiring_keys = await conn.fetch('SELECT tg_id, expiry_time FROM keys WHERE expiry_time <= $1', threshold_time)
+
+            for record in expiring_keys:
+                tg_id = record['tg_id']
+                expiry_time = record['expiry_time']
+
+                # Отправляем уведомление пользователю
+                await bot.send_message(tg_id, f"🔔 Ваш ключ истекает через 10 часов. Пожалуйста, продлите его, чтобы избежать отключения.")
+        
+        finally:
+            await conn.close()
+
+        await asyncio.sleep(3600)  # Проверяем каждый час
