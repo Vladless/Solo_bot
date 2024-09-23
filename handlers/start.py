@@ -3,13 +3,13 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, Message)
+                           InlineKeyboardMarkup, Message,
+                           ReplyKeyboardMarkup, KeyboardButton)
 from aiogram.types import BufferedInputFile
 import os
 
 from bot import bot
 from config import ADMIN_ID, CHANNEL_URL
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = Router()
 
@@ -25,17 +25,12 @@ async def send_welcome_message(chat_id: int):
     )
 
     # Путь к изображению
-    image_path = os.path.join(os.path.dirname(__file__), 'solo_pic.png')
+    image_path = os.path.join(os.path.dirname(__file__), 'pic.jpg')
 
     # Проверка существования файла
     if not os.path.isfile(image_path):
         await bot.send_message(chat_id, "Файл изображения не найден.")
         return
-
-    # Создаем клавиатуру с кнопкой "Старт"
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    start_button = KeyboardButton(text='/start')
-    keyboard.add(start_button)
 
     # Создаем inline-клавиатуру
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -45,21 +40,30 @@ async def send_welcome_message(chat_id: int):
         [InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)]
     ])
 
-    # Используем BufferedInputFile для отправки изображения
+    # Создаем Reply-клавиатуру снизу
+    reply_keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text='Меню')]  # Кнопка "Меню"
+        ],
+        resize_keyboard=True  # Автоматическое изменение размера
+    )
+
+    # Отправляем изображение с inline-клавиатурой
     with open(image_path, 'rb') as image_from_buffer:
-        await bot.send_photo(
+        message = await bot.send_photo(
             chat_id,
-            BufferedInputFile(
-                image_from_buffer.read(),
-                filename="solo_pic.png"
-            ),
+            BufferedInputFile(image_from_buffer.read(), filename="solo_pic.png"),
             caption=welcome_text,
             parse_mode='Markdown',
             reply_markup=inline_keyboard  # Inline-клавиатура
         )
 
-    # Отправляем клавиатуру с кнопкой "Старт"
-    await bot.send_message(chat_id, "Нажмите /start для повторного запуска.", reply_markup=keyboard)
+    # Обновляем сообщение, добавляя к нему Reply-клавиатуру (без создания нового сообщения)
+    await bot.send_message(
+        chat_id,
+        "Нажмите кнопку ниже для доступа к меню:",
+        reply_markup=reply_keyboard  # Reply-клавиатура
+    )
 
 @router.message(Command('start'))
 async def start_command(message: Message):
@@ -134,3 +138,4 @@ async def receive_feedback(message: types.Message, state: FSMContext):
         print(f"Ошибка при отправке обратной связи: {e}")  # Логирование ошибок
 
     await state.clear()
+
