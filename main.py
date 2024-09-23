@@ -1,6 +1,8 @@
 import asyncio
-from bot import dp, router, bot
+
+from bot import bot, dp, router
 from database import init_db
+
 
 async def main():
     await init_db()
