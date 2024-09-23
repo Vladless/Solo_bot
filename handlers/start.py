@@ -19,7 +19,7 @@ class FeedbackState(StatesGroup):
 async def send_welcome_message(chat_id: int):
     # Новый текст приветствия
     welcome_text = (
-        "*SoloNet -- ваш провайдер в бесцензурный интернет!*\n\n"
+        "*SoloNet — ваш провайдер в бесцензурный интернет!*\n\n"
         "Получите высокую скорость и самый безопасный протокол VPN, "
         "который работает даже в Китае."
     )
