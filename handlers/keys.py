@@ -1,12 +1,13 @@
-import asyncpg
-from aiogram import types, Router
-from bot import bot
 from datetime import datetime, timedelta
-from database import get_balance, update_balance
-from client import extend_client_key
-from config import ADMIN_USERNAME, DATABASE_URL, ADMIN_PASSWORD
+
+import asyncpg
+from aiogram import Router, types
+
 from auth import login_with_credentials
-from client import extend_client_key, delete_client 
+from bot import bot
+from client import delete_client, extend_client_key
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
+from database import get_balance, update_balance
 
 router = Router()
 
