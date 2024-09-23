@@ -19,6 +19,8 @@ from database import (add_connection, get_balance, has_active_key, store_key,
                       update_balance)
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+
 
 router = Router()
 
@@ -87,6 +89,12 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
 
+def start_keyboard():
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    start_button = KeyboardButton(text='/start')
+    keyboard.add(start_button)
+    return keyboard
+
 # Обработка текстовых сообщений
 @dp.message()
 async def handle_text(message: Message, state: FSMContext):
@@ -113,6 +121,8 @@ async def handle_text(message: Message, state: FSMContext):
 
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
+
+    await message.answer("Выберите действие:", reply_markup=start_keyboard())
 
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id

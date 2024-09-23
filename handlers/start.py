@@ -9,6 +9,7 @@ import os
 
 from bot import bot
 from config import ADMIN_ID, CHANNEL_URL
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = Router()
 
@@ -31,7 +32,12 @@ async def send_welcome_message(chat_id: int):
         await bot.send_message(chat_id, "Файл изображения не найден.")
         return
 
-    # Создаем клавиатуру
+    # Создаем клавиатуру с кнопкой "Старт"
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+    start_button = KeyboardButton(text='/start')
+    keyboard.add(start_button)
+
+    # Создаем inline-клавиатуру
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')],
         [InlineKeyboardButton(text='🔒 О VPN', callback_data='about_vpn')],
@@ -49,8 +55,11 @@ async def send_welcome_message(chat_id: int):
             ),
             caption=welcome_text,
             parse_mode='Markdown',
-            reply_markup=inline_keyboard
+            reply_markup=inline_keyboard  # Inline-клавиатура
         )
+
+    # Отправляем клавиатуру с кнопкой "Старт"
+    await bot.send_message(chat_id, "Нажмите /start для повторного запуска.", reply_markup=keyboard)
 
 @router.message(Command('start'))
 async def start_command(message: Message):
