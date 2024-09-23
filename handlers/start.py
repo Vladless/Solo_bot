@@ -3,8 +3,9 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, KeyboardButton, Message,
-                           ReplyKeyboardMarkup)
+                           InlineKeyboardMarkup, Message)
+from aiogram.types import BufferedInputFile
+import os
 
 from bot import bot
 from config import ADMIN_ID, CHANNEL_URL
@@ -14,37 +15,52 @@ router = Router()
 class FeedbackState(StatesGroup):
     waiting_for_feedback = State()
 
-async def start_command(message: types.Message):
+async def send_welcome_message(chat_id: int):
+    # Новый текст приветствия
     welcome_text = (
-        "*Добро пожаловать в наш сервис!*\n\n"
-        "Вы можете воспользоваться следующими функциями:\n\n"
-        "🔑 *Создать ключ для подключения VPN* - Получите уникальный ключ для доступа к VPN.\n"
-        "📅 *Узнать дату окончания ключа* - Проверьте, когда истекает срок действия вашего ключа.\n"
-        "👤 *Просмотреть ваш профиль* - Получите информацию о вашем аккаунте и балансе.\n\n"
-        "Нажмите на соответствующую кнопку ниже, чтобы начать!"
+        "*SoloNet -- ваш провайдер в бесцензурный интернет!*\n\n"
+        "Получите высокую скорость и самый безопасный протокол VPN, "
+        "который работает даже в Китае."
     )
 
-    button_view_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
-    button_about_vpn = InlineKeyboardButton(text='🔒 О VPN', callback_data='about_vpn')
-    button_feedback = InlineKeyboardButton(text='📝 Обратная связь', callback_data='feedback')
-    button_channel = InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)
+    # Путь к изображению
+    image_path = os.path.join(os.path.dirname(__file__), 'solo_pic.png')
 
+    # Проверка существования файла
+    if not os.path.isfile(image_path):
+        await bot.send_message(chat_id, "Файл изображения не найден.")
+        return
+
+    # Создаем клавиатуру
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [button_view_profile],
-        [button_about_vpn],
-        [button_feedback],
-        [button_channel]
+        [InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')],
+        [InlineKeyboardButton(text='🔒 О VPN', callback_data='about_vpn')],
+        [InlineKeyboardButton(text='📝 Обратная связь', callback_data='feedback')],
+        [InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)]
     ])
 
-    await message.bot.send_message(
-        chat_id=message.chat.id,
-        text=welcome_text,
-        parse_mode='Markdown',
-        reply_markup=inline_keyboard
-    )
+    # Используем BufferedInputFile для отправки изображения
+    with open(image_path, 'rb') as image_from_buffer:
+        await bot.send_photo(
+            chat_id,
+            BufferedInputFile(
+                image_from_buffer.read(),
+                filename="solo_pic.png"
+            ),
+            caption=welcome_text,
+            parse_mode='Markdown',
+            reply_markup=inline_keyboard
+        )
+
+@router.message(Command('start'))
+async def start_command(message: Message):
+    await send_welcome_message(message.chat.id)
 
 @router.callback_query(lambda c: c.data == 'about_vpn')
 async def handle_about_vpn(callback_query: CallbackQuery):
+    # Удаляем сообщение главного меню
+    await callback_query.message.delete()
+
     info_message = (
         "*О VPN*\n\n"
         "Мы используем VLESS для обеспечения безопасного и надежного подключения к интернету. "
@@ -52,69 +68,39 @@ async def handle_about_vpn(callback_query: CallbackQuery):
         "Этот ключ необходим для использования нашего VPN-сервиса."
     )
     
-    # Кнопка "Назад"
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
+    inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])
 
-    # Обновлённая клавиатура с кнопкой "Назад"
-    inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[
-        [button_back]
-    ])
-
-    await callback_query.message.edit_text(
+    await callback_query.message.answer(
         info_message,
         parse_mode='Markdown',
-        reply_markup=inline_keyboard_back  # Добавление клавиатуры с кнопкой "Назад"
+        reply_markup=inline_keyboard_back
     )
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == 'back_to_menu')
 async def handle_back_to_menu(callback_query: CallbackQuery):
-    welcome_text = (
-        "*Добро пожаловать в наш сервис!*\n\n"
-        "Вы можете воспользоваться следующими функциями:\n\n"
-        "🔑 *Создать ключ для подключения VPN* - Получите уникальный ключ для доступа к VPN.\n"
-        "📅 *Узнать дату окончания ключа* - Проверьте, когда истекает срок действия вашего ключа.\n"
-        "👤 *Просмотреть ваш профиль* - Получите информацию о вашем аккаунте и балансе.\n\n"
-        "Нажмите на соответствующую кнопку ниже, чтобы начать!"
-    )
-
-    button_view_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
-    button_about_vpn = InlineKeyboardButton(text='🔒 О VPN', callback_data='about_vpn')
-    button_feedback = InlineKeyboardButton(text='📝 Обратная связь', callback_data='feedback')
-    button_channel = InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)
-
-    inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [button_view_profile],
-        [button_about_vpn],
-        [button_feedback],
-        [button_channel]
-    ])
-
-    # Редактирование сообщения на главное меню
-    await callback_query.message.edit_text(
-        welcome_text,
-        parse_mode='Markdown',
-        reply_markup=inline_keyboard
-    )
+    # Удаляем текущее сообщение
+    await callback_query.message.delete()
+    
+    # Отправляем приветственное сообщение
+    await send_welcome_message(callback_query.from_user.id)
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == 'feedback')
 async def handle_feedback(callback_query: CallbackQuery, state: FSMContext):
+    # Удаляем сообщение главного меню
+    await callback_query.message.delete()
+
     feedback_text = "Напишите нам, если у вас возникли трудности с подключением, есть отзыв или предложение. @pocomacho"
 
-    # Кнопка "Назад"
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
+    inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])
 
-    # Обновлённая клавиатура с кнопкой "Назад"
-    inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[
-        [button_back]
-    ])
-
-    # Редактирование сообщения с кнопкой "Назад"
-    await callback_query.message.edit_text(
+    await callback_query.message.answer(
         feedback_text,
         parse_mode='Markdown',
-        reply_markup=inline_keyboard_back  # Клавиатура с кнопкой "Назад"
+        reply_markup=inline_keyboard_back
     )
 
     await state.set_state(FeedbackState.waiting_for_feedback)
@@ -130,17 +116,12 @@ async def receive_feedback(message: types.Message, state: FSMContext):
         f"Обратная связь от пользователя {user_id}:\n\n"
         f"{message.text}"
     )
-    
+
     try:
         await bot.send_message(ADMIN_ID, feedback_message)
         await message.answer("Спасибо за ваше сообщение! Мы свяжемся с вами, если это будет необходимо.")
     except Exception as e:
         await message.answer("Произошла ошибка при отправке вашего сообщения.")
         print(f"Ошибка при отправке обратной связи: {e}")  # Логирование ошибок
-    
-    await state.clear()
 
-# Пример обработки команды старт
-@router.message(Command('start'))
-async def cmd_start(message: Message):
-    await start_command(message)
+    await state.clear()

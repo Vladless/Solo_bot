@@ -45,7 +45,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
     if trial_status == 1:
         await callback_query.message.edit_text(
-            "У вас уже был пробный ключ. Вы можете создать новый за 100 рублей. "
+            "У вас уже был пробный ключ. Новый стоит 100 рублей и сразу на месяц. \n\n"
             "Хотите продолжить?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text='Да, создать новый ключ', callback_data='confirm_create_new_key')],
@@ -68,11 +68,15 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
     if balance < 100:
         replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
-        await callback_query.message.edit_text("Недостаточно средств на балансе для создания нового ключа.", reply_markup=keyboard)
+        await callback_query.message.edit_text(
+            "❗️ Недостаточно средств на балансе для создания нового ключа. "
+            "Пожалуйста, пополните баланс.", 
+            reply_markup=keyboard
+        )
         await state.clear()
         return
 
-    await callback_query.message.edit_text("Пожалуйста, выберите имя для вашего нового ключа:")
+    await callback_query.message.edit_text("🔑 Пожалуйста, выберите имя для вашего нового ключа:")
     await state.set_state(Form.waiting_for_key_name)
     await state.update_data(creating_new_key=True)
 
@@ -112,8 +116,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     key_name = sanitize_key_name(message.text)
 
     if not key_name:
-        await message.bot.send_message(tg_id, "Назовите профиль на английском языке.")
-        return  # Прерываем выполнение функции
+        await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите профиль на английском языке.")
+        return
 
     data = await state.get_data()
     creating_new_key = data.get('creating_new_key', False)
@@ -122,28 +126,32 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     current_time = datetime.utcnow()
-    expiry_time = int((current_time + timedelta(days=1)).timestamp() * 1000)
+    expiry_time = None
 
-    if creating_new_key:
-        # Проверяем, занято ли имя ключа
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            existing_key = await conn.fetchrow('SELECT * FROM keys WHERE email = $1', email)
-            if existing_key:
-                await message.bot.send_message(tg_id, "Это имя уже занято. Пожалуйста, выберите другое имя.")
-                return  # Прерываем выполнение функции
-        finally:
-            await conn.close()
+    # Получаем статус пробного ключа из базы данных
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', tg_id)
+    finally:
+        await conn.close()
 
+    trial_status = existing_connection['trial'] if existing_connection else 0
+
+    if trial_status == 0:
+        # Создаем пробный ключ на 1 день
+        expiry_time = int((current_time + timedelta(days=1)).timestamp() * 1000)
+    else:
+        # Проверяем баланс перед созданием нового ключа
         balance = await get_balance(tg_id)
         if balance < 100:
             replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
-            await message.bot.send_message(tg_id, "Недостаточно средств на балансе для создания нового ключа.", reply_markup=keyboard)
+            await message.bot.send_message(tg_id, "❗️ Недостаточно средств на балансе для создания нового ключа.", reply_markup=keyboard)
             await state.clear()
             return
-        
+
         await update_balance(tg_id, -100)
+        expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
 
     try:
         add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_time, enable=True, flow="xtls-rprx-vision")
@@ -165,32 +173,36 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         await store_key(tg_id, client_id, email, expiry_time, connection_link)
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')],
-            [InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')]
+            [InlineKeyboardButton(text='📖 Инструкции по использованию', callback_data='instructions')],
+            [InlineKeyboardButton(text='🔙 Перейти в профиль', callback_data='view_profile')]
         ])
 
-        key_message = f"Ключ создан:\n<pre>{connection_link}</pre>"
+        key_message = (
+            "✅ Ключ успешно создан:\n"
+            f"<pre>{connection_link}</pre>"
+        )
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
     except Exception as e:
-        await message.bot.send_message(tg_id, f"Ошибка при создании ключа: {e}")
+        await message.bot.send_message(tg_id, f"❌ Ошибка при создании ключа: {e}")
 
     await state.clear()
+
 
 
 @dp.callback_query(F.data == 'instructions')
 async def handle_instructions(callback_query: CallbackQuery):
     instructions_message = (
-        "*Инструкции по использованию вашего ключа:*\n\n"
+        "*📋 Инструкции по использованию вашего ключа:*\n\n"
         "1. Скачайте приложение для вашего устройства:\n"
         "   - Для Android: [V2Ray](https://play.google.com/store/apps/details?id=com.v2ray.ang&hl=ru&pli=1)\n"
         "   - Для iPhone: [Streisand](https://apps.apple.com/ru/app/streisand/id6450534064)\n\n"
         "2. Скопируйте предоставленный ключ, который вы получили ранее.\n"
         "3. Откройте приложение и нажмите на плюсик сверху справа.\n"
         "4. Выберите 'Вставить из буфера обмена' для добавления ключа.\n\n"
-        "Если у вас возникнут вопросы, не стесняйтесь обращаться в поддержку."
+        "💬 Если у вас возникнут вопросы, не стесняйтесь обращаться в поддержку."
     )
 
-    back_button = InlineKeyboardButton(text='Назад', callback_data='back_to_main')
+    back_button = InlineKeyboardButton(text='🔙 Назад', callback_data='back_to_main')
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
     await callback_query.message.edit_text(instructions_message, parse_mode='Markdown', reply_markup=keyboard)

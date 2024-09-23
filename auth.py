@@ -2,7 +2,7 @@ import json
 
 import requests
 
-from config import GET_INBOUNDS_URL, API_URL
+from config import API_URL, GET_INBOUNDS_URL
 
 session = None
 
