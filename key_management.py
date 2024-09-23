@@ -106,7 +106,11 @@ async def handle_text(message: Message, state: FSMContext):
     if message.text in ["/start", "Меню"]:
         await start_command(message)
         return
-    
+
+    if message.text.lower() == "карина кринж":
+        await message.answer("Это и так всем понятно, но лучше займемся доступом к впн. Кстати, с днем рождения!")
+        return    
+
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
 
