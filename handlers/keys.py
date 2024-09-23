@@ -172,7 +172,17 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                 current_time = datetime.utcnow().timestamp() * 1000
 
                 if expiry_time <= current_time:
-                    await bot.edit_message_text("Ваш ключ уже истек и не может быть продлен.", chat_id=tg_id, message_id=callback_query.message.message_id)
+                    # Кнопка для удаления ключа и возврата в профиль
+                    delete_button = types.InlineKeyboardButton(text='Удалить ключ', callback_data=f'delete_key_{client_id}')
+                    back_button = types.InlineKeyboardButton(text='Назад в профиль', callback_data='view_profile')
+                    keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[delete_button], [back_button]])
+
+                    await bot.edit_message_text(
+                        "Ваш ключ уже истек и не может быть продлен.",
+                        chat_id=tg_id,
+                        message_id=callback_query.message.message_id,
+                        reply_markup=keyboard
+                    )
                     return
 
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
