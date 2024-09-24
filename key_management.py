@@ -103,7 +103,7 @@ async def handle_text(message: Message, state: FSMContext):
         await process_callback_view_profile(callback_query, state)
         return
 
-    if message.text in ["/start", "Меню"]:
+    if message.text in ["/start", "/menu"]:
         await start_command(message)
         return
     
