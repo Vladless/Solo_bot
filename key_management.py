@@ -19,8 +19,6 @@ from database import (add_connection, get_balance, has_active_key, store_key,
                       update_balance)
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-
 
 router = Router()
 
@@ -89,12 +87,6 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
 
-def start_keyboard():
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    start_button = KeyboardButton(text='/start')
-    keyboard.add(start_button)
-    return keyboard
-
 # Обработка текстовых сообщений
 @dp.message()
 async def handle_text(message: Message, state: FSMContext):
@@ -114,15 +106,9 @@ async def handle_text(message: Message, state: FSMContext):
     if message.text in ["/start", "Меню"]:
         await start_command(message)
         return
-
-    if message.text.lower() == "карина кринж":
-        await message.answer("Это и так всем понятно, но лучше займемся доступом к впн. Кстати, с днем рождения!")
-        return    
-
+    
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
-
-    await message.answer("Выберите действие:", reply_markup=start_keyboard())
 
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
@@ -259,26 +245,3 @@ async def renew_expired_keys():
                 await bot.send_message(tg_id, "Ваш баланс недостаточен для продления ключа. Пожалуйста, пополните баланс.", reply_markup=replenish_keyboard)
 
         await asyncio.sleep(3600)
-
-
-async def notify_expiring_keys():
-    while True:
-        current_time = datetime.utcnow()
-        threshold_time = int((current_time + timedelta(hours=10)).timestamp() * 1000)
-
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            # Получаем пользователей с истекающими ключами
-            expiring_keys = await conn.fetch('SELECT tg_id, expiry_time FROM keys WHERE expiry_time <= $1', threshold_time)
-
-            for record in expiring_keys:
-                tg_id = record['tg_id']
-                expiry_time = record['expiry_time']
-
-                # Отправляем уведомление пользователю
-                await bot.send_message(tg_id, f"🔔 Ваш ключ истекает через 10 часов. Пожалуйста, продлите его, чтобы избежать отключения.")
-        
-        finally:
-            await conn.close()
-
-        await asyncio.sleep(3600)  # Проверяем каждый час
