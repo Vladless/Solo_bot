@@ -158,6 +158,44 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
+@router.callback_query(lambda c: c.data.startswith('confirm_delete|'))
+async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('|')[1]  # Используем разделитель вертикальная черта
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
+
+            if record:
+                email = record['email']
+                
+                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = delete_client(session, client_id)
+
+                if success:
+                    await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
+                    response_message = "Ключ был успешно удален."
+                else:
+                    response_message = "Ошибка при удалении клиента через API."
+
+            else:
+                response_message = "Ключ не найден или уже удален."
+
+            back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+
+            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        await bot.edit_message_text(f"Ошибка при удалении ключа: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
+
+    await callback_query.answer()
+
 # Обработка выбора плана продления
 @router.callback_query(lambda c: c.data.startswith('renew_plan|'))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
