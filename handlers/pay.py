@@ -217,10 +217,9 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
                     try:
                         await bot.delete_message(chat_id=user_id, message_id=requisites_message_id)
                     except Exception as e:
-                        print(f"Ошибка при удалении сообщения с реквизитами: {e}")
+                        print(f"Ошибка при удалении сообщения: {e}")
 
             finally:
-                # Закрываем соединение с базой данных
                 await conn.close()
 
         elif action == 'decline':
@@ -231,14 +230,6 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
         await send_message_with_deletion(callback_query.from_user.id, f"Ошибка при пополнении баланса: {e}", state=state, message_key='admin_error_message_id')
         print(f"Ошибка при пополнении баланса: {e}")
 
-    await state.clear()
-    await callback_query.answer()
-
-
-@router.message(lambda m: m.text and m.text.startswith('Недостаточно средств для продления'))
-async def handle_insufficient_funds(message: types.Message):
-    user_id = message.from_user.id
-    replenish_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
-    ])
-    await send_message_with_deletion(user_id, "Ваш баланс недостаточен для продления ключа. Пожалуйста, пополните баланс.", reply_markup=replenish_keyboard, state=None, message_key='insufficient_funds_message_id')
+    finally:
+        await state.clear()
+        await callback_query.answer()

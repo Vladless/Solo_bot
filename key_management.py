@@ -245,4 +245,3 @@ async def renew_expired_keys():
                 await bot.send_message(tg_id, "Ваш баланс недостаточен для продления ключа. Пожалуйста, пополните баланс.", reply_markup=replenish_keyboard)
 
         await asyncio.sleep(3600)
-
