@@ -79,9 +79,16 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 expiry_time = record['expiry_time']
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
-                days_left = (expiry_date - current_date).days
+                time_left = expiry_date - current_date
 
-                days_left_message = f"Осталось дней: {days_left}" if days_left > 0 else "Ключ истек."
+                if time_left.total_seconds() <= 0:
+                    days_left_message = "Ключ истек."
+                elif time_left.days > 0:
+                    days_left_message = f"Осталось дней: {time_left.days}"
+                else:
+                    hours_left = time_left.seconds // 3600
+                    days_left_message = f"Осталось часов: {hours_left}"
+
                 response_message = (f"Ваш ключ:\n<pre>{key}</pre>\n"
                                     f"Дата окончания: <b>{expiry_date.strftime('%Y-%m-%d %H:%M:%S')}</b>\n"
                                     f"{days_left_message}")
