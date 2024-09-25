@@ -9,6 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
+from pytz import timezone
 
 from auth import link, login_with_credentials
 from bot import bot, dp
@@ -139,7 +140,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     if trial_status == 0:
         # Создаем пробный ключ на 1 день
-        expiry_time = int((current_time + timedelta(days=1)).timestamp() * 1000)
+        expiry_time = int((current_time + timedelta(days=1, hours=3)).timestamp() * 1000)
     else:
         # Проверяем баланс перед созданием нового ключа
         balance = await get_balance(tg_id)
@@ -151,10 +152,23 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             return
 
         await update_balance(tg_id, -100)
-        expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
+        expiry_time = int((current_time + timedelta(days=30, hours=3)).timestamp() * 1000)
 
     try:
-        add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_time, enable=True, flow="xtls-rprx-vision")
+        # Попробуем добавить клиента
+        response = add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_time, enable=True, flow="xtls-rprx-vision")
+        
+        # Проверяем статус ответа от сервера
+        if not response.get("success", True):
+            error_msg = response.get("msg", "Неизвестная ошибка.")
+            if "Duplicate email" in error_msg:
+                await message.bot.send_message(tg_id, "❌ Этот email уже используется. Пожалуйста, выберите другое имя для ключа.")
+                await state.set_state(Form.waiting_for_key_name)  # Возвращаем пользователя к вводу имени ключа
+                return
+            else:
+                raise Exception(error_msg)
+
+        # Если добавление клиента прошло успешно, получаем ссылку
         connection_link = link(session, client_id, email)
 
         # Проверка существующей записи
@@ -182,10 +196,12 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             f"<pre>{connection_link}</pre>"
         )
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
+
     except Exception as e:
         await message.bot.send_message(tg_id, f"❌ Ошибка при создании ключа: {e}")
 
     await state.clear()
+
 
 
 

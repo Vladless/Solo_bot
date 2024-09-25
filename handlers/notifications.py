@@ -1,6 +1,11 @@
 import asyncpg
 from datetime import datetime, timedelta
 from aiogram import Bot
+from aiogram import Router, types
+from bot import bot
+from aiogram.filters import Command
+
+router = Router()
 
 from config import DATABASE_URL
 
@@ -39,3 +44,24 @@ async def notify_expiring_keys(bot: Bot):
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
+
+@router.message(Command(commands=['notify']))
+async def notify_command(message: types.Message):
+    # Запрашиваем у администратора ID пользователя и текст уведомления
+    await message.answer("Введите ID пользователя и текст уведомления в формате:\n<code>/notify user_id текст</code>", parse_mode="HTML")
+
+# Обработка команды уведомления
+@router.message()
+async def process_notification(message: types.Message):
+    if message.text.startswith("/notify"):
+        try:
+            # Парсим команду
+            command, user_id, *text = message.text.split()
+            text = ' '.join(text)
+
+            # Отправляем сообщение пользователю
+            await bot.send_message(chat_id=user_id, text=text)
+            await message.answer(f"Уведомление успешно отправлено пользователю {user_id}.")
+        
+        except Exception as e:
+            await message.answer(f"Ошибка при отправке уведомления: {e}")

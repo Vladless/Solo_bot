@@ -40,6 +40,7 @@ def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, t
 
     if response.status_code == 200:
         print(f"Клиент добавлен: email={email}")
+        return response.json()
     else:
         print(f"Ошибка при добавлении клиента: {response.status_code}, {response.text}")
 
