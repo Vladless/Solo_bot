@@ -3,8 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, Message,
-                           ReplyKeyboardMarkup, KeyboardButton)
+                           InlineKeyboardMarkup, Message)
 from aiogram.types import BufferedInputFile
 import os
 
@@ -40,30 +39,15 @@ async def send_welcome_message(chat_id: int):
         [InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)]
     ])
 
-    # Создаем Reply-клавиатуру снизу
-    reply_keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text='Меню')]  # Кнопка "Меню"
-        ],
-        resize_keyboard=True  # Автоматическое изменение размера
-    )
-
-    # Отправляем изображение с inline-клавиатурой
+    # Отправляем изображение с инлайн-клавиатурой
     with open(image_path, 'rb') as image_from_buffer:
-        message = await bot.send_photo(
+        await bot.send_photo(
             chat_id,
             BufferedInputFile(image_from_buffer.read(), filename="solo_pic.png"),
             caption=welcome_text,
             parse_mode='Markdown',
             reply_markup=inline_keyboard  # Inline-клавиатура
         )
-
-    # Обновляем сообщение, добавляя к нему Reply-клавиатуру (без создания нового сообщения)
-    await bot.send_message(
-        chat_id,
-        "Нажмите кнопку ниже для доступа к меню:",
-        reply_markup=reply_keyboard  # Reply-клавиатура
-    )
 
 @router.message(Command('start'))
 async def start_command(message: Message):
@@ -138,4 +122,3 @@ async def receive_feedback(message: types.Message, state: FSMContext):
         print(f"Ошибка при отправке обратной связи: {e}")  # Логирование ошибок
 
     await state.clear()
-
