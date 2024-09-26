@@ -42,20 +42,6 @@ async def send_message_with_deletion(chat_id, text, reply_markup=None, state=Non
 async def process_callback_replenish_balance(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
-    key_count = await get_key_count(tg_id)
-    if key_count <= 0:
-        # Создаем кнопки "Создать ключ" и "Назад"
-        create_key_button = InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
-        back_button = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[create_key_button, back_button]])
-
-        await callback_query.message.edit_text(
-            text="У вас нет ключей. Пополнение баланса возможно только при наличии ключа.\n"
-                 "Пожалуйста, создайте ключ для продолжения.",
-            reply_markup=keyboard
-        )
-        return
-
     await state.set_state(ReplenishBalanceState.choosing_transfer_method)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='По реквизитам', callback_data='transfer_method_requisites')],
