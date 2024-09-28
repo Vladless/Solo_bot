@@ -2,12 +2,18 @@ import asyncpg
 from datetime import datetime, timedelta
 from aiogram import Bot
 from aiogram import Router, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup  # Импортируем необходимые классы
 from bot import bot
+from config import DATABASE_URL, ADMIN_ID
 from aiogram.filters import Command
+from database import get_all_users
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 
 router = Router()
 
-from config import DATABASE_URL
+class NotificationStates(StatesGroup):
+    waiting_for_notification_text = State()
 
 async def notify_expiring_keys(bot: Bot):
     try:
@@ -25,8 +31,14 @@ async def notify_expiring_keys(bot: Bot):
                 email = record['email']
                 expiry_time = record['expiry_time']
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                
+                # Создаем клавиатуру с кнопкой "Пополнить баланс"
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
+                ])
+
                 message = f"Ваш ключ <b>{email}</b> истечет <b>{expiry_date}</b>. Пожалуйста, продлите его."
-                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML')
+                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
 
             # Получаем все истекшие ключи
             expired_records = await conn.fetch('''
@@ -37,31 +49,16 @@ async def notify_expiring_keys(bot: Bot):
             for record in expired_records:
                 tg_id = record['tg_id']
                 email = record['email']
+                
+                # Создаем клавиатуру с кнопкой "Пополнить баланс"
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
+                ])
+
                 message = f"Ваш ключ <b>{email}</b> уже истек. Пожалуйста, продлите его."
-                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML')
+                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
 
         finally:
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
-
-@router.message(Command(commands=['notify']))
-async def notify_command(message: types.Message):
-    # Запрашиваем у администратора ID пользователя и текст уведомления
-    await message.answer("Введите ID пользователя и текст уведомления в формате:\n<code>/notify user_id текст</code>", parse_mode="HTML")
-
-# Обработка команды уведомления
-@router.message()
-async def process_notification(message: types.Message):
-    if message.text.startswith("/notify"):
-        try:
-            # Парсим команду
-            command, user_id, *text = message.text.split()
-            text = ' '.join(text)
-
-            # Отправляем сообщение пользователю
-            await bot.send_message(chat_id=user_id, text=text)
-            await message.answer(f"Уведомление успешно отправлено пользователю {user_id}.")
-        
-        except Exception as e:
-            await message.answer(f"Ошибка при отправке уведомления: {e}")

@@ -9,7 +9,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
-from pytz import timezone
 
 from auth import link, login_with_credentials
 from bot import bot, dp
@@ -20,6 +19,7 @@ from database import (add_connection, get_balance, has_active_key, store_key,
                       update_balance)
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
+from handlers.instructions import send_instructions
 
 router = Router()
 
@@ -46,16 +46,22 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
     if trial_status == 1:
         await callback_query.message.edit_text(
-            "У вас уже был пробный ключ. Новый стоит 100 рублей и сразу на месяц. \n\n"
-            "Хотите продолжить?",
+            "<b>⚠️ У вас уже был пробный ключ.</b>\n\n"
+            "Новый ключ будет выдан на <b>один месяц</b> и стоит <b>100 рублей</b>.\n\n"
+            "<i>Хотите продолжить?</i>",
+            parse_mode="HTML",  # Добавляем параметр parse_mode
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text='Да, создать новый ключ', callback_data='confirm_create_new_key')],
-                [InlineKeyboardButton(text='Назад', callback_data='cancel_create_key')]
+                [InlineKeyboardButton(text='✅ Да, создать новый ключ', callback_data='confirm_create_new_key')],
+                [InlineKeyboardButton(text='↩️ Назад', callback_data='cancel_create_key')]
             ])
         )
         await state.update_data(creating_new_key=True)
     else:
-        await callback_query.message.edit_text("Вам будет выдан пробный ключ. Пожалуйста, выберите имя для вашего ключа:")
+        await callback_query.message.edit_text(
+            "<b>🎉 Вам будет выдан пробный ключ на 24 часа!</b>\n\n"
+            "<i>Пожалуйста, введите название для вашего пробного ключа:</i>",
+            parse_mode="HTML"
+        )
         await state.set_state(Form.waiting_for_key_name)
 
     await callback_query.answer()
@@ -77,7 +83,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
         await state.clear()
         return
 
-    await callback_query.message.edit_text("🔑 Пожалуйста, выберите имя для вашего нового ключа:")
+    await callback_query.message.edit_text("🔑 Пожалуйста, введите имя нового ключа:")
     await state.set_state(Form.waiting_for_key_name)
     await state.update_data(creating_new_key=True)
 
@@ -113,7 +119,6 @@ async def handle_text(message: Message, state: FSMContext):
 
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
-
     key_name = sanitize_key_name(message.text)
 
     if not key_name:
@@ -140,7 +145,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     if trial_status == 0:
         # Создаем пробный ключ на 1 день
-        expiry_time = int((current_time + timedelta(days=1, hours=3)).timestamp() * 1000)
+        expiry_time = current_time + timedelta(days=1, hours=3)
     else:
         # Проверяем баланс перед созданием нового ключа
         balance = await get_balance(tg_id)
@@ -152,26 +157,25 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             return
 
         await update_balance(tg_id, -100)
-        expiry_time = int((current_time + timedelta(days=30, hours=3)).timestamp() * 1000)
+        expiry_time = current_time + timedelta(days=30, hours=3)
+
+    expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     try:
         # Попробуем добавить клиента
-        response = add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_time, enable=True, flow="xtls-rprx-vision")
+        response = add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
         
-        # Проверяем статус ответа от сервера
         if not response.get("success", True):
             error_msg = response.get("msg", "Неизвестная ошибка.")
             if "Duplicate email" in error_msg:
                 await message.bot.send_message(tg_id, "❌ Этот email уже используется. Пожалуйста, выберите другое имя для ключа.")
-                await state.set_state(Form.waiting_for_key_name)  # Возвращаем пользователя к вводу имени ключа
+                await state.set_state(Form.waiting_for_key_name)
                 return
             else:
                 raise Exception(error_msg)
 
-        # Если добавление клиента прошло успешно, получаем ссылку
         connection_link = link(session, client_id, email)
 
-        # Проверка существующей записи
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             existing_connection = await conn.fetchrow('SELECT * FROM connections WHERE tg_id = $1', tg_id)
@@ -180,11 +184,21 @@ async def handle_key_name_input(message: Message, state: FSMContext):
                 await conn.execute('UPDATE connections SET trial = 1 WHERE tg_id = $1', tg_id)
             else:
                 await add_connection(tg_id, 0, 1)
-
         finally:
             await conn.close()
 
-        await store_key(tg_id, client_id, email, expiry_time, connection_link)
+        await store_key(tg_id, client_id, email, expiry_timestamp, connection_link)
+
+        # Рассчитываем оставшееся время до окончания действия ключа
+        remaining_time = expiry_time - current_time
+        days = remaining_time.days
+        hours, remainder = divmod(remaining_time.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+
+        # Формируем сообщение с информацией о ключе
+        remaining_time_message = (
+            f"Оставшееся время ключа: {days} день"
+        )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='📖 Инструкции по использованию', callback_data='instructions')],
@@ -193,8 +207,10 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
         key_message = (
             "✅ Ключ успешно создан:\n"
-            f"<pre>{connection_link}</pre>"
+            f"<pre>{connection_link}</pre>\n\n"
+            f"{remaining_time_message}"
         )
+
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
 
     except Exception as e:
@@ -202,62 +218,11 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     await state.clear()
 
-
-
-
 @dp.callback_query(F.data == 'instructions')
 async def handle_instructions(callback_query: CallbackQuery):
-    instructions_message = (
-        "*📋 Инструкции по использованию вашего ключа:*\n\n"
-        "1. Скачайте приложение для вашего устройства:\n"
-        "   - Для Android: [V2Ray](https://play.google.com/store/apps/details?id=com.v2ray.ang&hl=ru&pli=1)\n"
-        "   - Для iPhone: [Streisand](https://apps.apple.com/ru/app/streisand/id6450534064)\n\n"
-        "2. Скопируйте предоставленный ключ, который вы получили ранее.\n"
-        "3. Откройте приложение и нажмите на плюсик сверху справа.\n"
-        "4. Выберите 'Вставить из буфера обмена' для добавления ключа.\n\n"
-        "💬 Если у вас возникнут вопросы, не стесняйтесь обращаться в поддержку."
-    )
-
-    back_button = InlineKeyboardButton(text='🔙 Назад', callback_data='back_to_main')
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-    await callback_query.message.edit_text(instructions_message, parse_mode='Markdown', reply_markup=keyboard)
-    await callback_query.answer()
+    await send_instructions(callback_query) 
 
 @dp.callback_query(F.data == 'back_to_main')
 async def handle_back_to_main(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
-
-async def renew_expired_keys():
-    while True:
-        current_time = datetime.utcnow()
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            active_keys = await conn.fetch('SELECT tg_id FROM connections WHERE trial > 0')
-
-        finally:
-            await conn.close()
-
-        for record in active_keys:
-            tg_id = record['tg_id']
-            balance = await get_balance(tg_id)
-            if balance >= 100:
-                new_expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
-
-                conn = await asyncpg.connect(DATABASE_URL)
-                try:
-                    await conn.execute('UPDATE keys SET expiry_time = $1 WHERE tg_id = $2', new_expiry_time, tg_id)
-                    await update_balance(tg_id, -100)
-                finally:
-                    await conn.close()
-
-                print(f"Ключ для пользователя {tg_id} продлен на месяц и списано 100 рублей.")
-            else:
-                print(f"Недостаточно средств на балансе для пользователя {tg_id}. Предложение пополнить баланс.")
-                replenish_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
-                ])
-                await bot.send_message(tg_id, "Ваш баланс недостаточен для продления ключа. Пожалуйста, пополните баланс.", reply_markup=replenish_keyboard)
-
-        await asyncio.sleep(3600)
