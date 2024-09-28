@@ -254,7 +254,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-# Обработка выбора плана продления
 @router.callback_query(lambda c: c.data.startswith('renew_plan|'))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
@@ -271,13 +270,15 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 expiry_time = record['expiry_time']
                 current_time = datetime.utcnow().timestamp() * 1000  # Текущее время в миллисекундах
 
+                # Проверяем, если ключ истек, то продлеваем от текущей даты, иначе продлеваем от текущей даты истечения
                 if expiry_time <= current_time:
-                    # Если ключ уже истек, он не может быть продлен
-                    await bot.edit_message_text("Ваш ключ уже истек и не может быть продлен.", chat_id=tg_id, message_id=callback_query.message.message_id)
-                    return
+                    # Ключ истек, начинаем отсчет от текущего времени
+                    new_expiry_time = int(current_time + timedelta(days=days_to_extend).total_seconds() * 1000)
+                else:
+                    # Ключ активен, продлеваем от текущей даты истечения
+                    new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
 
-                # Рассчитываем новую дату истечения
-                new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
+                # Стоимость продления в зависимости от выбранного плана
                 cost = 100 if plan == '1' else 250
 
                 balance = await get_balance(tg_id)
