@@ -6,7 +6,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
-from database import get_balance, get_key_count, update_balance, add_connection, check_connection_exists
+from database import (add_connection, check_connection_exists, get_balance,
+                      get_key_count, update_balance)
 from handlers.profile import process_callback_view_profile
 
 router = Router()

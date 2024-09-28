@@ -9,7 +9,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import balance, keys, pay, profile, start, notifications
+from handlers import balance, keys, notifications, pay, profile, start
 from key_management import router as key_management_router
 
 # Регистрация обработчиков
