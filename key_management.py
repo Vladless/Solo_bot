@@ -19,7 +19,7 @@ from database import (add_connection, get_balance, has_active_key, store_key,
                       update_balance)
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from handlers.notifications import send_notification
+from handlers.instructions import send_instructions
 
 router = Router()
 
@@ -220,57 +220,9 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data == 'instructions')
 async def handle_instructions(callback_query: CallbackQuery):
-    instructions_message = (
-        "*📋 Инструкции по использованию вашего ключа:*\n\n"
-        "1. Скачайте приложение для вашего устройства:\n"
-        "   - Для Android: [V2Ray](https://play.google.com/store/apps/details?id=com.v2ray.ang&hl=ru&pli=1)\n"
-        "   - Для iPhone: [Streisand](https://apps.apple.com/ru/app/streisand/id6450534064)\n\n"
-        "2. Скопируйте предоставленный ключ, который вы получили ранее.\n"
-        "3. Откройте приложение и нажмите на плюсик сверху справа.\n"
-        "4. Выберите 'Вставить из буфера обмена' для добавления ключа.\n\n"
-        "💬 Если у вас возникнут вопросы, не стесняйтесь обращаться в поддержку."
-    )
-
-    back_button = InlineKeyboardButton(text='🔙 Назад', callback_data='back_to_main')
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-    await callback_query.message.edit_text(instructions_message, parse_mode='Markdown', reply_markup=keyboard)
-    await callback_query.answer()
+    await send_instructions(callback_query) 
 
 @dp.callback_query(F.data == 'back_to_main')
 async def handle_back_to_main(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
-
-async def renew_expired_keys():
-    while True:
-        current_time = datetime.utcnow()
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            active_keys = await conn.fetch('SELECT tg_id FROM connections WHERE trial > 0')
-
-        finally:
-            await conn.close()
-
-        for record in active_keys:
-            tg_id = record['tg_id']
-            balance = await get_balance(tg_id)
-            if balance >= 100:
-                new_expiry_time = int((current_time + timedelta(days=30)).timestamp() * 1000)
-
-                conn = await asyncpg.connect(DATABASE_URL)
-                try:
-                    await conn.execute('UPDATE keys SET expiry_time = $1 WHERE tg_id = $2', new_expiry_time, tg_id)
-                    await update_balance(tg_id, -100)
-                finally:
-                    await conn.close()
-
-                print(f"Ключ для пользователя {tg_id} продлен на месяц и списано 100 рублей.")
-            else:
-                print(f"Недостаточно средств на балансе для пользователя {tg_id}. Предложение пополнить баланс.")
-                replenish_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
-                ])
-                await bot.send_message(tg_id, "Ваш баланс недостаточен для продления ключа. Пожалуйста, пополните баланс.", reply_markup=replenish_keyboard)
-
-        await asyncio.sleep(3600)
