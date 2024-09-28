@@ -11,6 +11,17 @@ from database import get_balance, update_balance
 
 router = Router()
 
+from datetime import datetime, timedelta
+import asyncpg
+from aiogram import Router, types
+from auth import login_with_credentials
+from bot import bot
+from client import delete_client, extend_client_key
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
+from database import get_balance, update_balance
+
+router = Router()
+
 # Обработка запроса на просмотр ключей
 @router.callback_query(lambda c: c.data == 'view_keys')
 async def process_callback_view_keys(callback_query: types.CallbackQuery):
@@ -30,26 +41,26 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                     key_name = record['email']
                     client_id = record['client_id']
                     # Заменяем подчеркивание на вертикальную черту в callback_data
-                    button = types.InlineKeyboardButton(text=key_name, callback_data=f'view_key|{key_name}|{client_id}')
+                    button = types.InlineKeyboardButton(text=f"🔑 {key_name}", callback_data=f'view_key|{key_name}|{client_id}')
                     buttons.append([button])
 
                 # Создаем клавиатуру с кнопками
                 inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-                response_message = "Выберите ключ для просмотра информации:"
+                response_message = "<b>Выберите ключ для просмотра информации:</b>"
 
                 # Редактируем сообщение с клавиатурой
-                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard)
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard, parse_mode="HTML")
             else:
                 # Если нет ключей, добавляем кнопку "Создать ключ" и "Назад"
-                response_message = "У вас нет ключей."
+                response_message = "<b>У вас нет ключей.</b>"
 
                 # Кнопка "Создать ключ"
-                create_key_button = types.InlineKeyboardButton(text='Создать ключ', callback_data='create_key')
-                back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_profile')  # Измените на правильное значение для кнопки "Назад"
+                create_key_button = types.InlineKeyboardButton(text='➕ Создать ключ', callback_data='create_key')
+                back_button = types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')  # Измените на правильное значение для кнопки "Назад"
                 
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[create_key_button], [back_button]])
 
-                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
 
         finally:
             await conn.close()
@@ -82,27 +93,27 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 time_left = expiry_date - current_date
 
                 if time_left.total_seconds() <= 0:
-                    days_left_message = "Ключ истек."
+                    days_left_message = "<b>Ключ истек.</b>"
                 elif time_left.days > 0:
-                    days_left_message = f"Осталось дней: {time_left.days}"
+                    days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
                 else:
                     hours_left = time_left.seconds // 3600
-                    days_left_message = f"Осталось часов: {hours_left}"
+                    days_left_message = f"Осталось часов: <b>{hours_left}</b>"
 
-                response_message = (f"Ваш ключ:\n<pre>{key}</pre>\n"
-                                    f"Дата окончания: <b>{expiry_date.strftime('%Y-%m-%d %H:%M:%S')}</b>\n"
+                response_message = (f"🔑 <b>Ваш ключ:</b>\n<pre>{key}</pre>\n"
+                                    f"📅 <b>Дата окончания:</b> {expiry_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
                                     f"{days_left_message}")
 
                 # Кнопки для продления, инструкций и удаления
-                renew_button = types.InlineKeyboardButton(text='Продлить ключ', callback_data=f'renew_key|{client_id}')
-                instructions_button = types.InlineKeyboardButton(text='Инструкции по использованию', callback_data='instructions')
-                delete_button = types.InlineKeyboardButton(text='Удалить ключ', callback_data=f'delete_key|{client_id}')
-                back_button = types.InlineKeyboardButton(text='Назад в профиль', callback_data='view_profile')
+                renew_button = types.InlineKeyboardButton(text='⏳ Продлить ключ', callback_data=f'renew_key|{client_id}')
+                instructions_button = types.InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')
+                delete_button = types.InlineKeyboardButton(text='❌ Удалить ключ', callback_data=f'delete_key|{client_id}')
+                back_button = types.InlineKeyboardButton(text='🔙 Назад в профиль', callback_data='view_profile')
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [delete_button], [back_button]])
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
             else:
-                await bot.edit_message_text("Информация о ключе не найдена.", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
+                await bot.edit_message_text("<b>Информация о ключе не найдена.</b>", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
 
         finally:
             await conn.close()
@@ -119,13 +130,53 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
     client_id = callback_query.data.split('|')[1]  # Используем разделитель вертикальная черта
 
     confirmation_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text='Да, удалить', callback_data=f'confirm_delete|{client_id}')],
-        [types.InlineKeyboardButton(text='Нет, отменить', callback_data='view_keys')]
+        [types.InlineKeyboardButton(text='✅ Да, удалить', callback_data=f'confirm_delete|{client_id}')],
+        [types.InlineKeyboardButton(text='❌ Нет, отменить', callback_data='view_keys')]
     ])
 
-    await bot.edit_message_text("Вы уверены, что хотите удалить ключ?", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=confirmation_keyboard)
+    await bot.edit_message_text("<b>Вы уверены, что хотите удалить ключ?</b>", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=confirmation_keyboard, parse_mode="HTML")
     await callback_query.answer()
 
+# Обработка выбора плана продления
+@router.callback_query(lambda c: c.data.startswith('renew_key|'))
+async def process_callback_renew_key(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('|')[1]  # Используем разделитель вертикальная черта
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
+
+            if record:
+                email = record['email']
+                expiry_time = record['expiry_time']
+                current_time = datetime.utcnow().timestamp() * 1000  # Получаем текущее время в миллисекундах
+
+                # Убираем проверку на истекший ключ
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text='📅 1 месяц (100 руб.)', callback_data=f'renew_plan|1|{client_id}')],
+                    [types.InlineKeyboardButton(text='📅 3 месяца (250 руб.)', callback_data=f'renew_plan|3|{client_id}')],
+                    [types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')]
+                ])
+
+                balance = await get_balance(tg_id)
+                response_message = (f"<b>Выберите план продления:</b>\n"
+                                    f"💰 <b>Баланс:</b> {balance} руб.\n"
+                                    f"📅 <b>Текущая дата истечения ключа:</b> {datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}")
+
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        await bot.edit_message_text(f"<b>Ошибка при выборе плана:</b> {e}", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
+
+    await callback_query.answer()
+
+async def handle_error(tg_id, callback_query, message):
+    await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id)
 
 # Подтверждение удаления
 @router.callback_query(lambda c: c.data.startswith('renew_key|'))

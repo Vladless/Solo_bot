@@ -35,6 +35,14 @@ async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0):
     ''', tg_id, balance, trial)
     await conn.close()
 
+async def check_connection_exists(tg_id: int):
+    conn = await asyncpg.connect(DATABASE_URL)
+    exists = await conn.fetchval('''
+        SELECT EXISTS(SELECT 1 FROM connections WHERE tg_id = $1)
+    ''', tg_id)
+    await conn.close()
+    return exists
+
 async def store_key(tg_id: int, client_id: str, email: str, expiry_time: int, key: str):
     conn = await asyncpg.connect(DATABASE_URL)
     await conn.execute('''
@@ -85,3 +93,6 @@ async def get_key_count(tg_id: int) -> int:
     count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE tg_id = $1', tg_id)
     await conn.close()
     return count if count is not None else 0
+
+async def get_all_users(conn):
+    return await conn.fetch('SELECT tg_id FROM connections')
