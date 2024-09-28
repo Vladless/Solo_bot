@@ -5,8 +5,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database import get_balance, get_key_count
 from bot import bot  # Импортируем объект bot
+from database import get_balance, get_key_count
 
 router = Router()
 

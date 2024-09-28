@@ -1,6 +1,7 @@
 from aiogram import types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+
 async def send_instructions(callback_query: types.CallbackQuery):
     instructions_message = (
         "*📋 Инструкции по использованию вашего ключа:*\n\n"

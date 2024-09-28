@@ -1,25 +1,28 @@
-import asyncpg
 from datetime import datetime, timedelta
-from aiogram import Bot
-from aiogram import Router, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup  # Импортируем необходимые классы
-from bot import bot
-from config import DATABASE_URL, ADMIN_ID
+
+import asyncpg
+from aiogram import Bot, Router, types
 from aiogram.filters import Command
-from database import get_all_users
-from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (  # Импортируем необходимые классы
+    InlineKeyboardButton, InlineKeyboardMarkup)
+
+from bot import bot
+from config import ADMIN_ID, DATABASE_URL
+from database import get_all_users
 
 router = Router()
 
 class NotificationStates(StatesGroup):
     waiting_for_notification_text = State()
 
-import asyncpg
 from datetime import datetime, timedelta
-from aiogram import Bot
-from aiogram import Router, types
+
+import asyncpg
+from aiogram import Bot, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from bot import bot
 from config import DATABASE_URL
 

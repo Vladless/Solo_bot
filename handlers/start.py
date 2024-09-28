@@ -1,11 +1,11 @@
+import os
+
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup, Message)
-from aiogram.types import BufferedInputFile
-import os
+from aiogram.types import (BufferedInputFile, CallbackQuery,
+                           InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
 from config import ADMIN_ID, CHANNEL_URL

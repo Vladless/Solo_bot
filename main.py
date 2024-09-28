@@ -1,7 +1,9 @@
 import asyncio
+
 from bot import bot, dp, router
 from database import init_db
 from handlers.notifications import notify_expiring_keys
+
 
 async def periodic_notifications():
     while True:
