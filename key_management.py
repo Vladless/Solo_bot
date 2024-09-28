@@ -13,13 +13,13 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
 from auth import link, login_with_credentials
 from bot import bot, dp
 from client import add_client
-from config import (ADMIN_CHAT_ID, ADMIN_PASSWORD, ADMIN_USERNAME, API_TOKEN,
+from config import (ADMIN_ID, ADMIN_PASSWORD, ADMIN_USERNAME, API_TOKEN,
                     DATABASE_URL)
 from database import (add_connection, get_balance, has_active_key, store_key,
                       update_balance)
+from handlers.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from handlers.instructions import send_instructions
 
 router = Router()
 
