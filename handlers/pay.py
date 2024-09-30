@@ -49,7 +49,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         # Если записи нет, создаем нового клиента в базе данных
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0)
-    
+
     await state.set_state(ReplenishBalanceState.choosing_transfer_method)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='По реквизитам', callback_data='transfer_method_requisites')],
@@ -78,9 +78,8 @@ async def process_transfer_method_selection(callback_query: types.CallbackQuery,
     
     if transfer_method == 'requisites':
         amount_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='100 RUB', callback_data='amount_100')],
-            [InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
-            [InlineKeyboardButton(text='500 RUB', callback_data='amount_500')],
+            [InlineKeyboardButton(text='100 RUB', callback_data='amount_100'), InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
+            [InlineKeyboardButton(text='600 RUB', callback_data='amount_600'), InlineKeyboardButton(text='1000 RUB', callback_data='amount_1000')],
             [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
         ])
         
@@ -95,6 +94,7 @@ async def process_transfer_method_selection(callback_query: types.CallbackQuery,
         await send_message_with_deletion(callback_query.from_user.id, "Неверный метод перевода.", state=state, message_key='transfer_method_error_message_id')
         return
 
+
 @router.callback_query(lambda c: c.data.startswith('amount_'))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split('_', 1)
@@ -104,7 +104,11 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     amount_str = data[1]
-    amount = int(amount_str)
+    try:
+        amount = int(amount_str)
+    except ValueError:
+        await send_message_with_deletion(callback_query.from_user.id, "Некорректная сумма.", state=state, message_key='amount_error_message_id')
+        return
 
     state_data = await state.get_data()
     amount_selection_message_id = state_data.get('amount_selection_message_id')
@@ -155,17 +159,18 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
 
     data = callback_query.data.split('_', 4)
     
-    if len(data) < 4:
+    if len(data) < 5:
         await send_message_with_deletion(callback_query.from_user.id, "Неверные данные для обработки запроса.", state=state, message_key='admin_error_message_id')
         return
 
     action = data[1]
     user_id_str = data[2]
     transfer_method = data[3]
-    amount = int(data[4])
+    amount_str = data[4]
 
     try:
         user_id = int(user_id_str)
+        amount = int(amount_str)
 
         state_data = await state.get_data()
         requisites_message_id = state_data.get('requisites_message_id')
@@ -201,6 +206,9 @@ async def process_admin_confirmation(callback_query: types.CallbackQuery, state:
             await send_message_with_deletion(callback_query.from_user.id, "Пополнение баланса отклонено.", state=state, message_key='admin_decline_message_id')
             await bot.send_message(user_id, "Ваш запрос на пополнение баланса был отклонен.")
 
+    except ValueError:
+        await send_message_with_deletion(callback_query.from_user.id, "Некорректные данные суммы.", state=state, message_key='admin_error_message_id')
+        return
     except Exception as e:
         await send_message_with_deletion(callback_query.from_user.id, f"Ошибка при пополнении баланса: {e}", state=state, message_key='admin_error_message_id')
         print(f"Ошибка при пополнении баланса: {e}")
