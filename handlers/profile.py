@@ -31,12 +31,12 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             f"<b>Профиль: {username}</b>\n\n"
             f"🔹 <b>ID:</b> {tg_id}\n"
             f"🔹 <b>Баланс:</b> {balance} RUB\n"
-            f"🔹 <b>Количество ключей:</b> {key_count}\n"
+            f"🔹 <b>К-во устройств:</b> {key_count}\n"  # Изменили текст на "К-во устройств"
         )
         
         # Кнопки для действий в профиле с добавленными смайликами
-        button_create_key = InlineKeyboardButton(text='🔑 Создать ключ', callback_data='create_key')
-        button_view_keys = InlineKeyboardButton(text='🔐 Мои ключи', callback_data='view_keys')
+        button_create_key = InlineKeyboardButton(text='➕ Устройство', callback_data='create_key')
+        button_view_keys = InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')
         button_replenish_balance = InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')
         button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')  # Добавляем кнопку "Назад"
         
@@ -67,4 +67,3 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
 @router.callback_query(lambda c: c.data == 'view_profile')
 async def view_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
-
