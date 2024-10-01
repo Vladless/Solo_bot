@@ -48,7 +48,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 
                 # Создаем клавиатуру с кнопками
                 inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
-                response_message = "<b>Выберите ключ для просмотра информации:</b>"
+                response_message = "<b>Выберите устройство:</b>"
 
                 # Редактируем сообщение с клавиатурой
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard, parse_mode="HTML")
