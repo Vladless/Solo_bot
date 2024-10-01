@@ -1,32 +1,20 @@
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import Bot, Router, types
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
+from aiogram import Bot, Router
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (  # Импортируем необходимые классы
     InlineKeyboardButton, InlineKeyboardMarkup)
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
-from database import get_all_users
+from config import DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME
+from client import delete_client
+from auth import login_with_credentials
 
 router = Router()
 
 class NotificationStates(StatesGroup):
     waiting_for_notification_text = State()
-
-from datetime import datetime, timedelta
-
-import asyncpg
-from aiogram import Bot, Router, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-from bot import bot
-from config import DATABASE_URL
-
-router = Router()
 
 async def notify_expiring_keys(bot: Bot):
     try:
@@ -62,21 +50,31 @@ async def notify_expiring_keys(bot: Bot):
 
             # Обрабатываем истекшие ключи
             expired_records = await conn.fetch('''
-                SELECT tg_id, email FROM keys 
+                SELECT tg_id, email, client_id FROM keys 
                 WHERE expiry_time <= $1
             ''', datetime.utcnow().timestamp() * 1000)
 
             for record in expired_records:
                 tg_id = record['tg_id']
                 email = record['email']
+                client_id = record['client_id']
+
+                # Удаляем ключ из базы данных
+                await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
+
+                # Создаем сессию с использованием учетных данных
+                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+
+                # Удаляем клиента из панели
+                delete_client(session, client_id)
 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='1 месяц (100 руб.)', callback_data=f'renew_plan|1|{record["client_id"]}')],
-                    [InlineKeyboardButton(text='3 месяца (250 руб.)', callback_data=f'renew_plan|3|{record["client_id"]}')],
+                    [InlineKeyboardButton(text='1 месяц (100 руб.)', callback_data=f'renew_plan|1|{client_id}')],
+                    [InlineKeyboardButton(text='3 месяца (250 руб.)', callback_data=f'renew_plan|3|{client_id}')],
                     [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
                 ])
 
-                message = f"Ваш ключ <b>{email}</b> уже истек. Пожалуйста, продлите его."
+                message = f"Ваш ключ <b>{email}</b> уже истек и был удален. Пожалуйста, продлите его."
                 await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
 
         finally:
