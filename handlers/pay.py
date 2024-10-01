@@ -3,19 +3,32 @@ from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from yookassa import Configuration, Payment  # Импортируем ЮKассу
+from aiohttp import web
+import logging
+import uuid
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
+from config import ADMIN_ID, DATABASE_URL, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import (add_connection, check_connection_exists, get_balance,
                       get_key_count, update_balance)
 from handlers.profile import process_callback_view_profile
 
 router = Router()
 
+logging.basicConfig(level=logging.DEBUG)
+
+# Настройка конфигурации ЮKассы
+Configuration.account_id = YOOKASSA_SHOP_ID
+Configuration.secret_key = YOOKASSA_SECRET_KEY
+
+logging.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
+logging.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
+
 class ReplenishBalanceState(StatesGroup):
     choosing_transfer_method = State()
     choosing_amount = State()
-    waiting_for_admin_confirmation = State()
+    waiting_for_payment_confirmation = State()
 
 async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key='last_message_id'):
     if state:
@@ -27,8 +40,7 @@ async def send_message_with_deletion(chat_id, text, reply_markup=None, state=Non
                 await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
     
             sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-            if state:
-                await state.update_data({message_key: sent_message.message_id})
+            await state.update_data({message_key: sent_message.message_id})
     
         except Exception as e:
             print(f"Ошибка при удалении/отправке сообщения: {e}")
@@ -94,7 +106,6 @@ async def process_transfer_method_selection(callback_query: types.CallbackQuery,
         await send_message_with_deletion(callback_query.from_user.id, "Неверный метод перевода.", state=state, message_key='transfer_method_error_message_id')
         return
 
-
 @router.callback_query(lambda c: c.data.startswith('amount_'))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split('_', 1)
@@ -110,109 +121,79 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await send_message_with_deletion(callback_query.from_user.id, "Некорректная сумма.", state=state, message_key='amount_error_message_id')
         return
 
-    state_data = await state.get_data()
-    amount_selection_message_id = state_data.get('amount_selection_message_id')
-
-    if amount_selection_message_id:
-        try:
-            await bot.delete_message(chat_id=callback_query.from_user.id, message_id=amount_selection_message_id)
-        except Exception as e:
-            print(f"Ошибка при удалении сообщения: {e}")
-
     await state.update_data(amount=amount)
-    await state.set_state(ReplenishBalanceState.waiting_for_admin_confirmation)
+    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
 
+    state_data = await state.get_data()
     transfer_method = state_data.get('transfer_method')
-    message = (
-        "Банк: Т-Банк\n"
-        "2200701036597224\n"
-        "Получатель: Лисицын В.Д.\n"
-        "\n"
-        "После перевода отправьте чек и дождитесь подтверждения."
-    )
 
-    await callback_query.message.edit_text(
-        text=message,
-        reply_markup=None
-    )
+    # Получаем имя клиента из Telegram профиля
+    customer_name = callback_query.from_user.full_name
+    customer_id = callback_query.from_user.id
 
-    admin_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='Подтвердить', callback_data=f'admin_confirm_{callback_query.from_user.id}_{transfer_method}_{amount}')],
-        [InlineKeyboardButton(text='Отклонить', callback_data=f'admin_decline_{callback_query.from_user.id}_{transfer_method}_{amount}')]
-    ])
+    # Создаем платеж с чеком для самозанятых
+    payment = Payment.create({
+        "amount": {
+            "value": str(amount),
+            "currency": "RUB"
+        },
+        "confirmation": {
+            "type": "redirect",
+            "return_url": "https://pocomacho.ru/"
+        },
+        "capture": True,
+        "description": "Пополнение баланса",
+        "receipt": {
+            "customer": {
+                "full_name": customer_name,  # Имя клиента
+                "email": "client@example.com",  # Можно добавить email, если у вас есть
+                "phone": "79000000000"  # Телефон клиента, если есть
+            },
+            "items": [
+                {
+                    "description": "Пополнение баланса",  # Описание услуги
+                    "quantity": "1.00",
+                    "amount": {
+                        "value": str(amount),
+                        "currency": "RUB"
+                    },
+                    "vat_code": 6  # Код налога (для самозанятых 6)
+                }
+            ]
+        },
+        "metadata": {
+            "user_id": customer_id  # ID пользователя
+        }
+    }, uuid.uuid4())  # Уникальный идентификатор для транзакции
 
-    admin_message = (
-        f"Пользователь {callback_query.from_user.full_name} запросил пополнение баланса.\n"
-        f"Метод перевода: {transfer_method}\n"
-        f"Сумма пополнения: {amount} RUB\n"
-        "Пожалуйста, подтвердите или отклоните запрос."
-    )
-    
-    await send_message_with_deletion(ADMIN_ID, admin_message, reply_markup=admin_keyboard, state=state, message_key='admin_request_message_id')
-    await callback_query.answer()
+    # Отправляем пользователю ссылку для оплаты
+    if payment['status'] == 'pending':
+        await send_message_with_deletion(
+            callback_query.from_user.id,
+            f"Перейдите по ссылке для оплаты: {payment['confirmation']['confirmation_url']}",
+            state=state
+        )
+    else:
+        await send_message_with_deletion(callback_query.from_user.id, "Ошибка при создании платежа.", state=state)
 
-@router.callback_query(lambda c: c.data.startswith('admin_'))
-async def process_admin_confirmation(callback_query: types.CallbackQuery, state: FSMContext):
-    if callback_query.from_user.id != ADMIN_ID:
-        await send_message_with_deletion(callback_query.from_user.id, "Вы не являетесь администратором.", state=state, message_key='admin_error_message_id')
-        return
+async def payment_webhook(request):
+    event = await request.json()
 
-    data = callback_query.data.split('_', 4)
-    
-    if len(data) < 5:
-        await send_message_with_deletion(callback_query.from_user.id, "Неверные данные для обработки запроса.", state=state, message_key='admin_error_message_id')
-        return
+    logging.debug(f"Webhook event received: {event}")
 
-    action = data[1]
-    user_id_str = data[2]
-    transfer_method = data[3]
-    amount_str = data[4]
+    # Обработка успешного платежа
+    if event['event'] == 'payment.succeeded':
+        user_id_str = event['object']['metadata']['user_id']
+        amount_str = event['object']['amount']['value']
+        
+        try:
+            user_id = int(user_id_str)  # Конвертируем user_id в int
+            amount = float(amount_str)  # Конвертируем сумму из строки в float
+            
+            logging.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            await update_balance(user_id, amount)  # Передаем число в функцию обновления баланса
+        except ValueError as e:
+            logging.error(f"Ошибка конвертации user_id или amount: {e}")
+            return web.Response(status=400)
 
-    try:
-        user_id = int(user_id_str)
-        amount = int(amount_str)
-
-        state_data = await state.get_data()
-        requisites_message_id = state_data.get('requisites_message_id')
-
-        if action == 'confirm':
-            conn = await asyncpg.connect(DATABASE_URL)
-            try:
-                await update_balance(user_id, amount)
-                balance = await get_balance(user_id)
-
-                profile_button = InlineKeyboardButton(text='Профиль', callback_data='view_profile')
-                profile_keyboard = InlineKeyboardMarkup(inline_keyboard=[[profile_button]])
-
-                await send_message_with_deletion(callback_query.from_user.id, f"Баланс пользователя успешно пополнен на {amount} RUB.\nТекущий баланс: {balance}", state=state, message_key='admin_confirm_message_id')
-
-                await bot.send_message(
-                    user_id, 
-                    f"Ваш баланс был успешно пополнен на {amount} RUB.", 
-                    reply_markup=profile_keyboard
-                )
-
-                requisites_message_id = state_data.get('requisites_message_id')
-                if requisites_message_id:
-                    try:
-                        await bot.delete_message(chat_id=user_id, message_id=requisites_message_id)
-                    except Exception as e:
-                        print(f"Ошибка при удалении сообщения: {e}")
-
-            finally:
-                await conn.close()
-
-        elif action == 'decline':
-            await send_message_with_deletion(callback_query.from_user.id, "Пополнение баланса отклонено.", state=state, message_key='admin_decline_message_id')
-            await bot.send_message(user_id, "Ваш запрос на пополнение баланса был отклонен.")
-
-    except ValueError:
-        await send_message_with_deletion(callback_query.from_user.id, "Некорректные данные суммы.", state=state, message_key='admin_error_message_id')
-        return
-    except Exception as e:
-        await send_message_with_deletion(callback_query.from_user.id, f"Ошибка при пополнении баланса: {e}", state=state, message_key='admin_error_message_id')
-        print(f"Ошибка при пополнении баланса: {e}")
-
-    finally:
-        await state.clear()
-        await callback_query.answer()
+    return web.Response(status=200)
