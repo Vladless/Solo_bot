@@ -19,8 +19,3 @@ dp.include_router(keys.router)
 dp.include_router(key_management.router)
 dp.include_router(pay.router)
 dp.include_router(notifications.router)
-
-
-
-async def on_startup(dispatcher: Dispatcher):
-    await login_with_credentials()
