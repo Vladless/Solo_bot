@@ -1,32 +1,18 @@
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import Bot, Router, types
-from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
+from aiogram import Bot, Router
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (  # Импортируем необходимые классы
     InlineKeyboardButton, InlineKeyboardMarkup)
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
-from database import get_all_users
+from config import DATABASE_URL
 
 router = Router()
 
 class NotificationStates(StatesGroup):
     waiting_for_notification_text = State()
-
-from datetime import datetime, timedelta
-
-import asyncpg
-from aiogram import Bot, Router, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-from bot import bot
-from config import DATABASE_URL
-
-router = Router()
 
 async def notify_expiring_keys(bot: Bot):
     try:
