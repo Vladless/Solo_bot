@@ -208,7 +208,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         key_message = (
             "✅ Ключ успешно создан:\n"
             f"<pre>{connection_link}</pre>\n\n"
-            f"{remaining_time_message}"
+            f"{remaining_time_message}\n\n"
+            "<i>Добавьте ключ в приложение по инструкции ниже:</i>"
         )
 
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
