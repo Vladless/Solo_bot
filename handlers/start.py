@@ -1,14 +1,14 @@
 import os
 
-from aiogram import Router, types
+from aiogram import Router
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
-from config import ADMIN_ID, CHANNEL_URL, SUPPORT_CHAT_URL  # Добавьте SUPPORT_CHAT_URL
+from config import (ADMIN_ID, CHANNEL_URL,  # Добавьте SUPPORT_CHAT_URL
+                    SUPPORT_CHAT_URL)
 
 router = Router()
 
@@ -60,10 +60,11 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
     info_message = (
         "*О VPN*\n\n"
-        "Мы используем VLESS для обеспечения безопасного и надежного подключения к интернету. "
-        "Каждому пользователю предоставляется индивидуальный ключ для подключения. "
-        "Этот ключ необходим для использования нашего VPN-сервиса."
+        "Мы используем высокоскоростные серверы в разных локациях и выдаём ключ каждому индивидуально. "
+        "Также мы применяем новейшие протоколы шифрования для обеспечения безопасности ваших данных.\n\n"
+        "<b>Ваш ключ — ваша безопасность! Не передавайте своё шифрование сторонним лицам.</b>"
     )
+
     
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
     inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])

@@ -1,17 +1,18 @@
+import logging
+import uuid
+
 import asyncpg
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from yookassa import Configuration, Payment  # Импортируем ЮKассу
 from aiohttp import web
-import logging
-import uuid
+from yookassa import Configuration, Payment  # Импортируем ЮKассу
 
 from bot import bot
-from config import  YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from database import (add_connection, check_connection_exists, get_balance,
-                      get_key_count, update_balance)
+from config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
+from database import (add_connection, check_connection_exists, get_key_count,
+                      update_balance)
 from handlers.profile import process_callback_view_profile
 
 router = Router()
