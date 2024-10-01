@@ -1,14 +1,14 @@
 import os
 
-from aiogram import Router, types
+from aiogram import Router
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
-from config import ADMIN_ID, CHANNEL_URL, SUPPORT_CHAT_URL  # Добавьте SUPPORT_CHAT_URL
+from config import (ADMIN_ID, CHANNEL_URL,  # Добавьте SUPPORT_CHAT_URL
+                    SUPPORT_CHAT_URL)
 
 router = Router()
 

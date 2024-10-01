@@ -1,15 +1,16 @@
 import asyncio
-from aiohttp import web
-from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 import logging
 
+from aiogram.webhook.aiohttp_server import (SimpleRequestHandler,
+                                            setup_application)
+from aiohttp import web
+
 from bot import bot, dp, router
-from config import API_TOKEN, WEBHOOK_URL, WEBHOOK_PATH, WEBAPP_HOST, WEBAPP_PORT
-from database import init_db, update_balance
+from config import WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
+from database import init_db
 from handlers.notifications import notify_expiring_keys
-from handlers.pay import payment_webhook  # Импорт обработчика для вебхука ЮKассы
+from handlers.pay import \
+    payment_webhook  # Импорт обработчика для вебхука ЮKассы
 
 logging.basicConfig(level=logging.DEBUG)
 
