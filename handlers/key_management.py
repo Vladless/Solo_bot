@@ -19,6 +19,7 @@ from database import (add_connection, get_balance, has_active_key, store_key,
 from handlers.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
+from handlers.notifications import send_message_to_all_clients
 
 router = Router()
 
@@ -111,6 +112,10 @@ async def handle_text(message: Message, state: FSMContext):
 
     if message.text in ["/start", "/menu"]:
         await start_command(message)
+        return
+    
+    if message.text in ["/send_to_all"]:
+        await send_message_to_all_clients(message)
         return
     
     if current_state == Form.waiting_for_key_name.state:

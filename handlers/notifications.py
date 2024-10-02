@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import Bot, Router
+from aiogram import Bot, Router, types
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (  # Импортируем необходимые классы
     InlineKeyboardButton, InlineKeyboardMarkup)
 
 from bot import bot
-from config import DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME
+from config import DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_ID
 from client import delete_client
 from auth import login_with_credentials
 
@@ -41,12 +41,16 @@ async def notify_expiring_keys(bot: Bot):
                 # Создаем клавиатуру с выбором тарифов
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text='1 месяц (100 руб.)', callback_data=f'renew_plan|1|{record["client_id"]}')],
-                    [InlineKeyboardButton(text='3 месяца (250 руб.)', callback_data=f'renew_plan|3|{record["client_id"]}')],
+                    [InlineKeyboardButton(text='3 месяца (285 руб.)', callback_data=f'renew_plan|3|{record["client_id"]}')],
                     [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
                 ])
 
-                message = f"Ваш ключ <b>{email}</b> истечет через <b>{hours_left} часов</b> (<b>{expiry_date}</b>). Пожалуйста, продлите его."
-                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+                message = f"Ваш ключ <b>{email}</b> истечет и будет удален через <b>{hours_left} часов</b> (<b>{expiry_date}</b>). Пожалуйста, продлите его."
+
+                try:
+                    await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+                except Exception as e:
+                    print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
 
             # Обрабатываем истекшие ключи
             expired_records = await conn.fetch('''
@@ -68,16 +72,51 @@ async def notify_expiring_keys(bot: Bot):
                 # Удаляем клиента из панели
                 delete_client(session, client_id)
 
+                # Создаем клавиатуру с кнопкой "В профиль"
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text='1 месяц (100 руб.)', callback_data=f'renew_plan|1|{client_id}')],
-                    [InlineKeyboardButton(text='3 месяца (250 руб.)', callback_data=f'renew_plan|3|{client_id}')],
-                    [InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance')]
+                    [InlineKeyboardButton(text='В профиль', callback_data='view_profile')]
                 ])
 
-                message = f"Ваш ключ <b>{email}</b> уже истек и был удален. Пожалуйста, продлите его."
-                await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+                message = f"Ваш ключ <b>{email}</b> истек и был удален автоматически."
+
+                try:
+                    await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+                except Exception as e:
+                    print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
 
         finally:
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
+
+@router.message(commands=['send_to_all'])
+async def send_message_to_all_clients(message: types.Message):
+    # Проверяем, является ли отправитель администратором
+    if message.from_user.id != ADMIN_ID:  # Замените ADMIN_ID на ID вашего администратора
+        await message.answer("У вас нет прав для выполнения этой команды.")
+        return
+
+    # Получаем текст сообщения
+    text = message.get_args()
+    if not text:
+        await message.answer("Пожалуйста, введите текст сообщения после команды.")
+        return
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        # Получаем все tg_id клиентов
+        tg_ids = await conn.fetch('SELECT tg_id FROM keys')
+
+        for record in tg_ids:
+            tg_id = record['tg_id']
+            try:
+                await bot.send_message(chat_id=tg_id, text=text)
+            except Exception as e:
+                print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
+
+        await message.answer("Сообщение было отправлено всем клиентам.")
+    except Exception as e:
+        print(f"Ошибка при подключении к базе данных: {e}")
+        await message.answer("Произошла ошибка при отправке сообщения.")
+    finally:
+        await conn.close()
