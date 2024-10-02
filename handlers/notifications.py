@@ -5,6 +5,7 @@ from aiogram import Bot, Router, types
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (  # Импортируем необходимые классы
     InlineKeyboardButton, InlineKeyboardMarkup)
+from aiogram.filters import Command
 
 from bot import bot
 from config import DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_ID
@@ -89,7 +90,7 @@ async def notify_expiring_keys(bot: Bot):
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
 
-@router.message(commands=['send_to_all'])
+@router.message(Command('send_to_all'))
 async def send_message_to_all_clients(message: types.Message):
     # Проверяем, является ли отправитель администратором
     if message.from_user.id != ADMIN_ID:  # Замените ADMIN_ID на ID вашего администратора
