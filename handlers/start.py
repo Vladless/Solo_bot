@@ -7,7 +7,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
-from config import (ADMIN_ID, CHANNEL_URL,  # Добавьте SUPPORT_CHAT_URL
+from config import (ADMIN_ID, CHANNEL_URL, 
                     SUPPORT_CHAT_URL)
 
 router = Router()
@@ -18,9 +18,9 @@ class FeedbackState(StatesGroup):
 async def send_welcome_message(chat_id: int):
     # Новый текст приветствия
     welcome_text = (
-        "*SoloNet — ваш провайдер в бесцензурный интернет!*\n\n"
-        "Получите высокую скорость и самый безопасный протокол VPN, "
-        "который работает даже в Китае."
+        "*SoloNet — ваш доступ в свободный интернет! 🌐✨*\n\n"
+        "Используйте надежный и быстрый VPN, который гарантирует вашу безопасность даже в самых строгих условиях. 🔒🚀\n\n"
+        "*ver. 1.0*"
     )
 
     # Путь к изображению
@@ -43,7 +43,7 @@ async def send_welcome_message(chat_id: int):
     with open(image_path, 'rb') as image_from_buffer:
         await bot.send_photo(
             chat_id,
-            BufferedInputFile(image_from_buffer.read(), filename="solo_pic.png"),
+            BufferedInputFile(image_from_buffer.read(), filename="pic.jpg"),
             caption=welcome_text,
             parse_mode='Markdown',
             reply_markup=inline_keyboard  # Inline-клавиатура
