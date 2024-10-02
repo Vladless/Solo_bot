@@ -71,6 +71,7 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
     await callback_query.message.answer(
         info_message,
+        parse_mode='HTML',
         parse_mode='Markdown',
         reply_markup=inline_keyboard_back
     )
