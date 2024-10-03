@@ -4,10 +4,10 @@ import asyncpg
 
 from config import DATABASE_URL
 
+
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
     
-    # Создаем таблицу connections, если она не существует
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS connections (
             tg_id BIGINT PRIMARY KEY NOT NULL,
@@ -16,7 +16,6 @@ async def init_db():
         )
     ''')
     
-    # Создаем таблицу keys, если она не существует
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS keys (
             tg_id BIGINT NOT NULL,
@@ -31,24 +30,20 @@ async def init_db():
         )
     ''')
     
-    # Добавляем поле server_id в таблицу keys, если его нет
     try:
         await conn.execute('''
             ALTER TABLE keys
             ADD COLUMN server_id TEXT NOT NULL DEFAULT 'server1'
         ''')
     except asyncpg.exceptions.DuplicateColumnError:
-        # Если поле уже существует, ничего не делаем
         pass
     
-    # Добавляем поле notified в таблицу keys, если его нет
     try:
         await conn.execute('''
             ALTER TABLE keys
             ADD COLUMN notified BOOLEAN NOT NULL DEFAULT FALSE
         ''')
     except asyncpg.exceptions.DuplicateColumnError:
-        # Если поле уже существует, ничего не делаем
         pass
 
     await conn.close()

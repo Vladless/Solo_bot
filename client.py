@@ -1,8 +1,10 @@
 import json
-from config import SERVERS  # Импортируем SERVERS из config.py
+
+from config import SERVERS 
+
 
 def add_client(session, server_id: str, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
-    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    api_url = SERVERS[server_id]['API_URL']
     url = f'{api_url}/panel/api/inbounds/addClient'
     
     email = email.lower()
@@ -44,7 +46,7 @@ def add_client(session, server_id: str, client_id: str, email: str, tg_id: str, 
         print(f"Ошибка при добавлении клиента: {response.status_code}, {response.text}")
 
 def extend_client_key(session, server_id: str, tg_id, client_id, email: str, new_expiry_time: int) -> bool:
-    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    api_url = SERVERS[server_id]['API_URL']
     response = session.get(f"{api_url}/panel/api/inbounds/getClientTraffics/{email}")
     print(f"GET {response.url} Status: {response.status_code}")
     print(f"GET Response: {response.text}")
@@ -108,7 +110,7 @@ def extend_client_key(session, server_id: str, tg_id, client_id, email: str, new
         return False
 
 def delete_client(session, server_id: str, client_id: str) -> bool:
-    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    api_url = SERVERS[server_id]['API_URL']
     url = f"{api_url}/panel/api/inbounds/1/delClient/{client_id}"
     headers = {
         'Accept': 'application/json'

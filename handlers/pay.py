@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
-from yookassa import Configuration, Payment  # Импортируем ЮKассу
+from yookassa import Configuration, Payment 
 
 from bot import bot
 from config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
@@ -18,7 +18,6 @@ router = Router()
 
 logging.basicConfig(level=logging.DEBUG)
 
-# Настройка конфигурации ЮKассы
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY
 
@@ -51,17 +50,13 @@ async def send_message_with_deletion(chat_id, text, reply_markup=None, state=Non
 async def process_callback_replenish_balance(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
-    # Проверяем, есть ли у пользователя ключи
     key_count = await get_key_count(tg_id)
     
-    # Если ключей нет, проверяем, существует ли запись с таким tg_id
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
-        # Если записи нет, создаем нового клиента в базе данных
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0)
 
-    # Переходим сразу к выбору суммы пополнения
     amount_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='100 RUB', callback_data='amount_100'), InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
         [InlineKeyboardButton(text='600 RUB', callback_data='amount_600'), InlineKeyboardButton(text='1000 RUB', callback_data='amount_1000')],
@@ -101,7 +96,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     customer_name = callback_query.from_user.full_name
     customer_id = callback_query.from_user.id
 
-    # Создаем платеж с чеком для самозанятых
     payment = Payment.create({
         "amount": {
             "value": str(amount),
@@ -109,7 +103,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         },
         "confirmation": {
             "type": "redirect",
-            "return_url": "https://pocomacho.ru/"  # Укажите реальный URL для возврата
+            "return_url": "https://pocomacho.ru/" 
         },
         "capture": True,
         "description": "Пополнение баланса",
