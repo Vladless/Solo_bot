@@ -59,7 +59,6 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     
     await callback_query.answer()
 
-# Хендлер для кнопки "Пригласить"
 @router.callback_query(lambda c: c.data == 'invite')
 async def invite_handler(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
@@ -68,7 +67,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     referral_stats = await get_referral_stats(tg_id)
     
     invite_message = (
-        f"👥 <b>Ваша реферальная ссылка:</b> {referral_link}\n\n"
+        f"👥 <b>Ваша реферальная ссылка:</b> <code>{referral_link}</code>\n\n"
         f"🔹 <b>Всего приглашено:</b> {referral_stats['total_referrals']} пользователей\n"
         f"🔹 <b>Активных рефералов:</b> {referral_stats['active_referrals']}"
     )

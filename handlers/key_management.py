@@ -148,6 +148,9 @@ async def handle_text(message: Message, state: FSMContext):
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
 
+    else:
+        await start_command(message)
+
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     key_name = sanitize_key_name(message.text)
