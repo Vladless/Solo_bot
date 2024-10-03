@@ -36,12 +36,19 @@ class Form(StatesGroup):
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
-    # Запрос выбора сервера
-    server_buttons = [
-        [InlineKeyboardButton(text=server['name'], callback_data=f'select_server|{server_id}')]
-        for server_id, server in SERVERS.items()
-    ]
-    
+    # Получаем количество подключений для каждого сервера
+    server_buttons = []
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        for server_id, server in SERVERS.items():
+            # Получаем количество ключей на сервере
+            count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
+            percent_full = (count / 100) * 100  # Заполнение в процентах
+            server_name = f"{server['name']} ({percent_full:.1f}%)"
+            server_buttons.append([InlineKeyboardButton(text=server_name, callback_data=f'select_server|{server_id}')])
+    finally:
+        await conn.close()
+
     await callback_query.message.edit_text(
         "<b>⚙️ Выберите сервер для создания ключа:</b>",
         parse_mode="HTML",
