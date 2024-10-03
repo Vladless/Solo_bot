@@ -357,7 +357,7 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                     success_delete = delete_client(session, current_server_id, client_id)
                     if success_delete:
                         response_message = ("Ключ успешно перемещен на новый сервер.\n\n"
-                                            "**Не забудьте удалить старый ключ из вашего приложения и установить новый.**")
+                                            "<b>Не забудьте удалить старый ключ из вашего приложения и установить новый.<b>")
                     else:
                         response_message = "Ошибка при удалении ключа с текущего сервера."
                 else:
