@@ -10,11 +10,11 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
 from auth import link, login_with_credentials
-from bot import bot, dp
+from bot import dp
 from client import add_client
-from config import (ADMIN_ID, ADMIN_PASSWORD, ADMIN_USERNAME, API_TOKEN,
-                    DATABASE_URL)
-from database import (add_connection, get_balance, has_active_key, store_key,
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME,
+                    DATABASE_URL, SERVERS)
+from database import (add_connection, get_balance, store_key,
                       update_balance)
 from handlers.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
@@ -28,6 +28,7 @@ def sanitize_key_name(key_name: str) -> str:
     return re.sub(r'[^a-z0-9@._-]', '', key_name.lower())
 
 class Form(StatesGroup):
+    waiting_for_server_selection = State()
     waiting_for_key_name = State()
     viewing_profile = State()
 
@@ -35,10 +36,38 @@ class Form(StatesGroup):
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
+    # Получаем количество подключений для каждого сервера
+    server_buttons = []
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        for server_id, server in SERVERS.items():
+            # Получаем количество ключей на сервере
+            count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
+            percent_full = (count / 100) * 100  # Заполнение в процентах
+            server_name = f"{server['name']} ({percent_full:.1f}%)"
+            server_buttons.append([InlineKeyboardButton(text=server_name, callback_data=f'select_server|{server_id}')])
+    finally:
+        await conn.close()
+
+    await callback_query.message.edit_text(
+        "<b>⚙️ Выберите сервер для создания ключа:</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=server_buttons)
+    )
+    
+    await state.set_state(Form.waiting_for_server_selection)
+
+    await callback_query.answer()
+
+@dp.callback_query(F.data.startswith('select_server|'))
+async def select_server(callback_query: CallbackQuery, state: FSMContext):
+    server_id = callback_query.data.split('|')[1]
+    await state.update_data(selected_server_id=server_id)
+
     # Получаем данные о trial из базы данных
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', tg_id)
+        existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', callback_query.from_user.id)
     finally:
         await conn.close()
 
@@ -69,6 +98,8 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 @dp.callback_query(F.data == 'confirm_create_new_key')
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
+    data = await state.get_data()
+    server_id = data.get('selected_server_id')
 
     # Проверяем баланс перед созданием нового ключа
     balance = await get_balance(tg_id)
@@ -131,8 +162,9 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     data = await state.get_data()
     creating_new_key = data.get('creating_new_key', False)
+    server_id = data.get('selected_server_id')
 
-    session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+    session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     current_time = datetime.utcnow()
@@ -167,7 +199,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     try:
         # Попробуем добавить клиента
-        response = add_client(session, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
+        response = add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
         
         if not response.get("success", True):
             error_msg = response.get("msg", "Неизвестная ошибка.")
@@ -178,7 +210,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             else:
                 raise Exception(error_msg)
 
-        connection_link = link(session, client_id, email)
+        connection_link = link(session, server_id, client_id, email)
 
         conn = await asyncpg.connect(DATABASE_URL)
         try:
@@ -191,7 +223,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         finally:
             await conn.close()
 
-        await store_key(tg_id, client_id, email, expiry_timestamp, connection_link)
+        await store_key(tg_id, client_id, email, expiry_timestamp, connection_link, server_id)
 
         # Рассчитываем оставшееся время до окончания действия ключа
         remaining_time = expiry_time - current_time

@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram import Router, types
 
-from auth import login_with_credentials
+from auth import login_with_credentials, link
 from bot import bot
-from client import delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
+from client import delete_client, extend_client_key, add_client
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import get_balance, update_balance
 
 router = Router()
@@ -69,7 +69,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow('''
-                SELECT k.key, k.expiry_time 
+                SELECT k.key, k.expiry_time, k.server_id 
                 FROM keys k
                 WHERE k.tg_id = $1 AND k.email = $2
             ''', tg_id, key_name)
@@ -77,6 +77,11 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
             if record:
                 key = record['key']
                 expiry_time = record['expiry_time']
+                server_id = record['server_id']
+
+                # Получаем название сервера по server_id
+                server_name = SERVERS.get(server_id, {}).get('name', 'Неизвестный сервер')
+
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
@@ -91,14 +96,24 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 response_message = (f"🔑 <b>Ваш ключ:</b>\n<pre>{key}</pre>\n"
                                     f"📅 <b>Дата окончания:</b> {expiry_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                                    f"{days_left_message}")
+                                    f"{days_left_message}\n"
+                                    f"🌍 <b>Сервер:</b> {server_name}")
 
                 # Кнопки для продления, инструкций и удаления
                 renew_button = types.InlineKeyboardButton(text='⏳ Продлить ключ', callback_data=f'renew_key|{client_id}')
                 instructions_button = types.InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')
                 delete_button = types.InlineKeyboardButton(text='❌ Удалить ключ', callback_data=f'delete_key|{client_id}')
+                change_location_button = types.InlineKeyboardButton(text='🌍 Сменить локацию', callback_data=f'change_location|{client_id}')
                 back_button = types.InlineKeyboardButton(text='🔙 Назад в профиль', callback_data='view_profile')
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [delete_button], [back_button]])
+
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [instructions_button],  # Инструкции отдельной строкой
+                        [renew_button, delete_button],  # Продлить и Удалить в одном ряду
+                        [change_location_button],  # Сменить локацию отдельной строкой
+                        [back_button]  # Назад отдельной строкой
+                    ]
+                )
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
             else:
@@ -111,6 +126,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
         await handle_error(tg_id, callback_query, f"Ошибка при получении информации о ключе: {e}")
 
     await callback_query.answer()
+
 
 # Обработка запроса на удаление ключа
 @router.callback_query(lambda c: c.data.startswith('delete_key|'))
@@ -167,7 +183,6 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
 @router.callback_query(lambda c: c.data.startswith('confirm_delete|'))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
@@ -176,13 +191,16 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
+            # Извлекаем server_id и email из базы данных
+            record = await conn.fetchrow('SELECT email, server_id FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
+                server_id = record['server_id']  # Извлекаем server_id из записи
                 
-                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = delete_client(session, client_id)
+                # Используем server_id для авторизации
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = delete_client(session, server_id, client_id)
 
                 if success:
                     await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
@@ -215,11 +233,13 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
+            # Извлекаем email, expiry_time и server_id из базы данных
+            record = await conn.fetchrow('SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
                 expiry_time = record['expiry_time']
+                server_id = record['server_id']  # Извлекаем server_id из записи
                 current_time = datetime.utcnow().timestamp() * 1000  # Текущее время в миллисекундах
 
                 # Проверяем, если ключ истек, то продлеваем от текущей даты, иначе продлеваем от текущей даты истечения
@@ -247,9 +267,9 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     await bot.edit_message_text("Недостаточно средств для продления ключа.", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                     return
 
-                # Продлеваем ключ через API
-                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = extend_client_key(session, tg_id, client_id, email, new_expiry_time)
+                # Продлеваем ключ через API, используя server_id
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
 
                 if success:
                     # Обновляем баланс и ключ в базе данных
@@ -272,6 +292,89 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
 async def handle_error(tg_id, callback_query, message):
     await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id)
+
+@router.callback_query(lambda c: c.data.startswith('change_location|'))
+async def process_callback_change_location(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    client_id = callback_query.data.split('|')[1]  # Используем разделитель вертикальная черта
+
+    # Получаем количество подключений для каждого сервера
+    server_buttons = []
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        for server_id, server in SERVERS.items():
+            # Получаем количество ключей на сервере
+            count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
+            percent_full = (count / 100) * 100  # Заполнение в процентах
+            server_name = f"{server['name']} ({percent_full:.1f}%)"
+            server_buttons.append([types.InlineKeyboardButton(text=server_name, callback_data=f'select_server&{server_id}&{client_id}')])
+    finally:
+        await conn.close()
+
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=server_buttons)
+    
+    response_message = "<b>Выберите новый сервер для вашего ключа:</b>"
+    await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
+    await callback_query.answer()
+
+@router.callback_query(lambda c: c.data.startswith('select_server&'))
+async def process_callback_select_server(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    server_id, client_id = callback_query.data.split('&')[1], callback_query.data.split('&')[2]
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            # Извлекаем email и expiry_time из базы данных
+            record = await conn.fetchrow('SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1', client_id)
+
+            if record:
+                email = record['email']
+                expiry_time = record['expiry_time']
+                current_server_id = record['server_id']
+
+                # Создаем сессию для нового сервера
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+
+                # Рассчитываем новое время окончания ключа
+                new_expiry_time = int(datetime.utcnow().timestamp() * 1000) + (expiry_time - datetime.utcnow().timestamp() * 1000)
+
+                # Создаем нового клиента на новом сервере
+                new_client_data = add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=new_expiry_time, enable=True, flow="xtls-rprx-vision")
+
+                if new_client_data:
+                    # Генерируем новый ключ
+                    new_key = link(session, server_id, client_id, email)
+
+                    # Обновляем запись в базе данных, только ключ и сервер
+                    await conn.execute('UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
+                                       server_id, new_key, client_id)
+
+                    # Удаляем клиента с текущего сервера
+                    session = login_with_credentials(current_server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                    success_delete = delete_client(session, current_server_id, client_id)
+                    if success_delete:
+                        response_message = ("Ключ успешно перемещен на новый сервер.\n\n"
+                                            "<b>Не забудьте удалить старый ключ из вашего приложения и установить новый.<b>")
+                    else:
+                        response_message = "Ошибка при удалении ключа с текущего сервера."
+                else:
+                    response_message = "Ошибка при создании клиента на новом сервере."
+
+            else:
+                response_message = "Ключ не найден или уже удален."
+
+            back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+
+            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        await bot.edit_message_text(f"Ошибка при смене локации: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
+
+    await callback_query.answer()

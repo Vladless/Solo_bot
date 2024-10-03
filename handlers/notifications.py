@@ -24,7 +24,7 @@ async def notify_expiring_keys(bot: Bot):
             # Получаем все ключи, которые истекают в течение следующих 10 часов
             threshold_time = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000  # В миллисекундах
             records = await conn.fetch('''
-                SELECT tg_id, email, expiry_time, client_id FROM keys 
+                SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
                 WHERE expiry_time <= $1 AND expiry_time > $2
             ''', threshold_time, datetime.utcnow().timestamp() * 1000)
 
@@ -32,6 +32,7 @@ async def notify_expiring_keys(bot: Bot):
                 tg_id = record['tg_id']
                 email = record['email']
                 expiry_time = record['expiry_time']
+                server_id = record['server_id']  # Получаем server_id из записи
 
                 # Рассчитываем оставшееся время и уменьшаем его на 3 часа
                 time_left = (expiry_time / 1000) - datetime.utcnow().timestamp()
@@ -55,7 +56,7 @@ async def notify_expiring_keys(bot: Bot):
 
             # Обрабатываем истекшие ключи
             expired_records = await conn.fetch('''
-                SELECT tg_id, email, client_id FROM keys 
+                SELECT tg_id, email, client_id, server_id FROM keys 
                 WHERE expiry_time <= $1
             ''', datetime.utcnow().timestamp() * 1000)
 
@@ -63,15 +64,16 @@ async def notify_expiring_keys(bot: Bot):
                 tg_id = record['tg_id']
                 email = record['email']
                 client_id = record['client_id']
+                server_id = record['server_id']  # Получаем server_id из записи
 
                 # Удаляем ключ из базы данных
                 await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
 
                 # Создаем сессию с использованием учетных данных
-                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
 
                 # Удаляем клиента из панели
-                delete_client(session, client_id)
+                delete_client(session, server_id, client_id)
 
                 # Создаем клавиатуру с кнопкой "В профиль"
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -89,6 +91,7 @@ async def notify_expiring_keys(bot: Bot):
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
+
 
 @router.message(Command('send_to_all'))
 async def send_message_to_all_clients(message: types.Message):
