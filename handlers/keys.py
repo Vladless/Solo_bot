@@ -69,7 +69,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow('''
-                SELECT k.key, k.expiry_time 
+                SELECT k.key, k.expiry_time, k.server_id 
                 FROM keys k
                 WHERE k.tg_id = $1 AND k.email = $2
             ''', tg_id, key_name)
@@ -77,6 +77,11 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
             if record:
                 key = record['key']
                 expiry_time = record['expiry_time']
+                server_id = record['server_id']
+
+                # Получаем название сервера по server_id
+                server_name = SERVERS.get(server_id, {}).get('name', 'Неизвестный сервер')
+
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
@@ -91,7 +96,8 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 response_message = (f"🔑 <b>Ваш ключ:</b>\n<pre>{key}</pre>\n"
                                     f"📅 <b>Дата окончания:</b> {expiry_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                                    f"{days_left_message}")
+                                    f"{days_left_message}\n"
+                                    f"🌍 <b>Сервер:</b> {server_name}")
 
                 # Кнопки для продления, инструкций и удаления
                 renew_button = types.InlineKeyboardButton(text='⏳ Продлить ключ', callback_data=f'renew_key|{client_id}')
@@ -99,7 +105,15 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 delete_button = types.InlineKeyboardButton(text='❌ Удалить ключ', callback_data=f'delete_key|{client_id}')
                 change_location_button = types.InlineKeyboardButton(text='🌍 Сменить локацию', callback_data=f'change_location|{client_id}')
                 back_button = types.InlineKeyboardButton(text='🔙 Назад в профиль', callback_data='view_profile')
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[renew_button], [instructions_button], [delete_button], [change_location_button], [back_button]])
+
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [instructions_button],  # Инструкции отдельной строкой
+                        [renew_button, delete_button],  # Продлить и Удалить в одном ряду
+                        [change_location_button],  # Сменить локацию отдельной строкой
+                        [back_button]  # Назад отдельной строкой
+                    ]
+                )
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
             else:
@@ -112,6 +126,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
         await handle_error(tg_id, callback_query, f"Ошибка при получении информации о ключе: {e}")
 
     await callback_query.answer()
+
 
 # Обработка запроса на удаление ключа
 @router.callback_query(lambda c: c.data.startswith('delete_key|'))
