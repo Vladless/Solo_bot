@@ -45,9 +45,11 @@ async def send_welcome_message(chat_id: int):
 
 @router.message(Command('start'))
 async def start_command(message: Message):
+    print(f"Received start command with text: {message.text}")  # Отладочный лог
     if 'referral_' in message.text:
         referrer_tg_id = int(message.text.split('referral_')[1])
-        
+        print(f"Referral ID: {referrer_tg_id}")  # Отладочный лог
+        # Остальная часть кода...
         if not await check_connection_exists(message.from_user.id):
             await add_connection(message.from_user.id)
 
@@ -56,8 +58,7 @@ async def start_command(message: Message):
             await message.answer("Вас пригласил друг, добро пожаловать!")
         else:
             await message.answer("Вы уже зарегистрированы в системе!")
-    else:
-        await send_welcome_message(message.chat.id)
+    await send_welcome_message(message.chat.id)
 
 @router.callback_query(lambda c: c.data == 'about_vpn')
 async def handle_about_vpn(callback_query: CallbackQuery):
