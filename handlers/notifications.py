@@ -21,11 +21,11 @@ async def notify_expiring_keys(bot: Bot):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            # Получаем все ключи, которые истекают в течение следующих 10 часов
+            # Получаем все ключи, которые истекают в течение следующих 10 часов и еще не были уведомлены
             threshold_time = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000  # В миллисекундах
             records = await conn.fetch('''
                 SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
-                WHERE expiry_time <= $1 AND expiry_time > $2
+                WHERE expiry_time <= $1 AND expiry_time > $2 AND notified = FALSE
             ''', threshold_time, datetime.utcnow().timestamp() * 1000)
 
             for record in records:
@@ -51,6 +51,9 @@ async def notify_expiring_keys(bot: Bot):
 
                 try:
                     await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+
+                    # Обновляем статус уведомления в базе данных
+                    await conn.execute('UPDATE keys SET notified = TRUE WHERE client_id = $1', record['client_id'])
                 except Exception as e:
                     print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
 
@@ -91,7 +94,6 @@ async def notify_expiring_keys(bot: Bot):
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
-
 
 @router.message(Command('send_to_all'))
 async def send_message_to_all_clients(message: types.Message):
