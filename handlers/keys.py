@@ -167,7 +167,6 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 
     await callback_query.answer()
 
-
 @router.callback_query(lambda c: c.data.startswith('confirm_delete|'))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
@@ -176,13 +175,16 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
+            # Извлекаем server_id и email из базы данных
+            record = await conn.fetchrow('SELECT email, server_id FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
+                server_id = record['server_id']  # Извлекаем server_id из записи
                 
-                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = delete_client(session, client_id)
+                # Используем server_id для авторизации
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = delete_client(session, server_id, client_id)
 
                 if success:
                     await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
@@ -215,11 +217,13 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email, expiry_time FROM keys WHERE client_id = $1', client_id)
+            # Извлекаем email, expiry_time и server_id из базы данных
+            record = await conn.fetchrow('SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
                 expiry_time = record['expiry_time']
+                server_id = record['server_id']  # Извлекаем server_id из записи
                 current_time = datetime.utcnow().timestamp() * 1000  # Текущее время в миллисекундах
 
                 # Проверяем, если ключ истек, то продлеваем от текущей даты, иначе продлеваем от текущей даты истечения
@@ -247,9 +251,9 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     await bot.edit_message_text("Недостаточно средств для продления ключа.", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                     return
 
-                # Продлеваем ключ через API
-                session = login_with_credentials(ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = extend_client_key(session, tg_id, client_id, email, new_expiry_time)
+                # Продлеваем ключ через API, используя server_id
+                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
 
                 if success:
                     # Обновляем баланс и ключ в базе данных
@@ -271,7 +275,6 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
         await bot.edit_message_text(f"Ошибка при продлении ключа: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
 
     await callback_query.answer()
-
 
 async def handle_error(tg_id, callback_query, message):
     await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id)

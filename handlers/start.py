@@ -7,7 +7,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
-from config import (ADMIN_ID, CHANNEL_URL, 
+from config import (CHANNEL_URL, 
                     SUPPORT_CHAT_URL)
 
 router = Router()
