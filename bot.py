@@ -10,7 +10,6 @@ router = Router()
 
 from handlers import key_management, keys, notifications, pay, profile, start
 
-# Регистрация обработчиков
 dp.include_router(start.router)
 dp.include_router(profile.router)
 dp.include_router(keys.router)

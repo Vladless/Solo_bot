@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot import bot  # Импортируем объект bot
+from bot import bot 
 from database import get_balance, get_key_count
 
 router = Router()
@@ -14,25 +14,21 @@ class ReplenishBalanceState(StatesGroup):
 
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
-    username = callback_query.from_user.full_name  # Получаем имя пользователя
+    username = callback_query.from_user.full_name  
 
     try:
-        # Получаем количество ключей
         key_count = await get_key_count(tg_id)
-        
-        # Получаем баланс
         balance = await get_balance(tg_id)
         if balance is None:
-            balance = 0  # По умолчанию 0, если баланс неизвестен
+            balance = 0 
         
         profile_message = (
             f"<b>Профиль: {username}</b>\n\n"
             f"🔹 <b>ID:</b> {tg_id}\n"
             f"🔹 <b>Баланс:</b> {balance} RUB\n"
-            f"🔹 <b>К-во устройств:</b> {key_count}\n"  # Изменили текст на "К-во устройств"
+            f"🔹 <b>К-во устройств:</b> {key_count}\n" 
         )
         
-        # Кнопки для действий в профиле с добавленными смайликами
         button_create_key = InlineKeyboardButton(text='➕ Устройство', callback_data='create_key')
         button_view_keys = InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')
         button_replenish_balance = InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')
@@ -49,12 +45,10 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         profile_message = f"❗️ Ошибка при получении данных профиля: {e}"
         keyboard = None
     
-    # Удаляем текущее сообщение
     await callback_query.message.delete()
     
-    # Отправляем новое сообщение с профилем через bot
     await bot.send_message(
-        chat_id=tg_id,  # ID чата, куда отправляем сообщение
+        chat_id=tg_id, 
         text=profile_message,
         parse_mode='HTML',
         reply_markup=keyboard
