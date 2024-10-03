@@ -44,6 +44,10 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
     finally:
         await conn.close()
 
+    # Добавляем кнопку "Назад"
+    button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='view_profile')
+    server_buttons.append([button_back])  # Кнопка "Назад" внизу списка серверов
+
     await callback_query.message.edit_text(
         "<b>⚙️ Выберите сервер для создания ключа:</b>",
         parse_mode="HTML",
@@ -121,7 +125,11 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
 @dp.message()
 async def handle_text(message: Message, state: FSMContext):
     current_state = await state.get_state()
-    
+
+    if message.text in ["/start", "/menu"]:
+        await start_command(message)
+        return
+
     if message.text == "Мой профиль":
         callback_query = types.CallbackQuery(
             id="1",
@@ -131,10 +139,6 @@ async def handle_text(message: Message, state: FSMContext):
             message=message
         )
         await process_callback_view_profile(callback_query, state)
-        return
-
-    if message.text in ["/start", "/menu"]:
-        await start_command(message)
         return
     
     if message.text in ["/send_to_all"]:
