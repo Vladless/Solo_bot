@@ -12,18 +12,15 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
 from auth import link, login_with_credentials
 from bot import dp
 from client import add_client
-from config import (ADMIN_PASSWORD, ADMIN_USERNAME,
-                    DATABASE_URL, SERVERS)
-from database import (add_connection, get_balance, store_key,
-                      update_balance)
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
+from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions import send_instructions
+from handlers.notifications import send_message_to_all_clients
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from handlers.notifications import send_message_to_all_clients
 
 router = Router()
 
-# Удаляем специальные символы из имени ключа
 def sanitize_key_name(key_name: str) -> str:
     return re.sub(r'[^a-z0-9@._-]', '', key_name.lower())
 
@@ -36,14 +33,12 @@ class Form(StatesGroup):
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
-    # Получаем количество подключений для каждого сервера
     server_buttons = []
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         for server_id, server in SERVERS.items():
-            # Получаем количество ключей на сервере
             count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
-            percent_full = (count / 100) * 100  # Заполнение в процентах
+            percent_full = (count / 100) * 100  
             server_name = f"{server['name']} ({percent_full:.1f}%)"
             server_buttons.append([InlineKeyboardButton(text=server_name, callback_data=f'select_server|{server_id}')])
     finally:
@@ -64,7 +59,6 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
     server_id = callback_query.data.split('|')[1]
     await state.update_data(selected_server_id=server_id)
 
-    # Получаем данные о trial из базы данных
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', callback_query.from_user.id)
@@ -78,7 +72,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
             "<b>⚠️ У вас уже был пробный ключ.</b>\n\n"
             "Новый ключ будет выдан на <b>один месяц</b> и стоит <b>100 рублей</b>.\n\n"
             "<i>Хотите продолжить?</i>",
-            parse_mode="HTML",  # Добавляем параметр parse_mode
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text='✅ Да, создать новый ключ', callback_data='confirm_create_new_key')],
                 [InlineKeyboardButton(text='↩️ Назад', callback_data='cancel_create_key')]
@@ -101,7 +95,6 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
     data = await state.get_data()
     server_id = data.get('selected_server_id')
 
-    # Проверяем баланс перед созданием нового ключа
     balance = await get_balance(tg_id)
     if balance < 100:
         replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
@@ -125,7 +118,6 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
 
-# Обработка текстовых сообщений
 @dp.message()
 async def handle_text(message: Message, state: FSMContext):
     current_state = await state.get_state()
@@ -170,7 +162,6 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     current_time = datetime.utcnow()
     expiry_time = None
 
-    # Получаем статус пробного ключа из базы данных
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         existing_connection = await conn.fetchrow('SELECT trial FROM connections WHERE tg_id = $1', tg_id)
@@ -180,10 +171,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     trial_status = existing_connection['trial'] if existing_connection else 0
 
     if trial_status == 0:
-        # Создаем пробный ключ на 1 день
         expiry_time = current_time + timedelta(days=1, hours=3)
     else:
-        # Проверяем баланс перед созданием нового ключа
         balance = await get_balance(tg_id)
         if balance < 100:
             replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
@@ -198,7 +187,6 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     try:
-        # Попробуем добавить клиента
         response = add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
         
         if not response.get("success", True):
@@ -225,13 +213,11 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
         await store_key(tg_id, client_id, email, expiry_timestamp, connection_link, server_id)
 
-        # Рассчитываем оставшееся время до окончания действия ключа
         remaining_time = expiry_time - current_time
         days = remaining_time.days
         hours, remainder = divmod(remaining_time.seconds, 3600)
         minutes, _ = divmod(remainder, 60)
 
-        # Формируем сообщение с информацией о ключе
         remaining_time_message = (
             f"Оставшееся время ключа: {days} день"
         )

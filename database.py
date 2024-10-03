@@ -4,9 +4,10 @@ import asyncpg
 
 from config import DATABASE_URL
 
+
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
-    # Создаем таблицу connections, если она не существует
+    
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS connections (
             tg_id BIGINT PRIMARY KEY NOT NULL,
@@ -14,7 +15,7 @@ async def init_db():
             trial INTEGER NOT NULL DEFAULT 0
         )
     ''')
-    # Создаем таблицу keys, если она не существует
+    
     await conn.execute('''
         CREATE TABLE IF NOT EXISTS keys (
             tg_id BIGINT NOT NULL,
@@ -23,21 +24,29 @@ async def init_db():
             created_at BIGINT NOT NULL,
             expiry_time BIGINT NOT NULL,         
             key TEXT NOT NULL,
-            server_id TEXT NOT NULL DEFAULT 'server1',  -- новое поле для идентификатора сервера
+            server_id TEXT NOT NULL DEFAULT 'server1',  -- поле для идентификатора сервера
+            notified BOOLEAN NOT NULL DEFAULT FALSE,  -- новое поле для статуса уведомления
             PRIMARY KEY (tg_id, client_id)
         )
     ''')
-    # Добавляем поле server_id в таблицу keys, если его нет
+    
     try:
         await conn.execute('''
             ALTER TABLE keys
             ADD COLUMN server_id TEXT NOT NULL DEFAULT 'server1'
         ''')
     except asyncpg.exceptions.DuplicateColumnError:
-        # Если поле уже существует, ничего не делаем
         pass
-    await conn.close()
+    
+    try:
+        await conn.execute('''
+            ALTER TABLE keys
+            ADD COLUMN notified BOOLEAN NOT NULL DEFAULT FALSE
+        ''')
+    except asyncpg.exceptions.DuplicateColumnError:
+        pass
 
+    await conn.close()
 
 async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0):
     conn = await asyncpg.connect(DATABASE_URL)
