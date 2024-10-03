@@ -320,7 +320,7 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                     success_delete = delete_client(session, current_server_id, client_id)
                     if success_delete:
                         response_message = ("Ключ успешно перемещен на новый сервер.\n\n"
-                                            "<b>Не забудьте удалить старый ключ из вашего приложения и установить новый.<b>")
+                                            "<b>Не забудьте удалить старый ключ из вашего приложения и установить новый.</b>")
                     else:
                         response_message = "Ошибка при удалении ключа с текущего сервера."
                 else:
@@ -332,12 +332,13 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
             back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+            # Указываем parse_mode='HTML' для форматирования
+            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode='HTML')
 
         finally:
             await conn.close()
 
     except Exception as e:
-        await bot.edit_message_text(f"Ошибка при смене локации: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
+        await bot.edit_message_text(f"Ошибка при смене локации: {e}", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode='HTML')
 
     await callback_query.answer()
