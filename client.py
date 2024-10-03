@@ -1,10 +1,9 @@
 import json
+from config import SERVERS  # Импортируем SERVERS из config.py
 
-from config import API_URL
-
-
-def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
-    url = f'{API_URL}/panel/api/inbounds/addClient'
+def add_client(session, server_id: str, client_id: str, email: str, tg_id: str, limit_ip: int, total_gb: int, expiry_time: int, enable: bool, flow: str):
+    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    url = f'{api_url}/panel/api/inbounds/addClient'
     
     email = email.lower()
     
@@ -44,8 +43,9 @@ def add_client(session, client_id: str, email: str, tg_id: str, limit_ip: int, t
     else:
         print(f"Ошибка при добавлении клиента: {response.status_code}, {response.text}")
 
-def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: int) -> bool:
-    response = session.get(f"{API_URL}/panel/api/inbounds/getClientTraffics/{email}")
+def extend_client_key(session, server_id: str, tg_id, client_id, email: str, new_expiry_time: int) -> bool:
+    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    response = session.get(f"{api_url}/panel/api/inbounds/getClientTraffics/{email}")
     print(f"GET {response.url} Status: {response.status_code}")
     print(f"GET Response: {response.text}")
     
@@ -93,7 +93,7 @@ def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: in
     }
     
     try:
-        response = session.post(f"{API_URL}/panel/api/inbounds/updateClient/{client_id}", json=payload, headers=headers)
+        response = session.post(f"{api_url}/panel/api/inbounds/updateClient/{client_id}", json=payload, headers=headers)
         print(f"POST {response.url} Status: {response.status_code}")
         print(f"POST Request Data: {json.dumps(payload, indent=2)}")
         print(f"POST Response: {response.text}")
@@ -107,8 +107,9 @@ def extend_client_key(session, tg_id, client_id, email: str, new_expiry_time: in
         print(f"Ошибка запроса: {e}")
         return False
 
-def delete_client(session, client_id: str) -> bool:
-    url = f"{API_URL}/panel/api/inbounds/1/delClient/{client_id}"
+def delete_client(session, server_id: str, client_id: str) -> bool:
+    api_url = SERVERS[server_id]['API_URL']  # Получаем API_URL для выбранного сервера
+    url = f"{api_url}/panel/api/inbounds/1/delClient/{client_id}"
     headers = {
         'Accept': 'application/json'
     }
