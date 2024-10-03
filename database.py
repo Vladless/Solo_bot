@@ -29,6 +29,13 @@ async def init_db():
             PRIMARY KEY (tg_id, client_id)
         )
     ''')
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS referrals (
+            referred_tg_id BIGINT PRIMARY KEY NOT NULL,  -- ID приглашенного пользователя
+            referrer_tg_id BIGINT NOT NULL,  -- ID пригласившего пользователя
+            reward_issued BOOLEAN DEFAULT FALSE  -- Был ли начислен бонус
+        )
+    ''')
     
     try:
         await conn.execute('''
@@ -111,6 +118,10 @@ async def update_balance(tg_id: int, amount: float):
         SET balance = balance + $1 
         WHERE tg_id = $2
     ''', amount, tg_id)
+
+    # Проверка и начисление реферального бонуса
+    await handle_referral_on_balance_update(tg_id, amount)
+
     await conn.close()
 
 async def get_trial(tg_id: int) -> int:
@@ -127,3 +138,50 @@ async def get_key_count(tg_id: int) -> int:
 
 async def get_all_users(conn):
     return await conn.fetch('SELECT tg_id FROM connections')
+
+async def add_referral(referred_tg_id: int, referrer_tg_id: int):
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute('''
+        INSERT INTO referrals (referred_tg_id, referrer_tg_id)
+        VALUES ($1, $2)
+    ''', referred_tg_id, referrer_tg_id)
+    await conn.close()
+
+async def handle_referral_on_balance_update(tg_id: int, amount: float):
+    conn = await asyncpg.connect(DATABASE_URL)
+    
+    # Проверяем, есть ли реферал в таблице
+    referral = await conn.fetchrow('''
+        SELECT referrer_tg_id, reward_issued FROM referrals WHERE referred_tg_id = $1
+    ''', tg_id)
+    
+    if referral and not referral['reward_issued'] and amount > 0:
+        referrer_tg_id = referral['referrer_tg_id']
+        
+        # Начисляем бонус (25% от платежа) пригласившему
+        bonus = amount * 0.25  # 25% от платежа
+        await update_balance(referrer_tg_id, bonus)
+        
+        # Обновляем статус бонуса как выданный
+        await conn.execute('''
+            UPDATE referrals SET reward_issued = TRUE WHERE referred_tg_id = $1
+        ''', tg_id)
+    
+    await conn.close()
+
+async def get_referral_stats(referrer_tg_id: int):
+    conn = await asyncpg.connect(DATABASE_URL)
+    total_referrals = await conn.fetchval('''
+        SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1
+    ''', referrer_tg_id)
+
+    active_referrals = await conn.fetchval('''
+        SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1 AND reward_issued = TRUE
+    ''', referrer_tg_id)
+
+    await conn.close()
+
+    return {
+        'total_referrals': total_referrals,
+        'active_referrals': active_referrals
+    }

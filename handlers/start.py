@@ -1,5 +1,4 @@
 import os
-
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
@@ -7,6 +6,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 
 from bot import bot
+from database import add_referral, check_connection_exists, add_connection
 from config import CHANNEL_URL, SUPPORT_CHAT_URL
 
 router = Router()
@@ -30,7 +30,7 @@ async def send_welcome_message(chat_id: int):
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')],
         [InlineKeyboardButton(text='🔒 О VPN', callback_data='about_vpn')],
-        [InlineKeyboardButton(text='📞 Поддержка', url=SUPPORT_CHAT_URL)],  # Изменили на кнопку Поддержка
+        [InlineKeyboardButton(text='📞 Поддержка', url=SUPPORT_CHAT_URL)],  
         [InlineKeyboardButton(text='📢 Наш канал', url=CHANNEL_URL)]
     ])
 
@@ -45,11 +45,22 @@ async def send_welcome_message(chat_id: int):
 
 @router.message(Command('start'))
 async def start_command(message: Message):
-    await send_welcome_message(message.chat.id)
+    if 'referral_' in message.text:
+        referrer_tg_id = int(message.text.split('referral_')[1])
+        
+        if not await check_connection_exists(message.from_user.id):
+            await add_connection(message.from_user.id)
+
+            await add_referral(message.from_user.id, referrer_tg_id)
+            
+            await message.answer("Вас пригласил друг, добро пожаловать!")
+        else:
+            await message.answer("Вы уже зарегистрированы в системе!")
+    else:
+        await send_welcome_message(message.chat.id)
 
 @router.callback_query(lambda c: c.data == 'about_vpn')
 async def handle_about_vpn(callback_query: CallbackQuery):
-
     await callback_query.message.delete()
     info_message = (
         "*О VPN*\n\n"
@@ -58,7 +69,6 @@ async def handle_about_vpn(callback_query: CallbackQuery):
         "<b>Ваш ключ — ваша безопасность! Не передавайте своё шифрование сторонним лицам.</b>"
     )
 
-    
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
     inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])
 
@@ -71,7 +81,6 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
 @router.callback_query(lambda c: c.data == 'back_to_menu')
 async def handle_back_to_menu(callback_query: CallbackQuery):
-
     await callback_query.message.delete()
     await send_welcome_message(callback_query.from_user.id)
     await callback_query.answer()
