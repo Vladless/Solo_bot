@@ -67,9 +67,9 @@ async def invite_handler(callback_query: types.CallbackQuery):
     referral_stats = await get_referral_stats(tg_id)
     
     invite_message = (
-        f"👥 <b>Ваша реферальная ссылка:</b> <code>{referral_link}</code>\n\n"
+        f"👥 <b>Ваша реферальная ссылка:</b>\n<pre>{referral_link}</pre>\n"
         f"<i>Пригласите реферала и получайте 25% с его каждого пополнения!</i>\n\n"
-        f"🔹 <b>Всего приглашено:</b> {referral_stats['total_referrals']} пользователей\n"
+        f"🔹 <b>Всего приглашено:</b> {referral_stats['total_referrals']}\n"
         f"🔹 <b>Активных рефералов:</b> {referral_stats['active_referrals']}"
     )
     
