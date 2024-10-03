@@ -300,11 +300,19 @@ async def process_callback_change_location(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split('|')[1]  # Используем разделитель вертикальная черта
 
-    # Запрос выбора сервера
-    server_buttons = [
-        [types.InlineKeyboardButton(text=server['name'], callback_data=f'select_server&{server_id}&{client_id}')]
-        for server_id, server in SERVERS.items()
-    ]
+    # Получаем количество подключений для каждого сервера
+    server_buttons = []
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        for server_id, server in SERVERS.items():
+            # Получаем количество ключей на сервере
+            count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
+            percent_full = (count / 100) * 100  # Заполнение в процентах
+            server_name = f"{server['name']} ({percent_full:.1f}%)"
+            server_buttons.append([types.InlineKeyboardButton(text=server_name, callback_data=f'select_server&{server_id}&{client_id}')])
+    finally:
+        await conn.close()
+
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=server_buttons)
     
     response_message = "<b>Выберите новый сервер для вашего ключа:</b>"
