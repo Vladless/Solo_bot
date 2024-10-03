@@ -104,19 +104,22 @@ async def send_message_to_all_clients(message: types.Message):
         await message.answer("У вас нет прав для выполнения этой команды.")
         return
 
-    text = message.get_args()
-    if not text:
+    # Получаем текст сообщения после команды
+    text = message.text.split(maxsplit=1)  # Разделяем текст сообщения на части
+    if len(text) < 2:  # Если нет текста после команды
         await message.answer("Пожалуйста, введите текст сообщения после команды.")
         return
 
+    text_message = text[1]  # Получаем текст сообщения
+
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        tg_ids = await conn.fetch('SELECT tg_id FROM keys')
+        tg_ids = await conn.fetch('SELECT tg_id FROM connections')
 
         for record in tg_ids:
             tg_id = record['tg_id']
             try:
-                await bot.send_message(chat_id=tg_id, text=text)
+                await bot.send_message(chat_id=tg_id, text=text_message)
             except Exception as e:
                 print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
 
