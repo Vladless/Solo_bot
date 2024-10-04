@@ -161,12 +161,12 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         # Начисляем бонус (25% от платежа) пригласившему
         bonus = amount * 0.25  # 25% от платежа
         await update_balance(referrer_tg_id, bonus)
-        
-        # Записываем информацию о начислении бонуса
+
+        # Обновляем статус бонуса для пригласившего
         await conn.execute('''
-            INSERT INTO referral_rewards (referrer_tg_id, referred_tg_id, amount) 
-            VALUES ($1, $2, $3)
-        ''', referrer_tg_id, tg_id, bonus)
+            UPDATE referrals SET reward_issued = TRUE 
+            WHERE referrer_tg_id = $1 AND referred_tg_id = $2
+        ''', referrer_tg_id, tg_id)
 
     await conn.close()
 
