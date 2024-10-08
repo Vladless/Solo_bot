@@ -166,7 +166,7 @@ async def process_message_to_all(message: types.Message, state: FSMContext):
 
     await state.clear()  # Очистка состояния после отправки сообщения
 
-@router.message()
+@router.message() 
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
 
