@@ -85,3 +85,4 @@ python main.py
 🔗 SoloBot в Telegram
 
 Попробуйте SoloBot прямо сейчас в Telegram [по этой ссылке](https://t.me/SoloNetVPN_bot).
+
