@@ -78,14 +78,14 @@ async def notify_expiring_keys(bot: Bot):
 
                 await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
 
-                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                delete_client(session, server_id, client_id)
+                session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                await delete_client(session, server_id, client_id)
 
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text='В профиль', callback_data='view_profile')]
                 ])
 
-                message = f"Ваш ключ <b>{email}</b> истек и был удален автоматически."
+                message = f"Ваш ключ <b>{email}</b> истек , через 3 часа будет удалён."
 
                 try:
                     await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
@@ -104,13 +104,12 @@ async def send_message_to_all_clients(message: types.Message):
         await message.answer("У вас нет прав для выполнения этой команды.")
         return
 
-    # Получаем текст сообщения после команды
-    text = message.text.split(maxsplit=1)  # Разделяем текст сообщения на части
-    if len(text) < 2:  # Если нет текста после команды
+    text = message.text.split(maxsplit=1)
+    if len(text) < 2:
         await message.answer("Пожалуйста, введите текст сообщения после команды.")
         return
 
-    text_message = text[1]  # Получаем текст сообщения
+    text_message = text[1]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
