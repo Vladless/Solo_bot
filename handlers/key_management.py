@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import datetime, timedelta
+from aiogram.filters import Command
 
 import asyncpg
 from aiogram import F, Router, types
@@ -10,12 +11,11 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
 from auth import link, login_with_credentials
-from bot import dp
+from bot import dp, bot
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS, ADMIN_ID
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions import send_instructions
-from handlers.notifications import send_message_to_all_clients
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 
@@ -28,6 +28,7 @@ class Form(StatesGroup):
     waiting_for_server_selection = State()
     waiting_for_key_name = State()
     viewing_profile = State()
+    waiting_for_message = State()
 
 @dp.callback_query(F.data == 'create_key')
 async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext):
@@ -122,25 +123,74 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
 
-@dp.message()
-async def handle_text(message: Message, state: FSMContext):
+@router.message(Command('start'))
+async def handle_start(message: types.Message, state: FSMContext):
+    # Обработка команды /start
+    await start_command(message)
+
+@router.message(Command('menu'))
+async def handle_menu(message: types.Message, state: FSMContext):
+    # Обработка команды /menu
+    await start_command(message)
+
+@router.message(Command('send_to_all'))
+async def send_message_to_all_clients(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У вас нет прав для выполнения этой команды.")
+        return
+
+    await message.answer("Введите текст сообщения, который вы хотите отправить всем клиентам:")
+    await state.set_state(Form.waiting_for_message)  # Устанавливаем состояние ожидания сообщения
+
+@router.message(Form.waiting_for_message)
+async def process_message_to_all(message: types.Message, state: FSMContext):
+    text_message = message.text  # Получаем текст сообщения
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        tg_ids = await conn.fetch('SELECT tg_id FROM connections')
+
+        for record in tg_ids:
+            tg_id = record['tg_id']
+            try:
+                await bot.send_message(chat_id=tg_id, text=text_message)
+            except Exception as e:
+                print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
+
+        await message.answer("Сообщение было отправлено всем клиентам.")
+    except Exception as e:
+        print(f"Ошибка при подключении к базе данных: {e}")
+        await message.answer("Произошла ошибка при отправке сообщения.")
+    finally:
+        await conn.close()
+
+    await state.clear()  # Очистка состояния после отправки сообщения
+
+@router.message()
+async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
 
-    # Обработка команд
-    if message.text in ["/start", "/menu"]:
-        await start_command(message)
+    if message.text in ["/send_to_all"]:
+        await send_message_to_all_clients(message, state)  # Передаем состояние
         return
 
     if message.text == "Мой профиль":
-        await process_callback_view_profile(message)
+        callback_query = types.CallbackQuery(
+            id="1",
+            from_user=message.from_user,
+            chat_instance='',
+            data='view_profile',
+            message=message
+        )
+        await process_callback_view_profile(callback_query, state)
         return
 
-    # Проверка текущего состояния
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
 
-    else:
+    elif current_state is None:  # Если состояние не задано, обрабатываем обычные сообщения
         await start_command(message)
+
 
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
