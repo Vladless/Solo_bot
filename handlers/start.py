@@ -18,7 +18,7 @@ async def send_welcome_message(chat_id: int):
     welcome_text = (
         "*SoloNet — ваш доступ в свободный интернет! 🌐✨*\n\n"
         "Используйте надежный и быстрый VPN, который гарантирует вашу безопасность даже в самых строгих условиях. 🔒🚀\n\n"
-        "*ver. 1.0*"
+        "*ver. 1.1*"
     )
 
     image_path = os.path.join(os.path.dirname(__file__), 'pic.jpg')
@@ -45,11 +45,10 @@ async def send_welcome_message(chat_id: int):
 
 @router.message(Command('start'))
 async def start_command(message: Message):
-    print(f"Received start command with text: {message.text}")  # Отладочный лог
+    print(f"Received start command with text: {message.text}") 
     if 'referral_' in message.text:
         referrer_tg_id = int(message.text.split('referral_')[1])
-        print(f"Referral ID: {referrer_tg_id}")  # Отладочный лог
-        # Остальная часть кода...
+        print(f"Referral ID: {referrer_tg_id}")
         if not await check_connection_exists(message.from_user.id):
             await add_connection(message.from_user.id)
 

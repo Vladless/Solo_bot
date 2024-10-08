@@ -179,8 +179,8 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             if record:
                 email = record['email']
                 server_id = record['server_id']
-                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = delete_client(session, server_id, client_id)
+                session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = await delete_client(session, server_id, client_id)
 
                 if success:
                     await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
@@ -244,8 +244,8 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     await bot.edit_message_text("Недостаточно средств для продления ключа.", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                     return
 
-                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
+                session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                success = await extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
 
                 if success:
                     await update_balance(tg_id, -cost)
@@ -305,34 +305,45 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                 email = record['email']
                 expiry_time = record['expiry_time']
                 current_server_id = record['server_id']
-                session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+
+                # Авторизация на новом сервере
+                session_new = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                 new_expiry_time = int(datetime.utcnow().timestamp() * 1000) + (expiry_time - datetime.utcnow().timestamp() * 1000)
 
-                new_client_data = add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=new_expiry_time, enable=True, flow="xtls-rprx-vision")
+                # Добавляем клиента на новый сервер
+                new_client_data = await add_client(session_new, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=new_expiry_time, enable=True, flow="xtls-rprx-vision")
 
                 if new_client_data:
-                    new_key = link(session, server_id, client_id, email)
+                    # Генерация нового ключа
+                    new_key = await link(session_new, server_id, client_id, email)
 
+                    # Обновляем запись в БД
                     await conn.execute('UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
                                        server_id, new_key, client_id)
 
-                    session = login_with_credentials(current_server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                    success_delete = delete_client(session, current_server_id, client_id)
-                    if success_delete:
-                        response_message = ("Ключ успешно перемещен на новый сервер.\n\n"
-                                            "<b>Не забудьте удалить старый ключ из вашего приложения и установить новый.</b>")
-                    else:
-                        response_message = "Ошибка при удалении ключа с текущего сервера."
+                    # Логируем удаление клиента со старого сервера
+                    try:
+                        session_old = await login_with_credentials(current_server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                        success_delete = await delete_client(session_old, current_server_id, client_id)
+
+                        if success_delete:
+                            response_message = (f"Ключ успешно перемещен на новый сервер.\n\n"
+                                                f"<b>Удалите старый ключ и используйте новый для подключения к новому серверу:</b>\n"
+                                                f"<pre>{new_key}</pre>")
+                        else:
+                            response_message = "Ошибка при удалении ключа с текущего сервера. Клиент не удален."
+                            print(f"Не удалось удалить клиента {client_id} с сервера {current_server_id}. Ответ API: {success_delete}")
+                    except Exception as e:
+                        response_message = f"Ошибка при удалении клиента с текущего сервера: {e}"
+                        print(f"Ошибка при авторизации на старом сервере {current_server_id}: {e}")
                 else:
                     response_message = "Ошибка при создании клиента на новом сервере."
-
             else:
                 response_message = "Ключ не найден или уже удален."
 
             back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            # Указываем parse_mode='HTML' для форматирования
             await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode='HTML')
 
         finally:

@@ -126,25 +126,16 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
 async def handle_text(message: Message, state: FSMContext):
     current_state = await state.get_state()
 
+    # Обработка команд
     if message.text in ["/start", "/menu"]:
         await start_command(message)
         return
 
     if message.text == "Мой профиль":
-        callback_query = types.CallbackQuery(
-            id="1",
-            from_user=message.from_user,
-            chat_instance='',
-            data='view_profile',
-            message=message
-        )
-        await process_callback_view_profile(callback_query, state)
+        await process_callback_view_profile(message)
         return
-    
-    if message.text in ["/send_to_all"]:
-        await send_message_to_all_clients(message)
-        return
-    
+
+    # Проверка текущего состояния
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
 
@@ -163,7 +154,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     creating_new_key = data.get('creating_new_key', False)
     server_id = data.get('selected_server_id')
 
-    session = login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+    session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     current_time = datetime.utcnow()
@@ -194,7 +185,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     try:
-        response = add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
+        response = await add_client(session, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=expiry_timestamp, enable=True, flow="xtls-rprx-vision")
         
         if not response.get("success", True):
             error_msg = response.get("msg", "Неизвестная ошибка.")
@@ -205,7 +196,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             else:
                 raise Exception(error_msg)
 
-        connection_link = link(session, server_id, client_id, email)
+        connection_link = await link(session, server_id, client_id, email)
 
         conn = await asyncpg.connect(DATABASE_URL)
         try:
