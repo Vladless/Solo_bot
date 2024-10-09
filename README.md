@@ -78,12 +78,6 @@ AUTH_URL = f"{API_URL}/login/"
 DATABASE_URL = путь к вашей базе данных, имеет вид "postgresql://{user}:{password}@{Ip-adress}:{port}/{имя базы данных}"
 ADMIN_ID = ID телеграм профиля администратора
 CHANNEL_URL = ссылка на ваш телеграм канал
-YOOKASSA_SECRET_KEY = ваш ключ юкассы
-YOOKASSA_SHOP_ID = ваш шопайди
-WEBHOOK_HOST = адрес вашего сервера для вебхуков
-WEBHOOK_PATH = '/webhook/' 
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-SUPPORT_CHAT_URL = ваша ссылка на поддержку 
 ```
 
 ### 🚀 Запуск
