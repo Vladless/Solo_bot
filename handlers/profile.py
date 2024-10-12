@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.state import State, StatesGroup
 
 from bot import bot 
-from database import get_balance, get_key_count, get_referral_stats
+from database import get_balance, get_key_count, get_referral_stats, get_keys
 
 class ReplenishBalanceState(StatesGroup):
     choosing_transfer_method = State()
@@ -12,7 +12,6 @@ class ReplenishBalanceState(StatesGroup):
 
 router = Router()
 
-# Хендлер для показа профиля
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     username = callback_query.from_user.full_name  
@@ -22,13 +21,21 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         balance = await get_balance(tg_id)
         if balance is None:
             balance = 0 
-        
+
         profile_message = (
             f"<b>Профиль: {username}</b>\n\n"
             f"🔹 <b>ID:</b> {tg_id}\n"
             f"🔹 <b>Баланс:</b> {balance} RUB\n"
-            f"🔹 <b>К-во устройств:</b> {key_count}\n" 
+            f"🔹 <b>К-во устройств:</b> {key_count}\n\n"
         )
+
+        profile_message += (
+            f"<b>Обязательно подпишитесь на канал</b> <a href='https://t.me/solonet_vpn'>здесь</a>\n"
+        )
+        
+        # Если у клиента нет ключей, добавляем сообщение
+        if key_count == 0:
+            profile_message += "\n<i>Нажмите ➕Устройство снизу чтобы добавить устройство в VPN</i>"
         
         button_create_key = InlineKeyboardButton(text='➕ Устройство', callback_data='create_key')
         button_view_keys = InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')
@@ -40,7 +47,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             [button_create_key],
             [button_view_keys],
             [button_replenish_balance],
-            [button_invite],  # Добавили кнопку "Пригласить"
+            [button_invite],
             [button_back]
         ])
 
