@@ -11,7 +11,6 @@ class ReplenishBalanceState(StatesGroup):
     waiting_for_admin_confirmation = State()
 
 router = Router()
-
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     username = callback_query.from_user.full_name  
@@ -33,7 +32,6 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             f"<b>Обязательно подпишитесь на канал</b> <a href='https://t.me/solonet_vpn'>здесь</a>\n"
         )
         
-        # Если у клиента нет ключей, добавляем сообщение
         if key_count == 0:
             profile_message += "\n<i>Нажмите ➕Устройство снизу чтобы добавить устройство в VPN</i>"
         
@@ -41,14 +39,14 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         button_view_keys = InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')
         button_replenish_balance = InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')
         button_invite = InlineKeyboardButton(text='👥 Пригласить', callback_data='invite')
+        button_instructions = InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')
         button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [button_create_key],
-            [button_view_keys],
-            [button_replenish_balance],
-            [button_invite],
-            [button_back]
+            [button_create_key, button_view_keys],  # В один ряд "➕ Устройство" и "📱 Мои устройства"
+            [button_replenish_balance],              # Отдельная кнопка для пополнения баланса
+            [button_invite, button_instructions],    # В один ряд "👥 Пригласить" и "📘 Инструкции"
+            [button_back]                            # Отдельная кнопка "Назад"
         ])
 
     except Exception as e:
