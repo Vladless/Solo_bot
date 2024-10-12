@@ -271,7 +271,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         )
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='📖 Инструкции по использованию', callback_data='instructions')],
+            [InlineKeyboardButton(text='📘 Инструкции по использованию', callback_data='instructions')],
             [InlineKeyboardButton(text='🔙 Перейти в профиль', callback_data='view_profile')]
         ])
 

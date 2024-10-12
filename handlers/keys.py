@@ -318,57 +318,74 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1', client_id)
+            # Начинаем транзакцию с блокировкой строки по client_id, чтобы предотвратить параллельную миграцию
+            async with conn.transaction():
+                record = await conn.fetchrow(
+                    'SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1 FOR UPDATE', client_id
+                )
 
-            if record:
-                email = record['email']
-                expiry_time = record['expiry_time']
-                current_server_id = record['server_id']
+                if record:
+                    email = record['email']
+                    expiry_time = record['expiry_time']
+                    current_server_id = record['server_id']
 
-                # Авторизация на новом сервере
-                session_new = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                new_expiry_time = int(datetime.utcnow().timestamp() * 1000) + (expiry_time - datetime.utcnow().timestamp() * 1000)
+                    if current_server_id == server_id:
+                        await callback_query.answer("Клиент уже на этом сервере.")
+                        return
 
-                # Добавляем клиента на новый сервер
-                new_client_data = await add_client(session_new, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0, expiry_time=new_expiry_time, enable=True, flow="xtls-rprx-vision")
+                    # Проверка наличия клиента на новом сервере перед добавлением
+                    session_new = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+                    new_client_data = await add_client(
+                        session_new, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0,
+                        expiry_time=int(datetime.utcnow().timestamp() * 1000) + (expiry_time - datetime.utcnow().timestamp() * 1000),
+                        enable=True, flow="xtls-rprx-vision"
+                    )
 
-                if new_client_data:
+                    if not new_client_data:
+                        raise Exception("Ошибка при создании клиента на новом сервере.")
+
                     # Генерация нового ключа
                     new_key = await link(session_new, server_id, client_id, email)
 
                     # Обновляем запись в БД
-                    await conn.execute('UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
-                                       server_id, new_key, client_id)
+                    await conn.execute(
+                        'UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
+                        server_id, new_key, client_id
+                    )
 
-                    # Логируем удаление клиента со старого сервера
+                    # Удаление клиента со старого сервера
                     try:
                         session_old = await login_with_credentials(current_server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                         success_delete = await delete_client(session_old, current_server_id, client_id)
 
-                        if success_delete:
-                            response_message = (f"Ключ успешно перемещен на новый сервер.\n\n"
-                                                f"<b>Удалите старый ключ из вашего приложения и используйте новый для подключения к новому серверу:</b>\n"
-                                                f"<pre>{new_key}</pre>")
-                        else:
-                            response_message = "Ошибка при удалении ключа с текущего сервера. Клиент не удален."
-                            print(f"Не удалось удалить клиента {client_id} с сервера {current_server_id}. Ответ API: {success_delete}")
+                        if not success_delete:
+                            raise Exception(f"Ошибка при удалении клиента с сервера {current_server_id}")
+
+                        response_message = (
+                            f"Ключ успешно перемещен на новый сервер.\n\n"
+                            f"<b>Удалите старый ключ из вашего приложения и используйте новый для подключения к новому серверу:</b>\n"
+                            f"<pre>{new_key}</pre>"
+                        )
                     except Exception as e:
-                        response_message = f"Ошибка при удалении клиента с текущего сервера: {e}"
-                        print(f"Ошибка при авторизации на старом сервере {current_server_id}: {e}")
+                        response_message = f"Ключ перемещен, но возникла ошибка при удалении клиента с текущего сервера: {e}"
+
                 else:
-                    response_message = "Ошибка при создании клиента на новом сервере."
-            else:
-                response_message = "Ключ не найден или уже удален."
+                    response_message = "Ключ не найден или уже удален."
 
             back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode='HTML')
+            await bot.edit_message_text(
+                response_message, chat_id=tg_id, message_id=callback_query.message.message_id,
+                reply_markup=keyboard, parse_mode='HTML'
+            )
 
         finally:
             await conn.close()
 
     except Exception as e:
-        await bot.edit_message_text(f"Ошибка при смене локации: {e}", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode='HTML')
+        await bot.edit_message_text(
+            f"Ошибка при смене локации: {e}", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode='HTML'
+        )
 
     await callback_query.answer()
