@@ -160,6 +160,12 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         
         # Начисляем бонус (25% от платежа) пригласившему
         bonus = amount * 0.25  # 25% от платежа
+
+        # Проверяем, чтобы бонус не был отрицательным
+        if bonus < 0:
+            bonus = 0
+
+        # Обновляем баланс пригласившего
         await update_balance(referrer_tg_id, bonus)
 
         # Обновляем статус бонуса для пригласившего
