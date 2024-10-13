@@ -126,13 +126,48 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
 
 @router.message(Command('start'))
 async def handle_start(message: types.Message, state: FSMContext):
-    # Обработка команды /start
     await start_command(message)
 
 @router.message(Command('menu'))
 async def handle_menu(message: types.Message, state: FSMContext):
-    # Обработка команды /menu
     await start_command(message)
+
+@router.message(Command('send_trial'))
+async def handle_send_trial_command(message: types.Message, state: FSMContext):
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            # Получаем всех пользователей с не использованным пробным ключом
+            records = await conn.fetch('''
+                SELECT tg_id FROM connections WHERE trial = 0
+            ''')
+
+            if records:
+                for record in records:
+                    tg_id = record['tg_id']
+                    trial_message = (
+                        "🎉 Вам предоставлен пробный период на 1 день!\n"
+                        "Пожалуйста, воспользуйтесь им, чтобы протестировать наш сервис."
+                    )
+                    try:
+                        # Отправляем сообщение каждому пользователю
+                        await bot.send_message(chat_id=tg_id, text=trial_message)
+                    except Exception as e:
+                        # Если бот был заблокирован пользователем, просто пропускаем его
+                        if "Forbidden: bot was blocked by the user" in str(e):
+                            print(f"Бот заблокирован пользователем с tg_id: {tg_id}")
+                        else:
+                            print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}")
+
+                await message.answer("Сообщения о пробном периоде отправлены всем пользователям с не использованным ключом.")
+            else:
+                await message.answer("Нет пользователей с не использованными пробными ключами.")
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        await message.answer(f"Ошибка при отправке сообщений: {e}")
 
 @router.message(Command('send_to_all'))
 async def send_message_to_all_clients(message: types.Message, state: FSMContext):

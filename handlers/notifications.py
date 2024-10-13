@@ -96,3 +96,4 @@ async def notify_expiring_keys(bot: Bot):
             await conn.close()
     except Exception as e:
         print(f"Ошибка при отправке уведомлений: {e}")
+ # Импортируйте функцию, которая возвращает все соединения
