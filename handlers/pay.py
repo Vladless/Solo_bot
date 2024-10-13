@@ -27,6 +27,7 @@ logging.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
 class ReplenishBalanceState(StatesGroup):
     choosing_amount = State()
     waiting_for_payment_confirmation = State()
+    entering_custom_amount = State()
 
 async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key='last_message_id'):
     if state:
@@ -57,9 +58,11 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0)
 
+    # Клавиатура с фиксированными суммами и новой кнопкой "Ввести сумму"
     amount_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='100 RUB', callback_data='amount_100'), InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
         [InlineKeyboardButton(text='600 RUB', callback_data='amount_600'), InlineKeyboardButton(text='1000 RUB', callback_data='amount_1000')],
+        [InlineKeyboardButton(text='💰 Ввести свою сумму', callback_data='enter_custom_amount')],
         [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
     ])
     
@@ -96,6 +99,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     customer_name = callback_query.from_user.full_name
     customer_id = callback_query.from_user.id
 
+    # Используем tg_id для email
+    customer_email = f"{customer_id}@solo.net"
+
     payment = Payment.create({
         "amount": {
             "value": str(amount),
@@ -110,7 +116,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         "receipt": {
             "customer": {
                 "full_name": customer_name,
-                "email": "client@example.com",
+                "email": customer_email,  # Используем email в формате "tg_id@solo.net"
                 "phone": "79000000000"
             },
             "items": [
@@ -184,3 +190,78 @@ async def payment_webhook(request):
             return web.Response(status=400)
 
     return web.Response(status=200)
+
+@router.callback_query(lambda c: c.data == 'enter_custom_amount')
+async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text(
+        text="Введите сумму пополнения:"
+    )
+    await state.set_state(ReplenishBalanceState.entering_custom_amount)
+    await callback_query.answer()
+
+@router.message(State(ReplenishBalanceState.entering_custom_amount))
+async def process_custom_amount_input(message: types.Message, state: FSMContext):
+    # Проверяем, является ли введенное значение числом
+    if message.text.isdigit():
+        amount = int(message.text)
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
+            return
+        
+        await state.update_data(amount=amount)
+        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
+
+        # Создание платежа
+        try:
+            payment = Payment.create({
+                "amount": {
+                    "value": str(amount),
+                    "currency": "RUB"
+                },
+                "confirmation": {
+                    "type": "redirect",
+                    "return_url": "https://pocomacho.ru/"
+                },
+                "capture": True,
+                "description": "Пополнение баланса",
+                "receipt": {
+                    "customer": {
+                        "full_name": message.from_user.full_name,
+                        "email": f"{message.from_user.id}@solo.net",  # Используем tg_id как email
+                        "phone": "79000000000"  # Здесь можно использовать номер телефона клиента, если он доступен
+                    },
+                    "items": [
+                        {
+                            "description": "Пополнение баланса",
+                            "quantity": "1.00",
+                            "amount": {
+                                "value": str(amount),
+                                "currency": "RUB"
+                            },
+                            "vat_code": 6
+                        }
+                    ]
+                },
+                "metadata": {
+                    "user_id": message.from_user.id
+                }
+            }, uuid.uuid4())
+
+            if payment['status'] == 'pending':
+                payment_url = payment['confirmation']['confirmation_url']
+
+                confirm_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text='Пополнить', url=payment_url)],
+                    [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
+                ])
+
+                await message.answer(
+                    text=f"Вы выбрали пополнение на {amount} рублей.",
+                    reply_markup=confirm_keyboard
+                )
+            else:
+                await message.answer("Ошибка при создании платежа.")
+        except Exception as e:
+            await message.answer(f"Произошла ошибка при обработке платежа: {str(e)}")
+    else:
+        await message.answer("Некорректный ввод. Пожалуйста, введите сумму числом:")
