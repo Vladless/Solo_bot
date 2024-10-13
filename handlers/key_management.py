@@ -18,6 +18,7 @@ from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
+from handlers.pay import ReplenishBalanceState, process_custom_amount_input
 
 router = Router()
 
@@ -183,6 +184,11 @@ async def handle_text(message: types.Message, state: FSMContext):
             message=message
         )
         await process_callback_view_profile(callback_query, state)
+        return
+
+    if current_state == ReplenishBalanceState.entering_custom_amount.state:
+        # Здесь вызовите ваш обработчик ввода суммы
+        await process_custom_amount_input(message, state)
         return
 
     if current_state == Form.waiting_for_key_name.state:
