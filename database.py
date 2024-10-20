@@ -52,6 +52,13 @@ async def init_db():
         ''')
     except asyncpg.exceptions.DuplicateColumnError:
         pass
+    try:
+        await conn.execute('''
+            ALTER TABLE keys
+            ADD COLUMN notified_24h BOOLEAN NOT NULL DEFAULT FALSE
+        ''')
+    except asyncpg.exceptions.DuplicateColumnError:
+        pass
 
     await conn.close()
 
