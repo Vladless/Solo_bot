@@ -21,13 +21,14 @@ async def notify_expiring_keys(bot: Bot):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            threshold_time = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000 
-            records = await conn.fetch('''
+            # Напоминание за 10 часов
+            threshold_time_10h = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000 
+            records_10h = await conn.fetch('''
                 SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
                 WHERE expiry_time <= $1 AND expiry_time > $2 AND notified = FALSE
-            ''', threshold_time, datetime.utcnow().timestamp() * 1000)
+            ''', threshold_time_10h, datetime.utcnow().timestamp() * 1000)
 
-            for record in records:
+            for record in records_10h:
                 tg_id = record['tg_id']
                 email = record['email']
                 expiry_time = record['expiry_time']
@@ -65,6 +66,52 @@ async def notify_expiring_keys(bot: Bot):
                 except Exception as e:
                     print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
 
+            # Напоминание за 24 часа
+            threshold_time_24h = (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000 
+            records_24h = await conn.fetch('''
+                SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
+                WHERE expiry_time <= $1 AND expiry_time > $2 AND notified_24h = FALSE
+            ''', threshold_time_24h, datetime.utcnow().timestamp() * 1000)
+
+            for record in records_24h:
+                tg_id = record['tg_id']
+                email = record['email']
+                expiry_time = record['expiry_time']
+                server_id = record['server_id']
+
+                time_left = (expiry_time / 1000) - datetime.utcnow().timestamp()
+                hours_left = max(0, int(time_left // 3600))
+
+                expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                balance = await get_balance(tg_id) 
+
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text='1 месяц (100 руб.)', callback_data=f'renew_plan|1|{record["client_id"]}'),
+                        InlineKeyboardButton(text='3 месяца (285 руб.)', callback_data=f'renew_plan|3|{record["client_id"]}')
+                    ],
+                    [
+                        InlineKeyboardButton(text='6 месяцев (540 руб.)', callback_data=f'renew_plan|6|{record["client_id"]}'),
+                        InlineKeyboardButton(text='1 год (1000 руб.)', callback_data=f'renew_plan|12|{record["client_id"]}')
+                    ],
+                    [
+                        InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance'),
+                        InlineKeyboardButton(text='Назад', callback_data='back_to_main')
+                    ]
+                ])
+
+                message = (f"Ваш ключ <b>{email}</b> истечет через <b>{hours_left} часов</b> "
+                           f"(<b>{expiry_date}</b>). Пожалуйста, продлите его.\n"
+                           f"Ваш текущий баланс: <b>{balance:.2f} руб.</b>")
+
+                try:
+                    await bot.send_message(chat_id=tg_id, text=message, parse_mode='HTML', reply_markup=keyboard)
+
+                    await conn.execute('UPDATE keys SET notified_24h = TRUE WHERE client_id = $1', record['client_id'])
+                except Exception as e:
+                    print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
+
+            # Обработка истекших ключей
             expired_records = await conn.fetch('''
                 SELECT tg_id, email, client_id, server_id FROM keys 
                 WHERE expiry_time <= $1
