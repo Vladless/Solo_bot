@@ -7,7 +7,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery,
 
 from bot import bot
 from database import add_referral, check_connection_exists, add_connection
-from config import CHANNEL_URL, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, SUPPORT_CHAT_URL, BOT_VERSION  # Импорт BOT_VERSION
 
 router = Router()
 
@@ -27,6 +27,7 @@ async def send_welcome_message(chat_id: int):
         "💰 <b>Реферальная программа: 25% от покупки</b>\n"
         "</blockquote>"
         "\n\n🎁 <b>1 день бесплатно!</b>\n\n"
+        f"<i>Версия бота: {BOT_VERSION}</i>\n"  # Добавление версии бота
         "<i>Перейдите в профиль для продолжения 👇</i>"
     )
 
@@ -80,7 +81,9 @@ async def handle_about_vpn(callback_query: CallbackQuery):
         "Для защиты ваших данных мы применяем новейшие протоколы шифрования, которые гарантируют вашу конфиденциальность.\n\n"
         
         "<b>🔑 Ваш ключ — ваша безопасность!</b>\n"
-        "Не передавайте своё шифрование сторонним лицам, чтобы избежать рисков.\n"
+        "Не передавайте своё шифрование сторонним лицам, чтобы избежать рисков.\n\n"
+        
+        f"<i>Версия бота: {BOT_VERSION}</i>"  # Добавление версии бота в информацию о VPN
     )
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
