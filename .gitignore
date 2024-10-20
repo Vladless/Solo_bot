@@ -6,3 +6,5 @@
 /bot_old.py
 /bot_old_2.py
 /database.db
+/backup_pg.sh
+/config copy.py

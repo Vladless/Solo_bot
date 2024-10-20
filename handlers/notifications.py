@@ -46,7 +46,7 @@ async def notify_expiring_keys(bot: Bot):
                     ],
                     [
                         InlineKeyboardButton(text='6 месяцев (540 руб.)', callback_data=f'renew_plan|6|{record["client_id"]}'),
-                        InlineKeyboardButton(text='1 год (1080 руб.)', callback_data=f'renew_plan|12|{record["client_id"]}')
+                        InlineKeyboardButton(text='1 год (1000 руб.)', callback_data=f'renew_plan|12|{record["client_id"]}')
                     ],
                     [
                         InlineKeyboardButton(text='Пополнить баланс', callback_data='replenish_balance'),
