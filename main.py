@@ -1,15 +1,17 @@
 import asyncio
 import logging
 import signal
-from aiogram.webhook.aiohttp_server import (SimpleRequestHandler, setup_application)
+
+from aiogram.webhook.aiohttp_server import (SimpleRequestHandler,
+                                            setup_application)
 from aiohttp import web
 
+from backup import backup_database
 from bot import bot, dp, router
 from config import WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
 from database import init_db
 from handlers.notifications import notify_expiring_keys
 from handlers.pay import payment_webhook
-from backup import backup_database  # Импорт функции бэкапа
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -20,14 +22,14 @@ async def periodic_notifications():
 
 async def periodic_database_backup():
     while True:
-        await backup_database()  # Выполнение бэкапа базы данных
-        await asyncio.sleep(21600)  # 6 часов = 21600 секунд
+        await backup_database()  
+        await asyncio.sleep(21600) 
 
 async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
     await init_db()
-    asyncio.create_task(periodic_notifications())  # Уведомления
-    asyncio.create_task(periodic_database_backup())  # Бэкапы
+    asyncio.create_task(periodic_notifications())  
+    asyncio.create_task(periodic_database_backup())
 
 async def on_shutdown(app):
     await bot.delete_webhook()
@@ -61,13 +63,12 @@ async def main():
 
     print(f"Webhook URL: {WEBHOOK_URL}")
 
-    # Обработка сигналов завершения
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_site(site)))
 
     try:
-        await asyncio.Event().wait()  # Ожидание сигнала остановки
+        await asyncio.Event().wait() 
     finally:
         pending = asyncio.all_tasks()
         for task in pending:
