@@ -9,6 +9,7 @@ from config import WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
 from database import init_db
 from handlers.notifications import notify_expiring_keys
 from handlers.pay import payment_webhook
+from backup import backup_database  # Импорт функции бэкапа
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,10 +18,16 @@ async def periodic_notifications():
         await notify_expiring_keys(bot)
         await asyncio.sleep(3600)
 
+async def periodic_database_backup():
+    while True:
+        await backup_database()  # Выполнение бэкапа базы данных
+        await asyncio.sleep(21600)  # 6 часов = 21600 секунд
+
 async def on_startup(app):
     await bot.set_webhook(WEBHOOK_URL)
     await init_db()
-    asyncio.create_task(periodic_notifications())
+    asyncio.create_task(periodic_notifications())  # Уведомления
+    asyncio.create_task(periodic_database_backup())  # Бэкапы
 
 async def on_shutdown(app):
     await bot.delete_webhook()
@@ -31,10 +38,9 @@ async def on_shutdown(app):
     except Exception as e:
         logging.error(f"Error during shutdown: {e}")
 
-
 async def shutdown_site(site):
     logging.info("Остановка сайта...")
-    await site.stop()  # Остановка сайта
+    await site.stop()
     logging.info("Сервер остановлен.")
 
 async def main():
@@ -63,7 +69,6 @@ async def main():
     try:
         await asyncio.Event().wait()  # Ожидание сигнала остановки
     finally:
-        # Убедимся, что сессии закрыты и задачи завершены
         pending = asyncio.all_tasks()
         for task in pending:
             task.cancel()
@@ -74,4 +79,3 @@ if __name__ == '__main__':
         asyncio.run(main())
     except Exception as e:
         logging.error(f"Ошибка при запуске приложения: {e}")
-        
