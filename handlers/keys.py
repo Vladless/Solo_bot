@@ -1,3 +1,4 @@
+import locale
 from datetime import datetime, timedelta
 
 import asyncpg
@@ -8,7 +9,7 @@ from bot import bot
 from client import add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import get_balance, update_balance
-import locale
+from handlers.texts import NO_KEYS
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
@@ -33,7 +34,6 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                     button = types.InlineKeyboardButton(text=f"🔑 {key_name}", callback_data=f'view_key|{key_name}|{client_id}')
                     buttons.append([button])
 
-                # Добавляем кнопку "Назад" в конце списка
                 back_button = types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')
                 buttons.append([back_button])
 
@@ -46,9 +46,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard, parse_mode="HTML")
             else:
                 response_message = (
-                    "<b>У вас нет подключённых устройств</b> 😕\n\n"
-                    "➕ <b>Создайте первое устройство, чтобы подключиться к VPN</b>.\n"
-                    "Ваши устройства будут отображаться здесь."
+                    NO_KEYS
                 )
                 create_key_button = types.InlineKeyboardButton(text='➕ Создать ключ', callback_data='create_key')
                 back_button = types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')
@@ -99,7 +97,6 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                     hours_left = time_left.seconds // 3600
                     days_left_message = f"Осталось часов: <b>{hours_left}</b>"
 
-                # Форматируем дату окончания в удобочитаемом виде
                 formatted_expiry_date = expiry_date.strftime('%d %B %Y года')
 
                 response_message = (f"🔑 <b>Ваш ключ:</b>\n<pre>{key}</pre>\n"
@@ -318,7 +315,6 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            # Начинаем транзакцию с блокировкой строки по client_id, чтобы предотвратить параллельную миграцию
             async with conn.transaction():
                 record = await conn.fetchrow(
                     'SELECT email, expiry_time, server_id FROM keys WHERE client_id = $1 FOR UPDATE', client_id
@@ -333,7 +329,6 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                         await callback_query.answer("Клиент уже на этом сервере.")
                         return
 
-                    # Проверка наличия клиента на новом сервере перед добавлением
                     session_new = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                     new_client_data = await add_client(
                         session_new, server_id, client_id, email, tg_id, limit_ip=1, total_gb=0,
@@ -344,16 +339,13 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                     if not new_client_data:
                         raise Exception("Ошибка при создании клиента на новом сервере.")
 
-                    # Генерация нового ключа
                     new_key = await link(session_new, server_id, client_id, email)
 
-                    # Обновляем запись в БД
                     await conn.execute(
                         'UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
                         server_id, new_key, client_id
                     )
 
-                    # Удаление клиента со старого сервера
                     try:
                         session_old = await login_with_credentials(current_server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                         success_delete = await delete_client(session_old, current_server_id, client_id)
