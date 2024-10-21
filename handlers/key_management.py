@@ -41,7 +41,8 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
     try:
         for server_id, server in SERVERS.items():
             count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
-            percent_full = (count / 100) * 100  
+            # Используем 60 как максимальное количество ключей
+            percent_full = (count / 60) * 100 if count <= 60 else 100  
             server_name = f"{server['name']} ({percent_full:.1f}%)"
             server_buttons.append([InlineKeyboardButton(text=server_name, callback_data=f'select_server|{server_id}')])
     finally:
@@ -60,6 +61,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
     await state.set_state(Form.waiting_for_server_selection)
 
     await callback_query.answer()
+
 
 @dp.callback_query(F.data.startswith('select_server|'))
 async def select_server(callback_query: CallbackQuery, state: FSMContext):
