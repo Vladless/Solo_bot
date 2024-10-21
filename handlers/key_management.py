@@ -19,6 +19,7 @@ from handlers.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.pay import ReplenishBalanceState, process_custom_amount_input
+from handlers.backup_handler import backup_command
 
 router = Router()
 
@@ -228,6 +229,9 @@ async def handle_text(message: types.Message, state: FSMContext):
 
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
+
+    if message.text == "/backup":
+        await backup_command(message)
 
     elif current_state is None:  # Если состояние не задано, обрабатываем обычные сообщения
         await start_command(message)
