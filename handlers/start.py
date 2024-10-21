@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
-from texts import ABOUT_VPN, WELCOME_TEXT
+from handlers.texts import ABOUT_VPN, WELCOME_TEXT
 
 from bot import bot
 from config import CHANNEL_URL, SUPPORT_CHAT_URL
