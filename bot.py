@@ -8,7 +8,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import key_management, keys, notifications, pay, profile, start
+from handlers import key_management, keys, notifications, pay, profile, start, backup_handler
 
 dp.include_router(start.router)
 dp.include_router(profile.router)
@@ -16,3 +16,4 @@ dp.include_router(keys.router)
 dp.include_router(key_management.router)
 dp.include_router(pay.router)
 dp.include_router(notifications.router)
+dp.include_router(backup_handler.router)
