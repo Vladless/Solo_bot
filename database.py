@@ -126,7 +126,6 @@ async def update_balance(tg_id: int, amount: float):
         WHERE tg_id = $2
     ''', amount, tg_id)
 
-    # Проверка и начисление реферального бонуса
     await handle_referral_on_balance_update(tg_id, amount)
 
     await conn.close()
@@ -157,7 +156,6 @@ async def add_referral(referred_tg_id: int, referrer_tg_id: int):
 async def handle_referral_on_balance_update(tg_id: int, amount: float):
     conn = await asyncpg.connect(DATABASE_URL)
 
-    # Проверяем, есть ли реферал в таблице
     referral = await conn.fetchrow('''
         SELECT referrer_tg_id FROM referrals WHERE referred_tg_id = $1
     ''', tg_id)
@@ -165,17 +163,13 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
     if referral:
         referrer_tg_id = referral['referrer_tg_id']
         
-        # Начисляем бонус (25% от платежа) пригласившему
-        bonus = amount * 0.25  # 25% от платежа
+        bonus = amount * 0.25 
 
-        # Проверяем, чтобы бонус не был отрицательным
         if bonus < 0:
             bonus = 0
 
-        # Обновляем баланс пригласившего
         await update_balance(referrer_tg_id, bonus)
 
-        # Обновляем статус бонуса для пригласившего
         await conn.execute('''
             UPDATE referrals SET reward_issued = TRUE 
             WHERE referrer_tg_id = $1 AND referred_tg_id = $2

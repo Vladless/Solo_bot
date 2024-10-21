@@ -1,13 +1,15 @@
 import os
+
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
+from texts import ABOUT_VPN, WELCOME_TEXT
 
 from bot import bot
-from database import add_referral, check_connection_exists, add_connection
-from config import CHANNEL_URL, SUPPORT_CHAT_URL, BOT_VERSION  # Импорт BOT_VERSION
+from config import CHANNEL_URL, SUPPORT_CHAT_URL
+from database import add_connection, add_referral, check_connection_exists
 
 router = Router()
 
@@ -15,20 +17,7 @@ class FeedbackState(StatesGroup):
     waiting_for_feedback = State()
 
 async def send_welcome_message(chat_id: int):
-    welcome_text = (
-        "<b>🎉 SoloNet — твой доступ в свободный интернет! 🌐✨</b>\n\n"
-        "<b>Наши преимущества:</b>\n"
-        "<blockquote>"
-        "🚀 <b>Высокая скорость</b>\n"
-        "🔄 <b>Стабильность</b>\n"
-        "🌍 <b>Смена локаций</b>\n"
-        "💬 <b>Отзывчивая поддержка</b>\n"
-        "📱💻 <b>Для телефонов, компьютеров и планшетов</b>\n"
-        "💰 <b>Реферальная программа: 25% от покупки</b>\n"
-        "</blockquote>"
-        "\n\n🎁 <b>1 день бесплатно!</b>\n\n" # Добавление версии бота
-        "<i>Перейдите в профиль для продолжения 👇</i>"
-    )
+    welcome_text = WELCOME_TEXT
 
     image_path = os.path.join(os.path.dirname(__file__), 'pic.jpg')
 
@@ -71,19 +60,7 @@ async def start_command(message: Message):
 @router.callback_query(lambda c: c.data == 'about_vpn')
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
-    info_message = (
-        "*О VPN*\n\n"
-        "<b>🚀 Высокоскоростные серверы</b>\n"
-        "Мы используем высокоскоростные серверы в различных локациях для обеспечения стабильного и быстрого соединения.\n\n"
-        
-        "<b>🔐 Безопасность данных</b>\n"
-        "Для защиты ваших данных мы применяем новейшие протоколы шифрования, которые гарантируют вашу конфиденциальность.\n\n"
-        
-        "<b>🔑 Ваш ключ — ваша безопасность!</b>\n"
-        "Не передавайте своё шифрование сторонним лицам, чтобы избежать рисков.\n\n"
-        
-        f"<i>Версия бота: {BOT_VERSION}</i>"  # Добавление версии бота в информацию о VPN
-    )
+    info_message = ABOUT_VPN
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
     inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])

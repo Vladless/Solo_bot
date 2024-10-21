@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
-from yookassa import Configuration, Payment 
+from yookassa import Configuration, Payment
 
 from bot import bot
 from config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
@@ -58,7 +58,6 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0)
 
-    # Клавиатура с фиксированными суммами и новой кнопкой "Ввести сумму"
     amount_keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='100 RUB', callback_data='amount_100'), InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
         [InlineKeyboardButton(text='600 RUB', callback_data='amount_600'), InlineKeyboardButton(text='1000 RUB', callback_data='amount_1000')],
@@ -99,7 +98,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     customer_name = callback_query.from_user.full_name
     customer_id = callback_query.from_user.id
 
-    # Используем tg_id для email
     customer_email = f"{customer_id}@solo.net"
 
     payment = Payment.create({
@@ -116,7 +114,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         "receipt": {
             "customer": {
                 "full_name": customer_name,
-                "email": customer_email,  # Используем email в формате "tg_id@solo.net"
+                "email": customer_email, 
                 "phone": "79000000000"
             },
             "items": [
@@ -201,7 +199,6 @@ async def process_enter_custom_amount(callback_query: types.CallbackQuery, state
 
 @router.message(State(ReplenishBalanceState.entering_custom_amount))
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
-    # Проверяем, является ли введенное значение числом
     if message.text.isdigit():
         amount = int(message.text)
         if amount <= 0:
@@ -211,7 +208,6 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
         await state.update_data(amount=amount)
         await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
 
-        # Создание платежа
         try:
             payment = Payment.create({
                 "amount": {
@@ -227,8 +223,8 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 "receipt": {
                     "customer": {
                         "full_name": message.from_user.full_name,
-                        "email": f"{message.from_user.id}@solo.net",  # Используем tg_id как email
-                        "phone": "79000000000"  # Здесь можно использовать номер телефона клиента, если он доступен
+                        "email": f"{message.from_user.id}@solo.net", 
+                        "phone": "79000000000" 
                     },
                     "items": [
                         {

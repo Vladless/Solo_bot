@@ -1,10 +1,11 @@
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot import bot 
-from database import get_balance, get_key_count, get_referral_stats, get_keys
+from bot import bot
+from database import get_balance, get_key_count, get_referral_stats
+
 
 class ReplenishBalanceState(StatesGroup):
     choosing_transfer_method = State()
@@ -43,10 +44,10 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [button_create_key, button_view_keys],  # В один ряд "➕ Устройство" и "📱 Мои устройства"
-            [button_replenish_balance],              # Отдельная кнопка для пополнения баланса
-            [button_invite, button_instructions],    # В один ряд "👥 Пригласить" и "📘 Инструкции"
-            [button_back]                            # Отдельная кнопка "Назад"
+            [button_create_key, button_view_keys],  
+            [button_replenish_balance],           
+            [button_invite, button_instructions],   
+            [button_back]                           
         ])
 
     except Exception as e:

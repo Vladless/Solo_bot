@@ -1,25 +1,27 @@
 import re
 import uuid
 from datetime import datetime, timedelta
-from aiogram.filters import Command
 
 import asyncpg
 from aiogram import F, Router, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
 from auth import link, login_with_credentials
-from bot import dp, bot
+from bot import bot, dp
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS, ADMIN_ID
+from config import (ADMIN_ID, ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
+                    SERVERS)
 from database import add_connection, get_balance, store_key, update_balance
+from handlers.backup_handler import backup_command
 from handlers.instructions import send_instructions
+from handlers.pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from handlers.pay import ReplenishBalanceState, process_custom_amount_input
-from handlers.backup_handler import backup_command
+from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE
 
 router = Router()
 
@@ -41,16 +43,14 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
     try:
         for server_id, server in SERVERS.items():
             count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
-            # Используем 60 как максимальное количество ключей
             percent_full = (count / 60) * 100 if count <= 60 else 100  
             server_name = f"{server['name']} ({percent_full:.1f}%)"
             server_buttons.append([InlineKeyboardButton(text=server_name, callback_data=f'select_server|{server_id}')])
     finally:
         await conn.close()
 
-    # Добавляем кнопку "Назад"
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='view_profile')
-    server_buttons.append([button_back])  # Кнопка "Назад" внизу списка серверов
+    server_buttons.append([button_back]) 
 
     await callback_query.message.edit_text(
         "<b>⚙️ Выберите сервер для создания ключа:</b>",
@@ -78,9 +78,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
 
     if trial_status == 1:
         await callback_query.message.edit_text(
-            "<b>⚠️ У вас уже был пробный ключ.</b>\n\n"
-            "Новый ключ будет выдан на <b>один месяц</b> и стоит <b>100 рублей</b>.\n\n"
-            "<i>Хотите продолжить?</i>",
+            KEY,
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text='✅ Да, создать новый ключ', callback_data='confirm_create_new_key')],
@@ -90,8 +88,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
         await state.update_data(creating_new_key=True)
     else:
         await callback_query.message.edit_text(
-            "<b>🎉 Вам будет выдан пробный ключ на 24 часа!</b>\n\n"
-            "<i>Пожалуйста, введите название для вашего пробного ключа:</i>",
+            KEY_TRIAL,
             parse_mode="HTML"
         )
         await state.set_state(Form.waiting_for_key_name)
@@ -109,8 +106,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
         replenish_button = InlineKeyboardButton(text='Перейти в профиль', callback_data='view_profile')
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
         await callback_query.message.edit_text(
-            "❗️ Недостаточно средств на балансе для создания нового ключа. "
-            "Пожалуйста, пополните баланс.", 
+            NULL_BALANCE, 
             reply_markup=keyboard
         )
         await state.clear()
@@ -140,7 +136,6 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            # Получаем всех пользователей с не использованным пробным ключом
             records = await conn.fetch('''
                 SELECT tg_id FROM connections WHERE trial = 0
             ''')
@@ -153,10 +148,8 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                         "Пожалуйста, воспользуйтесь им, чтобы протестировать наш сервис."
                     )
                     try:
-                        # Отправляем сообщение каждому пользователю
                         await bot.send_message(chat_id=tg_id, text=trial_message)
                     except Exception as e:
-                        # Если бот был заблокирован пользователем, просто пропускаем его
                         if "Forbidden: bot was blocked by the user" in str(e):
                             print(f"Бот заблокирован пользователем с tg_id: {tg_id}")
                         else:
@@ -179,11 +172,11 @@ async def send_message_to_all_clients(message: types.Message, state: FSMContext)
         return
 
     await message.answer("Введите текст сообщения, который вы хотите отправить всем клиентам:")
-    await state.set_state(Form.waiting_for_message)  # Устанавливаем состояние ожидания сообщения
+    await state.set_state(Form.waiting_for_message) 
 
 @router.message(Form.waiting_for_message)
 async def process_message_to_all(message: types.Message, state: FSMContext):
-    text_message = message.text  # Получаем текст сообщения
+    text_message = message.text 
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -203,14 +196,14 @@ async def process_message_to_all(message: types.Message, state: FSMContext):
     finally:
         await conn.close()
 
-    await state.clear()  # Очистка состояния после отправки сообщения
+    await state.clear()
 
 @router.message() 
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
 
     if message.text in ["/send_to_all"]:
-        await send_message_to_all_clients(message, state)  # Передаем состояние
+        await send_message_to_all_clients(message, state) 
         return
 
     if message.text == "Мой профиль":
@@ -225,7 +218,6 @@ async def handle_text(message: types.Message, state: FSMContext):
         return
 
     if current_state == ReplenishBalanceState.entering_custom_amount.state:
-        # Здесь вызовите ваш обработчик ввода суммы
         await process_custom_amount_input(message, state)
         return
 
@@ -235,7 +227,7 @@ async def handle_text(message: types.Message, state: FSMContext):
     if message.text == "/backup":
         await backup_command(message)
 
-    elif current_state is None:  # Если состояние не задано, обрабатываем обычные сообщения
+    elif current_state is None:  
         await start_command(message)
 
 
