@@ -7,6 +7,7 @@ from config import DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD
 from database import get_balance, update_key_expiry, delete_key
 from client import extend_client_key, delete_client
 from auth import login_with_credentials
+from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, KEY_RENEWAL_FAILED, KEY_DELETED, KEY_DELETION_FAILED
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,11 +40,9 @@ async def notify_expiring_keys(bot: Bot):
                 email = record['email']
                 expiry_time = record['expiry_time']
                 server_id = record['server_id']
+                expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
-                message = f"🔔 Уведомление: Ваш ключ для сервера {server_id} истекает через 10 часов.\n" \
-                          f"Email: {email}\n" \
-                          f"Дата истечения: {datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}"
-                
+                message = KEY_EXPIRY_10H.format(server_id=server_id, email=email, expiry_date=expiry_date)
                 await bot.send_message(tg_id, message)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
 
@@ -69,12 +68,7 @@ async def notify_expiring_keys(bot: Bot):
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
                 balance = await get_balance(tg_id)
 
-                message_24h = f"⏳ Уведомление: Ваш ключ для сервера {server_id} истекает через 24 часа.\n" \
-                               f"Email: {email}\n" \
-                               f"Осталось времени: {hours_left} часов\n" \
-                               f"Дата истечения: {expiry_date}\n" \
-                               f"Баланс: {balance:.2f} руб."
-
+                message_24h = KEY_EXPIRY_24H.format(server_id=server_id, email=email, hours_left=hours_left, expiry_date=expiry_date, balance=balance)
                 await bot.send_message(tg_id, message_24h)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
 
@@ -94,33 +88,33 @@ async def notify_expiring_keys(bot: Bot):
                 balance = await get_balance(tg_id)
                 server_id = record['server_id']
 
-                logger.info(f"Проверка баланса для клиента {client_id}: {balance}.")
+                logger.info(f"Проверка баланса для клиента {tg_id}: {balance}.")
 
                 if balance >= 100:
                     new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
                     await update_key_expiry(client_id, new_expiry_time)
-                    logger.info(f"Ключ для клиента {client_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}.")
+                    logger.info(f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}.")
 
                     session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                     success = await extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
                     if success:
-                        await bot.send_message(tg_id, "Ваш ключ был продлен на месяц.")
+                        await bot.send_message(tg_id, KEY_RENEWED)
                         logger.info(f"Ключ для пользователя {tg_id} успешно продлен на месяц.")
                     else:
-                        await bot.send_message(tg_id, "Не удалось продлить ключ на панели, обратитесь в поддержку.")
+                        await bot.send_message(tg_id, KEY_RENEWAL_FAILED)
                         logger.error(f"Не удалось продлить ключ для пользователя {tg_id}.")
 
                 else:
                     await delete_key(client_id)
-                    logger.info(f"Ключ для клиента {client_id} удален из-за недостаточного баланса.")
+                    logger.info(f"Ключ для клиента {tg_id} удален из-за недостаточного баланса.")
                     
                     session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
                     success = await delete_client(session, server_id, client_id)
                     if success:
-                        await bot.send_message(tg_id, "Ваш ключ был удален из-за недостаточного баланса.")
+                        await bot.send_message(tg_id, KEY_DELETED)
                         logger.info(f"Ключ для пользователя {tg_id} удален.")
                     else:
-                        await bot.send_message(tg_id, "Не удалось удалить ключ с панели, обратитесь в поддержку.")
+                        await bot.send_message(tg_id, KEY_DELETION_FAILED)
                         logger.error(f"Не удалось удалить ключ для пользователя {tg_id}.")
 
         finally:
@@ -128,4 +122,3 @@ async def notify_expiring_keys(bot: Bot):
             logger.info("Соединение с базой данных закрыто.")
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомлений: {e}")
-
