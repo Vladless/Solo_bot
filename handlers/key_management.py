@@ -21,12 +21,10 @@ from handlers.instructions import send_instructions
 from handlers.pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
-from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE
+from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, TRIAL, key_message_success
+from handlers.utils import sanitize_key_name
 
 router = Router()
-
-def sanitize_key_name(key_name: str) -> str:
-    return re.sub(r'[^a-z0-9@._-]', '', key_name.lower())
 
 class Form(StatesGroup):
     waiting_for_server_selection = State()
@@ -144,8 +142,7 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                 for record in records:
                     tg_id = record['tg_id']
                     trial_message = (
-                        "🎉 Вам предоставлен пробный период на 1 день!\n"
-                        "Пожалуйста, воспользуйтесь им, чтобы протестировать наш сервис."
+                        TRIAL
                     )
                     try:
                         await bot.send_message(chat_id=tg_id, text=trial_message)
@@ -315,10 +312,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         ])
 
         key_message = (
-            "✅ Ключ успешно создан:\n"
-            f"<pre>{connection_link}</pre>\n\n"
-            f"{remaining_time_message}\n\n"
-            "<i>Добавьте ключ в приложение по инструкции ниже:</i>"
+            key_message_success(connection_link, remaining_time_message)
         )
 
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
