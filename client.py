@@ -1,7 +1,5 @@
 import json
 
-import aiohttp
-
 from config import SERVERS
 
 

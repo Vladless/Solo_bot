@@ -10,6 +10,7 @@ from client import add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import get_balance, update_balance
 from handlers.texts import NO_KEYS
+from handlers.texts import key_message, key_relocated
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
@@ -99,11 +100,9 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 formatted_expiry_date = expiry_date.strftime('%d %B %Y года')
 
-                response_message = (f"🔑 <b>Ваш ключ:</b>\n<pre>{key}</pre>\n"
-                                    f"📅 <b>Дата окончания:</b> {formatted_expiry_date}\n"
-                                    f"{days_left_message}\n"
-                                    f"🌍 <b>Сервер:</b> {server_name}\n\n"  # Отступ между сервером и текстом
-                                    f"<i>Скопируйте ключ и перейдите в инструкции👇</i>")  # Курсивный текст
+                response_message = (
+                    key_message(key, formatted_expiry_date, days_left_message, server_name)
+                ) 
 
                 renew_button = types.InlineKeyboardButton(text='⏳ Продлить ключ', callback_data=f'renew_key|{client_id}')
                 instructions_button = types.InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')
@@ -354,9 +353,7 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                             raise Exception(f"Ошибка при удалении клиента с сервера {current_server_id}")
 
                         response_message = (
-                            f"Ключ успешно перемещен на новый сервер.\n\n"
-                            f"<b>Удалите старый ключ из вашего приложения и используйте новый для подключения к новому серверу:</b>\n"
-                            f"<pre>{new_key}</pre>"
+                            key_relocated(new_key)
                         )
                     except Exception as e:
                         response_message = f"Ключ перемещен, но возникла ошибка при удалении клиента с текущего сервера: {e}"
