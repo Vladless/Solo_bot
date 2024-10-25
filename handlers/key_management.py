@@ -1,4 +1,3 @@
-import re
 import uuid
 from datetime import datetime, timedelta
 
@@ -195,9 +194,13 @@ async def process_message_to_all(message: types.Message, state: FSMContext):
 
     await state.clear()
 
-@router.message() 
+@router.message()
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
+
+    # Проверяем, является ли сообщение командой
+    if message.text.startswith('/'):
+        return message.text  # Возвращаем команду
 
     if message.text in ["/send_to_all"]:
         await send_message_to_all_clients(message, state) 
@@ -220,9 +223,11 @@ async def handle_text(message: types.Message, state: FSMContext):
 
     if current_state == Form.waiting_for_key_name.state:
         await handle_key_name_input(message, state)
+        return
 
     if message.text == "/backup":
         await backup_command(message)
+        return
 
     elif current_state is None:  
         await start_command(message)
