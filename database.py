@@ -217,3 +217,12 @@ async def delete_key(client_id: str):
         WHERE client_id = $1
     ''', client_id)
     await conn.close()
+
+async def add_balance_to_client(client_id: str, amount: float):
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute('''
+        UPDATE connections
+        SET balance = balance + $1
+        WHERE tg_id = $2
+    ''', amount, client_id)
+    await conn.close()
