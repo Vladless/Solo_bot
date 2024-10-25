@@ -126,6 +126,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
                         "currency": "RUB"
                     },
                     "vat_code": 6
+                  ## Раскоментируйте следующие строки, если у вас регистрация как ИП, а не самозанятость  
+                  ##  "payment_subject": "payment",
+                  ##  "payment_mode": "full_payment", 
                 }
             ]
         },

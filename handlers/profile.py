@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import bot
 from database import get_balance, get_key_count, get_referral_stats
+from handlers.texts import profile_message_send, invite_message_send
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -23,10 +24,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             balance = 0 
 
         profile_message = (
-            f"<b>Профиль: {username}</b>\n\n"
-            f"🔹 <b>ID:</b> {tg_id}\n"
-            f"🔹 <b>Баланс:</b> {balance} RUB\n"
-            f"🔹 <b>К-во устройств:</b> {key_count}\n\n"
+            profile_message_send(username, tg_id, balance, key_count)
         )
 
         profile_message += (
@@ -73,10 +71,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     referral_stats = await get_referral_stats(tg_id)
     
     invite_message = (
-        f"👥 <b>Ваша реферальная ссылка:</b>\n<pre>{referral_link}</pre>\n"
-        f"<i>Пригласите реферала и получайте 25% с его каждого пополнения!</i>\n\n"
-        f"🔹 <b>Всего приглашено:</b> {referral_stats['total_referrals']}\n"
-        f"🔹 <b>Активных рефералов:</b> {referral_stats['active_referrals']}"
+        invite_message_send(referral_link,referral_stats)
     )
     
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='view_profile')
