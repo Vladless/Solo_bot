@@ -193,3 +193,27 @@ async def get_referral_stats(referrer_tg_id: int):
         'total_referrals': total_referrals,
         'active_referrals': active_referrals
     }
+
+async def update_key_expiry(client_id: str, new_expiry_time: int):
+    """
+    Обновление времени истечения ключа на новое значение.
+    """
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute('''
+        UPDATE keys
+        SET expiry_time = $1, notified = FALSE, notified_24h = FALSE
+        WHERE client_id = $2
+    ''', new_expiry_time, client_id)
+    await conn.close()
+
+
+async def delete_key(client_id: str):
+    """
+    Удаление ключа из базы данных.
+    """
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute('''
+        DELETE FROM keys
+        WHERE client_id = $1
+    ''', client_id)
+    await conn.close()

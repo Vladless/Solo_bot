@@ -6,14 +6,14 @@ from datetime import datetime
 from aiogram.types import BufferedInputFile
 
 from bot import bot
-from config import ADMIN_ID, DB_NAME, DB_PASSWORD, DB_USER
+from config import ADMIN_ID, DB_NAME, DB_PASSWORD, DB_USER, BACK_DIR
 
 
 async def backup_database():
 
     USER = DB_USER
     HOST = "localhost"
-    BACKUP_DIR = "/home/vlad"
+    BACKUP_DIR = BACK_DIR
     DATE = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     BACKUP_FILE = f"{BACKUP_DIR}/{DB_NAME}-backup-{DATE}.sql"
 
