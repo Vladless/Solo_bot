@@ -8,3 +8,4 @@
 /database.db
 /backup_pg.sh
 /config copy.py
+/docker-compose.yml
