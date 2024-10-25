@@ -22,6 +22,7 @@ from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, TRIAL, key_message_success
 from handlers.utils import sanitize_key_name
+from handlers.admin import cmd_add_balance
 
 router = Router()
 
@@ -198,10 +199,6 @@ async def process_message_to_all(message: types.Message, state: FSMContext):
 async def handle_text(message: types.Message, state: FSMContext):
     current_state = await state.get_state()
 
-    # Проверяем, является ли сообщение командой
-    if message.text.startswith('/'):
-        return message.text  # Возвращаем команду
-
     if message.text in ["/send_to_all"]:
         await send_message_to_all_clients(message, state) 
         return
@@ -227,6 +224,10 @@ async def handle_text(message: types.Message, state: FSMContext):
 
     if message.text == "/backup":
         await backup_command(message)
+        return
+    
+    if message.text == "/add_balance":
+        await cmd_add_balance(message)
         return
 
     elif current_state is None:  
