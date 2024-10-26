@@ -2,8 +2,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import F, Router, types
-from aiogram.filters import Command
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
@@ -12,17 +11,13 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
 from auth import link, login_with_credentials
 from bot import bot, dp
 from client import add_client
-from config import (ADMIN_ID, ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
                     SERVERS)
 from database import add_connection, get_balance, store_key, update_balance
-from handlers.backup_handler import backup_command
 from handlers.instructions import send_instructions
-from handlers.pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
-from handlers.start import start_command
-from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, TRIAL, key_message_success
+from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, key_message_success
 from handlers.utils import sanitize_key_name
-from handlers.admin import cmd_add_balance
 
 router = Router()
 
@@ -120,119 +115,6 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)
     await callback_query.answer()
-
-@router.message(Command('start'))
-async def handle_start(message: types.Message, state: FSMContext):
-    await start_command(message)
-
-@router.message(Command('add_balance'))
-async def handle_add_balance(message: types.Message, state: FSMContext):
-    await cmd_add_balance(message)
-
-@router.message(Command('menu'))
-async def handle_menu(message: types.Message, state: FSMContext):
-    await start_command(message)
-
-@router.message(Command('send_trial'))
-async def handle_send_trial_command(message: types.Message, state: FSMContext):
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            records = await conn.fetch('''
-                SELECT tg_id FROM connections WHERE trial = 0
-            ''')
-
-            if records:
-                for record in records:
-                    tg_id = record['tg_id']
-                    trial_message = (
-                        TRIAL
-                    )
-                    try:
-                        await bot.send_message(chat_id=tg_id, text=trial_message)
-                    except Exception as e:
-                        if "Forbidden: bot was blocked by the user" in str(e):
-                            print(f"Бот заблокирован пользователем с tg_id: {tg_id}")
-                        else:
-                            print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}")
-
-                await message.answer("Сообщения о пробном периоде отправлены всем пользователям с не использованным ключом.")
-            else:
-                await message.answer("Нет пользователей с не использованными пробными ключами.")
-
-        finally:
-            await conn.close()
-
-    except Exception as e:
-        await message.answer(f"Ошибка при отправке сообщений: {e}")
-
-@router.message(Command('send_to_all'))
-async def send_message_to_all_clients(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("У вас нет прав для выполнения этой команды.")
-        return
-
-    await message.answer("Введите текст сообщения, который вы хотите отправить всем клиентам:")
-    await state.set_state(Form.waiting_for_message) 
-
-@router.message(Form.waiting_for_message)
-async def process_message_to_all(message: types.Message, state: FSMContext):
-    text_message = message.text 
-
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        tg_ids = await conn.fetch('SELECT tg_id FROM connections')
-
-        for record in tg_ids:
-            tg_id = record['tg_id']
-            try:
-                await bot.send_message(chat_id=tg_id, text=text_message)
-            except Exception as e:
-                print(f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя.")
-
-        await message.answer("Сообщение было отправлено всем клиентам.")
-    except Exception as e:
-        print(f"Ошибка при подключении к базе данных: {e}")
-        await message.answer("Произошла ошибка при отправке сообщения.")
-    finally:
-        await conn.close()
-
-    await state.clear()
-
-@router.message()
-async def handle_text(message: types.Message, state: FSMContext):
-    current_state = await state.get_state()
-
-    if message.text in ["/send_to_all"]:
-        await send_message_to_all_clients(message, state) 
-        return
-
-    if message.text == "Мой профиль":
-        callback_query = types.CallbackQuery(
-            id="1",
-            from_user=message.from_user,
-            chat_instance='',
-            data='view_profile',
-            message=message
-        )
-        await process_callback_view_profile(callback_query, state)
-        return
-
-    if current_state == ReplenishBalanceState.entering_custom_amount.state:
-        await process_custom_amount_input(message, state)
-        return
-
-    if current_state == Form.waiting_for_key_name.state:
-        await handle_key_name_input(message, state)
-        return
-
-    if message.text == "/backup":
-        await backup_command(message)
-        return
-
-    elif current_state is None:  
-        await start_command(message)
-
 
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
