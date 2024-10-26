@@ -125,6 +125,10 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
 async def handle_start(message: types.Message, state: FSMContext):
     await start_command(message)
 
+@router.message(Command('add_balance'))
+async def handle_add_balance(message: types.Message, state: FSMContext):
+    await cmd_add_balance(message)
+
 @router.message(Command('menu'))
 async def handle_menu(message: types.Message, state: FSMContext):
     await start_command(message)
@@ -224,10 +228,6 @@ async def handle_text(message: types.Message, state: FSMContext):
 
     if message.text == "/backup":
         await backup_command(message)
-        return
-    
-    if message.text == "/add_balance":
-        await cmd_add_balance(message)
         return
 
     elif current_state is None:  
