@@ -21,7 +21,7 @@ async def create_trial_key(tg_id: int):
         session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
         current_time = datetime.utcnow()
 
-        expiry_time = current_time + timedelta(days=30, hours=3)
+        expiry_time = current_time + timedelta(days=1, hours=3)
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
         
         client_id = str(uuid.uuid4()) 
