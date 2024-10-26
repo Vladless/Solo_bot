@@ -9,8 +9,9 @@ dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
 from handlers import (backup_handler, key_management, keys, notifications, pay,
-                      profile, start, admin)
+                      profile, start, admin, commands)
 
+dp.include_router(commands.router)
 dp.include_router(start.router)
 dp.include_router(profile.router)
 dp.include_router(keys.router)
