@@ -1,18 +1,14 @@
 import random
 import asyncpg
-import time
-import uuid  # Импортируем модуль для генерации UUID
+import uuid 
 from config import DATABASE_URL, SERVERS, ADMIN_USERNAME, ADMIN_PASSWORD
-from auth import login_with_credentials, link  # Импортируйте необходимые функции
+from auth import login_with_credentials, link 
 from client import add_client
 from database import store_key, add_connection
 from handlers.texts import INSTRUCTIONS
 from datetime import datetime, timedelta
+from handlers.utils import generate_random_email, get_least_loaded_server
 
-def generate_random_email():
-    """Генерирует случайный набор символов."""
-    random_string = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=6))
-    return random_string 
 
 async def create_trial_key(tg_id: int):
     conn = await asyncpg.connect(DATABASE_URL)
@@ -52,16 +48,3 @@ async def create_trial_key(tg_id: int):
             return {'error': 'Не удалось добавить клиента на панель'}
     finally:
         await conn.close()
-
-async def get_least_loaded_server(conn):
-    least_loaded_server_id = None
-    min_load_percentage = float('inf') 
-
-    for server_id, server in SERVERS.items():
-        count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
-        percent_full = (count / 60) * 100 if count <= 60 else 100 
-        if percent_full < min_load_percentage:
-            min_load_percentage = percent_full
-            least_loaded_server_id = server_id
-
-    return least_loaded_server_id
