@@ -46,10 +46,10 @@ async def notify_expiring_keys(bot: Bot):
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id, bot.id)
-        return member.status == 'left'  # Если бот не в чате, он заблокирован
+        return member.status == 'left' 
     except Exception as e:
         logger.error(f"Ошибка при проверке статуса бота у пользователя {chat_id}: {e}")
-        return False  # Если произошла ошибка, предполагаем, что бот не заблокирован
+        return False 
 
 async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: float, threshold_time_10h: float):
     records = await conn.fetch('''
@@ -73,12 +73,12 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
-                continue  # Пропустить этого пользователя и продолжить
+                continue  
 
             await conn.execute('UPDATE keys SET notified = TRUE WHERE client_id = $1', record['client_id'])
             logger.info(f"Обновлено поле notified для клиента {record['client_id']}.")
         
-        await asyncio.sleep(1)  # Задержка между уведомлениями
+        await asyncio.sleep(1)  
 
 async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: float, threshold_time_24h: float):
     logger.info("Проверка истекших ключей...")
@@ -109,17 +109,17 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}")
-                continue  # Пропустить этого пользователя и продолжить
+                continue  
 
             await conn.execute('UPDATE keys SET notified_24h = TRUE WHERE client_id = $1', record['client_id'])
             logger.info(f"Обновлено поле notified_24h для клиента {record['client_id']}.")
         
-        await asyncio.sleep(1)  # Задержка между уведомлениями
+        await asyncio.sleep(1)  
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка истекших ключей...")
     
-    current_time = int(current_time)  # Убедитесь, что время в миллисекундах
+    current_time = int(current_time)  
     expiring_keys = await conn.fetch('''
         SELECT tg_id, client_id, expiry_time, server_id, email FROM keys 
         WHERE expiry_time <= $1
@@ -174,4 +174,4 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления о неудачном удалении ключа пользователю {tg_id}: {e}")
 
-        await asyncio.sleep(1)  # Задержка между обработками ключей
+        await asyncio.sleep(1) 
