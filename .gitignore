@@ -10,3 +10,4 @@
 /config copy.py
 /docker-compose.yml
 __pycache__
+handlers/texts.py
