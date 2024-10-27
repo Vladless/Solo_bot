@@ -11,6 +11,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import get_balance, update_balance
 from handlers.texts import NO_KEYS
 from handlers.texts import key_message, key_relocated
+from handlers.texts import RENEWAL_PLANS, INSUFFICIENT_FUNDS_MSG, KEY_NOT_FOUND_MSG, SUCCESS_RENEWAL_MSG, ERROR_RENEWAL_MSG, PLAN_SELECTION_MSG
 
 locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
@@ -159,17 +160,15 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                 expiry_time = record['expiry_time']
                 current_time = datetime.utcnow().timestamp() * 1000  
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text='📅 1 месяц (100 руб.)', callback_data=f'renew_plan|1|{client_id}')],
-                    [types.InlineKeyboardButton(text='📅 3 месяца (285 руб.)', callback_data=f'renew_plan|3|{client_id}')],
-                    [types.InlineKeyboardButton(text='📅 6 месяцев (540 руб.)', callback_data=f'renew_plan|6|{client_id}')],
-                    [types.InlineKeyboardButton(text='📅 12 месяцев (1000 руб.)', callback_data=f'renew_plan|12|{client_id}')],
+                    [types.InlineKeyboardButton(text=f'📅 1 месяц ({RENEWAL_PLANS["1"]["price"]} руб.)', callback_data=f'renew_plan|1|{client_id}')],
+                    [types.InlineKeyboardButton(text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.)', callback_data=f'renew_plan|3|{client_id}')],
+                    [types.InlineKeyboardButton(text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.)', callback_data=f'renew_plan|6|{client_id}')],
+                    [types.InlineKeyboardButton(text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.)', callback_data=f'renew_plan|12|{client_id}')],
                     [types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')]
                 ])
 
                 balance = await get_balance(tg_id)
-                response_message = (f"<b>Выберите план продления:</b>\n\n"
-                                    f"💰 <b>Баланс:</b> {balance} руб.\n\n"
-                                    f"📅 <b>Текущая дата истечения ключа:</b> {datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}")
+                response_message = PLAN_SELECTION_MSG.format(balance=balance, expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S'))
 
                 await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
 
@@ -180,6 +179,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
         await bot.edit_message_text(f"<b>Ошибка при выборе плана:</b> {e}", chat_id=tg_id, message_id=callback_query.message.message_id, parse_mode="HTML")
 
     await callback_query.answer()
+
 
 @router.callback_query(lambda c: c.data.startswith('confirm_delete|'))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
@@ -222,7 +222,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
 @router.callback_query(lambda c: c.data.startswith('renew_plan|'))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    plan, client_id = callback_query.data.split('|')[1], callback_query.data.split('|')[2] 
+    plan, client_id = callback_query.data.split('|')[1], callback_query.data.split('|')[2]
     days_to_extend = 30 * int(plan)  
 
     try:
@@ -241,14 +241,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 else:
                     new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
 
-                if plan == '1':
-                    cost = 100
-                elif plan == '3':
-                    cost = 285
-                elif plan == '6':
-                    cost = 540  
-                elif plan == '12':
-                    cost = 1000  
+                cost = RENEWAL_PLANS[plan]['price']
 
                 balance = await get_balance(tg_id)
                 if balance < cost:
@@ -256,7 +249,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_profile')
                     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[replenish_button], [back_button]])
 
-                    await bot.edit_message_text("Недостаточно средств для продления ключа.", chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+                    await bot.edit_message_text(INSUFFICIENT_FUNDS_MSG, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                     return
 
                 session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
@@ -265,14 +258,14 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 if success:
                     await update_balance(tg_id, -cost)
                     await conn.execute('UPDATE keys SET expiry_time = $1 WHERE client_id = $2', new_expiry_time, client_id)
-                    response_message = f"Ваш ключ был успешно продлен на {days_to_extend // 30} месяц(-а)."
+                    response_message = SUCCESS_RENEWAL_MSG.format(months=RENEWAL_PLANS[plan]['months'])
                     back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_profile')
                     keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
                     await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
                 else:
-                    await bot.edit_message_text("Ошибка при продлении ключа.", chat_id=tg_id, message_id=callback_query.message.message_id)
+                    await bot.edit_message_text(ERROR_RENEWAL_MSG, chat_id=tg_id, message_id=callback_query.message.message_id)
             else:
-                await bot.edit_message_text("Ключ не найден.", chat_id=tg_id, message_id=callback_query.message.message_id)
+                await bot.edit_message_text(KEY_NOT_FOUND_MSG, chat_id=tg_id, message_id=callback_query.message.message_id)
 
         finally:
             await conn.close()
@@ -294,7 +287,7 @@ async def process_callback_change_location(callback_query: types.CallbackQuery):
     try:
         for server_id, server in SERVERS.items():
             count = await conn.fetchval('SELECT COUNT(*) FROM keys WHERE server_id = $1', server_id)
-            percent_full = (count / 100) * 100  
+            percent_full = (count / 60) * 100 if count <= 60 else 100  
             server_name = f"{server['name']} ({percent_full:.1f}%)"
             server_buttons.append([types.InlineKeyboardButton(text=server_name, callback_data=f'select_server&{server_id}&{client_id}')])
     finally:
