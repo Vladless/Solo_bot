@@ -8,7 +8,7 @@ from handlers.texts import ABOUT_VPN, WELCOME_TEXT
 from bot import bot
 from config import CHANNEL_URL, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
-from handlers.trial_key import create_trial_key  
+from handlers.keys.trial_key import create_trial_key  
 from handlers.texts import INSTRUCTIONS_TRIAL
 
 router = Router()
@@ -65,23 +65,19 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
     user_id = callback_query.from_user.id
 
-    # Создаём триальный ключ
     trial_key_info = await create_trial_key(user_id)
 
     if 'error' in trial_key_info:
         await callback_query.message.answer(trial_key_info['error'])
     else:
-        # Формируем сообщение с ключом и инструкциями
         key_message = (
             f"<b>Ваш ключ доступа:</b>\n<pre>{trial_key_info['key']}</pre>\n\n"
             f"<b>Инструкции:</b>\n{INSTRUCTIONS_TRIAL}"
         )
         
-        # Кнопка "В профиль"
         button_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
         inline_keyboard_profile = InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
-        # Отправляем текст с ключом и инструкциями в виде цитаты
         await callback_query.message.answer(
             key_message,
             parse_mode='HTML',

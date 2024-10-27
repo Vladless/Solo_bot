@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 
+from bot import dp
 import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -9,12 +10,11 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
 from auth import link, login_with_credentials
-from bot import bot, dp
 from client import add_client
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
                     SERVERS)
 from database import add_connection, get_balance, store_key, update_balance
-from handlers.instructions import send_instructions
+from handlers.instructions.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, key_message_success
 from handlers.utils import sanitize_key_name
@@ -121,7 +121,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     key_name = sanitize_key_name(message.text)
 
     if not key_name:
-        await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите профиль на английском языке.")
+        await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите ключ устройства на английском языке.")
         return
 
     data = await state.get_data()
@@ -164,7 +164,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         if not response.get("success", True):
             error_msg = response.get("msg", "Неизвестная ошибка.")
             if "Duplicate email" in error_msg:
-                await message.bot.send_message(tg_id, "❌ Этот email уже используется. Пожалуйста, выберите другое имя для ключа.")
+                await message.bot.send_message(tg_id, "❌ Это имя уже используется. Пожалуйста, выберите другое имя для ключа.")
                 await state.set_state(Form.waiting_for_key_name)
                 return
             else:

@@ -13,6 +13,7 @@ from config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import (add_connection, check_connection_exists, get_key_count,
                       update_balance)
 from handlers.profile import process_callback_view_profile
+from handlers.texts import PAYMENT_OPTIONS 
 
 router = Router()
 
@@ -59,10 +60,20 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
             await add_connection(tg_id, balance=0.0, trial=0)
 
     amount_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='100 RUB', callback_data='amount_100'), InlineKeyboardButton(text='300 RUB', callback_data='amount_300')],
-        [InlineKeyboardButton(text='600 RUB', callback_data='amount_600'), InlineKeyboardButton(text='1000 RUB', callback_data='amount_1000')],
-        [InlineKeyboardButton(text='💰 Ввести свою сумму', callback_data='enter_custom_amount')],
-        [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_profile')]
+        [
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[0]['text'], callback_data=PAYMENT_OPTIONS[0]['callback_data']),
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[1]['text'], callback_data=PAYMENT_OPTIONS[1]['callback_data'])
+        ],
+        [
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[2]['text'], callback_data=PAYMENT_OPTIONS[2]['callback_data']),
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[3]['text'], callback_data=PAYMENT_OPTIONS[3]['callback_data'])
+        ],
+        [
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[4]['text'], callback_data=PAYMENT_OPTIONS[4]['callback_data'])
+        ],
+        [
+            InlineKeyboardButton(text=PAYMENT_OPTIONS[5]['text'], callback_data=PAYMENT_OPTIONS[5]['callback_data'])
+        ]
     ])
     
     await callback_query.message.edit_text(
@@ -71,6 +82,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
     )
     await state.set_state(ReplenishBalanceState.choosing_amount)
     await callback_query.answer()
+
 
 @router.callback_query(lambda c: c.data == 'back_to_profile')
 async def back_to_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
@@ -126,9 +138,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
                         "currency": "RUB"
                     },
                     "vat_code": 6
-                  ## Раскоментируйте следующие строки, если у вас регистрация как ИП, а не самозанятость  
-                  ##  "payment_subject": "payment",
-                  ##  "payment_mode": "full_payment", 
                 }
             ]
         },
@@ -260,7 +269,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 )
             else:
                 await message.answer("Ошибка при создании платежа.")
+        
         except Exception as e:
-            await message.answer(f"Произошла ошибка при обработке платежа: {str(e)}")
+            logging.error(f"Ошибка при создании платежа: {e}")
+            await message.answer("Произошла ошибка при создании платежа.")
     else:
-        await message.answer("Некорректный ввод. Пожалуйста, введите сумму числом:")
+        await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")

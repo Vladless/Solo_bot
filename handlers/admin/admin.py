@@ -1,6 +1,6 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from database import add_balance_to_client, get_balance, check_connection_exists  # Импорт необходимых функций
+from database import add_balance_to_client, get_balance, check_connection_exists 
 from config import ADMIN_ID
 
 router = Router()
