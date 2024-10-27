@@ -45,16 +45,13 @@ async def cmd_update_key_expiry(message: types.Message):
         _, email, expiry_time_str = parts
         expiry_time = int(datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S').timestamp() * 1000)
 
-        # Получаем client_id по email
         client_id = await get_client_id_by_email(email)
         if client_id is None:
             await message.reply(f"Клиент с email {email} не найден.")
             return
 
-        # Обновляем время истечения ключа в базе данных
         await update_key_expiry(client_id, expiry_time)
         
-        # Подключение для получения server_id и tg_id
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow('SELECT server_id FROM keys WHERE client_id = $1', client_id)
@@ -65,16 +62,12 @@ async def cmd_update_key_expiry(message: types.Message):
             server_id = record['server_id']
             tg_id = await get_tg_id_by_client_id(client_id)
 
-            # Авторизация на панели
             session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
             
-            # Вывод обновленных данных перед отправкой на панель
             print(f"Попытка обновить панель для server_id: {server_id}, tg_id: {tg_id}, client_id: {client_id}, email: {email}, expiryTime: {expiry_time}")
 
-            # Обновляем время истечения ключа на панели
             success = await extend_client_key_admin(session, server_id, tg_id, client_id, email, expiry_time)
 
-            # Проверка успеха и ответ пользователю
             print(f"Статус обновления панели: {'Успешно' if success else 'Не удалось'}")
             if success:
                 await message.reply(f"Время истечения ключа для клиента {client_id} ({email}) обновлено и синхронизировано с панелью.")
