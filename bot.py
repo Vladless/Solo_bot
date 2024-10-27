@@ -8,7 +8,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers.admin import admin, admin_panel, user_editor
+from handlers.admin import admin, admin_panel, user_editor, update_bot
 from handlers.keys import key_management, keys
 from handlers import (notifications, pay,
                       profile, start, commands)
