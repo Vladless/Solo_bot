@@ -47,6 +47,11 @@ async def handle_menu(message: types.Message, state: FSMContext):
 
 @router.message(Command('send_trial'))
 async def handle_send_trial_command(message: types.Message, state: FSMContext):
+    # Проверка на администратора
+    if message.from_user.id != ADMIN_ID:
+        await message.reply("У вас нет доступа к этой команде.")
+        return
+
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
@@ -57,9 +62,7 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
             if records:
                 for record in records:
                     tg_id = record['tg_id']
-                    trial_message = (
-                        TRIAL
-                    )
+                    trial_message = TRIAL
                     try:
                         await bot.send_message(chat_id=tg_id, text=trial_message)
                     except Exception as e:
