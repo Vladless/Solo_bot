@@ -6,13 +6,13 @@ import asyncpg
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
-from handlers.backup_handler import backup_command
 from handlers.pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import TRIAL
-from handlers.admin import cmd_add_balance
-from handlers.key_management import handle_key_name_input
+from handlers.admin.admin import cmd_add_balance
+from handlers.keys.key_management import handle_key_name_input
+from aiogram.types import Message
 
 router = Router()
 
@@ -21,6 +21,17 @@ class Form(StatesGroup):
     waiting_for_key_name = State()
     viewing_profile = State()
     waiting_for_message = State()
+
+@router.message(Command('backup'))
+async def backup_command(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У вас нет прав для выполнения этой команды.")
+        return
+
+    from backup import backup_database
+    await message.answer("Запускаю бэкап базы данных...")
+    await backup_database()
+    await message.answer("Бэкап завершен и отправлен админу.")
 
 @router.message(Command('start'))
 async def handle_start(message: types.Message, state: FSMContext):

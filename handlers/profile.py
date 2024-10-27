@@ -5,7 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import bot
 from database import get_balance, get_key_count, get_referral_stats
-from handlers.texts import profile_message_send, invite_message_send
+from handlers.texts import profile_message_send, invite_message_send, CHANNEL_LINK, get_referral_link
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -13,6 +13,7 @@ class ReplenishBalanceState(StatesGroup):
     waiting_for_admin_confirmation = State()
 
 router = Router()
+
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     username = callback_query.from_user.full_name  
@@ -28,7 +29,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         )
 
         profile_message += (
-            f"<b>Обязательно подпишитесь на канал</b> <a href='https://t.me/solonet_vpn'>здесь</a>\n"
+            f"<b>Обязательно подпишитесь на канал</b> <a href='{CHANNEL_LINK}'>здесь</a>\n"
         )
         
         if key_count == 0:
@@ -66,7 +67,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
 @router.callback_query(lambda c: c.data == 'invite')
 async def invite_handler(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    referral_link = f"https://t.me/SoloNetVPN_bot?start=referral_{tg_id}"
+    referral_link = get_referral_link(tg_id)
     
     referral_stats = await get_referral_stats(tg_id)
     

@@ -1,4 +1,3 @@
-import random
 import asyncpg
 import uuid 
 from config import DATABASE_URL, SERVERS, ADMIN_USERNAME, ADMIN_PASSWORD
