@@ -114,6 +114,50 @@ async def extend_client_key(session, server_id: str, tg_id, client_id, email: st
             print(f"Ошибка запроса: {e}")
             return False
 
+async def extend_client_key_admin(session, server_id: str, tg_id, client_id: str, email: str, new_expiry_time: int) -> bool:
+    api_url = SERVERS[server_id]['API_URL']
+    
+    # Формируем данные для POST-запроса
+    payload = {
+        "id": 1,
+        "settings": json.dumps({
+            "clients": [
+                {
+                    "id": client_id,
+                    "alterId": 0,
+                    "email": email.lower(),
+                    "limitIp": 2,
+                    "totalGB": 429496729600000,  # Убедитесь, что это значение корректно
+                    "expiryTime": new_expiry_time,  # Устанавливаем новое время
+                    "enable": True,
+                    "tgId": tg_id,
+                    "subId": "",
+                    "flow": "xtls-rprx-vision"
+                }
+            ]
+        })
+    }
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        async with session.post(f"{api_url}/panel/api/inbounds/updateClient/{client_id}", json=payload, headers=headers) as response:
+            print(f"POST {response.url} Status: {response.status}")
+            print(f"POST Request Data: {json.dumps(payload, indent=2)}")
+            response_text = await response.text()
+            print(f"POST Response: {response_text}")
+            
+            if response.status == 200:
+                return True
+            else:
+                print(f"Ошибка при продлении ключа: {response.status} - {response_text}")
+                return False
+    except Exception as e:
+        print(f"Ошибка запроса: {e}")
+        return False
 
 async def delete_client(session, server_id: str, client_id: str) -> bool:
     api_url = SERVERS[server_id]['API_URL']

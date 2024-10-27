@@ -226,3 +226,22 @@ async def add_balance_to_client(client_id: str, amount: float):
         WHERE tg_id = $2
     ''', amount, client_id)
     await conn.close()
+
+async def get_client_id_by_email(email: str):
+    """
+    Получение client_id по email.
+    """
+    conn = await asyncpg.connect(DATABASE_URL)
+    client_id = await conn.fetchval('''
+        SELECT client_id FROM keys WHERE email = $1
+    ''', email)
+    await conn.close()
+    return client_id
+
+async def get_tg_id_by_client_id(client_id: str):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        result = await conn.fetchrow('SELECT tg_id FROM keys WHERE client_id = $1', client_id)
+        return result['tg_id'] if result else None
+    finally:
+        await conn.close()
