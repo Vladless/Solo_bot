@@ -9,6 +9,7 @@ from database import get_balance, update_key_expiry, delete_key
 from client import extend_client_key, delete_client
 from auth import login_with_credentials
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, KEY_RENEWAL_FAILED, KEY_DELETED, KEY_DELETION_FAILED
+from aiogram import Router, types
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,7 +70,10 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                await bot.send_message(tg_id, message)
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text='🔄 Продлить VPN', callback_data=f'renew_key|{record["client_id"]}')],
+                ])
+                await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
@@ -105,7 +109,10 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                await bot.send_message(tg_id, message_24h)
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text='🔄 Продлить VPN', callback_data=f'renew_key|{record["client_id"]}')],
+                ])
+                await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}")
@@ -136,6 +143,9 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
         logger.info(f"Проверка баланса для клиента {tg_id}: {balance}.")
 
+        button_profile = types.InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
+        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
+
         if balance >= 100:
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
@@ -145,13 +155,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             success = await extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
             if success:
                 try:
-                    await bot.send_message(tg_id, KEY_RENEWED)
+                    await bot.send_message(tg_id, KEY_RENEWED, reply_markup=keyboard)
                     logger.info(f"Ключ для пользователя {tg_id} успешно продлен на месяц.")
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления о продлении ключа пользователю {tg_id}: {e}")
             else:
                 try:
-                    await bot.send_message(tg_id, KEY_RENEWAL_FAILED)
+                    await bot.send_message(tg_id, KEY_RENEWAL_FAILED, reply_markup=keyboard)
                     logger.error(f"Не удалось продлить ключ для пользователя {tg_id}.")
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления о неудачном продлении ключа пользователю {tg_id}: {e}")
@@ -163,13 +173,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             success = await delete_client(session, server_id, client_id)
             if success:
                 try:
-                    await bot.send_message(tg_id, KEY_DELETED)
+                    await bot.send_message(tg_id, KEY_DELETED, reply_markup=keyboard)
                     logger.info(f"Ключ для пользователя {tg_id} удален.")
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления об удалении ключа пользователю {tg_id}: {e}")
             else:
                 try:
-                    await bot.send_message(tg_id, KEY_DELETION_FAILED)
+                    await bot.send_message(tg_id, KEY_DELETION_FAILED, reply_markup=keyboard)
                     logger.error(f"Не удалось удалить ключ для пользователя {tg_id}.")
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления о неудачном удалении ключа пользователю {tg_id}: {e}")
