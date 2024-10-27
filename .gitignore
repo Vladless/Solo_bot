@@ -9,3 +9,4 @@
 /backup_pg.sh
 /config copy.py
 /docker-compose.yml
+__pycache__
