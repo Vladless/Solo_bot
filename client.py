@@ -117,7 +117,6 @@ async def extend_client_key(session, server_id: str, tg_id, client_id, email: st
 async def extend_client_key_admin(session, server_id: str, tg_id, client_id: str, email: str, new_expiry_time: int) -> bool:
     api_url = SERVERS[server_id]['API_URL']
     
-    # Формируем данные для POST-запроса
     payload = {
         "id": 1,
         "settings": json.dumps({
@@ -127,8 +126,8 @@ async def extend_client_key_admin(session, server_id: str, tg_id, client_id: str
                     "alterId": 0,
                     "email": email.lower(),
                     "limitIp": 2,
-                    "totalGB": 429496729600000,  # Убедитесь, что это значение корректно
-                    "expiryTime": new_expiry_time,  # Устанавливаем новое время
+                    "totalGB": 429496729600000,
+                    "expiryTime": new_expiry_time, 
                     "enable": True,
                     "tgId": tg_id,
                     "subId": "",
