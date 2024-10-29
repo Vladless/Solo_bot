@@ -4,7 +4,7 @@ import asyncio
 from aiogram import Bot, Router
 from aiogram.fsm.state import State, StatesGroup
 import logging
-from config import DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD
+from config import DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, SERVERS
 from database import get_balance, update_key_expiry, delete_key
 from client import extend_client_key, delete_client
 from auth import login_with_credentials
@@ -66,7 +66,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
         server_id = record['server_id']
         expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
 
-        message = KEY_EXPIRY_10H.format(server_id=server_id, email=email, expiry_date=expiry_date)
+        message = KEY_EXPIRY_10H.format(server_id=SERVERS[server_id]['name'], email=email, expiry_date=expiry_date)
 
         if not await is_bot_blocked(bot, tg_id):
             try:
@@ -105,7 +105,7 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
         expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')
         balance = await get_balance(tg_id)
 
-        message_24h = KEY_EXPIRY_24H.format(server_id=server_id, email=email, hours_left=hours_left, expiry_date=expiry_date, balance=balance)
+        message_24h = KEY_EXPIRY_24H.format(server_id=SERVERS[server_id]['name'], email=email, hours_left=hours_left, expiry_date=expiry_date, balance=balance)
 
         if not await is_bot_blocked(bot, tg_id):
             try:
