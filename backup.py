@@ -4,12 +4,11 @@ import subprocess
 from datetime import datetime
 
 from aiogram.types import BufferedInputFile
-
-from bot import bot
 from config import ADMIN_ID, DB_NAME, DB_PASSWORD, DB_USER, BACK_DIR
 
 
 async def backup_database():
+    from bot import bot
 
     USER = DB_USER
     HOST = "localhost"
