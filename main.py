@@ -80,3 +80,5 @@ if __name__ == '__main__':
         asyncio.run(main())
     except Exception as e:
         logging.error(f"Ошибка при запуске приложения: {e}")
+
+BOT_VERSION = '1.3.5' 
