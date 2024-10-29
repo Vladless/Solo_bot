@@ -60,3 +60,11 @@ async def link(session, server_id: str, client_id: str, email: str):
         f"&fp=chrome&sni={SERVERS[server_id]['SNI']}&sid={SERVERS[server_id]['SID']}=%2F&flow={flow}#{SERVERS[server_id]['PREFIX']}-{email}"
     )
     return val
+
+async def link_subscription(email, server_id):
+    server = SERVERS.get(server_id)
+    if server:
+        subscription_url = f"{server['SUBSCRIPTION']}/{email}"
+        return subscription_url
+    else:
+        raise ValueError(f"Server '{server_id}' not found in configuration.")

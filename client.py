@@ -18,7 +18,7 @@ async def add_client(session, server_id: str, client_id: str, email: str, tg_id:
         "expiryTime": expiry_time,
         "enable": enable,
         "tgId": tg_id,
-        "subId": "",
+        "subId": email,
         "flow": flow,
     }
     
@@ -86,7 +86,7 @@ async def extend_client_key(session, server_id: str, tg_id, client_id, email: st
                         "expiryTime": updated_expiry_time,
                         "enable": True,
                         "tgId": tg_id,
-                        "subId": "",
+                        "subId": email,
                         "flow": "xtls-rprx-vision"
                     }
                 ]
@@ -130,7 +130,7 @@ async def extend_client_key_admin(session, server_id: str, tg_id, client_id: str
                     "expiryTime": new_expiry_time, 
                     "enable": True,
                     "tgId": tg_id,
-                    "subId": "",
+                    "subId": email,
                     "flow": "xtls-rprx-vision"
                 }
             ]
