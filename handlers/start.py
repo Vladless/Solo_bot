@@ -6,7 +6,7 @@ from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
 from handlers.texts import ABOUT_VPN, WELCOME_TEXT
 from bot import bot
-from config import CHANNEL_URL, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, SUPPORT_CHAT_URL, APP_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key  
 from handlers.texts import INSTRUCTIONS_TRIAL
@@ -74,16 +74,29 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             f"<b>Ваш ключ доступа:</b>\n<pre>{trial_key_info['key']}</pre>\n\n"
             f"<b>Инструкции:</b>\n{INSTRUCTIONS_TRIAL}"
         )
-        
+
         button_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
-        inline_keyboard_profile = InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
+        
+        button_iphone = InlineKeyboardButton(
+            text='🍏IPhone', 
+            url=f'{APP_URL}/?url=streisand://import/{trial_key_info["key"]}'
+        )
+        button_android = InlineKeyboardButton(
+            text='🤖Android', 
+            url=f'{APP_URL}/?url=v2rayng://install-sub?url={trial_key_info["key"]}'
+        )
+
+        inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [button_iphone, button_android],
+            [button_profile]
+        ])
 
         await callback_query.message.answer(
             key_message,
             parse_mode='HTML',
-            reply_markup=inline_keyboard_profile
+            reply_markup=inline_keyboard
         )
-    
+
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == 'about_vpn')

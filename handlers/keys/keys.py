@@ -7,7 +7,7 @@ from aiogram import Router, types
 from auth import login_with_credentials, link_subscription
 from bot import bot
 from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS, APP_URL
 from database import get_balance, update_balance
 from handlers.texts import NO_KEYS
 from handlers.texts import key_message, key_relocated
@@ -345,9 +345,7 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                         if not success_delete:
                             raise Exception(f"Ошибка при удалении клиента с сервера {current_server_id}")
 
-                        response_message = (
-                            key_relocated(new_key)
-                        )
+                        response_message = key_relocated(new_key)
                     except Exception as e:
                         response_message = f"Ключ перемещен, но возникла ошибка при удалении клиента с текущего сервера: {e}"
 
@@ -355,7 +353,21 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                     response_message = "Ключ не найден или уже удален."
 
             back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+            iphone_button = types.InlineKeyboardButton(
+                text='🍏IPhone',
+                url=f'{APP_URL}/?url=streisand://import/{new_key}'
+            )
+            android_button = types.InlineKeyboardButton(
+                text='🤖Android',
+                url=f'{APP_URL}/?url=v2rayng://install-sub?url={new_key}'
+            )
+
+            keyboard = types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [back_button],
+                    [iphone_button, android_button]
+                ]
+            )
 
             await bot.edit_message_text(
                 response_message, chat_id=tg_id, message_id=callback_query.message.message_id,
