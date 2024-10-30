@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, Message)
 
-from auth import link, login_with_credentials
+from auth import login_with_credentials, link_subscription
 from client import add_client
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
                     SERVERS)
@@ -170,7 +170,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             else:
                 raise Exception(error_msg)
 
-        connection_link = await link(session, server_id, client_id, email)
+        connection_link = await link_subscription(email, server_id)
 
         conn = await asyncpg.connect(DATABASE_URL)
         try:

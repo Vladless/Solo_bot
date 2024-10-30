@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram import Router, types
 
-from auth import link, login_with_credentials
+from auth import login_with_credentials, link_subscription
 from bot import bot
 from client import add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
@@ -331,7 +331,7 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
                     if not new_client_data:
                         raise Exception("Ошибка при создании клиента на новом сервере.")
 
-                    new_key = await link(session_new, server_id, client_id, email)
+                    new_key = await link_subscription(email, server_id)
 
                     await conn.execute(
                         'UPDATE keys SET server_id = $1, key = $2 WHERE client_id = $3',
