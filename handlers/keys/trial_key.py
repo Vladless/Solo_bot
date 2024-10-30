@@ -1,7 +1,7 @@
 import asyncpg
-import uuid 
+import uuid
 from config import DATABASE_URL, SERVERS, ADMIN_USERNAME, ADMIN_PASSWORD
-from auth import login_with_credentials, link 
+from auth import login_with_credentials, link_subscription
 from client import add_client
 from database import store_key, add_connection
 from handlers.texts import INSTRUCTIONS
@@ -19,15 +19,17 @@ async def create_trial_key(tg_id: int):
         expiry_time = current_time + timedelta(days=1, hours=3)
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
         
-        client_id = str(uuid.uuid4()) 
-        email = generate_random_email() 
+        client_id = str(uuid.uuid4())
+        email = generate_random_email()
         response = await add_client(
             session, server_id, client_id, email, tg_id,
             limit_ip=1, total_gb=0, expiry_time=expiry_timestamp,
             enable=True, flow="xtls-rprx-vision"
         )
-        if response.get("success"):  
-            connection_link = await link(session, server_id, client_id, email)
+
+        if response.get("success"):
+            # Генерация ссылки подписки
+            connection_link = await link_subscription(email, server_id)
 
             existing_connection = await conn.fetchrow('SELECT * FROM connections WHERE tg_id = $1', tg_id)
 
