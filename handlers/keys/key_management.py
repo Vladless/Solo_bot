@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 
-from bot import dp
+from bot import dp, bot
 import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -43,16 +43,17 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
         await conn.close()
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='view_profile')
-    server_buttons.append([button_back]) 
+    server_buttons.append([button_back])
 
-    await callback_query.message.edit_text(
-        "<b>⚙️ Выберите сервер для создания ключа:</b>",
+    await callback_query.message.delete()
+    await bot.send_message(
+        chat_id=tg_id,
+        text="<b>⚙️ Выберите сервер для создания ключа:</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=server_buttons)
     )
-    
-    await state.set_state(Form.waiting_for_server_selection)
 
+    await state.set_state(Form.waiting_for_server_selection)
     await callback_query.answer()
 
 

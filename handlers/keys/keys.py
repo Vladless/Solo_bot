@@ -42,20 +42,32 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
                 response_message = (
                     "<b>Это ваши устройства:</b>\n\n"
-                    "<i>Нажмите на имя устройства для управления его ключом.</i>"  # Добавлено курсивом
+                    "<i>Нажмите на имя устройства для управления его ключом.</i>"
                 )
 
-                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=inline_keyboard, parse_mode="HTML")
-            else:
-                response_message = (
-                    NO_KEYS
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
+
+                await bot.send_message(
+                    chat_id=tg_id,
+                    text=response_message,
+                    reply_markup=inline_keyboard,
+                    parse_mode="HTML"
                 )
+            else:
+                response_message = NO_KEYS  
                 create_key_button = types.InlineKeyboardButton(text='➕ Создать ключ', callback_data='create_key')
                 back_button = types.InlineKeyboardButton(text='🔙 Назад', callback_data='view_profile')
                 
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[create_key_button], [back_button]])
 
-                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
+
+                await bot.send_message(
+                    chat_id=tg_id,
+                    text=response_message,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
 
         finally:
             await conn.close()
@@ -64,7 +76,6 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
         await handle_error(tg_id, callback_query, f"Ошибка при получении ключей: {e}")
 
     await callback_query.answer()
-
 
 @router.callback_query(lambda c: c.data.startswith('view_key|'))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
@@ -355,11 +366,11 @@ async def process_callback_select_server(callback_query: types.CallbackQuery):
             back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
             iphone_button = types.InlineKeyboardButton(
                 text='🍏IPhone',
-                url=f'{APP_URL}/?url=streisand://import/{new_key}'
+                url=f'{APP_URL}/?url=v2raytun://import/{new_key}'
             )
             android_button = types.InlineKeyboardButton(
                 text='🤖Android',
-                url=f'{APP_URL}/?url=v2rayng://install-sub?url={new_key}'
+                url=f'{APP_URL}/?url=v2raytun://import-sub?url={new_key}'
             )
 
             keyboard = types.InlineKeyboardMarkup(
