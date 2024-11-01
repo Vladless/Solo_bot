@@ -79,11 +79,11 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
         
         button_iphone = InlineKeyboardButton(
             text='🍏IPhone', 
-            url=f'{APP_URL}/?url=streisand://import/{trial_key_info["key"]}'
+            url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}'
         )
         button_android = InlineKeyboardButton(
             text='🤖Android', 
-            url=f'{APP_URL}/?url=v2rayng://install-sub?url={trial_key_info["key"]}'
+            url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}'
         )
 
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
