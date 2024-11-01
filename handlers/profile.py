@@ -1,7 +1,9 @@
+import os
+
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
 
 from bot import bot
 from database import get_balance, get_key_count, get_referral_stats
@@ -14,9 +16,16 @@ class ReplenishBalanceState(StatesGroup):
 
 router = Router()
 
+
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     username = callback_query.from_user.full_name  
+
+    image_path = os.path.join(os.path.dirname(__file__), 'pic.jpg')
+
+    if not os.path.isfile(image_path):
+        await bot.send_message(tg_id, "Файл изображения не найден.")
+        return
 
     try:
         key_count = await get_key_count(tg_id)
@@ -24,44 +33,36 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         if balance is None:
             balance = 0 
 
-        profile_message = (
-            profile_message_send(username, tg_id, balance, key_count)
-        )
-
+        profile_message = profile_message_send(username, tg_id, balance, key_count)
+        
         profile_message += (
             f"<b>Обязательно подпишитесь на канал</b> <a href='{CHANNEL_LINK}'>здесь</a>\n"
         )
         
         if key_count == 0:
-            profile_message += "\n<i>Нажмите ➕Устройство снизу чтобы добавить устройство в VPN</i>"
+            profile_message += "\n<i>Нажмите ➕Устройство снизу, чтобы добавить устройство в VPN</i>"
         
-        button_create_key = InlineKeyboardButton(text='➕ Устройство', callback_data='create_key')
-        button_view_keys = InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')
-        button_replenish_balance = InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')
-        button_invite = InlineKeyboardButton(text='👥 Пригласить', callback_data='invite')
-        button_instructions = InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')
-        button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [button_create_key, button_view_keys],  
-            [button_replenish_balance],           
-            [button_invite, button_instructions],   
-            [button_back]                           
+        inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='➕ Устройство', callback_data='create_key'), InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')],
+            [InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')],
+            [InlineKeyboardButton(text='👥 Пригласить', callback_data='invite'), InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')],
+            [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')]
         ])
 
+        await callback_query.message.delete()
+
+        with open(image_path, 'rb') as image_file:
+            await bot.send_photo(
+                chat_id=tg_id,
+                photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                caption=profile_message,
+                parse_mode='HTML',
+                reply_markup=inline_keyboard
+            )
+
     except Exception as e:
-        profile_message = f"❗️ Ошибка при получении данных профиля: {e}"
-        keyboard = None
-    
-    await callback_query.message.delete()
-    
-    await bot.send_message(
-        chat_id=tg_id, 
-        text=profile_message,
-        parse_mode='HTML',
-        reply_markup=keyboard
-    )
-    
+        await bot.send_message(tg_id, f"❗️ Ошибка при получении данных профиля: {e}")
+
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data == 'invite')
