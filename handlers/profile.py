@@ -43,7 +43,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             profile_message += "\n<i>Нажмите ➕Устройство снизу, чтобы добавить устройство в VPN</i>"
         
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='➕ Устройство', callback_data='create_key'), InlineKeyboardButton(text='📱 Мои устройства', callback_data='view_keys')],
+            [InlineKeyboardButton(text='➕ Устройство', callback_data='create_key'), InlineKeyboardButton(text='📱 Мои устр-ва', callback_data='view_keys')],
             [InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')],
             [InlineKeyboardButton(text='👥 Пригласить', callback_data='invite'), InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')],
             [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')]
