@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 
-from bot import dp
+from bot import dp, bot
 import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -12,7 +12,7 @@ from aiogram.types import (CallbackQuery, InlineKeyboardButton,
 from auth import login_with_credentials, link_subscription
 from client import add_client
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL,
-                    SERVERS)
+                    SERVERS, APP_URL)
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
@@ -43,16 +43,17 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
         await conn.close()
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='view_profile')
-    server_buttons.append([button_back]) 
+    server_buttons.append([button_back])
 
-    await callback_query.message.edit_text(
-        "<b>⚙️ Выберите сервер для создания ключа:</b>",
+    await callback_query.message.delete()
+    await bot.send_message(
+        chat_id=tg_id,
+        text="<b>⚙️ Выберите сервер для создания ключа:</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=server_buttons)
     )
-    
-    await state.set_state(Form.waiting_for_server_selection)
 
+    await state.set_state(Form.waiting_for_server_selection)
     await callback_query.answer()
 
 
@@ -190,18 +191,24 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         hours, remainder = divmod(remaining_time.seconds, 3600)
         minutes, _ = divmod(remainder, 60)
 
-        remaining_time_message = (
-            f"Оставшееся время ключа: {days} день"
-        )
+        remaining_time_message = f"Оставшееся время ключа: {days} день"
 
+        button_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
+        button_iphone = InlineKeyboardButton(
+            text='🍏IPhone', 
+            url=f'{APP_URL}/?url=v2raytun://import/{connection_link}'
+        )
+        button_android = InlineKeyboardButton(
+            text='🤖Android', 
+            url=f'{APP_URL}/?url=v2raytun://import-sub?url={connection_link}'
+        )
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='📘 Инструкции по использованию', callback_data='instructions')],
-            [InlineKeyboardButton(text='🔙 Перейти в профиль', callback_data='view_profile')]
+            [button_iphone, button_android],
+            [button_profile]
         ])
 
-        key_message = (
-            key_message_success(connection_link, remaining_time_message)
-        )
+        key_message = key_message_success(connection_link, remaining_time_message)
 
         await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
 

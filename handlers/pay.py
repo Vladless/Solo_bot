@@ -76,13 +76,16 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         ]
     ])
     
-    await callback_query.message.edit_text(
+    await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
+
+    await bot.send_message(
+        chat_id=tg_id,
         text="Выберите сумму пополнения:",
         reply_markup=amount_keyboard
     )
+    
     await state.set_state(ReplenishBalanceState.choosing_amount)
     await callback_query.answer()
-
 
 @router.callback_query(lambda c: c.data == 'back_to_profile')
 async def back_to_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
