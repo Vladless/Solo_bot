@@ -8,6 +8,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, BufferedIn
 from bot import bot
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import profile_message_send, invite_message_send, CHANNEL_LINK, get_referral_link
+from config import PAYMENT_METHOD
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -44,7 +45,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text='➕ Устройство', callback_data='create_key'), InlineKeyboardButton(text='📱 Мои устр-ва', callback_data='view_keys')],
-            [InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='replenish_balance')],
+            [InlineKeyboardButton(text='💳 Пополнить баланс', callback_data='pay_freekassa' if PAYMENT_METHOD == 'freekassa' else 'replenish_balance')],
             [InlineKeyboardButton(text='👥 Пригласить', callback_data='invite'), InlineKeyboardButton(text='📘 Инструкции', callback_data='instructions')],
             [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')]
         ])

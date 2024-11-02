@@ -73,7 +73,7 @@ async def process_callback_replenish_balance(callback_query: types.CallbackQuery
         ],
         [
             InlineKeyboardButton(text=PAYMENT_OPTIONS[5]['text'], callback_data=PAYMENT_OPTIONS[5]['callback_data'])
-        ]
+        ],
     ])
     
     await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)

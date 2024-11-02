@@ -11,7 +11,8 @@ from bot import bot, dp, router
 from config import WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
 from database import init_db
 from handlers.notifications import notify_expiring_keys
-from handlers.pay import payment_webhook
+from handlers.payment.pay import payment_webhook
+from handlers.payment.freekassa import freekassa_webhook
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -52,6 +53,7 @@ async def main():
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
     app.router.add_post('/yookassa/webhook', payment_webhook)
+    app.router.add_post('/freekassa/webhook', freekassa_webhook)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
