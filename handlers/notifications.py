@@ -5,7 +5,7 @@ from aiogram import Bot, Router
 from aiogram.fsm.state import State, StatesGroup
 import logging
 from config import DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, SERVERS
-from database import get_balance, update_key_expiry, delete_key
+from database import get_balance, update_key_expiry, delete_key, update_balance
 from client import extend_client_key, delete_client
 from auth import login_with_credentials
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, KEY_RENEWAL_FAILED, KEY_DELETED, KEY_DELETION_FAILED
@@ -147,6 +147,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
         if balance >= 100:
+            update_balance(tg_id, 100)
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
             logger.info(f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}.")
