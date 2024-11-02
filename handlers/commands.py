@@ -6,7 +6,7 @@ import asyncpg
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
-from handlers.pay import ReplenishBalanceState, process_custom_amount_input
+from handlers.payment.pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import TRIAL
