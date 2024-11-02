@@ -292,7 +292,15 @@ async def handle_error(tg_id, callback_query, message):
 @router.callback_query(lambda c: c.data.startswith('change_location|'))
 async def process_callback_change_location(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split('|')[1] 
+    client_id = callback_query.data.split('|')[1]
+    
+    instructions_message = (
+        "<b>Перед сменой локации:</b>\n\n"
+        "1. Пожалуйста, отключите ваш VPN.\n"
+        "2. Удалите старый ключ, чтобы избежать конфликтов.\n\n"
+        "Теперь выберите новый сервер для вашего ключа:"
+    )
+
     server_buttons = []
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -306,8 +314,7 @@ async def process_callback_change_location(callback_query: types.CallbackQuery):
 
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=server_buttons)
     
-    response_message = "<b>Выберите новый сервер для вашего ключа:</b>"
-    await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
+    await bot.edit_message_text(instructions_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard, parse_mode="HTML")
     await callback_query.answer()
 
 @router.callback_query(lambda c: c.data.startswith('select_server&'))
