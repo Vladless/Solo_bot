@@ -9,6 +9,7 @@ from bot import bot
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import profile_message_send, invite_message_send, CHANNEL_LINK, get_referral_link
 from config import PAYMENT_METHOD
+import logging
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -17,6 +18,8 @@ class ReplenishBalanceState(StatesGroup):
 
 router = Router()
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
@@ -50,7 +53,11 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
             [InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')]
         ])
 
-        await callback_query.message.delete()
+        # Попробуем удалить предыдущее сообщение
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")  # Логируем ошибку, если удаление не удалось
 
         with open(image_path, 'rb') as image_file:
             await bot.send_photo(
