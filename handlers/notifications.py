@@ -1,14 +1,15 @@
 from datetime import datetime, timedelta
 import asyncpg
 import asyncio
-from aiogram import Bot, Router, types
+from aiogram import Bot, Router
+from aiogram.fsm.state import State, StatesGroup
 import logging
 from config import DATABASE_URL, ADMIN_USERNAME, ADMIN_PASSWORD, SERVERS
 from database import get_balance, update_key_expiry, delete_key, update_balance
 from client import extend_client_key, delete_client
 from auth import login_with_credentials
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, KEY_RENEWAL_FAILED, KEY_DELETED, KEY_DELETION_FAILED
-from aiogram.fsm.state import StatesGroup, State
+from aiogram import Router, types
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,16 +25,16 @@ async def notify_expiring_keys(bot: Bot):
         conn = await asyncpg.connect(DATABASE_URL)
         logger.info("Подключение к базе данных успешно.")
         
-        current_time = (datetime.utcnow() + timedelta(hours=3)).timestamp() * 1000 
-        threshold_time_10h = (datetime.utcnow() + timedelta(hours=10 + 3)).timestamp() * 1000
-        threshold_time_24h = (datetime.utcnow() + timedelta(days=1 + 3)).timestamp() * 1000 
+        current_time = datetime.utcnow().timestamp() * 1000 
+        threshold_time_10h = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000
+        threshold_time_24h = (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000 
 
         logger.info("Начало обработки уведомлений.")
 
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
         await asyncio.sleep(1) 
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
-        await asyncio.sleep(1)
+        await asyncio.sleep(1) 
         await handle_expired_keys(bot, conn, current_time)
 
     except Exception as e:
@@ -124,15 +125,15 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка истекших ключей...")
-    
-    current_time = (datetime.utcnow() + timedelta(hours=3)).timestamp() * 1000  
+
+    current_time = datetime.utcnow().timestamp() * 1000
     expiring_keys = await conn.fetch('''
         SELECT tg_id, client_id, expiry_time, server_id, email FROM keys 
         WHERE expiry_time <= $1
     ''', current_time)
 
     logger.info(f"Найдено {len(expiring_keys)} истекающих ключей.")
-    
+
     for record in expiring_keys:
         tg_id = record['tg_id']
         client_id = record['client_id']
@@ -150,9 +151,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
             logger.info(f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}.")
-
-            await conn.execute('UPDATE keys SET notified = FALSE, notified_24h = FALSE WHERE client_id = $1', client_id)
-            logger.info(f"Поле notified и notified_24h для клиента {client_id} сброшены.")
 
             session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
             success = await extend_client_key(session, server_id, tg_id, client_id, email, new_expiry_time)
@@ -187,4 +185,5 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления о неудачном удалении ключа пользователю {tg_id}: {e}")
         
-        await asyncio.sleep(1)  # Задержка между уведомлениями
+        await asyncio.sleep(1)
+
