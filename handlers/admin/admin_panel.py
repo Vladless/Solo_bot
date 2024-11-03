@@ -6,6 +6,11 @@ from config import ADMIN_ID, DATABASE_URL
 import asyncpg
 from datetime import datetime
 from bot import bot
+import subprocess
+from backup import backup_database
+from handlers.commands import send_message_to_all_clients
+from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
 
 router = Router()
 
@@ -21,7 +26,10 @@ async def handle_admin_command(message: types.Message):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Статистика пользователей", callback_data="user_stats")],
-        [InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")]
+        [InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")],
+        [InlineKeyboardButton(text="Отправить сообщение всем клиентам", callback_data="send_to_alls")],
+        [InlineKeyboardButton(text="Создать бэкап", callback_data="backups")],
+        [InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")]
     ])
     await message.reply("Панель администратора", reply_markup=keyboard)
 
@@ -55,6 +63,28 @@ async def user_stats_menu(callback_query: CallbackQuery):
         await conn.close()
 
     await callback_query.answer()
+
+@router.callback_query(lambda c: c.data == "send_to_alls")
+async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
+    await send_message_to_all_clients(callback_query.message, state, from_panel=True)
+    await callback_query.answer() 
+
+@router.callback_query(lambda c: c.data == "backups")
+async def handle_backup(message: Message):
+    await message.answer("Запускаю бэкап базы данных...")
+    await backup_database()
+    await message.answer("Бэкап завершен и отправлен админу.")
+
+@router.callback_query(lambda c: c.data == "restart_bot")
+async def handle_restart(callback_query: CallbackQuery):
+    if callback_query.from_user.id == ADMIN_ID:
+        try:
+            result = subprocess.run(['sudo', 'systemctl', 'restart', 'bot.service'], check=True, capture_output=True, text=True)
+            await callback_query.message.answer("Бот успешно перезапущен.")
+        except subprocess.CalledProcessError as e:
+            await callback_query.message.answer(f"Бот будет перезапущен через 30 секунд {e.stderr}")
+    else:
+        await callback_query.answer("У вас нет доступа к этой команде.", show_alert=True)
 
 @router.callback_query(lambda c: c.data == "user_editor")
 async def user_editor_menu(callback_query: CallbackQuery):
