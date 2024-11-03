@@ -82,8 +82,8 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
         await message.answer(f"Ошибка при отправке сообщений: {e}")
 
 @router.message(Command('send_to_all'))
-async def send_message_to_all_clients(message: types.Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+async def send_message_to_all_clients(message: types.Message, state: FSMContext, from_panel=False):
+    if not from_panel and message.from_user.id != ADMIN_ID:
         await message.answer("У вас нет прав для выполнения этой команды.")
         return
 
