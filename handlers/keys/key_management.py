@@ -125,6 +125,16 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите ключ устройства на английском языке.")
         return
 
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        existing_key = await conn.fetchrow('SELECT * FROM keys WHERE email = $1', key_name.lower())
+        if existing_key:
+            await message.bot.send_message(tg_id, "❌ Это имя уже используется. Пожалуйста, выберите другое имя для ключа.")
+            await state.set_state(Form.waiting_for_key_name)
+            return
+    finally:
+        await conn.close()
+
     data = await state.get_data()
     creating_new_key = data.get('creating_new_key', False)
     server_id = data.get('selected_server_id')
