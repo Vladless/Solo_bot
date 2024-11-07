@@ -1,16 +1,18 @@
-from aiogram import Router, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from aiogram.filters import Command
-from aiogram.fsm.state import StatesGroup, State
-from config import ADMIN_ID, DATABASE_URL
-import asyncpg
-from datetime import datetime
-from bot import bot
 import subprocess
-from backup import backup_database
-from handlers.commands import send_message_to_all_clients
-from aiogram.types import Message
+from datetime import datetime
+
+import asyncpg
+from aiogram import Router, types
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, Message)
+
+from backup import backup_database
+from bot import bot
+from config import ADMIN_ID, DATABASE_URL
+from handlers.commands import send_message_to_all_clients
 
 router = Router()
 

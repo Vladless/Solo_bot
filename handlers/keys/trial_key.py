@@ -1,51 +1,76 @@
-import asyncpg
+import asyncio
 import uuid
-from config import DATABASE_URL, SERVERS, ADMIN_USERNAME, ADMIN_PASSWORD
-from auth import login_with_credentials, link_subscription
-from client import add_client
-from database import store_key, add_connection
-from handlers.texts import INSTRUCTIONS
 from datetime import datetime, timedelta
-from handlers.utils import generate_random_email, get_least_loaded_server
+
+import asyncpg
+
+from auth import login_with_credentials
+from client import add_client
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK,
+                    SERVERS)
+from database import store_key
+from handlers.texts import INSTRUCTIONS
+from handlers.utils import generate_random_email
 
 
 async def create_trial_key(tg_id: int):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        server_id = await get_least_loaded_server(conn)
-        session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-        current_time = datetime.utcnow()
-
-        expiry_time = current_time + timedelta(days=1, hours=3)
-        expiry_timestamp = int(expiry_time.timestamp() * 1000)
-        
         client_id = str(uuid.uuid4())
         email = generate_random_email()
-        response = await add_client(
-            session, server_id, client_id, email, tg_id,
-            limit_ip=1, total_gb=0, expiry_time=expiry_timestamp,
-            enable=True, flow="xtls-rprx-vision"
-        )
 
-        if response.get("success"):
-            # Генерация ссылки подписки
-            connection_link = await link_subscription(email, server_id)
+        public_link = f"{PUBLIC_LINK}{email}"
+        instructions = INSTRUCTIONS
+        
+        result = {
+            'key': public_link,
+            'instructions': instructions
+        }
+        
+        asyncio.create_task(generate_and_store_keys(tg_id, client_id, email, public_link))
+        
+        return result
 
-            existing_connection = await conn.fetchrow('SELECT * FROM connections WHERE tg_id = $1', tg_id)
-
-            if existing_connection:
-                await conn.execute('UPDATE connections SET trial = 1 WHERE tg_id = $1', tg_id)
-            else:
-                await add_connection(tg_id, 0, 1)
-
-            await store_key(tg_id, client_id, email, expiry_timestamp, connection_link, server_id)
-
-            instructions = INSTRUCTIONS
-            return {
-                'key': connection_link,
-                'instructions': instructions
-            }
-        else:
-            return {'error': 'Не удалось добавить клиента на панель'}
     finally:
         await conn.close()
+
+async def generate_and_store_keys(tg_id: int, client_id: str, email: str, public_link: str):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        current_time = datetime.utcnow()
+        expiry_time = current_time + timedelta(days=1, hours=3)
+        expiry_timestamp = int(expiry_time.timestamp() * 1000)
+
+        tasks = []
+        for server_id in SERVERS:
+            task = create_key_on_server(server_id, client_id, email, tg_id, expiry_timestamp)
+            tasks.append(task)
+        
+        results = await asyncio.gather(*tasks)
+
+        if all(result.get("success") for result in results):
+            await store_key(tg_id, client_id, email, expiry_timestamp, public_link, server_id="all_servers")
+
+
+            await conn.execute('''
+                INSERT INTO connections (tg_id, trial) 
+                VALUES ($1, 1) 
+                ON CONFLICT (tg_id) 
+                DO UPDATE SET trial = 1
+            ''', tg_id)
+        else:
+            print('Не удалось создать ключ на одном или нескольких серверах.')
+
+    finally:
+        await conn.close()
+
+
+async def create_key_on_server(server_id: str, client_id: str, email: str, tg_id: int, expiry_timestamp: int):
+    """Асинхронно создает ключ на указанном сервере и возвращает результат."""
+    session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+    response = await add_client(
+        session, server_id, client_id, email, tg_id,
+        limit_ip=1, total_gb=0, expiry_time=expiry_timestamp,
+        enable=True, flow="xtls-rprx-vision"
+    )
+    return response

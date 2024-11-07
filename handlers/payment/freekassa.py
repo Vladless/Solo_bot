@@ -1,14 +1,15 @@
-import uuid
 import hashlib
-import requests
 import logging
 import time
+import uuid
 
+import requests
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiohttp import web
+
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import update_balance

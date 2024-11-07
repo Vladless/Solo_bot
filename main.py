@@ -10,9 +10,10 @@ from backup import backup_database
 from bot import bot, dp, router
 from config import WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
 from database import init_db
+from handlers.keys.subscriptions import handle_subscription
 from handlers.notifications import notify_expiring_keys
-from handlers.payment.pay import payment_webhook
 from handlers.payment.freekassa import freekassa_webhook
+from handlers.payment.pay import payment_webhook
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -54,6 +55,7 @@ async def main():
     app.on_shutdown.append(on_shutdown)
     app.router.add_post('/yookassa/webhook', payment_webhook)
     app.router.add_post('/freekassa/webhook', freekassa_webhook)
+    app.router.add_get('/solonet/sub/{email}', handle_subscription)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
