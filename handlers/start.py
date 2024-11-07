@@ -1,15 +1,18 @@
 import os
+
+import asyncpg
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (BufferedInputFile, CallbackQuery,
                            InlineKeyboardButton, InlineKeyboardMarkup, Message)
-from handlers.texts import ABOUT_VPN, WELCOME_TEXT
+
 from bot import bot
-from config import CHANNEL_URL, SUPPORT_CHAT_URL, APP_URL
-from database import add_connection, add_referral, check_connection_exists, get_trial
-from handlers.keys.trial_key import create_trial_key  
-from handlers.texts import INSTRUCTIONS_TRIAL
+from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL
+from database import (add_connection, add_referral, check_connection_exists,
+                      get_trial)
+from handlers.keys.trial_key import create_trial_key
+from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
 
 router = Router()
 
@@ -70,6 +73,19 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
     if 'error' in trial_key_info:
         await callback_query.message.answer(trial_key_info['error'])
     else:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            result = await conn.execute('''
+                UPDATE connections SET trial = 1 WHERE tg_id = $1
+            ''', user_id)
+            print(f"Rows updated: {result}") 
+
+        except Exception as e:
+            print(f"Ошибка при обновлении trial: {e}")
+
+        finally:
+            await conn.close()
+
         key_message = (
             f"<b>Ваш ключ доступа:</b>\n<pre>{trial_key_info['key']}</pre>\n\n"
             f"<b>Инструкции:</b>\n{INSTRUCTIONS_TRIAL}"
@@ -78,15 +94,25 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
         button_profile = InlineKeyboardButton(text='👤 Мой профиль', callback_data='view_profile')
         
         button_iphone = InlineKeyboardButton(
-            text='🍏IPhone', 
+            text='🍏 Подключить', 
             url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}'
         )
         button_android = InlineKeyboardButton(
-            text='🤖Android', 
+            text='🤖 Подключить', 
             url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}'
         )
 
+        button_download_iphone = InlineKeyboardButton(
+            text='🍏 Скачать',
+            url='https://apps.apple.com/ru/app/v2raytun/id6476628951'
+        )
+        button_download_android = InlineKeyboardButton(
+            text='🤖 Скачать',
+            url='https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru'
+        )
+
         inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [button_download_iphone, button_download_android],
             [button_iphone, button_android],
             [button_profile]
         ])
@@ -102,7 +128,9 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 @router.callback_query(lambda c: c.data == 'about_vpn')
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
-    info_message = ABOUT_VPN
+    
+    bot_version = "3.0.0_beta"
+    info_message = ABOUT_VPN.format(bot_version=bot_version)
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
     inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])

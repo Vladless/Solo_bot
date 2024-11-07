@@ -1,18 +1,19 @@
+import asyncpg
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-import asyncpg
+from aiogram.types import Message
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
-from handlers.payment.pay import ReplenishBalanceState, process_custom_amount_input
+from handlers.admin.admin import cmd_add_balance
+from handlers.keys.key_management import handle_key_name_input
+from handlers.payment.pay import (ReplenishBalanceState,
+                                  process_custom_amount_input)
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import TRIAL
-from handlers.admin.admin import cmd_add_balance
-from handlers.keys.key_management import handle_key_name_input
-from aiogram.types import Message
 
 router = Router()
 

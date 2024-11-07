@@ -1,19 +1,19 @@
-from aiogram import Router, types, F
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from datetime import datetime
+
+import asyncpg
+from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
-from config import DATABASE_URL, SERVERS
-import asyncpg
-from datetime import datetime
-from bot import bot
-from database import update_key_expiry, get_client_id_by_email, get_tg_id_by_client_id
-from config import DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME
-from datetime import datetime
-import asyncpg
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup)
+
 from auth import login_with_credentials
-from client import extend_client_key_admin
+from bot import bot
+from client import delete_client, extend_client_key_admin
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
+from database import (get_client_id_by_email, get_tg_id_by_client_id,
+                      update_key_expiry)
 from handlers.admin.admin_panel import back_to_admin_menu
-from client import delete_client
 
 router = Router()
 

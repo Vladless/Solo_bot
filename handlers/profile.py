@@ -1,15 +1,17 @@
+import logging
 import os
 
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
+from aiogram.types import (BufferedInputFile, InlineKeyboardButton,
+                           InlineKeyboardMarkup)
 
 from bot import bot
-from database import get_balance, get_key_count, get_referral_stats
-from handlers.texts import profile_message_send, invite_message_send, CHANNEL_LINK, get_referral_link
 from config import PAYMENT_METHOD
-import logging
+from database import get_balance, get_key_count, get_referral_stats
+from handlers.texts import (CHANNEL_LINK, get_referral_link,
+                            invite_message_send, profile_message_send)
 
 
 class ReplenishBalanceState(StatesGroup):
