@@ -1,11 +1,15 @@
+from datetime import datetime
+
+import asyncpg
 from aiogram import Router, types
 from aiogram.filters import Command
-from database import add_balance_to_client, check_connection_exists, update_key_expiry, get_client_id_by_email, get_tg_id_by_client_id
-from config import ADMIN_ID, DATABASE_URL, ADMIN_PASSWORD, ADMIN_USERNAME
-from datetime import datetime
-import asyncpg
+
 from auth import login_with_credentials
 from client import extend_client_key_admin
+from config import ADMIN_ID, ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
+from database import (add_balance_to_client, check_connection_exists,
+                      get_client_id_by_email, get_tg_id_by_client_id,
+                      update_key_expiry)
 
 router = Router()
 

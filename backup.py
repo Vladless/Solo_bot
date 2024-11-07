@@ -4,7 +4,8 @@ import subprocess
 from datetime import datetime
 
 from aiogram.types import BufferedInputFile
-from config import ADMIN_ID, DB_NAME, DB_PASSWORD, DB_USER, BACK_DIR
+
+from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER
 
 
 async def backup_database():

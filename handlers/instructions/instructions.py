@@ -6,6 +6,7 @@ from aiogram.types import (BufferedInputFile, InlineKeyboardButton,
 
 from handlers.texts import INSTRUCTIONS
 
+
 async def send_instructions(callback_query: types.CallbackQuery):
     await callback_query.message.delete()
 
