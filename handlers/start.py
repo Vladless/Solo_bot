@@ -129,7 +129,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
     
-    bot_version = "3.0.0_beta"
+    bot_version = "3.0.1_beta"
     info_message = ABOUT_VPN.format(bot_version=bot_version)
 
     button_back = InlineKeyboardButton(text='⬅️ Назад', callback_data='back_to_menu')
