@@ -23,7 +23,7 @@ class UserEditorState(StatesGroup):
 @router.message(Command('admin'))
 async def handle_admin_command(message: types.Message):
     if message.from_user.id != ADMIN_ID:
-        await message.reply("У вас нет доступа к этой команде.")
+        await bot.send_message(message.chat.id, "У вас нет доступа к этой команде.")
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -33,7 +33,8 @@ async def handle_admin_command(message: types.Message):
         [InlineKeyboardButton(text="Создать бэкап", callback_data="backups")],
         [InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")]
     ])
-    await message.reply("Панель администратора", reply_markup=keyboard)
+    await bot.send_message(message.chat.id, "Панель администратора", reply_markup=keyboard)
+
 
 @router.callback_query(lambda c: c.data == "user_stats")
 async def user_stats_menu(callback_query: CallbackQuery):
@@ -99,11 +100,23 @@ async def user_editor_menu(callback_query: CallbackQuery):
 
 @router.callback_query(lambda c: c.data == "back_to_admin_menu")
 async def back_to_admin_menu(callback_query: CallbackQuery):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Статистика пользователей", callback_data="user_stats")],
-        [InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")]
-    ])
-    await callback_query.message.edit_text("Панель администратора", reply_markup=keyboard)
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+
+    tg_id = callback_query.from_user.id
+    if tg_id == ADMIN_ID:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Статистика пользователей", callback_data="user_stats")],
+            [InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")],
+            [InlineKeyboardButton(text="Отправить сообщение всем клиентам", callback_data="send_to_alls")],
+            [InlineKeyboardButton(text="Создать бэкап", callback_data="backups")],
+            [InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")]
+        ])
+        await bot.send_message(tg_id, "Панель администратора", reply_markup=keyboard)
+    else:
+        await bot.send_message(tg_id, "У вас нет доступа к этой команде.")
 
 async def handle_error(tg_id, callback_query, message):
     await bot.edit_message_text(message, chat_id=tg_id, message_id=callback_query.message.message_id)
