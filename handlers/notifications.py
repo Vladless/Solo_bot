@@ -65,7 +65,6 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
         tg_id = record['tg_id']
         email = record['email']
         expiry_time = record['expiry_time']
-        server_id = record['server_id']
 
         expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
         current_date = datetime.utcnow()
@@ -79,9 +78,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
             hours_left = time_left.seconds // 3600
             days_left_message = f"{hours_left}"
 
-        server_name = SERVERS[server_id]['name']
         message = KEY_EXPIRY_10H.format(
-            server_id=server_name, 
             email=email, 
             expiry_date=expiry_date.strftime('%Y-%m-%d %H:%M:%S'),
             days_left_message=days_left_message
@@ -118,7 +115,6 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
         tg_id = record['tg_id']
         email = record['email']
         expiry_time = record['expiry_time']
-        server_id = record['server_id']
 
         expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
         current_date = datetime.utcnow()
@@ -133,7 +129,6 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: floa
             days_left_message = f"{hours_left}"
 
         message_24h = KEY_EXPIRY_24H.format(
-            server_id=SERVERS[server_id]['name'],
             email=email,
             days_left_message=days_left_message,
             expiry_date=expiry_date.strftime('%Y-%m-%d %H:%M:%S')
