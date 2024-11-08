@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import asyncio
+import logging
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -14,8 +16,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import (get_client_id_by_email, get_tg_id_by_client_id,
                       update_key_expiry)
 from handlers.admin.admin_panel import back_to_admin_menu
-import asyncio
-import logging
+from handlers.utils import sanitize_key_name
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -177,7 +178,7 @@ async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
 
 @router.message(UserEditorState.waiting_for_key_name)
 async def handle_key_name_input(message: types.Message, state: FSMContext):
-    key_name = message.text
+    key_name = sanitize_key_name(message.text)
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
