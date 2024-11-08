@@ -14,6 +14,12 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import (get_client_id_by_email, get_tg_id_by_client_id,
                       update_key_expiry)
 from handlers.admin.admin_panel import back_to_admin_menu
+import asyncio
+import logging
+
+
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -254,8 +260,6 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
             await state.clear()
             return
 
-        await update_key_expiry(client_id, expiry_time)
-
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow('SELECT server_id FROM keys WHERE client_id = $1', client_id)
@@ -263,39 +267,46 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
                 await message.reply("Клиент не найден в базе данных.")
                 await state.clear()
                 return
-            
-            server_id = record['server_id']
+
             tg_id = await get_tg_id_by_client_id(client_id)
 
-            session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+            async def update_key_on_all_servers():
+                tasks = []
+                for server_id in SERVERS:
+                    tasks.append(asyncio.create_task(
+                        renew_server_key(server_id, tg_id, client_id, email, expiry_time)
+                    ))
+                await asyncio.gather(*tasks)
 
-            print(f"Попытка обновить панель для server_id: {server_id}, tg_id: {tg_id}, client_id: {client_id}, email: {email}, expiryTime: {expiry_time}")
+            await update_key_on_all_servers()
 
-            success = await extend_client_key_admin(session, server_id, tg_id, client_id, email, expiry_time)
+            await update_key_expiry(client_id, expiry_time)
 
-            print(f"Статус обновления панели: {'Успешно' if success else 'Не удалось'}")
-            if success:
-                response_message = (
-                    f"Время истечения ключа для клиента {client_id} ({email}) успешно обновлено и синхронизировано с панелью."
-                )
-            else:
-                response_message = (
-                    f"Время истечения ключа для клиента {client_id} ({email}) обновлено, но не удалось синхронизировать с панелью."
-                )
+            response_message = (
+                f"Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
+            )
 
             back_button = InlineKeyboardButton(text="Назад", callback_data="back_to_user_editor")
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
             await message.reply(response_message, reply_markup=keyboard, parse_mode="HTML")
-                
+
         finally:
             await conn.close()
+
     except ValueError:
         await message.reply("Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.")
     except Exception as e:
         await message.reply(f"Произошла ошибка: {e}")
 
-    await state.clear()  
+    await state.clear()
+
+async def renew_server_key(server_id, tg_id, client_id, email, new_expiry_time):
+    try:
+        session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+        await extend_client_key_admin(session, server_id, tg_id, client_id, email, new_expiry_time)
+    except Exception as e:
+        logger.error(f"Не удалось обновить ключ {client_id} на сервере {server_id}: {e}")
 
 @router.callback_query(lambda c: c.data.startswith('delete_key_admin|'))
 async def process_callback_delete_key(callback_query: types.CallbackQuery):
@@ -329,27 +340,30 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
-            record = await conn.fetchrow('SELECT email, server_id FROM keys WHERE client_id = $1', client_id)
+            record = await conn.fetchrow('SELECT email FROM keys WHERE client_id = $1', client_id)
 
             if record:
                 email = record['email']
-                server_id = record['server_id']
-                session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-                success = await delete_client(session, server_id, client_id)
+                response_message = "Ключ успешно удален."
+                back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-                if success:
-                    await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
-                    response_message = "Ключ был успешно удален."
-                else:
-                    response_message = "Ошибка при удалении клиента через API."
+                async def delete_key_from_servers():
+                    tasks = []
+                    for server_id in SERVERS:
+                        tasks.append(delete_key_from_server(server_id, client_id))
+                    await asyncio.gather(*tasks)
 
+                await delete_key_from_servers() 
+                await delete_key_from_db(client_id)  
+
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
             else:
                 response_message = "Ключ не найден или уже удален."
+                back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            back_button = types.InlineKeyboardButton(text='Назад', callback_data='view_keys')
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-            await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
+                await bot.edit_message_text(response_message, chat_id=tg_id, message_id=callback_query.message.message_id, reply_markup=keyboard)
 
         finally:
             await conn.close()
@@ -358,6 +372,27 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
         await bot.edit_message_text(f"Ошибка при удалении ключа: {e}", chat_id=tg_id, message_id=callback_query.message.message_id)
 
     await callback_query.answer()
+
+async def delete_key_from_server(server_id, client_id):
+    """Удаление ключа с сервера"""
+    try:
+        session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
+        success = await delete_client(session, server_id, client_id)
+
+        if not success:
+            logger.error(f"Ошибка удаления ключа {client_id} на сервере {server_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}")
+
+async def delete_key_from_db(client_id):
+    """Удаление ключа из базы данных"""
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute('DELETE FROM keys WHERE client_id = $1', client_id)
+    except Exception as e:
+        logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
+    finally:
+        await conn.close()
 
 @router.callback_query(lambda c: c.data == "back_to_user_editor")
 async def back_to_user_editor(callback_query: CallbackQuery):
