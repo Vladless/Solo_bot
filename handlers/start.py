@@ -28,19 +28,19 @@ async def send_welcome_message(chat_id: int, trial_status: int):
 
     builder = InlineKeyboardBuilder()
     if trial_status == 0:
-        builder.add(
+        builder.row(
             InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn")
         )
-    builder.add(
+    builder.row(
         InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
     )
-    builder.add(InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn"))
-    builder.add(
+    builder.row(
         InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
         InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL),
     )
+    builder.row(InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn"))
 
-    if not os.path.isfile(image_path):
+    if os.path.isfile(image_path):
         with open(image_path, "rb") as image_from_buffer:
             await bot.send_photo(
                 chat_id=chat_id,
@@ -107,11 +107,11 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
         )
 
         builder = InlineKeyboardBuilder()
-        builder.add(
+        builder.row(
             InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
         )
 
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="🍏 Подключить",
                 url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
@@ -122,7 +122,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             ),
         )
 
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="🍏 Скачать",
                 url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
@@ -145,7 +145,7 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
     builder = InlineKeyboardBuilder()
-    builder.add(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
 
     await callback_query.message.answer(
         ABOUT_VPN, parse_mode="HTML", reply_markup=builder.as_markup()
