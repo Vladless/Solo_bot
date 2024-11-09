@@ -35,8 +35,10 @@ async def send_welcome_message(chat_id: int, trial_status: int):
         InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
     )
     builder.add(InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn"))
-    builder.add(InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL))
-    builder.add(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
+    builder.add(
+        InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
+        InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL),
+    )
 
     if not os.path.isfile(image_path):
         with open(image_path, "rb") as image_from_buffer:
@@ -113,26 +115,22 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             InlineKeyboardButton(
                 text="🍏 Подключить",
                 url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
-            )
-        )
-        builder.add(
+            ),
             InlineKeyboardButton(
                 text="🤖 Подключить",
                 url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
-            )
+            ),
         )
 
         builder.add(
             InlineKeyboardButton(
                 text="🍏 Скачать",
                 url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
-            )
-        )
-        builder.add(
+            ),
             InlineKeyboardButton(
                 text="🤖 Скачать",
                 url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
-            )
+            ),
         )
 
         await callback_query.message.answer(
