@@ -1,7 +1,7 @@
 from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import API_TOKEN,YOOKASSA_ENABLE,FREEKASSA_ENABLE
+from config import API_TOKEN, FREEKASSA_ENABLE, YOOKASSA_ENABLE
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()

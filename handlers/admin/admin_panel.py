@@ -31,23 +31,23 @@ class UserEditorState(StatesGroup):
 async def handle_admin_command(message: types.Message, is_admin: bool):
     if is_admin:
         builder = InlineKeyboardBuilder()
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Статистика пользователей", callback_data="user_stats"
             )
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Редактор пользователей", callback_data="user_editor"
             )
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Отправить сообщение всем клиентам", callback_data="send_to_alls"
             )
         )
-        builder.add(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
-        builder.add(
+        builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+        builder.row(
             InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
         )
         await bot.send_message(
@@ -82,7 +82,7 @@ async def user_stats_menu(callback_query: CallbackQuery, is_admin: bool):
             )
 
             builder = InlineKeyboardBuilder()
-            builder.add(
+            builder.row(
                 InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
             )
 
@@ -134,15 +134,15 @@ async def handle_restart(callback_query: CallbackQuery, is_admin: bool):
 async def user_editor_menu(callback_query: CallbackQuery, is_admin: bool):
     if is_admin:
         builder = InlineKeyboardBuilder()
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Поиск по имени ключа", callback_data="search_by_key_name"
             )
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(text="Поиск по tg_id", callback_data="search_by_tg_id")
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
         )
         await callback_query.message.edit_text(
@@ -160,24 +160,24 @@ async def back_to_admin_menu(callback_query: CallbackQuery, is_admin: bool):
     tg_id = callback_query.from_user.id
     if is_admin:
         builder = InlineKeyboardBuilder()
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Статистика пользователей", callback_data="user_stats"
             )
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Редактор пользователей", callback_data="user_editor"
             )
         )
-        builder.add(
+        builder.row(
             InlineKeyboardButton(
                 text="Отправить сообщение всем клиентам",
                 callback_data="send_to_alls",
             )
         )
-        builder.add(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
-        builder.add(
+        builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+        builder.row(
             InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
         )
         await bot.send_message(

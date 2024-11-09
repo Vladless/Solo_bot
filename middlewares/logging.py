@@ -19,18 +19,18 @@ class UserActivityMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             user_id = event.from_user.id
             username = event.from_user.username
-            action = f"Message: {event.text}"
+            action = f"Сообщение: {event.text}"
         elif isinstance(event, CallbackQuery):
             user_id = event.from_user.id
             username = event.from_user.username
-            action = f"Callback: {event.data}"
+            action = f"Обратный вызов: {event.data}"
 
         # Логируем действие пользователя
         logger.info(
-            f"User Activity - "
-            f"User ID: {user_id}, "
-            f"Username: {username}, "
-            f"Action: {action}"
+            f"Активность пользователя - "
+            f"ID пользователя: {user_id}, "
+            f"Имя пользователя: {username}, "
+            f"Действие: {action}"
         )
 
         # Продолжаем выполнение обработчика

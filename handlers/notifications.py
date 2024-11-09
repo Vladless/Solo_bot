@@ -35,13 +35,12 @@ async def notify_expiring_keys(bot: Bot):
 
         logger.info("Начало обработки уведомлений.")
 
-        notification_tasks = [
-            notify_10h_keys(bot, conn, current_time, threshold_time_10h),
-            notify_24h_keys(bot, conn, current_time, threshold_time_24h),
-            handle_expired_keys(bot, conn, current_time),
-        ]
-
-        await asyncio.gather(*notification_tasks)
+        await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
+        await asyncio.sleep(1)
+        await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
+        await asyncio.sleep(1)
+        await handle_expired_keys(bot, conn, current_time)
+        await asyncio.sleep(1)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомлений: {e}")

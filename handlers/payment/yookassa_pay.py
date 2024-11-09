@@ -9,7 +9,7 @@ from loguru import logger
 from yookassa import Configuration, Payment
 
 from bot import bot
-from config import YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
+from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import (
     add_connection,
     check_connection_exists,
@@ -24,8 +24,9 @@ router = Router()
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY
 
-logger.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
-logger.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
+if YOOKASSA_ENABLE:
+    logger.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
+    logger.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
 
 
 class ReplenishBalanceState(StatesGroup):

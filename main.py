@@ -1,5 +1,6 @@
 import asyncio
 import signal
+import traceback
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
@@ -68,7 +69,7 @@ async def main():
         app.router.add_post("/yookassa/webhook", yookassa_webhook)
     if FREEKASSA_ENABLE:
         app.router.add_post("/freekassa/webhook", freekassa_webhook)
-    app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
+    # app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
     setup_application(app, dp, bot=bot)
@@ -97,4 +98,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        logger.error(f"Ошибка при запуске приложения: {e}")
+        logger.error(f"Ошибка при запуске приложения:\n{traceback.format_exc()}")
