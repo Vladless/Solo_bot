@@ -28,30 +28,3 @@ class AdminMiddleware(BaseMiddleware):
             data["is_admin"] = True
 
         return await handler(event, data)
-
-
-def admin_only():
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            # Извлекаем объект события (Message или CallbackQuery)
-            event = args[0]
-
-            # Определяем ID пользователя
-            user_id = event.from_user.id if hasattr(event, "from_user") else None
-
-            if user_id not in int(ADMIN_ID):
-                # Можно отправить сообщение или просто return
-                if isinstance(event, Message):
-                    await event.answer("У вас нет доступа к этой команде.")
-                elif isinstance(event, CallbackQuery):
-                    await event.answer(
-                        "У вас нет доступа к этому действию.", show_alert=True
-                    )
-                return None
-
-            return await func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
