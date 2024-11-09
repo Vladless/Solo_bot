@@ -13,6 +13,8 @@ from aiohttp import web
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import update_balance
+from handlers.profile import process_callback_view_profile
+from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
 logging.basicConfig(level=logging.DEBUG)
@@ -94,24 +96,16 @@ async def process_callback_pay_freekassa(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     tg_id = callback_query.from_user.id
+    inline_keyboard = []
 
-    amount_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="100 рублей", callback_data="amount|100"),
-                InlineKeyboardButton(text="500 рублей", callback_data="amount|500"),
-            ],
-            [
-                InlineKeyboardButton(text="1000 рублей", callback_data="amount|1000"),
-                InlineKeyboardButton(text="5000 рублей", callback_data="amount|5000"),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Введите другую сумму", callback_data="enter_custom_amount"
-                )
-            ],
-        ]
-    )
+    for payment in PAYMENT_OPTIONS:
+        inline_keyboard.append(
+            InlineKeyboardButton(
+                text=payment.get("text"), callback_data=payment.get("callback_data")
+            )
+        )
+
+    amount_keyboard = InlineKeyboardMarkup(inline_keyboard)
 
     await bot.delete_message(
         chat_id=tg_id, message_id=callback_query.message.message_id
@@ -125,6 +119,13 @@ async def process_callback_pay_freekassa(
 
     await state.set_state(ReplenishBalanceState.choosing_amount)
     await callback_query.answer()
+
+
+@router.callback_query(lambda c: c.data == "back_to_profile")
+async def back_to_profile_handler(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
+    await process_callback_view_profile(callback_query, state)
 
 
 @router.callback_query(lambda c: c.data.startswith("amount|"))

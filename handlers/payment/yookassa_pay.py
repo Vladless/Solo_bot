@@ -66,6 +66,14 @@ async def process_callback_replenish_balance(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     tg_id = callback_query.from_user.id
+    inline_keyboard = []
+
+    for payment in PAYMENT_OPTIONS:
+        inline_keyboard.append(
+            InlineKeyboardButton(
+                text=payment.get("text"), callback_data=payment.get("callback_data")
+            )
+        )
 
     key_count = await get_key_count(tg_id)
 
@@ -74,42 +82,7 @@ async def process_callback_replenish_balance(
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0)
 
-    amount_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[0]["text"],
-                    callback_data=PAYMENT_OPTIONS[0]["callback_data"],
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[1]["text"],
-                    callback_data=PAYMENT_OPTIONS[1]["callback_data"],
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[2]["text"],
-                    callback_data=PAYMENT_OPTIONS[2]["callback_data"],
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[3]["text"],
-                    callback_data=PAYMENT_OPTIONS[3]["callback_data"],
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[4]["text"],
-                    callback_data=PAYMENT_OPTIONS[4]["callback_data"],
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[5]["text"],
-                    callback_data=PAYMENT_OPTIONS[5]["callback_data"],
-                )
-            ],
-        ]
-    )
+    amount_keyboard = InlineKeyboardMarkup(inline_keyboard)
 
     await bot.delete_message(
         chat_id=tg_id, message_id=callback_query.message.message_id
@@ -130,11 +103,11 @@ async def back_to_profile_handler(
     await process_callback_view_profile(callback_query, state)
 
 
-@router.callback_query(lambda c: c.data.startswith("amount_"))
+@router.callback_query(lambda c: c.data.startswith("amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    data = callback_query.data.split("_", 1)
+    data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
         await send_message_with_deletion(

@@ -28,7 +28,13 @@ from config import (
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
-from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, key_message_success
+from handlers.texts import (
+    KEY,
+    KEY_TRIAL,
+    NULL_BALANCE,
+    RENEWAL_PLANS,
+    key_message_success,
+)
 from handlers.utils import sanitize_key_name
 
 router = Router()
@@ -115,7 +121,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
     server_id = data.get("selected_server_id")
 
     balance = await get_balance(tg_id)
-    if balance < 100:
+    if balance < RENEWAL_PLANS["1"]["price"]:
         replenish_button = InlineKeyboardButton(
             text="Перейти в профиль", callback_data="view_profile"
         )
@@ -184,7 +190,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         expiry_time = current_time + timedelta(days=1, hours=3)
     else:
         balance = await get_balance(tg_id)
-        if balance < 100:
+        if balance < RENEWAL_PLANS["1"]["price"]:
             replenish_button = InlineKeyboardButton(
                 text="Перейти в профиль", callback_data="view_profile"
             )
@@ -197,7 +203,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             await state.clear()
             return
 
-        await update_balance(tg_id, -100)
+        await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
         expiry_time = current_time + timedelta(days=30, hours=3)
 
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
