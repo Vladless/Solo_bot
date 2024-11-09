@@ -21,7 +21,7 @@ class AdminMiddleware(BaseMiddleware):
         elif isinstance(event, CallbackQuery):
             user_id = event.from_user.id
 
-        if user_id not in int(ADMIN_ID):
+        if user_id != int(ADMIN_ID):
             data["is_admin"] = False
         else:
             data["is_admin"] = True

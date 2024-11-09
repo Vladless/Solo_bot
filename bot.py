@@ -1,7 +1,7 @@
 from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import API_TOKEN
+from config import API_TOKEN,YOOKASSA_ENABLE,FREEKASSA_ENABLE
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -23,8 +23,10 @@ dp.include_router(start.router)
 dp.include_router(profile.router)
 dp.include_router(keys.router)
 dp.include_router(key_management.router)
-dp.include_router(yookassa_pay.router)
-dp.include_router(freekassa_pay.router)
+if YOOKASSA_ENABLE:
+    dp.include_router(yookassa_pay.router)
+if FREEKASSA_ENABLE:
+    dp.include_router(freekassa_pay.router)
 dp.include_router(notifications.router)
 
 dp.message.middleware(AdminMiddleware())
