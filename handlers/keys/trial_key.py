@@ -13,6 +13,7 @@ from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 async def create_trial_key(tg_id: int):
@@ -74,7 +75,7 @@ async def generate_and_store_keys(
                 tg_id,
             )
         else:
-            logging.error("Не удалось создать ключ на одном или нескольких серверах.")
+            logger.error("Не удалось создать ключ на одном или нескольких серверах.")
 
     finally:
         await conn.close()

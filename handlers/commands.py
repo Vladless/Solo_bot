@@ -20,6 +20,7 @@ from handlers.start import start_command
 from handlers.texts import TRIAL
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -83,11 +84,11 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                         await bot.send_message(chat_id=tg_id, text=trial_message)
                     except Exception as e:
                         if "Forbidden: bot was blocked by the user" in str(e):
-                            logging.info(
+                            logger.info(
                                 f"Бот заблокирован пользователем с tg_id: {tg_id}"
                             )
                         else:
-                            logging.error(
+                            logger.error(
                                 f"Ошибка при отправке сообщения пользователю {tg_id}: {e}"
                             )
 
@@ -133,13 +134,13 @@ async def process_message_to_all(message: types.Message, state: FSMContext):
             try:
                 await bot.send_message(chat_id=tg_id, text=text_message)
             except Exception as e:
-                logging.error(
+                logger.error(
                     f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя."
                 )
 
         await message.answer("Сообщение было отправлено всем клиентам.")
     except Exception as e:
-        logging.error(f"Ошибка при подключении к базе данных: {e}")
+        logger.error(f"Ошибка при подключении к базе данных: {e}")
         await message.answer("Произошла ошибка при отправке сообщения.")
     finally:
         await conn.close()

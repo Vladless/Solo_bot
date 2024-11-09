@@ -18,6 +18,7 @@ from database import (
 from middlewares.admin import admin_only
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -82,7 +83,7 @@ async def cmd_update_key_expiry(message: types.Message):
                 server_id, ADMIN_USERNAME, ADMIN_PASSWORD
             )
 
-            logging.info(
+            logger.info(
                 f"Попытка обновить панель для server_id: {server_id}, tg_id: {tg_id}, client_id: {client_id}, email: {email}, expiryTime: {expiry_time}"
             )
 
@@ -90,7 +91,7 @@ async def cmd_update_key_expiry(message: types.Message):
                 session, server_id, tg_id, client_id, email, expiry_time
             )
 
-            logging.info(
+            logger.info(
                 f"Статус обновления панели: {'Успешно' if success else 'Не удалось'}"
             )
             if success:

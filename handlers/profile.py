@@ -24,7 +24,7 @@ class ReplenishBalanceState(StatesGroup):
 
 router = Router()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

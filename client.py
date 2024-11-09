@@ -4,6 +4,7 @@ import logging
 from config import SERVERS
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 async def add_client(
@@ -45,16 +46,16 @@ async def add_client(
     }
 
     async with session.post(url, json=data, headers=headers) as response:
-        logging.info(f"Запрос на добавление клиента: {data}")
-        logging.info(f"Статус ответа: {response.status}")
+        logger.info(f"Запрос на добавление клиента: {data}")
+        logger.info(f"Статус ответа: {response.status}")
         response_text = await response.text()
-        logging.info(f"Ответ от сервера: {response_text}")
+        logger.info(f"Ответ от сервера: {response_text}")
 
         if response.status == 200:
-            logging.info(f"Клиент добавлен: email={email}")
+            logger.info(f"Клиент добавлен: email={email}")
             return await response.json()
         else:
-            logging.error(
+            logger.error(
                 f"Ошибка при добавлении клиента: {response.status}, {response_text}"
             )
             return None
@@ -68,21 +69,21 @@ async def extend_client_key(
     async with session.get(
         f"{api_url}/panel/api/inbounds/getClientTraffics/{email}"
     ) as response:
-        logging.info(f"GET {response.url} Status: {response.status}")
+        logger.info(f"GET {response.url} Status: {response.status}")
         response_text = await response.text()
-        logging.info(f"GET Response: {response_text}")
+        logger.info(f"GET Response: {response_text}")
 
         if response.status != 200:
-            logging.error(
+            logger.error(
                 f"Ошибка при получении данных клиента: {response.status} - {response_text}"
             )
             return False
 
         client_data = (await response.json()).get("obj", {})
-        logging.info(client_data)
+        logger.info(client_data)
 
         if not client_data:
-            logging.error("Не удалось получить данные клиента.")
+            logger.error("Не удалось получить данные клиента.")
             return False
 
         current_expiry_time = client_data.get("expiryTime", 0)
@@ -122,20 +123,20 @@ async def extend_client_key(
                 json=payload,
                 headers=headers,
             ) as response:
-                logging.info(f"POST {response.url} Status: {response.status}")
-                logging.info(f"POST Request Data: {json.dumps(payload, indent=2)}")
+                logger.info(f"POST {response.url} Status: {response.status}")
+                logger.info(f"POST Request Data: {json.dumps(payload, indent=2)}")
                 response_text = await response.text()
-                logging.info(f"POST Response: {response_text}")
+                logger.info(f"POST Response: {response_text}")
 
                 if response.status == 200:
                     return True
                 else:
-                    logging.error(
+                    logger.error(
                         f"Ошибка при продлении ключа: {response.status} - {response_text}"
                     )
                     return False
         except Exception as e:
-            logging.error(f"Ошибка запроса: {e}")
+            logger.error(f"Ошибка запроса: {e}")
             return False
 
 
@@ -174,20 +175,20 @@ async def extend_client_key_admin(
             json=payload,
             headers=headers,
         ) as response:
-            logging.info(f"POST {response.url} Status: {response.status}")
-            logging.info(f"POST Request Data: {json.dumps(payload, indent=2)}")
+            logger.info(f"POST {response.url} Status: {response.status}")
+            logger.info(f"POST Request Data: {json.dumps(payload, indent=2)}")
             response_text = await response.text()
-            logging.info(f"POST Response: {response_text}")
+            logger.info(f"POST Response: {response_text}")
 
             if response.status == 200:
                 return True
             else:
-                logging.error(
+                logger.error(
                     f"Ошибка при продлении ключа: {response.status} - {response_text}"
                 )
                 return False
     except Exception as e:
-        logging.error(f"Ошибка запроса: {e}")
+        logger.error(f"Ошибка запроса: {e}")
         return False
 
 
@@ -201,10 +202,10 @@ async def delete_client(session, server_id: str, client_id: str) -> bool:
             if response.status == 200:
                 return True
             else:
-                logging.error(
+                logger.error(
                     f"Ошибка при удалении клиента: {response.status} - {await response.text()}"
                 )
                 return False
     except Exception as e:
-        logging.error(f"Ошибка запроса: {e}")
+        logger.error(f"Ошибка запроса: {e}")
         return False
