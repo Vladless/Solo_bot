@@ -12,6 +12,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
 from bot import bot
@@ -29,34 +30,28 @@ class UserEditorState(StatesGroup):
 @router.message(Command("admin"))
 async def handle_admin_command(message: types.Message, is_admin: bool):
     if is_admin:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Статистика пользователей", callback_data="user_stats"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Редактор пользователей", callback_data="user_editor"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Отправить сообщение всем клиентам",
-                        callback_data="send_to_alls",
-                    )
-                ],
-                [InlineKeyboardButton(text="Создать бэкап", callback_data="backups")],
-                [
-                    InlineKeyboardButton(
-                        text="Перезапустить бота", callback_data="restart_bot"
-                    )
-                ],
-            ]
+        builder = InlineKeyboardBuilder()
+        builder.add(
+            InlineKeyboardButton(
+                text="Статистика пользователей", callback_data="user_stats"
+            )
+        )
+        builder.add(
+            InlineKeyboardButton(
+                text="Редактор пользователей", callback_data="user_editor"
+            )
+        )
+        builder.add(
+            InlineKeyboardButton(
+                text="Отправить сообщение всем клиентам", callback_data="send_to_alls"
+            )
+        )
+        builder.add(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+        builder.add(
+            InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
         )
         await bot.send_message(
-            message.chat.id, "Панель администратора.", reply_markup=keyboard
+            message.chat.id, "Панель администратора.", reply_markup=builder.as_markup()
         )
     else:
         await bot.send_message(message.chat.id, "У вас нет доступа к этой команде.")
@@ -86,13 +81,13 @@ async def user_stats_menu(callback_query: CallbackQuery, is_admin: bool):
                 f"• Истекшие ключи: <b>{expired_keys}</b>"
             )
 
-            back_button = InlineKeyboardButton(
-                text="Назад", callback_data="back_to_admin_menu"
+            builder = InlineKeyboardBuilder()
+            builder.add(
+                InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
             )
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
             await callback_query.message.edit_text(
-                stats_message, reply_markup=keyboard, parse_mode="HTML"
+                stats_message, reply_markup=builder.as_markup(), parse_mode="HTML"
             )
         finally:
             await conn.close()
@@ -138,27 +133,20 @@ async def handle_restart(callback_query: CallbackQuery, is_admin: bool):
 @router.callback_query(F.data == "user_editor")
 async def user_editor_menu(callback_query: CallbackQuery, is_admin: bool):
     if is_admin:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Поиск по имени ключа", callback_data="search_by_key_name"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Поиск по tg_id", callback_data="search_by_tg_id"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Назад", callback_data="back_to_admin_menu"
-                    )
-                ],  # Back button
-            ]
+        builder = InlineKeyboardBuilder()
+        builder.add(
+            InlineKeyboardButton(
+                text="Поиск по имени ключа", callback_data="search_by_key_name"
+            )
+        )
+        builder.add(
+            InlineKeyboardButton(text="Поиск по tg_id", callback_data="search_by_tg_id")
+        )
+        builder.add(
+            InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
         )
         await callback_query.message.edit_text(
-            "Выберите метод поиска:", reply_markup=keyboard
+            "Выберите метод поиска:", reply_markup=builder.as_markup()
         )
 
 
@@ -171,33 +159,30 @@ async def back_to_admin_menu(callback_query: CallbackQuery, is_admin: bool):
 
     tg_id = callback_query.from_user.id
     if is_admin:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Статистика пользователей", callback_data="user_stats"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Редактор пользователей", callback_data="user_editor"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Отправить сообщение всем клиентам",
-                        callback_data="send_to_alls",
-                    )
-                ],
-                [InlineKeyboardButton(text="Создать бэкап", callback_data="backups")],
-                [
-                    InlineKeyboardButton(
-                        text="Перезапустить бота", callback_data="restart_bot"
-                    )
-                ],
-            ]
+        builder = InlineKeyboardBuilder()
+        builder.add(
+            InlineKeyboardButton(
+                text="Статистика пользователей", callback_data="user_stats"
+            )
         )
-        await bot.send_message(tg_id, "Панель администратора", reply_markup=keyboard)
+        builder.add(
+            InlineKeyboardButton(
+                text="Редактор пользователей", callback_data="user_editor"
+            )
+        )
+        builder.add(
+            InlineKeyboardButton(
+                text="Отправить сообщение всем клиентам",
+                callback_data="send_to_alls",
+            )
+        )
+        builder.add(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+        builder.add(
+            InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
+        )
+        await bot.send_message(
+            tg_id, "Панель администратора", reply_markup=builder.as_markup()
+        )
 
 
 async def handle_error(tg_id, callback_query, message):
