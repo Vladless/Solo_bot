@@ -1,10 +1,11 @@
 from functools import wraps
 from typing import Any, Awaitable, Callable, Dict
 
+import asyncpg
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
-from config import ADMIN_ID
+from config import DATABASE_URL
 
 
 class AdminMiddleware(BaseMiddleware):
@@ -14,16 +15,9 @@ class AdminMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
-        user_id = None
-
-        if isinstance(event, Message):
-            user_id = event.from_user.id
-        elif isinstance(event, CallbackQuery):
-            user_id = event.from_user.id
-
-        if user_id not in int(ADMIN_ID):
-            data["is_admin"] = False
-        else:
-            data["is_admin"] = True
-
-        return await handler(event, data)
+        session = await asyncpg.connect(DATABASE_URL)
+        data["session"] = session
+        try:
+            return await handler(event, data)
+        finally:
+            await session.close()
