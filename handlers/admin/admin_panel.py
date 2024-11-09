@@ -2,7 +2,7 @@ import subprocess
 from datetime import datetime
 
 import asyncpg
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -61,7 +61,7 @@ async def handle_admin_command(message: types.Message):
     )
 
 
-@router.callback_query(lambda c: c.data == "user_stats")
+@router.callback_query(F.data == "user_stats")
 @admin_only()
 async def user_stats_menu(callback_query: CallbackQuery):
     conn = await asyncpg.connect(DATABASE_URL)
@@ -99,14 +99,14 @@ async def user_stats_menu(callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "send_to_alls")
+@router.callback_query(F.data == "send_to_alls")
 @admin_only()
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     await send_message_to_all_clients(callback_query.message, state, from_panel=True)
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "backups")
+@router.callback_query(F.data == "backups")
 @admin_only()
 async def handle_backup(message: Message):
     await message.answer("Запускаю бэкап базы данных...")
@@ -114,7 +114,7 @@ async def handle_backup(message: Message):
     await message.answer("Бэкап завершен и отправлен админу.")
 
 
-@router.callback_query(lambda c: c.data == "restart_bot")
+@router.callback_query(F.data == "restart_bot")
 @admin_only()
 async def handle_restart(callback_query: CallbackQuery):
     if callback_query.from_user.id == ADMIN_ID:
@@ -136,7 +136,7 @@ async def handle_restart(callback_query: CallbackQuery):
         )
 
 
-@router.callback_query(lambda c: c.data == "user_editor")
+@router.callback_query(F.data == "user_editor")
 @admin_only()
 async def user_editor_menu(callback_query: CallbackQuery):
     keyboard = InlineKeyboardMarkup(
@@ -161,7 +161,7 @@ async def user_editor_menu(callback_query: CallbackQuery):
     )
 
 
-@router.callback_query(lambda c: c.data == "back_to_admin_menu")
+@router.callback_query(F.data == "back_to_admin_menu")
 @admin_only()
 async def back_to_admin_menu(callback_query: CallbackQuery):
     try:

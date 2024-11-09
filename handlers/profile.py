@@ -1,7 +1,7 @@
 import logging
 import os
 
-from aiogram import Router, types
+from aiogram import Router, types,F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
@@ -108,7 +108,7 @@ async def process_callback_view_profile(
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "invite")
+@router.callback_query(F.data == "invite")
 async def invite_handler(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     referral_link = get_referral_link(tg_id)
@@ -129,6 +129,6 @@ async def invite_handler(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "view_profile")
+@router.callback_query(F.data == "view_profile")
 async def view_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
     await process_callback_view_profile(callback_query, state)

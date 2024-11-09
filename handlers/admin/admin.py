@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 import asyncpg
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.filters import Command
 
 from auth import login_with_credentials

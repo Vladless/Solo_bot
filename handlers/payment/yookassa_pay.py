@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -61,7 +61,7 @@ async def send_message_with_deletion(
     return sent_message
 
 
-@router.callback_query(lambda c: c.data == "replenish_balance")
+@router.callback_query(F.data == "replenish_balance")
 async def process_callback_replenish_balance(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -96,14 +96,14 @@ async def process_callback_replenish_balance(
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "back_to_profile")
+@router.callback_query(F.data == "back_to_profile")
 async def back_to_profile_handler(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     await process_callback_view_profile(callback_query, state)
 
 
-@router.callback_query(lambda c: c.data.startswith("amount|"))
+@router.callback_query(F.data.startswith("amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -233,7 +233,7 @@ async def yookassa_webhook(request):
     return web.Response(status=200)
 
 
-@router.callback_query(lambda c: c.data == "enter_custom_amount")
+@router.callback_query(F.data == "enter_custom_amount")
 async def process_enter_custom_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):

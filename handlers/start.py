@@ -2,7 +2,7 @@ import logging
 import os
 
 import asyncpg
-from aiogram import Router
+from aiogram import Router,F
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -86,7 +86,7 @@ async def start_command(message: Message):
     await send_welcome_message(message.chat.id, trial_status)
 
 
-@router.callback_query(lambda c: c.data == "connect_vpn")
+@router.callback_query(F.data == "connect_vpn")
 async def handle_connect_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
     user_id = callback_query.from_user.id
@@ -153,23 +153,20 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "about_vpn")
+@router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
-
-    bot_version = "3.0.1_beta"
-    info_message = ABOUT_VPN.format(bot_version=bot_version)
 
     button_back = InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")
     inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])
 
     await callback_query.message.answer(
-        info_message, parse_mode="HTML", reply_markup=inline_keyboard_back
+        ABOUT_VPN, parse_mode="HTML", reply_markup=inline_keyboard_back
     )
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "back_to_menu")
+@router.callback_query(F.data == "back_to_menu")
 async def handle_back_to_menu(callback_query: CallbackQuery):
     await callback_query.message.delete()
     trial_status = await get_trial(callback_query.from_user.id)
