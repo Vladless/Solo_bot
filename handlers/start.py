@@ -11,6 +11,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
@@ -22,48 +23,36 @@ from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
 router = Router()
 
 
-class FeedbackState(StatesGroup):
-    waiting_for_feedback = State()
-
-
 async def send_welcome_message(chat_id: int, trial_status: int):
-    welcome_text = WELCOME_TEXT
-
     image_path = os.path.join(os.path.dirname(__file__), "pic.jpg")
 
-    if not os.path.isfile(image_path):
-        await bot.send_message(chat_id, "Файл изображения не найден.")
-        return
-
-    inline_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            (
-                [
-                    InlineKeyboardButton(
-                        text="🔗 Подключить VPN", callback_data="connect_vpn"
-                    )
-                ]
-                if trial_status == 0
-                else []
-            ),
-            [InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")],
-            [InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn")],
-            [InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL)],
-            [InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL)],
-        ]
+    builder = InlineKeyboardBuilder()
+    if trial_status == 0:
+        builder.add(
+            InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn")
+        )
+    builder.add(
+        InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
     )
+    builder.add(InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn"))
+    builder.add(InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.add(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
 
-    inline_keyboard.inline_keyboard = [
-        row for row in inline_keyboard.inline_keyboard if row
-    ]
-
-    with open(image_path, "rb") as image_from_buffer:
-        await bot.send_photo(
-            chat_id,
-            BufferedInputFile(image_from_buffer.read(), filename="pic.jpg"),
-            caption=welcome_text,
+    if not os.path.isfile(image_path):
+        with open(image_path, "rb") as image_from_buffer:
+            await bot.send_photo(
+                chat_id=chat_id,
+                photo=BufferedInputFile(image_from_buffer.read(), filename="pic.jpg"),
+                caption=WELCOME_TEXT,
+                parse_mode="HTML",
+                reply_markup=builder.as_markup(),
+            )
+    else:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=WELCOME_TEXT,
             parse_mode="HTML",
-            reply_markup=inline_keyboard,
+            reply_markup=builder.as_markup(),
         )
 
 
@@ -115,37 +104,39 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             f"<b>Инструкции:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 
-        button_profile = InlineKeyboardButton(
-            text="👤 Мой профиль", callback_data="view_profile"
+        builder = InlineKeyboardBuilder()
+        builder.add(
+            InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
         )
 
-        button_iphone = InlineKeyboardButton(
-            text="🍏 Подключить",
-            url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
+        builder.add(
+            InlineKeyboardButton(
+                text="🍏 Подключить",
+                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
+            )
         )
-        button_android = InlineKeyboardButton(
-            text="🤖 Подключить",
-            url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
-        )
-
-        button_download_iphone = InlineKeyboardButton(
-            text="🍏 Скачать", url="https://apps.apple.com/ru/app/v2raytun/id6476628951"
-        )
-        button_download_android = InlineKeyboardButton(
-            text="🤖 Скачать",
-            url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
+        builder.add(
+            InlineKeyboardButton(
+                text="🤖 Подключить",
+                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
+            )
         )
 
-        inline_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [button_download_iphone, button_download_android],
-                [button_iphone, button_android],
-                [button_profile],
-            ]
+        builder.add(
+            InlineKeyboardButton(
+                text="🍏 Скачать",
+                url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
+            )
+        )
+        builder.add(
+            InlineKeyboardButton(
+                text="🤖 Скачать",
+                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
+            )
         )
 
         await callback_query.message.answer(
-            key_message, parse_mode="HTML", reply_markup=inline_keyboard
+            key_message, parse_mode="HTML", reply_markup=builder.as_markup()
         )
 
     await callback_query.answer()
@@ -155,11 +146,11 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
-    button_back = InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")
-    inline_keyboard_back = InlineKeyboardMarkup(inline_keyboard=[[button_back]])
+    builder = InlineKeyboardBuilder()
+    builder.add(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
 
     await callback_query.message.answer(
-        ABOUT_VPN, parse_mode="HTML", reply_markup=inline_keyboard_back
+        ABOUT_VPN, parse_mode="HTML", reply_markup=builder.as_markup()
     )
     await callback_query.answer()
 
