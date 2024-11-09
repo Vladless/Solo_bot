@@ -4,7 +4,7 @@ import time
 import uuid
 
 import requests
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -91,7 +91,7 @@ async def freekassa_webhook(request):
     return web.Response(status=200)
 
 
-@router.callback_query(lambda c: c.data == "pay_freekassa")
+@router.callback_query(F.data == "pay_freekassa")
 async def process_callback_pay_freekassa(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -121,14 +121,14 @@ async def process_callback_pay_freekassa(
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "back_to_profile")
+@router.callback_query(F.data == "back_to_profile")
 async def back_to_profile_handler(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     await process_callback_view_profile(callback_query, state)
 
 
-@router.callback_query(lambda c: c.data.startswith("amount|"))
+@router.callback_query(F.data.startswith("amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -160,7 +160,7 @@ async def process_amount_selection(
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "enter_custom_amount")
+@router.callback_query(F.data == "enter_custom_amount")
 async def process_enter_custom_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):

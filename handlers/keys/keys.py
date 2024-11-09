@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import Router, types
+from aiogram import Router, types, F
 from aiogram.types import BufferedInputFile
 
 from auth import login_with_credentials
@@ -46,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-@router.callback_query(lambda c: c.data == "view_keys")
+@router.callback_query(F.data == "view_keys")
 async def process_callback_view_keys(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
 
@@ -125,7 +125,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("view_key|"))
+@router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     key_name, client_id = (
@@ -254,7 +254,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("update_subscription|"))
+@router.callback_query(F.data.startswith("update_subscription|"))
 async def process_callback_update_subscription(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -381,7 +381,7 @@ async def update_key_on_server(tg_id, client_id, email, expiry_time, server_id):
         )
 
 
-@router.callback_query(lambda c: c.data.startswith("delete_key|"))
+@router.callback_query(F.data.startswith("delete_key|"))
 async def process_callback_delete_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -427,7 +427,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("renew_key|"))
+@router.callback_query(F.data.startswith("renew_key|"))
 async def process_callback_renew_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -518,7 +518,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("confirm_delete|"))
+@router.callback_query(F.data.startswith("confirm_delete|"))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -615,7 +615,7 @@ async def delete_key_from_db(client_id):
         await conn.close()
 
 
-@router.callback_query(lambda c: c.data.startswith("renew_plan|"))
+@router.callback_query(F.data.startswith("renew_plan|"))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     plan, client_id = (

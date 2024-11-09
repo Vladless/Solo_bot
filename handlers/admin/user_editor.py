@@ -32,7 +32,7 @@ class UserEditorState(StatesGroup):
     waiting_for_expiry_time = State()
 
 
-@router.callback_query(lambda c: c.data == "search_by_tg_id")
+@router.callback_query(F.data == "search_by_tg_id")
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text("Введите tg_id клиента:")
     await state.set_state(UserEditorState.waiting_for_tg_id)
@@ -91,7 +91,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
         await conn.close()
 
 
-@router.callback_query(lambda c: c.data.startswith("change_balance_"))
+@router.callback_query(F.data.startswith("change_balance_"))
 async def process_balance_change(callback_query: CallbackQuery, state: FSMContext):
     tg_id = int(callback_query.data.split("_")[2])
     await state.update_data(tg_id=tg_id)
@@ -134,7 +134,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(lambda c: c.data.startswith("edit_key_"))
+@router.callback_query(F.data.startswith("edit_key_"))
 async def process_key_edit(callback_query: CallbackQuery):
     email = callback_query.data.split("_", 2)[2]
 
@@ -219,7 +219,7 @@ async def process_key_edit(callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "search_by_key_name")
+@router.callback_query(F.data == "search_by_key_name")
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text("Введите имя ключа:")
     await state.set_state(UserEditorState.waiting_for_key_name)
@@ -295,7 +295,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(lambda c: c.data.startswith("change_expiry|"))
+@router.callback_query(F.data.startswith("change_expiry|"))
 async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext):
     email = callback_query.data.split("|")[1]
     await callback_query.message.edit_text(
@@ -392,7 +392,7 @@ async def renew_server_key(server_id, tg_id, client_id, email, new_expiry_time):
         )
 
 
-@router.callback_query(lambda c: c.data.startswith("delete_key_admin|"))
+@router.callback_query(F.data.startswith("delete_key_admin|"))
 async def process_callback_delete_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     email = callback_query.data.split("|")[1]
@@ -440,7 +440,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("confirm_delete_admin|"))
+@router.callback_query(F.data.startswith("confirm_delete_admin|"))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -529,7 +529,7 @@ async def delete_key_from_db(client_id):
         await conn.close()
 
 
-@router.callback_query(lambda c: c.data == "back_to_user_editor")
+@router.callback_query(F.data == "back_to_user_editor")
 async def back_to_user_editor(callback_query: CallbackQuery):
     await back_to_admin_menu(callback_query)
 
