@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 from datetime import datetime, timedelta
 
 import asyncpg
@@ -17,9 +17,6 @@ from handlers.texts import (
     KEY_RENEWED,
     RENEWAL_PLANS,
 )
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 router = Router()
 

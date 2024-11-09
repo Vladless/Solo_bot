@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from datetime import datetime, timedelta
 
@@ -38,9 +38,6 @@ from handlers.texts import (
 from handlers.utils import sanitize_key_name
 
 router = Router()
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 class Form(StatesGroup):

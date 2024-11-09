@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import uuid
 
 from aiogram import Router, types, F
@@ -20,9 +20,6 @@ from handlers.profile import process_callback_view_profile
 from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY

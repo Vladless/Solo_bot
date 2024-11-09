@@ -1,13 +1,10 @@
 import base64
-import logging
+from loguru import logger
 
 import aiohttp
 from aiohttp import web
 
 from config import SERVERS
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 async def fetch_url_content(url):

@@ -1,6 +1,6 @@
 import asyncio
 import locale
-import logging
+from loguru import logger
 import os
 from datetime import datetime, timedelta
 
@@ -40,8 +40,6 @@ locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
 router = Router()
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 @router.callback_query(F.data == "view_keys")

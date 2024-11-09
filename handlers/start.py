@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import os
 
 import asyncpg
@@ -19,8 +19,6 @@ from database import add_connection, add_referral, check_connection_exists, get_
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 router = Router()
 

@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 from datetime import datetime
 
 import asyncpg
@@ -15,9 +15,6 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import get_client_id_by_email, get_tg_id_by_client_id, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.utils import sanitize_key_name
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 router = Router()
 

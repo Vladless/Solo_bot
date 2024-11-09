@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -21,9 +21,6 @@ from handlers.keys.subscriptions import handle_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payment.freekassa_pay import freekassa_webhook
 from handlers.payment.yookassa_pay import yookassa_webhook
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 async def periodic_notifications():

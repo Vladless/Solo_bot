@@ -1,5 +1,5 @@
 import hashlib
-import logging
+from loguru import logger
 import time
 import uuid
 
@@ -17,8 +17,6 @@ from handlers.profile import process_callback_view_profile
 from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 class ReplenishBalanceState(StatesGroup):
