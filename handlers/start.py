@@ -1,8 +1,7 @@
-from loguru import logger
 import os
 
 import asyncpg
-from aiogram import Router,F
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -12,13 +11,13 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from loguru import logger
 
 from bot import bot
 from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
-
 
 router = Router()
 

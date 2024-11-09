@@ -1,12 +1,12 @@
 import asyncio
 import locale
-from loguru import logger
 import os
 from datetime import datetime, timedelta
 
 import asyncpg
-from aiogram import Router, types, F
+from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile
+from loguru import logger
 
 from auth import login_with_credentials
 from bot import bot
@@ -39,7 +39,6 @@ from handlers.texts import (
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
 router = Router()
-
 
 
 @router.callback_query(F.data == "view_keys")

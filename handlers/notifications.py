@@ -1,10 +1,10 @@
 import asyncio
-from loguru import logger
 from datetime import datetime, timedelta
 
 import asyncpg
 from aiogram import Bot, Router, types
 from aiogram.fsm.state import State, StatesGroup
+from loguru import logger
 
 from auth import login_with_credentials
 from client import delete_client, extend_client_key

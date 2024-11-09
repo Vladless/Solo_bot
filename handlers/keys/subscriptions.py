@@ -1,8 +1,8 @@
 import base64
-from loguru import logger
 
 import aiohttp
 from aiohttp import web
+from loguru import logger
 
 from config import SERVERS
 

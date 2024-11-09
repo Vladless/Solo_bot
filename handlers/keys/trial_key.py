@@ -1,9 +1,9 @@
 import asyncio
-from loguru import logger
 import uuid
 from datetime import datetime, timedelta
 
 import asyncpg
+from loguru import logger
 
 from auth import login_with_credentials
 from client import add_client
