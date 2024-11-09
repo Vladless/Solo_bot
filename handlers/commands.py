@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 
 import asyncpg
 from aiogram import F, Router, types
@@ -18,9 +18,6 @@ from handlers.payment.yookassa_pay import (
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import TRIAL
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 router = Router()
 

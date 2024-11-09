@@ -1,10 +1,7 @@
 import json
-import logging
+from loguru import logger
 
 from config import SERVERS
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 async def add_client(

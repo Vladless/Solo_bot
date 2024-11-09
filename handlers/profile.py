@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import os
 
 from aiogram import Router, types,F
@@ -24,8 +24,6 @@ class ReplenishBalanceState(StatesGroup):
 
 router = Router()
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 async def process_callback_view_profile(

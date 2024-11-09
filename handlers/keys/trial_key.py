@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from loguru import logger
 import uuid
 from datetime import datetime, timedelta
 
@@ -11,9 +11,6 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK, SE
 from database import store_key
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 
 async def create_trial_key(tg_id: int):

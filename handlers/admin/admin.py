@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from datetime import datetime
 
 import asyncpg
@@ -16,9 +16,6 @@ from database import (
     update_key_expiry,
 )
 from middlewares.admin import admin_only
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 router = Router()
 
