@@ -15,6 +15,7 @@ from handlers.texts import (
     KEY_EXPIRY_24H,
     KEY_RENEWAL_FAILED,
     KEY_RENEWED,
+    RENEWAL_PLANS,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -268,8 +269,8 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         )
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
-        if balance >= 100:
-            await update_balance(tg_id, -100)
+        if balance >= RENEWAL_PLANS["1"]["price"]:
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
             new_expiry_time = int(
                 (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
             )
