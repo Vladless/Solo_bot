@@ -22,12 +22,13 @@ from handlers.texts import PAYMENT_OPTIONS
 router = Router()
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 Configuration.account_id = YOOKASSA_SHOP_ID
 Configuration.secret_key = YOOKASSA_SECRET_KEY
 
-logging.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
-logging.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
+logger.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
+logger.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -55,7 +56,7 @@ async def send_message_with_deletion(
             await state.update_data({message_key: sent_message.message_id})
 
         except Exception as e:
-            logging.error(f"Ошибка при удалении/отправке сообщения: {e}")
+            logger.error(f"Ошибка при удалении/отправке сообщения: {e}")
             return None
 
     return sent_message
@@ -205,13 +206,13 @@ async def send_payment_success_notification(user_id: int, amount: float):
             reply_markup=profile_keyboard,
         )
     except Exception as e:
-        logging.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
+        logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
 
 
 async def yookassa_webhook(request):
     event = await request.json()
 
-    logging.debug(f"Webhook event received: {event}")
+    logger.debug(f"Webhook event received: {event}")
 
     if event["event"] == "payment.succeeded":
         user_id_str = event["object"]["metadata"]["user_id"]
@@ -221,13 +222,13 @@ async def yookassa_webhook(request):
             user_id = int(user_id_str)
             amount = float(amount_str)
 
-            logging.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
             await update_balance(user_id, amount)
 
             await send_payment_success_notification(user_id, amount)
 
         except ValueError as e:
-            logging.error(f"Ошибка конвертации user_id или amount: {e}")
+            logger.error(f"Ошибка конвертации user_id или amount: {e}")
             return web.Response(status=400)
 
     return web.Response(status=200)
@@ -307,7 +308,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 await message.answer("Ошибка при создании платежа.")
 
         except Exception as e:
-            logging.error(f"Ошибка при создании платежа: {e}")
+            logger.error(f"Ошибка при создании платежа: {e}")
             await message.answer("Произошла ошибка при создании платежа.")
     else:
         await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")

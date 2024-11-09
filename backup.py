@@ -7,6 +7,9 @@ from aiogram.types import BufferedInputFile
 
 from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 
 async def backup_database():
     from bot import bot
@@ -24,9 +27,9 @@ async def backup_database():
             ["pg_dump", "-U", USER, "-h", HOST, "-F", "c", "-f", BACKUP_FILE, DB_NAME],
             check=True,
         )
-        logging.info(f"Бэкап базы данных создан: {BACKUP_FILE}")
+        logger.info(f"Бэкап базы данных создан: {BACKUP_FILE}")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Ошибка при создании бэкапа базы данных: {e}")
+        logger.error(f"Ошибка при создании бэкапа базы данных: {e}")
         return
 
     try:
@@ -35,9 +38,9 @@ async def backup_database():
                 backup_file.read(), filename=os.path.basename(BACKUP_FILE)
             )
             await bot.send_document(ADMIN_ID, backup_input_file)
-        logging.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
+        logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
     except Exception as e:
-        logging.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
+        logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
 
     try:
         subprocess.run(
@@ -57,8 +60,8 @@ async def backup_database():
             ],
             check=True,
         )
-        logging.info("Старые бэкапы удалены.")
+        logger.info("Старые бэкапы удалены.")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Ошибка при удалении старых бэкапов: {e}")
+        logger.error(f"Ошибка при удалении старых бэкапов: {e}")
 
     del os.environ["PGPASSWORD"]

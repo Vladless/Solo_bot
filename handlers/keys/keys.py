@@ -40,9 +40,7 @@ locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
 router = Router()
 
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 

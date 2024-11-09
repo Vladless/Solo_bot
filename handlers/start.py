@@ -20,6 +20,7 @@ from handlers.keys.trial_key import create_trial_key
 from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -71,10 +72,10 @@ async def send_welcome_message(chat_id: int, trial_status: int):
 
 @router.message(Command("start"))
 async def start_command(message: Message):
-    logging.info(f"Received start command with text: {message.text}")
+    logger.info(f"Received start command with text: {message.text}")
     if "referral_" in message.text:
         referrer_tg_id = int(message.text.split("referral_")[1])
-        logging.info(f"Referral ID: {referrer_tg_id}")
+        logger.info(f"Referral ID: {referrer_tg_id}")
         if not await check_connection_exists(message.from_user.id):
             await add_connection(message.from_user.id)
             await add_referral(message.from_user.id, referrer_tg_id)
@@ -104,10 +105,10 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             """,
                 user_id,
             )
-            logging.info(f"Rows updated: {result}")
+            logger.info(f"Rows updated: {result}")
 
         except Exception as e:
-            logging.error(f"Ошибка при обновлении trial: {e}")
+            logger.error(f"Ошибка при обновлении trial: {e}")
 
         finally:
             await conn.close()

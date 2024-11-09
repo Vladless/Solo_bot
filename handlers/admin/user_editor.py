@@ -16,9 +16,7 @@ from database import get_client_id_by_email, get_tg_id_by_client_id, update_key_
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.utils import sanitize_key_name
 
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 router = Router()

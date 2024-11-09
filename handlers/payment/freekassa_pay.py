@@ -18,6 +18,7 @@ from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -52,16 +53,16 @@ async def create_payment(user_id, amount, email, ip):
         )
         response_data = response.json()
 
-        logging.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
+        logger.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
 
         if response_data.get("type") == "success":
             return response_data["location"]
         else:
-            logging.error(f"Ошибка создания платежа: {response_data}")
+            logger.error(f"Ошибка создания платежа: {response_data}")
             return None
 
     except Exception as e:
-        logging.error(f"Ошибка запроса к FreeKassa: {e}")
+        logger.error(f"Ошибка запроса к FreeKassa: {e}")
         return None
 
 
@@ -72,14 +73,14 @@ async def send_payment_success_notification(user_id, amount):
             text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
         )
     except Exception as e:
-        logging.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
+        logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
 
 
 async def freekassa_webhook(request):
     data = await request.json()
-    logging.debug(f"Получен вебхук от FreeKassa: {data}")
+    logger.debug(f"Получен вебхук от FreeKassa: {data}")
 
-    logging.debug(f"Данные вебхука от FreeKassa: {data}")
+    logger.debug(f"Данные вебхука от FreeKassa: {data}")
 
     if data["status"] == "completed":
         user_id = data["metadata"]["user_id"]

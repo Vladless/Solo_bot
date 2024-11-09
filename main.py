@@ -23,6 +23,7 @@ from handlers.payment.freekassa_pay import freekassa_webhook
 from handlers.payment.yookassa_pay import yookassa_webhook
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 async def periodic_notifications():
@@ -51,13 +52,13 @@ async def on_shutdown(app):
     try:
         await asyncio.gather(*asyncio.all_tasks(), return_exceptions=True)
     except Exception as e:
-        logging.error(f"Error during shutdown: {e}")
+        logger.error(f"Error during shutdown: {e}")
 
 
 async def shutdown_site(site):
-    logging.info("Остановка сайта...")
+    logger.info("Остановка сайта...")
     await site.stop()
-    logging.info("Сервер остановлен.")
+    logger.info("Сервер остановлен.")
 
 
 async def main():
@@ -80,7 +81,7 @@ async def main():
     site = web.TCPSite(runner, host=WEBAPP_HOST, port=WEBAPP_PORT)
     await site.start()
 
-    logging.info(f"Webhook URL: {WEBHOOK_URL}")
+    logger.info(f"Webhook URL: {WEBHOOK_URL}")
 
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -99,4 +100,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        logging.error(f"Ошибка при запуске приложения: {e}")
+        logger.error(f"Ошибка при запуске приложения: {e}")
