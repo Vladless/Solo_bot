@@ -1,5 +1,5 @@
 import asyncpg
-from aiogram import F, Router, types
+from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -7,7 +7,7 @@ from aiogram.types import Message
 from loguru import logger
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
+from config import DATABASE_URL
 from handlers.admin.admin import cmd_add_balance
 from handlers.keys.key_management import handle_key_name_input
 from handlers.payment.yookassa_pay import (

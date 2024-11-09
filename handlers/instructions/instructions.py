@@ -1,7 +1,8 @@
 import os
 
 from aiogram import types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (BufferedInputFile, InlineKeyboardButton,
+                           InlineKeyboardMarkup)
 
 from handlers.texts import INSTRUCTIONS
 

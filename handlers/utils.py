@@ -1,7 +1,10 @@
 import random
 import re
 
+from bot import bot
+
 from config import SERVERS
+from loguru import logger
 
 
 def sanitize_key_name(key_name: str) -> str:
@@ -29,3 +32,18 @@ async def get_least_loaded_server(conn):
             least_loaded_server_id = server_id
 
     return least_loaded_server_id
+
+
+async def handle_error(tg_id, callback_query, message):
+    try:
+        try:
+            await bot.delete_message(
+                chat_id=tg_id, message_id=callback_query.message.message_id
+            )
+        except Exception:
+            pass
+
+        await bot.send_message(tg_id, message, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке ошибки: {e}")

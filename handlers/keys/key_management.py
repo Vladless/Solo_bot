@@ -12,14 +12,9 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from loguru import logger
 
-from auth import login_with_credentials
 from bot import bot, dp
-from client import add_client
 from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
     APP_URL,
     DATABASE_URL,
     PUBLIC_LINK,
@@ -28,6 +23,7 @@ from config import (
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.profile import process_callback_view_profile
+from handlers.keys.key_utils import create_key_on_server
 from handlers.texts import (
     KEY,
     KEY_TRIAL,
@@ -189,7 +185,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             replenish_button = InlineKeyboardButton(
                 text="Перейти в профиль", callback_data="view_profile"
             )
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[replenish_button]])
             await message.bot.send_message(
                 tg_id,
                 "❗️ Недостаточно средств на балансе для создания подписки на новое устройство.",
@@ -276,33 +273,6 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         await message.bot.send_message(tg_id, f"❌ Ошибка при создании ключа: {e}")
 
     await state.clear()
-
-
-async def create_key_on_server(server_id, tg_id, client_id, email, expiry_timestamp):
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        response = await add_client(
-            session,
-            server_id,
-            client_id,
-            email,
-            tg_id,
-            limit_ip=1,
-            total_gb=0,
-            expiry_time=expiry_timestamp,
-            enable=True,
-            flow="xtls-rprx-vision",
-        )
-        if not response.get("success", True):
-            error_msg = response.get("msg", "Неизвестная ошибка.")
-            if "Duplicate email" in error_msg:
-                raise ValueError(f"Имя {email} уже занято на сервере {server_id}")
-            else:
-                raise Exception(error_msg)
-    except Exception as e:
-        logger.error(f"Ошибка на сервере {server_id}: {e}")
 
 
 @dp.callback_query(F.data == "instructions")

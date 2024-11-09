@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Dict
 
 import asyncpg
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import TelegramObject
 
 from config import DATABASE_URL
 
