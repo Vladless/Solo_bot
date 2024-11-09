@@ -7,7 +7,7 @@ from loguru import logger
 
 from auth import login_with_credentials
 from client import extend_client_key_admin
-from config import ADMIN_IDS, ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import (
     add_balance_to_client,
     check_connection_exists,

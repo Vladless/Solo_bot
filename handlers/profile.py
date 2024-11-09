@@ -8,10 +8,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import PAYMENT_METHOD
+from config import PAYMENT_METHOD,CHANNEL_URL
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import (
-    CHANNEL_LINK,
     get_referral_link,
     invite_message_send,
     profile_message_send,
@@ -36,7 +35,7 @@ async def process_callback_view_profile(
 
         profile_message = profile_message_send(username, chat_id, balance, key_count)
 
-        profile_message += f"<b>Обязательно подпишитесь на канал</b> <a href='{CHANNEL_LINK}'>здесь</a>\n"
+        profile_message += f"<b>Обязательно подпишитесь на канал</b> <a href='{CHANNEL_URL}'>здесь</a>\n"
 
         if key_count == 0:
             profile_message += (
