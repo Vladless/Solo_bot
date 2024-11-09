@@ -10,12 +10,8 @@ from yookassa import Configuration, Payment
 
 from bot import bot
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from database import (
-    add_connection,
-    check_connection_exists,
-    get_key_count,
-    update_balance,
-)
+from database import (add_connection, check_connection_exists, get_key_count,
+                      update_balance)
 from handlers.profile import process_callback_view_profile
 from handlers.texts import PAYMENT_OPTIONS
 

@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 
 import asyncpg
 from aiogram import Bot, Router, types
-from aiogram.fsm.state import State, StatesGroup
 from loguru import logger
 
 from auth import login_with_credentials
@@ -52,7 +51,6 @@ async def notify_expiring_keys(bot: Bot):
 
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     try:
-        # Проверка статуса бота в чате с пользователем
         member = await bot.get_chat_member(chat_id, bot.id)
         blocked = member.status == "left"
         logger.info(
@@ -60,7 +58,6 @@ async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
         )
         return blocked
     except Exception as e:
-        # Обработка ошибок при проверке статуса
         logger.warning(
             f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
         )

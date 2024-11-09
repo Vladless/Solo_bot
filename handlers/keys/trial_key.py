@@ -5,10 +5,9 @@ from datetime import datetime, timedelta
 import asyncpg
 from loguru import logger
 
-from auth import login_with_credentials
-from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK, SERVERS
+from config import DATABASE_URL, PUBLIC_LINK, SERVERS
 from database import store_key
+from handlers.keys.key_utils import create_key_on_server
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email
 
@@ -46,7 +45,7 @@ async def generate_and_store_keys(
         tasks = []
         for server_id in SERVERS:
             task = create_key_on_server(
-                server_id, client_id, email, tg_id, expiry_timestamp
+                server_id, tg_id, client_id, email, expiry_timestamp
             )
             tasks.append(task)
 
@@ -72,27 +71,8 @@ async def generate_and_store_keys(
                 tg_id,
             )
         else:
-            logger.error("Не удалось создать ключ на одном или нескольких серверах.")
+            logger.error(
+                "Не удалось создать ключ на одном или нескольких серверах.")
 
     finally:
         await conn.close()
-
-
-async def create_key_on_server(
-    server_id: str, client_id: str, email: str, tg_id: int, expiry_timestamp: int
-):
-    """Асинхронно создает ключ на указанном сервере и возвращает результат."""
-    session = await login_with_credentials(server_id, ADMIN_USERNAME, ADMIN_PASSWORD)
-    response = await add_client(
-        session,
-        server_id,
-        client_id,
-        email,
-        tg_id,
-        limit_ip=1,
-        total_gb=0,
-        expiry_time=expiry_timestamp,
-        enable=True,
-        flow="xtls-rprx-vision",
-    )
-    return response

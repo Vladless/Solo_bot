@@ -8,12 +8,8 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile
 from loguru import logger
 
-from auth import login_with_credentials
 from bot import bot
-from client import add_client, delete_client, extend_client_key
 from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
     APP_URL,
     DATABASE_URL,
     PUBLIC_LINK,
@@ -34,6 +30,15 @@ from handlers.texts import (
     RENEWAL_PLANS,
     SUCCESS_RENEWAL_MSG,
     key_message,
+)
+
+from handlers.utils import handle_error
+
+from handlers.keys.key_utils import (
+    update_key_on_server,
+    delete_key_from_db,
+    renew_server_key,
+    delete_key_from_server
 )
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
@@ -71,7 +76,8 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 )
                 buttons.append([back_button])
 
-                inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+                inline_keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=buttons)
                 response_message = (
                     "<b>Это ваши устройства:</b>\n\n"
                     "<i>Нажмите на имя устройства для управления его подпиской.</i>"
@@ -153,7 +159,8 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 expiry_time = record["expiry_time"]
                 server_id = record["server_id"]
 
-                server_name = SERVERS.get(server_id, {}).get("name", "мультисервер")
+                server_name = SERVERS.get(server_id, {}).get(
+                    "name", "мультисервер")
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
@@ -213,9 +220,11 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 inline_keyboard.append([back_button])
 
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=inline_keyboard)
 
-                image_path = os.path.join(os.path.dirname(__file__), "pic_view.jpg")
+                image_path = os.path.join(
+                    os.path.dirname(__file__), "pic_view.jpg")
 
                 if not os.path.isfile(image_path):
                     await bot.send_message(tg_id, "Файл изображения не найден.")
@@ -317,7 +326,8 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 back_button = types.InlineKeyboardButton(
                     text="🔙 Назад в профиль", callback_data="view_profile"
                 )
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[[back_button]])
 
                 await bot.send_message(
                     tg_id, response_message, reply_markup=keyboard, parse_mode="HTML"
@@ -343,37 +353,6 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
         )
 
     await callback_query.answer()
-
-
-async def update_key_on_server(tg_id, client_id, email, expiry_time, server_id):
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        response = await add_client(
-            session,
-            server_id,
-            client_id,
-            email,
-            tg_id,
-            limit_ip=1,
-            total_gb=0,
-            expiry_time=expiry_time,
-            enable=True,
-            flow="xtls-rprx-vision",
-        )
-
-        if not response.get("success"):
-            logger.error(
-                f"Ошибка при обновлении ключа на сервере {server_id} для {client_id}"
-            )
-        else:
-            logger.info(f"Ключ успешно обновлен на сервере {server_id} для {client_id}")
-
-    except Exception as e:
-        logger.error(
-            f"Ошибка при обновлении ключа на сервере {server_id} для {client_id}: {e}"
-        )
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
@@ -531,7 +510,8 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[[back_button]])
 
                 await delete_key(client_id)
                 await bot.edit_message_text(
@@ -545,12 +525,14 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                     try:
                         tasks = []
                         for server_id in SERVERS:
-                            tasks.append(delete_key_from_server(server_id, client_id))
+                            tasks.append(delete_key_from_server(
+                                server_id, client_id))
 
                         await asyncio.gather(*tasks)
 
                     except Exception as e:
-                        logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
+                        logger.error(
+                            f"Ошибка при удалении ключа {client_id}: {e}")
 
                 asyncio.create_task(delete_key_from_servers())
 
@@ -561,7 +543,8 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[[back_button]])
 
                 await bot.edit_message_text(
                     response_message,
@@ -581,33 +564,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
         )
 
     await callback_query.answer()
-
-
-async def delete_key_from_server(server_id, client_id):
-    """Удаление ключа с сервера"""
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        success = await delete_client(session, server_id, client_id)
-
-        if not success:
-            logger.error(f"Ошибка удаления ключа {client_id} на сервере {server_id}")
-    except Exception as e:
-        logger.error(
-            f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}"
-        )
-
-
-async def delete_key_from_db(client_id):
-    """Удаление ключа из базы данных"""
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute("DELETE FROM keys WHERE client_id = $1", client_id)
-    except Exception as e:
-        logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
-    finally:
-        await conn.close()
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))
@@ -677,7 +633,8 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_profile"
                 )
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[[back_button]])
 
                 await bot.send_message(
                     tg_id, response_message, reply_markup=keyboard, parse_mode="HTML"
@@ -712,32 +669,3 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
         )
 
     await callback_query.answer()
-
-
-async def renew_server_key(server_id, tg_id, client_id, email, new_expiry_time):
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        await extend_client_key(
-            session, server_id, tg_id, client_id, email, new_expiry_time
-        )
-    except Exception as e:
-        logger.error(
-            f"Не удалось продлить ключ {client_id} на сервере {server_id}: {e}"
-        )
-
-
-async def handle_error(tg_id, callback_query, message):
-    try:
-        try:
-            await bot.delete_message(
-                chat_id=tg_id, message_id=callback_query.message.message_id
-            )
-        except Exception:
-            pass
-
-        await bot.send_message(tg_id, message, parse_mode="HTML")
-
-    except Exception as e:
-        logger.error(f"Ошибка при обработке ошибки: {e}")

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import asyncpg
-from aiogram import F, Router, types
+from aiogram import Router, types
 from aiogram.filters import Command
 from loguru import logger
 
