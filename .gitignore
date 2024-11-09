@@ -1,14 +1,51 @@
-/venv
-/__pycache__
-/vpn_users.db
-/config.py
-/database.db
-/bot_old.py
-/bot_old_2.py
-/database.db
-/backup_pg.sh
-/config copy.py
-/docker-compose.yml
-__pycache__
-/handlers/texts.py
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+
+# IDE specific files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# Sensitive configuration files
+config.py
+config.ini
+.env
+
+# Backup files
+*.bak
+*.swp
+*~
+
+# Specific project files
+vpn_users.db
+database.db
+bot_old.py
+bot_old_2.py
+backup_pg.sh
+docker-compose.yml
+config copy.py
+handlers/texts.py
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
 
