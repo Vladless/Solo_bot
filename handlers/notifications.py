@@ -21,10 +21,6 @@ from handlers.texts import (
 router = Router()
 
 
-class NotificationStates(StatesGroup):
-    waiting_for_notification_text = State()
-
-
 async def notify_expiring_keys(bot: Bot):
     conn = None
     try:
@@ -39,11 +35,13 @@ async def notify_expiring_keys(bot: Bot):
 
         logger.info("Начало обработки уведомлений.")
 
-        await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
-        await asyncio.sleep(1)
-        await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
-        await asyncio.sleep(1)
-        await handle_expired_keys(bot, conn, current_time)
+        notification_tasks = [
+            notify_10h_keys(bot, conn, current_time, threshold_time_10h),
+            notify_24h_keys(bot, conn, current_time, threshold_time_24h),
+            handle_expired_keys(bot, conn, current_time),
+        ]
+
+        await asyncio.gather(*notification_tasks)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомлений: {e}")
@@ -55,10 +53,18 @@ async def notify_expiring_keys(bot: Bot):
 
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     try:
+        # Проверка статуса бота в чате с пользователем
         member = await bot.get_chat_member(chat_id, bot.id)
-        return member.status == "left"
+        blocked = member.status == "left"
+        logger.info(
+            f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}"
+        )
+        return blocked
     except Exception as e:
-        logger.error(f"Ошибка при проверке статуса бота у пользователя {chat_id}: {e}")
+        # Обработка ошибок при проверке статуса
+        logger.warning(
+            f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
+        )
         return False
 
 
