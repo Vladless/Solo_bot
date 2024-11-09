@@ -1,9 +1,9 @@
-from loguru import logger
 from datetime import datetime
 
 import asyncpg
-from aiogram import Router, types, F
+from aiogram import F, Router, types
 from aiogram.filters import Command
+from loguru import logger
 
 from auth import login_with_credentials
 from client import extend_client_key_admin

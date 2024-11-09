@@ -2,7 +2,7 @@ import subprocess
 from datetime import datetime
 
 import asyncpg
-from aiogram import Router, types, F
+from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup

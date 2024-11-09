@@ -1,9 +1,9 @@
 import asyncio
-from loguru import logger
 import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+from loguru import logger
 
 from backup import backup_database
 from bot import bot, dp, router

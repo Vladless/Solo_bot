@@ -1,10 +1,10 @@
-from loguru import logger
 import os
 
-from aiogram import Router, types,F
+from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from loguru import logger
 
 from bot import bot
 from config import PAYMENT_METHOD
@@ -23,7 +23,6 @@ class ReplenishBalanceState(StatesGroup):
 
 
 router = Router()
-
 
 
 async def process_callback_view_profile(

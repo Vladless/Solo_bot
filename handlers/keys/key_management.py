@@ -1,5 +1,4 @@
 import asyncio
-from loguru import logger
 import uuid
 from datetime import datetime, timedelta
 
@@ -13,6 +12,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+from loguru import logger
 
 from auth import login_with_credentials
 from bot import bot, dp

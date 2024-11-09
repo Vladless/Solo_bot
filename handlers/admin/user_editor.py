@@ -1,5 +1,4 @@
 import asyncio
-from loguru import logger
 from datetime import datetime
 
 import asyncpg
@@ -7,6 +6,7 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from loguru import logger
 
 from auth import login_with_credentials
 from bot import bot
