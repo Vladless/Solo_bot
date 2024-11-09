@@ -29,16 +29,13 @@ class Form(StatesGroup):
 
 
 @router.message(Command("backup"))
-async def backup_command(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("У вас нет прав для выполнения этой команды.")
-        return
+async def backup_command(message: Message, is_admin: bool):
+    if is_admin:
+        from backup import backup_database
 
-    from backup import backup_database
-
-    await message.answer("Запускаю бэкап базы данных...")
-    await backup_database()
-    await message.answer("Бэкап завершен и отправлен админу.")
+        await message.answer("Запускаю бэкап базы данных...")
+        await backup_database()
+        await message.answer("Бэкап завершен и отправлен админу.")
 
 
 @router.message(Command("start"))
@@ -57,89 +54,88 @@ async def handle_menu(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("send_trial"))
-async def handle_send_trial_command(message: types.Message, state: FSMContext):
-    # Проверка на администратора
-    if message.from_user.id != ADMIN_ID:
-        await message.reply("У вас нет доступа к этой команде.")
-        return
-
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
+async def handle_send_trial_command(
+    message: types.Message, state: FSMContext, is_admin: bool
+):
+    if is_admin:
         try:
-            records = await conn.fetch(
+            conn = await asyncpg.connect(DATABASE_URL)
+            try:
+                records = await conn.fetch(
+                    """
+                    SELECT tg_id FROM connections WHERE trial = 0
                 """
-                SELECT tg_id FROM connections WHERE trial = 0
-            """
-            )
-
-            if records:
-                for record in records:
-                    tg_id = record["tg_id"]
-                    trial_message = TRIAL
-                    try:
-                        await bot.send_message(chat_id=tg_id, text=trial_message)
-                    except Exception as e:
-                        if "Forbidden: bot was blocked by the user" in str(e):
-                            logger.info(
-                                f"Бот заблокирован пользователем с tg_id: {tg_id}"
-                            )
-                        else:
-                            logger.error(
-                                f"Ошибка при отправке сообщения пользователю {tg_id}: {e}"
-                            )
-
-                await message.answer(
-                    "Сообщения о пробном периоде отправлены всем пользователям с не использованным ключом."
-                )
-            else:
-                await message.answer(
-                    "Нет пользователей с не использованными пробными ключами."
                 )
 
-        finally:
-            await conn.close()
+                if records:
+                    for record in records:
+                        tg_id = record["tg_id"]
+                        trial_message = TRIAL
+                        try:
+                            await bot.send_message(chat_id=tg_id, text=trial_message)
+                        except Exception as e:
+                            if "Forbidden: bot was blocked by the user" in str(e):
+                                logger.info(
+                                    f"Бот заблокирован пользователем с tg_id: {tg_id}"
+                                )
+                            else:
+                                logger.error(
+                                    f"Ошибка при отправке сообщения пользователю {tg_id}: {e}"
+                                )
 
-    except Exception as e:
-        await message.answer(f"Ошибка при отправке сообщений: {e}")
+                    await message.answer(
+                        "Сообщения о пробном периоде отправлены всем пользователям с не использованным ключом."
+                    )
+                else:
+                    await message.answer(
+                        "Нет пользователей с не использованными пробными ключами."
+                    )
+
+            finally:
+                await conn.close()
+
+        except Exception as e:
+            await message.answer(f"Ошибка при отправке сообщений: {e}")
 
 
 @router.message(Command("send_to_all"))
 async def send_message_to_all_clients(
-    message: types.Message, state: FSMContext, from_panel=False
+    message: types.Message, state: FSMContext, is_admin: bool, from_panel=False
 ):
-    if not from_panel and message.from_user.id != ADMIN_ID:
-        await message.answer("У вас нет прав для выполнения этой команды.")
-        return
+    if from_panel and is_admin:
 
-    await message.answer(
-        "Введите текст сообщения, который вы хотите отправить всем клиентам:"
-    )
-    await state.set_state(Form.waiting_for_message)
+        await message.answer(
+            "Введите текст сообщения, который вы хотите отправить всем клиентам:"
+        )
+        await state.set_state(Form.waiting_for_message)
 
 
 @router.message(Form.waiting_for_message)
-async def process_message_to_all(message: types.Message, state: FSMContext):
-    text_message = message.text
+async def process_message_to_all(
+    message: types.Message, state: FSMContext, is_admin: bool
+):
+    if is_admin:
+        text_message = message.text
 
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        tg_ids = await conn.fetch("SELECT tg_id FROM connections")
+        try:
+            conn = await asyncpg.connect(DATABASE_URL)
+            tg_ids = await conn.fetch("SELECT tg_id FROM connections")
 
-        for record in tg_ids:
-            tg_id = record["tg_id"]
-            try:
-                await bot.send_message(chat_id=tg_id, text=text_message)
-            except Exception as e:
-                logger.error(
-                    f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя."
-                )
+            for record in tg_ids:
+                tg_id = record["tg_id"]
+                try:
+                    await bot.send_message(chat_id=tg_id, text=text_message)
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при отправке сообщения пользователю {tg_id}: {e}. Пропускаем этого пользователя."
+                    )
 
-        await message.answer("Сообщение было отправлено всем клиентам.")
-    except Exception as e:
-        logger.error(f"Ошибка при подключении к базе данных: {e}")
-        await message.answer("Произошла ошибка при отправке сообщения.")
-    finally:
-        await conn.close()
+            await message.answer("Сообщение было отправлено всем клиентам.")
+        except Exception as e:
+            logger.error(f"Ошибка при подключении к базе данных: {e}")
+            await message.answer("Произошла ошибка при отправке сообщения.")
+        finally:
+            await conn.close()
 
     await state.clear()
 
