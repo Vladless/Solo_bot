@@ -13,6 +13,7 @@ from handlers.admin import admin, admin_panel, user_editor
 from handlers.keys import key_management, keys
 from handlers.payment import freekassa_pay, yookassa_pay
 from middlewares.admin import AdminMiddleware
+from middlewares.logging import UserActivityMiddleware
 
 dp.include_router(admin.router)
 dp.include_router(admin_panel.router)
@@ -28,3 +29,5 @@ dp.include_router(notifications.router)
 
 dp.message.middleware(AdminMiddleware())
 dp.callback_query.middleware(AdminMiddleware())
+dp.message.middleware(UserActivityMiddleware())
+dp.callback_query.middleware(UserActivityMiddleware())
