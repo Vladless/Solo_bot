@@ -4,6 +4,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from loguru import logger
 
+
 class UserActivityMiddleware(BaseMiddleware):
     async def __call__(
         self,
@@ -33,4 +34,4 @@ class UserActivityMiddleware(BaseMiddleware):
         )
 
         # Продолжаем выполнение обработчика
-        return await handler(event, data) 
+        return await handler(event, data)
