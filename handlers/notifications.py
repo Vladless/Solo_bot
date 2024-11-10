@@ -9,13 +9,7 @@ from auth import login_with_credentials
 from client import delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import delete_key, get_balance, update_balance, update_key_expiry
-from handlers.texts import (
-    KEY_EXPIRY_10H,
-    KEY_EXPIRY_24H,
-    KEY_RENEWAL_FAILED,
-    KEY_RENEWED,
-    RENEWAL_PLANS,
-)
+from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWAL_FAILED, KEY_RENEWED, RENEWAL_PLANS
 
 router = Router()
 
@@ -254,13 +248,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}."
         )
 
-        if time_left.total_seconds() <= 0:
-            days_left_message = "Ключ истек"
-        elif time_left.days > 0:
-            days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
-        else:
-            hours_left = time_left.seconds // 3600
-            days_left_message = f"Осталось часов: <b>{hours_left}</b>"
+        # if time_left.total_seconds() <= 0:
+        #     days_left_message = "Ключ истек"
+        # elif time_left.days > 0:
+        #     days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
+        # else:
+        #     hours_left = time_left.seconds // 3600
+        #     days_left_message = f"Осталось часов: <b>{hours_left}</b>"
 
         message_expired = f"Ваш ключ {email} истек и был удален!\n\n Перейдите в профиль для создания нового ключа"
         button_profile = types.InlineKeyboardButton(

@@ -10,8 +10,7 @@ from yookassa import Configuration, Payment
 
 from bot import bot
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from database import (add_connection, check_connection_exists, get_key_count,
-                      update_balance)
+from database import add_connection, check_connection_exists, get_key_count, update_balance
 from handlers.profile import process_callback_view_profile
 from handlers.texts import PAYMENT_OPTIONS
 
@@ -128,7 +127,7 @@ async def process_amount_selection(
     await state.update_data(amount=amount)
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
 
-    state_data = await state.get_data()
+    # state_data = await state.get_data()
     customer_name = callback_query.from_user.full_name
     customer_id = callback_query.from_user.id
 

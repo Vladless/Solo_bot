@@ -69,7 +69,8 @@ async def reset_client_traffic(session, server_id: str, email: str) -> bool:
         async with session.post(url, headers=headers) as response:
             if response.status == 200:
                 logger.info(
-                    f"Трафик клиента {email} успешно сброшен на сервере {server_id}")
+                    f"Трафик клиента {email} успешно сброшен на сервере {server_id}"
+                )
                 return True
             else:
                 logger.error(
@@ -78,7 +79,8 @@ async def reset_client_traffic(session, server_id: str, email: str) -> bool:
                 return False
     except Exception as e:
         logger.error(
-            f"Ошибка при попытке сброса трафика клиента {email} на сервере {server_id}: {e}")
+            f"Ошибка при попытке сброса трафика клиента {email} на сервере {server_id}: {e}"
+        )
         return False
 
 
@@ -136,8 +138,7 @@ async def extend_client_key(
             ),
         }
 
-        headers = {"Content-Type": "application/json",
-                   "Accept": "application/json"}
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
         try:
             async with session.post(
@@ -146,8 +147,7 @@ async def extend_client_key(
                 headers=headers,
             ) as response:
                 logger.info(f"POST {response.url} Status: {response.status}")
-                logger.info(
-                    f"POST Request Data: {json.dumps(payload, indent=2)}")
+                logger.info(f"POST Request Data: {json.dumps(payload, indent=2)}")
                 response_text = await response.text()
                 logger.info(f"POST Response: {response_text}")
 
@@ -190,8 +190,7 @@ async def extend_client_key_admin(
         ),
     }
 
-    headers = {"Content-Type": "application/json",
-               "Accept": "application/json"}
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
     try:
         async with session.post(

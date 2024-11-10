@@ -10,10 +10,7 @@ from bot import bot
 from config import DATABASE_URL
 from handlers.admin.admin import cmd_add_balance
 from handlers.keys.key_management import handle_key_name_input
-from handlers.payment.yookassa_pay import (
-    ReplenishBalanceState,
-    process_custom_amount_input,
-)
+from handlers.payment.yookassa_pay import ReplenishBalanceState, process_custom_amount_input
 from handlers.profile import process_callback_view_profile
 from handlers.start import start_command
 from handlers.texts import TRIAL

@@ -5,16 +5,14 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (CallbackQuery, InlineKeyboardButton,
-                           InlineKeyboardMarkup)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from loguru import logger
 
 from auth import login_with_credentials
 from bot import bot
 from client import delete_client, extend_client_key_admin
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
-from database import (get_client_id_by_email, get_tg_id_by_client_id,
-                      update_key_expiry)
+from database import get_client_id_by_email, get_tg_id_by_client_id, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.utils import sanitize_key_name
 
@@ -247,7 +245,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
         key_buttons = []
 
         for record in user_records:
-            tg_id = record["tg_id"]
+            # tg_id = record["tg_id"]
             balance = record["balance"]
             email = record["email"]
             key = record["key"]
@@ -450,7 +448,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
-                email = record["email"]
+                # email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"

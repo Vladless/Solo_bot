@@ -9,37 +9,11 @@ from aiogram.types import BufferedInputFile
 from loguru import logger
 
 from bot import bot
-from config import (
-    APP_URL,
-    DATABASE_URL,
-    PUBLIC_LINK,
-    SERVERS,
-)
-from database import (
-    delete_key,
-    get_balance,
-    store_key,
-    update_balance,
-    update_key_expiry,
-)
-from handlers.texts import (
-    INSUFFICIENT_FUNDS_MSG,
-    KEY_NOT_FOUND_MSG,
-    NO_KEYS,
-    PLAN_SELECTION_MSG,
-    RENEWAL_PLANS,
-    SUCCESS_RENEWAL_MSG,
-    key_message,
-)
-
+from config import APP_URL, DATABASE_URL, PUBLIC_LINK, SERVERS
+from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
+from handlers.keys.key_utils import delete_key_from_db, delete_key_from_server, renew_server_key, update_key_on_server
+from handlers.texts import INSUFFICIENT_FUNDS_MSG, KEY_NOT_FOUND_MSG, NO_KEYS, PLAN_SELECTION_MSG, RENEWAL_PLANS, SUCCESS_RENEWAL_MSG, key_message
 from handlers.utils import handle_error
-
-from handlers.keys.key_utils import (
-    update_key_on_server,
-    delete_key_from_db,
-    renew_server_key,
-    delete_key_from_server
-)
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -76,8 +50,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 )
                 buttons.append([back_button])
 
-                inline_keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=buttons)
+                inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
                 response_message = (
                     "<b>Это ваши устройства:</b>\n\n"
                     "<i>Нажмите на имя устройства для управления его подпиской.</i>"
@@ -159,8 +132,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 expiry_time = record["expiry_time"]
                 server_id = record["server_id"]
 
-                server_name = SERVERS.get(server_id, {}).get(
-                    "name", "мультисервер")
+                server_name = SERVERS.get(server_id, {}).get("name", "мультисервер")
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
@@ -220,11 +192,9 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 inline_keyboard.append([back_button])
 
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=inline_keyboard)
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-                image_path = os.path.join(
-                    os.path.dirname(__file__), "pic_view.jpg")
+                image_path = os.path.join(os.path.dirname(__file__), "pic_view.jpg")
 
                 if not os.path.isfile(image_path):
                     await bot.send_message(tg_id, "Файл изображения не найден.")
@@ -304,7 +274,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                         )
                     )
 
-                results = await asyncio.gather(*tasks)
+                await asyncio.gather(*tasks)
 
                 await store_key(
                     tg_id,
@@ -326,8 +296,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 back_button = types.InlineKeyboardButton(
                     text="🔙 Назад в профиль", callback_data="view_profile"
                 )
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
                 await bot.send_message(
                     tg_id, response_message, reply_markup=keyboard, parse_mode="HTML"
@@ -421,9 +390,9 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
             )
 
             if record:
-                email = record["email"]
+                # email = record["email"]
                 expiry_time = record["expiry_time"]
-                current_time = datetime.utcnow().timestamp() * 1000
+                # current_time = datetime.utcnow().timestamp() * 1000
                 keyboard = types.InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -505,13 +474,12 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
-                email = record["email"]
+                # email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
                 await delete_key(client_id)
                 await bot.edit_message_text(
@@ -525,14 +493,12 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                     try:
                         tasks = []
                         for server_id in SERVERS:
-                            tasks.append(delete_key_from_server(
-                                server_id, client_id))
+                            tasks.append(delete_key_from_server(server_id, client_id))
 
                         await asyncio.gather(*tasks)
 
                     except Exception as e:
-                        logger.error(
-                            f"Ошибка при удалении ключа {client_id}: {e}")
+                        logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
 
                 asyncio.create_task(delete_key_from_servers())
 
@@ -543,8 +509,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
                 await bot.edit_message_text(
                     response_message,
@@ -633,8 +598,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_profile"
                 )
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[[back_button]])
+                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
                 await bot.send_message(
                     tg_id, response_message, reply_markup=keyboard, parse_mode="HTML"

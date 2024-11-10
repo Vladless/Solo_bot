@@ -7,11 +7,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import (CHANNEL_URL, FREEKASSA_ENABLE, PAYMENT_METHOD,
-                    YOOKASSA_ENABLE)
+from config import CHANNEL_URL, FREEKASSA_ENABLE, PAYMENT_METHOD, YOOKASSA_ENABLE
 from database import get_balance, get_key_count, get_referral_stats
-from handlers.texts import (get_referral_link, invite_message_send,
-                            profile_message_send)
+from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
 router = Router()
 
