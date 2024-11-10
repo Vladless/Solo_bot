@@ -63,16 +63,15 @@ async def generate_and_store_keys(
 
             await conn.execute(
                 """
-                INSERT INTO connections (tg_id, trial) 
-                VALUES ($1, 1) 
-                ON CONFLICT (tg_id) 
+                INSERT INTO connections (tg_id, trial)
+                VALUES ($1, 1)
+                ON CONFLICT (tg_id)
                 DO UPDATE SET trial = 1
             """,
                 tg_id,
             )
         else:
-            logger.error(
-                "Не удалось создать ключ на одном или нескольких серверах.")
+            logger.error("Не удалось создать ключ на одном или нескольких серверах.")
 
     finally:
         await conn.close()

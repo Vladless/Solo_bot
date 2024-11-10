@@ -6,31 +6,15 @@ import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import bot, dp
-from config import (
-    APP_URL,
-    DATABASE_URL,
-    PUBLIC_LINK,
-    SERVERS,
-)
+from config import APP_URL, DATABASE_URL, PUBLIC_LINK, SERVERS
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
-from handlers.profile import process_callback_view_profile
 from handlers.keys.key_utils import create_key_on_server
-from handlers.texts import (
-    KEY,
-    KEY_TRIAL,
-    NULL_BALANCE,
-    RENEWAL_PLANS,
-    key_message_success,
-)
+from handlers.profile import process_callback_view_profile
+from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import sanitize_key_name
 
 router = Router()
@@ -61,7 +45,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext):
-    selected_server_id = (await state.get_data()).get("selected_server_id")
+    # selected_server_id = (await state.get_data()).get("selected_server_id")
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -108,8 +92,8 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "confirm_create_new_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
-    data = await state.get_data()
-    server_id = data.get("selected_server_id")
+    # data = await state.get_data()
+    # server_id = data.get("selected_server_id")
 
     balance = await get_balance(tg_id)
     if balance < RENEWAL_PLANS["1"]["price"]:
@@ -161,7 +145,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     finally:
         await conn.close()
 
-    data = await state.get_data()
+    # data = await state.get_data()
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     current_time = datetime.utcnow()
@@ -185,8 +169,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             replenish_button = InlineKeyboardButton(
                 text="Перейти в профиль", callback_data="view_profile"
             )
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[[replenish_button]])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
             await message.bot.send_message(
                 tg_id,
                 "❗️ Недостаточно средств на балансе для создания подписки на новое устройство.",

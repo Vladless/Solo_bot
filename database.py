@@ -25,7 +25,7 @@ async def init_db():
             client_id TEXT NOT NULL,
             email TEXT NOT NULL,
             created_at BIGINT NOT NULL,
-            expiry_time BIGINT NOT NULL,         
+            expiry_time BIGINT NOT NULL,
             key TEXT NOT NULL,
             server_id TEXT NOT NULL DEFAULT 'server1',  -- поле для идентификатора сервера
             notified BOOLEAN NOT NULL DEFAULT FALSE,  -- новое поле для статуса уведомления
@@ -170,8 +170,8 @@ async def update_balance(tg_id: int, amount: float):
     conn = await asyncpg.connect(DATABASE_URL)
     await conn.execute(
         """
-        UPDATE connections 
-        SET balance = balance + $1 
+        UPDATE connections
+        SET balance = balance + $1
         WHERE tg_id = $2
     """,
         amount,
@@ -236,7 +236,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
         await conn.execute(
             """
-            UPDATE referrals SET reward_issued = TRUE 
+            UPDATE referrals SET reward_issued = TRUE
             WHERE referrer_tg_id = $1 AND referred_tg_id = $2
         """,
             referrer_tg_id,

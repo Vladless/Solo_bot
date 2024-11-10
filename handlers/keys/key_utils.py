@@ -26,8 +26,7 @@ async def create_key_on_server(server_id, tg_id, client_id, email, expiry_timest
         if not response.get("success", True):
             error_msg = response.get("msg", "Неизвестная ошибка.")
             if "Duplicate email" in error_msg:
-                raise ValueError(
-                    f"Имя {email} уже занято на сервере {server_id}")
+                raise ValueError(f"Имя {email} уже занято на сервере {server_id}")
             else:
                 raise Exception(error_msg)
     except Exception as e:
@@ -35,11 +34,7 @@ async def create_key_on_server(server_id, tg_id, client_id, email, expiry_timest
 
 
 async def renew_server_key(
-        server_id,
-        tg_id, client_id,
-        email,
-        new_expiry_time,
-        reset_traffic=RESET_TRAFFIC
+    server_id, tg_id, client_id, email, new_expiry_time, reset_traffic=RESET_TRAFFIC
 ):
     try:
         session = await login_with_credentials(
@@ -65,8 +60,7 @@ async def delete_key_from_db(client_id):
         conn = await asyncpg.connect(DATABASE_URL)
         await conn.execute("DELETE FROM keys WHERE client_id = $1", client_id)
     except Exception as e:
-        logger.error(
-            f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
+        logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
     finally:
         await conn.close()
 
@@ -74,17 +68,19 @@ async def delete_key_from_db(client_id):
 async def delete_key_from_server(server_id, client_id):
     """Удаление ключа с сервера"""
     try:
-        async with login_with_credentials(server_id,
-                                          ADMIN_USERNAME,
-                                          ADMIN_PASSWORD) as session:
+        async with login_with_credentials(
+            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
+        ) as session:
             success = await delete_client(session, server_id, client_id)
 
             if not success:
                 logger.error(
-                    f"Ошибка удаления ключа {client_id} на сервере {server_id}")
+                    f"Ошибка удаления ключа {client_id} на сервере {server_id}"
+                )
     except Exception as e:
         logger.error(
-            f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}")
+            f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}"
+        )
 
 
 async def update_key_on_server(tg_id, client_id, email, expiry_time, server_id):
@@ -110,8 +106,7 @@ async def update_key_on_server(tg_id, client_id, email, expiry_time, server_id):
                 f"Ошибка при обновлении ключа на сервере {server_id} для {client_id}"
             )
         else:
-            logger.info(
-                f"Ключ успешно обновлен на сервере {server_id} для {client_id}")
+            logger.info(f"Ключ успешно обновлен на сервере {server_id} для {client_id}")
 
     except Exception as e:
         logger.error(
