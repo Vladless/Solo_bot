@@ -96,7 +96,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
             else:
                 response_message = NO_KEYS
                 create_key_button = types.InlineKeyboardButton(
-                    text="➕ Создать ключ", callback_data="create_key"
+                    text="➕ Создать подписку", callback_data="create_key"
                 )
                 back_button = types.InlineKeyboardButton(
                     text="🔙 Назад", callback_data="view_profile"
