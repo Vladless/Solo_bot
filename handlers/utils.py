@@ -1,10 +1,10 @@
 import random
 import re
 
-from bot import bot
-
-from config import SERVERS
 from loguru import logger
+
+from bot import bot
+from config import SERVERS
 
 
 def sanitize_key_name(key_name: str) -> str:

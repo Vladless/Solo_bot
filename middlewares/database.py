@@ -1,4 +1,3 @@
-from functools import wraps
 from typing import Any, Awaitable, Callable, Dict
 
 import asyncpg
