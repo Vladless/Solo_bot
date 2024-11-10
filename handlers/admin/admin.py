@@ -8,13 +8,7 @@ from loguru import logger
 from auth import login_with_credentials
 from client import extend_client_key_admin
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import (
-    add_balance_to_client,
-    check_connection_exists,
-    get_client_id_by_email,
-    get_tg_id_by_client_id,
-    update_key_expiry,
-)
+from database import add_balance_to_client, check_connection_exists, get_client_id_by_email, get_tg_id_by_client_id, update_key_expiry
 
 router = Router()
 

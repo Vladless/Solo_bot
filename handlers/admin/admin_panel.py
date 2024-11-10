@@ -6,11 +6,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
@@ -45,11 +41,9 @@ async def handle_admin_command(message: types.Message, is_admin: bool):
                 text="Отправить сообщение всем клиентам", callback_data="send_to_alls"
             )
         )
-        builder.row(InlineKeyboardButton(
-            text="Создать бэкап", callback_data="backups"))
+        builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
         builder.row(
-            InlineKeyboardButton(text="Перезапустить бота",
-                                 callback_data="restart_bot")
+            InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
         )
         await bot.send_message(
             message.chat.id, "Панель администратора.", reply_markup=builder.as_markup()
@@ -84,8 +78,7 @@ async def user_stats_menu(callback_query: CallbackQuery, is_admin: bool):
 
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(
-                    text="Назад", callback_data="back_to_admin_menu")
+                InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
             )
 
             await callback_query.message.edit_text(
@@ -119,7 +112,7 @@ async def handle_backup(message: Message, is_admin: bool):
 async def handle_restart(callback_query: CallbackQuery, is_admin: bool):
     if is_admin:
         try:
-            result = subprocess.run(
+            subprocess.run(
                 ["sudo", "systemctl", "restart", "bot.service"],
                 check=True,
                 capture_output=True,
@@ -142,12 +135,10 @@ async def user_editor_menu(callback_query: CallbackQuery, is_admin: bool):
             )
         )
         builder.row(
-            InlineKeyboardButton(text="Поиск по tg_id",
-                                 callback_data="search_by_tg_id")
+            InlineKeyboardButton(text="Поиск по tg_id", callback_data="search_by_tg_id")
         )
         builder.row(
-            InlineKeyboardButton(
-                text="Назад", callback_data="back_to_admin_menu")
+            InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
         )
         await callback_query.message.edit_text(
             "Выберите метод поиска:", reply_markup=builder.as_markup()
@@ -180,11 +171,9 @@ async def back_to_admin_menu(callback_query: CallbackQuery, is_admin: bool):
                 callback_data="send_to_alls",
             )
         )
-        builder.row(InlineKeyboardButton(
-            text="Создать бэкап", callback_data="backups"))
+        builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
         builder.row(
-            InlineKeyboardButton(text="Перезапустить бота",
-                                 callback_data="restart_bot")
+            InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
         )
         await bot.send_message(
             tg_id, "Панель администратора", reply_markup=builder.as_markup()
