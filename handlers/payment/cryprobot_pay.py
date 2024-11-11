@@ -228,7 +228,7 @@ async def process_enter_custom_amount(
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
-        if amount // 100 <= 0:
+        if amount // RUB_TO_USDT <= 0:
             await message.answer(
                 f"Сумма должна быть больше {RUB_TO_USDT}. Пожалуйста, введите сумму еще раз:"
             )
