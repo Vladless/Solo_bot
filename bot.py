@@ -15,7 +15,6 @@ from handlers.admin import admin, admin_panel, user_editor
 from handlers.keys import key_management, keys
 from handlers.payment import freekassa_pay, yookassa_pay
 
-
 dp.include_router(admin.router)
 dp.include_router(admin_panel.router)
 dp.include_router(user_editor.router)
