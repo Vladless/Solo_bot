@@ -8,12 +8,11 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from loguru import logger
 
-from auth import login_with_credentials
 from bot import bot
-from client import delete_client, extend_client_key_admin
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
-from database import get_client_id_by_email, get_tg_id_by_client_id, update_key_expiry
+from config import DATABASE_URL, SERVERS
+from database import get_client_id_by_email, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
+from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
 
 router = Router()
@@ -189,7 +188,7 @@ async def process_key_edit(callback_query: CallbackQuery):
                             InlineKeyboardButton(
                                 text="Назад", callback_data="back_to_user_editor"
                             )
-                        ],  # Кнопка "Назад"
+                        ],
                     ]
                 )
 
@@ -332,16 +331,12 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
                 await state.clear()
                 return
 
-            tg_id = await get_tg_id_by_client_id(client_id)
-
             async def update_key_on_all_servers():
                 tasks = []
                 for server_id in SERVERS:
                     tasks.append(
                         asyncio.create_task(
-                            renew_server_key(
-                                server_id, tg_id, client_id, email, expiry_time
-                            )
+                            renew_server_key(server_id, email, client_id, expiry_time)
                         )
                     )
                 await asyncio.gather(*tasks)
@@ -370,20 +365,6 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
         await message.reply(f"Произошла ошибка: {e}")
 
     await state.clear()
-
-
-async def renew_server_key(server_id, tg_id, client_id, email, new_expiry_time):
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        await extend_client_key_admin(
-            session, server_id, tg_id, client_id, email, new_expiry_time
-        )
-    except Exception as e:
-        logger.error(
-            f"Не удалось обновить ключ {client_id} на сервере {server_id}: {e}"
-        )
 
 
 @router.callback_query(F.data.startswith("delete_key_admin|"))
@@ -447,6 +428,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
+                email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
@@ -456,7 +438,9 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 async def delete_key_from_servers():
                     tasks = []
                     for server_id in SERVERS:
-                        tasks.append(delete_key_from_server(server_id, client_id))
+                        tasks.append(
+                            delete_key_from_server(server_id, email, client_id)
+                        )
                     await asyncio.gather(*tasks)
 
                 await delete_key_from_servers()
@@ -493,22 +477,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
         )
 
     await callback_query.answer()
-
-
-async def delete_key_from_server(server_id, client_id):
-    """Удаление ключа с сервера"""
-    try:
-        session = await login_with_credentials(
-            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-        )
-        success = await delete_client(session, server_id, client_id)
-
-        if not success:
-            logger.error(f"Ошибка удаления ключа {client_id} на сервере {server_id}")
-    except Exception as e:
-        logger.error(
-            f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}"
-        )
 
 
 async def delete_key_from_db(client_id):

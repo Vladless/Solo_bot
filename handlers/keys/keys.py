@@ -472,6 +472,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
+                email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
@@ -490,7 +491,9 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                     try:
                         tasks = []
                         for server_id in SERVERS:
-                            tasks.append(delete_key_from_server(server_id, client_id))
+                            tasks.append(
+                                delete_key_from_server(server_id, email, client_id)
+                            )
 
                         await asyncio.gather(*tasks)
 
@@ -606,7 +609,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
                     for server_id in SERVERS:
                         task = asyncio.create_task(
                             renew_server_key(
-                                server_id, tg_id, client_id, email, new_expiry_time
+                                server_id, email, client_id, new_expiry_time
                             )
                         )
                         tasks.append(task)
