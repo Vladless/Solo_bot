@@ -52,8 +52,8 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 
                 inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
                 response_message = (
-                    "<b>Это ваши устройства:</b>\n\n"
-                    "<i>Нажмите на имя устройства для управления его подпиской.</i>"
+                    "<b>🔑 Список ваших устройств</b>\n\n"
+                    "<i>👆 Выберите устройство для управления подпиской:</i>"
                 )
 
                 await bot.delete_message(
@@ -138,7 +138,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 time_left = expiry_date - current_date
 
                 if time_left.total_seconds() <= 0:
-                    days_left_message = "<b>Ключ истек.</b>"
+                    days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0"
                 elif time_left.days > 0:
                     days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
                 else:
@@ -574,11 +574,14 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
 
                 balance = await get_balance(tg_id)
                 if balance < cost:
+                    replenish_button = types.InlineKeyboardButton(
+                        text="Пополнить баланс", callback_data="pay"
+                    )
                     view_profile = types.InlineKeyboardButton(
-                        text="👤 Мой профиль", callback_data="view_profile"
+                        text="👤 Личный кабинет", callback_data="view_profile"
                     )
                     keyboard = types.InlineKeyboardMarkup(
-                        inline_keyboard=[[view_profile]]
+                        inline_keyboard=[[replenish_button], [view_profile]]
                     )
 
                     await bot.send_message(

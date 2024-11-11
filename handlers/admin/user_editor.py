@@ -28,7 +28,7 @@ class UserEditorState(StatesGroup):
 
 @router.callback_query(F.data == "search_by_tg_id")
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.edit_text("Введите tg_id клиента:")
+    await callback_query.message.edit_text("🔍 Введите Telegram ID клиента:")
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
 
@@ -73,10 +73,10 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
         )
 
         user_info = (
-            f"Информация о пользователе:\n"
-            f"Баланс: <b>{balance}</b>\n"
-            f"Количество рефералов: <b>{referral_count}</b>\n"
-            f"Ключи (для редактирования нажмите на ключ):"
+            f"📊 Информация о пользователе:\n"
+            f"💰 Баланс: <b>{balance}</b>\n"
+            f"👥 Количество рефералов: <b>{referral_count}</b>\n"
+            f"🔑 Ключи (для редактирования нажмите на ключ):"
         )
         await message.reply(user_info, reply_markup=keyboard, parse_mode="HTML")
         await state.set_state(UserEditorState.displaying_user_info)
@@ -90,7 +90,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
     tg_id = int(callback_query.data.split("_")[2])
     await state.update_data(tg_id=tg_id)
 
-    await callback_query.message.edit_text("Введите новую сумму баланса:")
+    await callback_query.message.edit_text("💸 Введите новую сумму баланса:")
     await callback_query.answer()
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
@@ -99,7 +99,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
 async def handle_new_balance_input(message: types.Message, state: FSMContext):
     if not message.text.isdigit() or int(message.text) < 0:
         await message.reply(
-            "Пожалуйста, введите корректную сумму для изменения баланса."
+            "❌ Пожалуйста, введите корректную сумму для изменения баланса."
         )
         return
 
@@ -113,7 +113,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext):
             "UPDATE connections SET balance = $1 WHERE tg_id = $2", new_balance, tg_id
         )
 
-        response_message = f"Баланс успешно изменен на <b>{new_balance}</b>."
+        response_message = f"✅ Баланс успешно изменен на <b>{new_balance}</b>."
 
         back_button = InlineKeyboardButton(
             text="Назад в меню админа", callback_data="back_to_user_editor"
@@ -215,7 +215,7 @@ async def process_key_edit(callback_query: CallbackQuery):
 
 @router.callback_query(F.data == "search_by_key_name")
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.edit_text("Введите имя ключа:")
+    await callback_query.message.edit_text("🔑 Введите имя ключа:")
     await state.set_state(UserEditorState.waiting_for_key_name)
 
 
@@ -236,7 +236,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
         )
 
         if not user_records:
-            await message.reply("Пользователь с указанным именем ключа не найден.")
+            await message.reply("🚫 Пользователь с указанным именем ключа не найден.")
             await state.clear()
             return
 
@@ -256,10 +256,10 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
             )
 
             response_messages.append(
-                f"Ключ: <pre>{key}</pre>\n"
-                f"Дата истечения: <b>{expiry_date}</b>\n"
-                f"Баланс пользователя: <b>{balance}</b>\n"
-                f"Сервер: <b>{server_name}</b>"
+                f"🔑 Ключ: <pre>{key}</pre>\n"
+                f"⏰ Дата истечения: <b>{expiry_date}</b>\n"
+                f"💰 Баланс пользователя: <b>{balance}</b>\n"
+                f"🌐 Сервер: <b>{server_name}</b>"
             )
 
             change_expiry_button = InlineKeyboardButton(
@@ -292,7 +292,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
 async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext):
     email = callback_query.data.split("|")[1]
     await callback_query.message.edit_text(
-        f"Введите новое время истечения для ключа <b>{email}</b> в формате <code>YYYY-MM-DD HH:MM:SS</code>:",
+        f"⏳ Введите новое время истечения для ключа <b>{email}</b> в формате <code>YYYY-MM-DD HH:MM:SS</code>:",
         parse_mode="HTML",
     )
     await state.update_data(email=email)
@@ -345,7 +345,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
 
             await update_key_expiry(client_id, expiry_time)
 
-            response_message = f"Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
+            response_message = f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
 
             back_button = InlineKeyboardButton(
                 text="Назад", callback_data="back_to_user_editor"
@@ -360,7 +360,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
             await conn.close()
 
     except ValueError:
-        await message.reply("Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.")
+        await message.reply("❌ Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.")
     except Exception as e:
         await message.reply(f"Произошла ошибка: {e}")
 
@@ -403,7 +403,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
         )
 
         await bot.edit_message_text(
-            "<b>Вы уверены, что хотите удалить ключ?</b>",
+            "<b>❓ Вы уверены, что хотите удалить ключ?</b>",
             chat_id=tg_id,
             message_id=callback_query.message.message_id,
             reply_markup=confirmation_keyboard,
@@ -429,7 +429,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
 
             if record:
                 email = record["email"]
-                response_message = "Ключ успешно удален."
+                response_message = "✅ Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
@@ -453,7 +453,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                     reply_markup=keyboard,
                 )
             else:
-                response_message = "Ключ не найден или уже удален."
+                response_message = "🚫 Ключ не найден или уже удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
                 )
