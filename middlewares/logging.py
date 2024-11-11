@@ -25,7 +25,6 @@ class UserActivityMiddleware(BaseMiddleware):
             username = event.from_user.username
             action = f"Обратный вызов: {event.data}"
 
-        # Логируем действие пользователя
         logger.info(
             f"Активность пользователя - "
             f"ID пользователя: {user_id}, "
@@ -33,5 +32,4 @@ class UserActivityMiddleware(BaseMiddleware):
             f"Действие: {action}"
         )
 
-        # Продолжаем выполнение обработчика
         return await handler(event, data)

@@ -11,7 +11,7 @@ from bot import bot
 from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
-from handlers.texts import ABOUT_VPN, INSTRUCTIONS_TRIAL, WELCOME_TEXT
+from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
 
 router = Router()
 
@@ -137,11 +137,13 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
+    about_vpn_message = get_about_vpn("3.0.4")
+
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
 
     await callback_query.message.answer(
-        ABOUT_VPN, parse_mode="HTML", reply_markup=builder.as_markup()
+        about_vpn_message, parse_mode="HTML", reply_markup=builder.as_markup()
     )
     await callback_query.answer()
 

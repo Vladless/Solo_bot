@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram import Bot, Router, types
 from loguru import logger
+from py3xui import AsyncApi
 
-from auth import login_with_credentials
 from client import delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import delete_key, get_balance, update_balance, update_key_expiry
@@ -228,7 +228,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         """
         SELECT tg_id, client_id, expiry_time, email FROM keys 
         WHERE expiry_time <= $1
-    """,
+        """,
         adjusted_current_time,
     )
 
@@ -245,109 +245,68 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         current_date = datetime.utcnow()
         time_left = expiry_date - current_date
         logger.info(
-            f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}."
+            f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}"
         )
 
-        message_expired = f"Ваш ключ {email} истек и был удален!\n\n Перейдите в профиль для создания нового ключа"
+        message_expired = f"Ваша подписка {email} истекла и была удалена!\n\n Перейдите в профиль для создания нового ключа"
         button_profile = types.InlineKeyboardButton(
             text="👤 Мой профиль", callback_data="view_profile"
         )
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
-        if balance >= RENEWAL_PLANS["1"]["price"]:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-            new_expiry_time = int(
-                (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
-            )
-            await update_key_expiry(client_id, new_expiry_time)
-            logger.info(
-                f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}."
-            )
-
-            all_success = True
-            for server_id in SERVERS:
-                session = await login_with_credentials(
-                    server_id, ADMIN_USERNAME, ADMIN_PASSWORD
+        try:
+            if balance >= RENEWAL_PLANS["1"]["price"]:
+                await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+                new_expiry_time = int(
+                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
                 )
-                success = await extend_client_key(
-                    session, server_id, tg_id, client_id, email, new_expiry_time
+                await update_key_expiry(client_id, new_expiry_time)
+                logger.info(
+                    f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}."
                 )
-                if not success:
-                    all_success = False
-                    logger.error(
-                        f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id}."
-                    )
 
-            if all_success:
-                try:
-                    await bot.send_message(tg_id, KEY_RENEWED, reply_markup=keyboard)
-                    logger.info(
-                        f"Ключ для пользователя {tg_id} успешно продлен на месяц на всех серверах."
+                all_success = True
+                for server_id in SERVERS:
+                    xui = AsyncApi(
+                        SERVERS[server_id]["API_URL"],
+                        username=ADMIN_USERNAME,
+                        password=ADMIN_PASSWORD,
                     )
-                except Exception as e:
-                    if "blocked" in str(e).lower():
-                        logger.warning(
-                            f"Пользователь {tg_id} заблокирован. Ключ будет удален."
+                    success = await extend_client_key(
+                        xui, email, new_expiry_time, client_id
+                    )
+                    if not success:
+                        all_success = False
+                        logger.error(
+                            f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id}."
                         )
-                        await delete_key(client_id)
-                        for server_id in SERVERS:
-                            session = await login_with_credentials(
-                                server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-                            )
-                            success = await delete_client(session, server_id, client_id)
-                            if success:
-                                logger.info(
-                                    f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}."
-                                )
-                            else:
-                                logger.error(
-                                    f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}."
-                                )
-                    else:
+
+                if all_success:
+                    try:
+                        await bot.send_message(
+                            tg_id, KEY_RENEWED, reply_markup=keyboard
+                        )
+                        logger.info(
+                            f"Ключ для пользователя {tg_id} успешно продлен на месяц на всех серверах."
+                        )
+                    except Exception as e:
                         logger.error(
                             f"Ошибка при отправке уведомления о продлении ключа пользователю {tg_id}: {e}"
                         )
             else:
                 try:
                     await bot.send_message(
-                        tg_id, KEY_RENEWAL_FAILED, reply_markup=keyboard
-                    )
-                    logger.error(
-                        f"Не удалось продлить ключ для пользователя {tg_id} на одном или нескольких серверах."
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Ошибка при отправке уведомления о неудачном продлении ключа пользователю {tg_id}: {e}"
-                    )
-        else:
-            try:
-                await bot.send_message(tg_id, message_expired, reply_markup=keyboard)
-                await delete_key(client_id)
-
-                for server_id in SERVERS:
-                    session = await login_with_credentials(
-                        server_id, ADMIN_USERNAME, ADMIN_PASSWORD
-                    )
-                    success = await delete_client(session, server_id, client_id)
-                    if success:
-                        logger.info(
-                            f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}."
-                        )
-                    else:
-                        logger.error(
-                            f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}."
-                        )
-            except Exception as e:
-                if "blocked" in str(e).lower():
-                    logger.warning(
-                        f"Пользователь {tg_id} заблокирован. Ключ будет удален."
+                        tg_id, message_expired, reply_markup=keyboard
                     )
                     await delete_key(client_id)
+
                     for server_id in SERVERS:
-                        session = await login_with_credentials(
-                            server_id, ADMIN_USERNAME, ADMIN_PASSWORD
+                        xui = AsyncApi(
+                            SERVERS[server_id]["API_URL"],
+                            username=ADMIN_USERNAME,
+                            password=ADMIN_PASSWORD,
                         )
-                        success = await delete_client(session, server_id, client_id)
+                        success = await delete_client(xui, email, client_id)
                         if success:
                             logger.info(
                                 f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}."
@@ -356,7 +315,10 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                             logger.error(
                                 f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}."
                             )
-                else:
+                except Exception as e:
                     logger.error(f"Ошибка при удалении ключа для клиента {tg_id}: {e}")
+
+        except Exception as e:
+            logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
         await asyncio.sleep(1)
