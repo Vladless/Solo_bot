@@ -17,10 +17,9 @@ from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
 
-Configuration.account_id = YOOKASSA_SHOP_ID
-Configuration.secret_key = YOOKASSA_SECRET_KEY
-
 if YOOKASSA_ENABLE:
+    Configuration.account_id = YOOKASSA_SHOP_ID
+    Configuration.secret_key = YOOKASSA_SECRET_KEY
     logger.debug(f"Account ID: {YOOKASSA_SHOP_ID}")
     logger.debug(f"Secret Key: {YOOKASSA_SECRET_KEY}")
 
@@ -64,39 +63,25 @@ async def process_callback_replenish_balance(
 
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[0]["text"],
-            callback_data=PAYMENT_OPTIONS[0]["callback_data"],
-        ),
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[1]["text"],
-            callback_data=PAYMENT_OPTIONS[1]["callback_data"],
-        ),
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[2]["text"],
-            callback_data=PAYMENT_OPTIONS[2]["callback_data"],
-        ),
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[3]["text"],
-            callback_data=PAYMENT_OPTIONS[3]["callback_data"],
-        ),
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[4]["text"],
-            callback_data=PAYMENT_OPTIONS[4]["callback_data"],
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=PAYMENT_OPTIONS[5]["text"],
-            callback_data=PAYMENT_OPTIONS[5]["callback_data"],
-        )
-    )
+    for i in range(0, len(PAYMENT_OPTIONS), 2):
+        if i + 1 < len(PAYMENT_OPTIONS):
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                ),
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i + 1]["text"],
+                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+                ),
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                )
+            )
 
     key_count = await get_key_count(tg_id)
 
@@ -215,20 +200,15 @@ async def process_amount_selection(
 
 async def send_payment_success_notification(user_id: int, amount: float):
     try:
-        profile_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Перейти в профиль", callback_data="view_profile"
-                    )
-                ]
-            ]
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
         )
 
         await bot.send_message(
             chat_id=user_id,
             text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
-            reply_markup=profile_keyboard,
+            reply_markup=builder.as_markup(),
         )
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
@@ -236,26 +216,19 @@ async def send_payment_success_notification(user_id: int, amount: float):
 
 async def yookassa_webhook(request):
     event = await request.json()
-
     logger.debug(f"Webhook event received: {event}")
-
     if event["event"] == "payment.succeeded":
         user_id_str = event["object"]["metadata"]["user_id"]
         amount_str = event["object"]["amount"]["value"]
-
         try:
             user_id = int(user_id_str)
             amount = float(amount_str)
-
             logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
             await update_balance(user_id, amount)
-
             await send_payment_success_notification(user_id, amount)
-
         except ValueError as e:
             logger.error(f"Ошибка конвертации user_id или amount: {e}")
             return web.Response(status=400)
-
     return web.Response(status=200)
 
 
