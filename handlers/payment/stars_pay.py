@@ -46,8 +46,8 @@ async def send_message_with_deletion(
     return sent_message
 
 
-@router.callback_query(F.data == "replenish_balance")
-async def process_callback_replenish_balance(
+@router.callback_query(F.data == "pay_stars")
+async def process_callback_pay_stars(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     tg_id = callback_query.from_user.id
