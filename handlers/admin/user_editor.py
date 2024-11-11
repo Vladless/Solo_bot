@@ -245,7 +245,6 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
         key_buttons = []
 
         for record in user_records:
-            # tg_id = record["tg_id"]
             balance = record["balance"]
             email = record["email"]
             key = record["key"]
@@ -448,7 +447,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
-                # email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"

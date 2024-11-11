@@ -45,7 +45,6 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext):
-    # selected_server_id = (await state.get_data()).get("selected_server_id")
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -92,8 +91,6 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "confirm_create_new_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
-    # data = await state.get_data()
-    # server_id = data.get("selected_server_id")
 
     balance = await get_balance(tg_id)
     if balance < RENEWAL_PLANS["1"]["price"]:
@@ -145,7 +142,6 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     finally:
         await conn.close()
 
-    # data = await state.get_data()
     client_id = str(uuid.uuid4())
     email = key_name.lower()
     current_time = datetime.utcnow()

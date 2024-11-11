@@ -12,15 +12,12 @@ RUN apt-get update && \
     sed -i '/ru_RU.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen ru_RU.UTF-8
 
-# Устанавливаем переменные окружения
 ENV LANG=ru_RU.UTF-8
 ENV LANGUAGE=ru_RU:ru
 ENV LC_ALL=ru_RU.UTF-8
 
 COPY . .
 
-# Замена DATABASE_URL на значение из переменной окружения
 RUN sed -i "s|DATABASE_URL = .*|DATABASE_URL = '${DATABASE_URL}'|" config.py
-# dosker-compose в полной версии бота
 
 CMD ["python", "main.py"]

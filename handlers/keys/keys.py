@@ -390,9 +390,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
             )
 
             if record:
-                # email = record["email"]
                 expiry_time = record["expiry_time"]
-                # current_time = datetime.utcnow().timestamp() * 1000
                 keyboard = types.InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -474,7 +472,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
             )
 
             if record:
-                # email = record["email"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"

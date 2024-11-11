@@ -2,10 +2,6 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import API_TOKEN, FREEKASSA_ENABLE, YOOKASSA_ENABLE
-from handlers import commands, notifications, profile, start
-from handlers.admin import admin, admin_panel, user_editor
-from handlers.keys import key_management, keys
-from handlers.payment import freekassa_pay, yookassa_pay
 from middlewares.admin import AdminMiddleware
 from middlewares.logging import UserActivityMiddleware
 
@@ -13,6 +9,11 @@ bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
+
+from handlers import commands, notifications, profile, start
+from handlers.admin import admin, admin_panel, user_editor
+from handlers.keys import key_management, keys
+from handlers.payment import freekassa_pay, yookassa_pay
 
 
 dp.include_router(admin.router)
