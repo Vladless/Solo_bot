@@ -1,23 +1,23 @@
 import hashlib
+import hmac
+import logging
 import time
 import uuid
 
 import requests
-from aiogram import F, Router, types
+from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from loguru import logger
 
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import update_balance
-from handlers.profile import process_callback_view_profile
-from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
+logging.basicConfig(level=logging.DEBUG)
 
 
 class ReplenishBalanceState(StatesGroup):
@@ -27,8 +27,9 @@ class ReplenishBalanceState(StatesGroup):
 
 
 def generate_signature(params, api_key):
-    sign_string = ":".join([str(params[k]) for k in sorted(params)]) + api_key
-    return hashlib.md5(sign_string.encode()).hexdigest()
+    sorted_params = {k: params[k] for k in sorted(params)}
+    sign_string = "|".join(str(value) for value in sorted_params.values())
+    return hmac.new(api_key.encode(), sign_string.encode(), hashlib.sha256).hexdigest()
 
 
 async def create_payment(user_id, amount, email, ip):
@@ -52,16 +53,16 @@ async def create_payment(user_id, amount, email, ip):
         )
         response_data = response.json()
 
-        logger.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
+        logging.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
 
         if response_data.get("type") == "success":
             return response_data["location"]
         else:
-            logger.error(f"Ошибка создания платежа: {response_data}")
+            logging.error(f"Ошибка создания платежа: {response_data}")
             return None
 
     except Exception as e:
-        logger.error(f"Ошибка запроса к FreeKassa: {e}")
+        logging.error(f"Ошибка запроса к FreeKassa: {e}")
         return None
 
 
@@ -72,14 +73,14 @@ async def send_payment_success_notification(user_id, amount):
             text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
         )
     except Exception as e:
-        logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
+        logging.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
 
 
 async def freekassa_webhook(request):
     data = await request.json()
-    logger.debug(f"Получен вебхук от FreeKassa: {data}")
+    logging.debug(f"Получен вебхук от FreeKassa: {data}")
 
-    logger.debug(f"Данные вебхука от FreeKassa: {data}")
+    logging.debug(f"Данные вебхука от FreeKassa: {data}")
 
     if data["status"] == "completed":
         user_id = data["metadata"]["user_id"]
@@ -91,7 +92,7 @@ async def freekassa_webhook(request):
     return web.Response(status=200)
 
 
-@router.callback_query(F.data == "pay_freekassa")
+@router.callback_query(lambda c: c.data == "pay_freekassa")
 async def process_callback_pay_freekassa(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -132,14 +133,7 @@ async def process_callback_pay_freekassa(
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "back_to_profile")
-async def back_to_profile_handler(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
-    await process_callback_view_profile(callback_query, state)
-
-
-@router.callback_query(F.data.startswith("amount|"))
+@router.callback_query(lambda c: c.data.startswith("amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -158,9 +152,21 @@ async def process_amount_selection(
     )
 
     if payment_url:
+        confirm_keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"Оплатить {amount} рублей", url=payment_url
+                    )
+                ],
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile")],
+            ]
+        )
+
         await bot.send_message(
             callback_query.from_user.id,
-            f"Перейдите по ссылке для оплаты: {payment_url}",
+            f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
+            reply_markup=confirm_keyboard,
         )
     else:
         await bot.send_message(
@@ -171,7 +177,7 @@ async def process_amount_selection(
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "enter_custom_amount")
+@router.callback_query(lambda c: c.data == "enter_custom_amount")
 async def process_enter_custom_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -197,8 +203,12 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
         )
 
         if payment_url:
-            await bot.send_message(
-                message.from_user.id, f"Перейдите по ссылке для оплаты: {payment_url}"
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton("Оплатить", url=payment_url)]]
+            )
+            await message.answer(
+                f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
+                reply_markup=keyboard,
             )
         else:
             await message.answer("Ошибка при создании платежа. Попробуйте позже.")
