@@ -6,7 +6,8 @@ import requests
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from loguru import logger
 
@@ -95,16 +96,27 @@ async def process_callback_pay_freekassa(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     tg_id = callback_query.from_user.id
-    inline_keyboard = []
 
-    for payment in PAYMENT_OPTIONS:
-        inline_keyboard.append(
-            InlineKeyboardButton(
-                text=payment.get("text"), callback_data=payment.get("callback_data")
+    builder = InlineKeyboardBuilder()
+    for i in range(0, len(PAYMENT_OPTIONS), 2):
+        if i + 1 < len(PAYMENT_OPTIONS):
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                ),
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i + 1]["text"],
+                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+                ),
             )
-        )
-
-    amount_keyboard = InlineKeyboardMarkup(inline_keyboard)
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                )
+            )
 
     await bot.delete_message(
         chat_id=tg_id, message_id=callback_query.message.message_id
@@ -113,7 +125,7 @@ async def process_callback_pay_freekassa(
     await bot.send_message(
         chat_id=tg_id,
         text="Выберите сумму пополнения через FreeKassa:",
-        reply_markup=amount_keyboard,
+        reply_markup=builder.as_markup(),
     )
 
     await state.set_state(ReplenishBalanceState.choosing_amount)

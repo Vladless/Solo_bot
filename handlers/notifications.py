@@ -9,7 +9,7 @@ from py3xui import AsyncApi
 from client import delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
 from database import delete_key, get_balance, update_balance, update_key_expiry
-from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWAL_FAILED, KEY_RENEWED, RENEWAL_PLANS
+from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 
 router = Router()
 
