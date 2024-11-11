@@ -68,7 +68,7 @@ async def delete_key_from_db(client_id):
 async def delete_key_from_server(server_id, client_id):
     """Удаление ключа с сервера"""
     try:
-        async with login_with_credentials(
+        async with await login_with_credentials(
             server_id, ADMIN_USERNAME, ADMIN_PASSWORD
         ) as session:
             success = await delete_client(session, server_id, client_id)

@@ -50,7 +50,6 @@ async def link(session, server_id: str, client_id: str, email: str):
         raise Exception("Не удалось получить данные клиентов.")
 
     inbounds = response["obj"][0]
-    # settings = json.loads(inbounds["settings"])
 
     stream_settings = json.loads(inbounds["streamSettings"])
     tcp = stream_settings.get("network", "tcp")

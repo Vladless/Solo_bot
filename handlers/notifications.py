@@ -248,14 +248,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}."
         )
 
-        # if time_left.total_seconds() <= 0:
-        #     days_left_message = "Ключ истек"
-        # elif time_left.days > 0:
-        #     days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
-        # else:
-        #     hours_left = time_left.seconds // 3600
-        #     days_left_message = f"Осталось часов: <b>{hours_left}</b>"
-
         message_expired = f"Ваш ключ {email} истек и был удален!\n\n Перейдите в профиль для создания нового ключа"
         button_profile = types.InlineKeyboardButton(
             text="👤 Мой профиль", callback_data="view_profile"

@@ -58,14 +58,10 @@ async def process_callback_view_profile(
         )
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
 
-        # Попробуем удалить предыдущее сообщение
         try:
             await callback_query.message.delete()
         except Exception as e:
-            logger.error(
-                f"Ошибка при удалении сообщения: {e}"
-            )  # Логируем ошибку, если удаление не удалось
-
+            logger.error(f"Ошибка при удалении сообщения: {e}")
         if os.path.isfile(image_path):
             with open(image_path, "rb") as image_file:
                 await bot.send_photo(
