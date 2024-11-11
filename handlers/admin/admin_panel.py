@@ -32,14 +32,16 @@ async def handle_admin_command(message: types.Message):
         )
     )
     builder.row(
-        InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor")
-    )
-    builder.row(
         InlineKeyboardButton(
-            text="📢 Массовая рассылка", callback_data="send_to_alls"
+            text="👥 Управление пользователями", callback_data="user_editor"
         )
     )
-    builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
+    builder.row(
+        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
+    )
+    builder.row(
+        InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
+    )
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
@@ -73,7 +75,9 @@ async def user_stats_menu(callback_query: CallbackQuery):
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="back_to_admin_menu")
+            InlineKeyboardButton(
+                text="🔙 Вернуться в меню", callback_data="back_to_admin_menu"
+            )
         )
 
         await callback_query.message.edit_text(
@@ -94,7 +98,9 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
 async def handle_backup(message: Message):
     await message.answer("💾 Инициализация резервного копирования базы данных...")
     await backup_database()
-    await message.answer("✅ Резервная копия успешно создана и отправлена администратору.")
+    await message.answer(
+        "✅ Резервная копия успешно создана и отправлена администратору."
+    )
 
 
 @router.callback_query(F.data == "restart_bot", IsAdminFilter)
@@ -122,9 +128,15 @@ async def user_editor_menu(callback_query: CallbackQuery):
         )
     )
     builder.row(
-        InlineKeyboardButton(text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id")
+        InlineKeyboardButton(
+            text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
+        )
     )
-    builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="back_to_admin_menu"))
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Вернуться назад", callback_data="back_to_admin_menu"
+        )
+    )
     await callback_query.message.edit_text(
         "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
     )
@@ -145,14 +157,16 @@ async def back_to_admin_menu(callback_query: CallbackQuery):
         )
     )
     builder.row(
-        InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor")
-    )
-    builder.row(
         InlineKeyboardButton(
-            text="📢 Массовая рассылка", callback_data="send_to_alls"
+            text="👥 Управление пользователями", callback_data="user_editor"
         )
     )
-    builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
+    builder.row(
+        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
+    )
+    builder.row(
+        InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
+    )
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )

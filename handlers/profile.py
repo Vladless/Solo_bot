@@ -31,9 +31,7 @@ async def process_callback_view_profile(
         profile_message = profile_message_send(username, chat_id, balance, key_count)
 
         if key_count == 0:
-            profile_message += (
-                "\n🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i>"
-            )
+            profile_message += "\n🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i>"
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
@@ -51,13 +49,15 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
             InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
         )
-        builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu"))
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu")
+        )
 
         try:
             await callback_query.message.delete()
         except Exception as e:
             logger.error(f"❗ Ошибка при удалении сообщения: {e}")
-        
+
         if os.path.isfile(image_path):
             with open(image_path, "rb") as image_file:
                 await bot.send_photo(
@@ -76,7 +76,9 @@ async def process_callback_view_profile(
             )
 
     except Exception as e:
-        await bot.send_message(chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}")
+        await bot.send_message(
+            chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}"
+        )
 
     await callback_query.answer()
 
@@ -91,7 +93,9 @@ async def invite_handler(callback_query: types.CallbackQuery):
     invite_message = invite_message_send(referral_link, referral_stats)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
+    )
 
     await callback_query.message.delete()
 

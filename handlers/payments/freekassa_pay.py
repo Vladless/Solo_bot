@@ -11,10 +11,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
+from telegram import InlineKeyboardMarkup
 
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import update_balance
+from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
 logging.basicConfig(level=logging.DEBUG)

@@ -107,23 +107,23 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Скачать для iOS", 
-                url="https://apps.apple.com/ru/app/v2raytun/id6476628951"
+                text="🍏 Скачать для iOS",
+                url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
             ),
             InlineKeyboardButton(
-                text="🤖 Скачать для Android", 
-                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru"
+                text="🤖 Скачать для Android",
+                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
             ),
         )
 
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Подключить на iOS", 
-                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}'
+                text="🍏 Подключить на iOS",
+                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
             ),
             InlineKeyboardButton(
-                text="🤖 Подключить на Android", 
-                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}'
+                text="🤖 Подключить на Android",
+                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
             ),
         )
 
