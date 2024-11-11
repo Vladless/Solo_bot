@@ -7,12 +7,13 @@ from loguru import logger
 
 from backup import backup_database
 from bot import bot, dp, router
-from config import FREEKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
+from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
 from database import init_db
 from handlers.keys.subscriptions import handle_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payment.freekassa_pay import freekassa_webhook
 from handlers.payment.yookassa_pay import yookassa_webhook
+from handlers.payment.cryprobot_pay import cryptobot_webhook
 
 
 async def periodic_notifications():
@@ -60,6 +61,8 @@ async def main():
         app.router.add_post("/yookassa/webhook", yookassa_webhook)
     if FREEKASSA_ENABLE:
         app.router.add_post("/freekassa/webhook", freekassa_webhook)
+    if CRYPTO_BOT_ENABLE:
+        app.router.add_post("/cryptobot/webhook", cryptobot_webhook)
     app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
 
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
