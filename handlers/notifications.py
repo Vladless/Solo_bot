@@ -106,12 +106,6 @@ async def notify_10h_keys(
                         ],
                         [
                             types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="replenish_balance",
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
                                 text="👤 Мой профиль", callback_data="view_profile"
                             )
                         ],
@@ -180,12 +174,6 @@ async def notify_24h_keys(
                             types.InlineKeyboardButton(
                                 text="🔄 Продлить VPN",
                                 callback_data=f'renew_key|{record["client_id"]}',
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="replenish_balance",
                             )
                         ],
                         [
