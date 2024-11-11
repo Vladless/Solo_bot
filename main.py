@@ -11,9 +11,9 @@ from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, W
 from database import init_db
 from handlers.keys.subscriptions import handle_subscription
 from handlers.notifications import notify_expiring_keys
-from handlers.payment.cryprobot_pay import cryptobot_webhook
-from handlers.payment.freekassa_pay import freekassa_webhook
-from handlers.payment.yookassa_pay import yookassa_webhook
+from handlers.payments.cryprobot_pay import cryptobot_webhook
+from handlers.payments.freekassa_pay import freekassa_webhook
+from handlers.payments.yookassa_pay import yookassa_webhook
 
 
 async def periodic_notifications():

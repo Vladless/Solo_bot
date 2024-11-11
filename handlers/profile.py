@@ -7,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import CHANNEL_URL, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
+from config import CHANNEL_URL
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
@@ -41,34 +41,12 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
             InlineKeyboardButton(text="📱 Мои устр-ва", callback_data="view_keys"),
         )
-        if YOOKASSA_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс ЯКассой",
-                    callback_data="pay_yookassa",
-                )
+        builder.row(
+            InlineKeyboardButton(
+                text="💳 Пополнить баланс",
+                callback_data="pay",
             )
-        if FREEKASSA_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс Freekassa",
-                    callback_data="pay_freekassa",
-                )
-            )
-        if CRYPTO_BOT_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс CryptoBot",
-                    callback_data="pay_cryptobot",
-                )
-            )
-        if STARS_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс Звездами",
-                    callback_data="pay_stars",
-                )
-            )
+        )
         builder.row(
             InlineKeyboardButton(text="👥 Пригласить", callback_data="invite"),
             InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
