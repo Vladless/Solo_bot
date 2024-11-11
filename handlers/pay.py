@@ -17,33 +17,35 @@ async def handle_pay(callback_query: CallbackQuery):
     if YOOKASSA_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💳 ЯКасса: быстрый перевод", 
+                text="💳 ЯКасса: быстрый перевод",
                 callback_data="pay_yookassa",
             )
         )
     if FREEKASSA_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="🌐 FreeKassa: множество способов", 
+                text="🌐 FreeKassa: множество способов",
                 callback_data="pay_freekassa",
             )
         )
     if CRYPTO_BOT_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💰 CryptoBot: криптовалюта", 
+                text="💰 CryptoBot: криптовалюта",
                 callback_data="pay_cryptobot",
             )
         )
     if STARS_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="⭐ Оплата Звездами", 
+                text="⭐ Оплата Звездами",
                 callback_data="pay_stars",
             )
         )
 
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
+    )
 
     await callback_query.message.answer(
         "💸 <b>Выберите удобный способ пополнения баланса:</b>\n\n"

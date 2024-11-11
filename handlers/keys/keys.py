@@ -138,7 +138,9 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 time_left = expiry_date - current_date
 
                 if time_left.total_seconds() <= 0:
-                    days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0"
+                    days_left_message = (
+                        "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0"
+                    )
                 elif time_left.days > 0:
                     days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
                 else:
