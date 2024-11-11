@@ -32,7 +32,9 @@ async def backup_command(message: Message):
 
     await message.answer("🔄 Инициализация резервного копирования базы данных...")
     await backup_database()
-    await message.answer("✅ Бэкап базы данных успешно завершен и отправлен администратору.")
+    await message.answer(
+        "✅ Бэкап базы данных успешно завершен и отправлен администратору."
+    )
 
 
 @router.message(Command("start"))
@@ -75,10 +77,14 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                     except Exception as e:
                         if "Forbidden: bot was blocked by the user" in str(e):
                             blocked_count += 1
-                            logger.info(f"🚫 Бот заблокирован пользователем с tg_id: {tg_id}")
+                            logger.info(
+                                f"🚫 Бот заблокирован пользователем с tg_id: {tg_id}"
+                            )
                         else:
                             error_count += 1
-                            logger.error(f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}")
+                            logger.error(
+                                f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}"
+                            )
 
                 await message.answer(
                     f"📊 Результаты рассылки пробных периодов:\n"
@@ -87,7 +93,9 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                     f"❌ Ошибок: {error_count}"
                 )
             else:
-                await message.answer("📭 Нет пользователей с неиспользованными пробными ключами.")
+                await message.answer(
+                    "📭 Нет пользователей с неиспользованными пробными ключами."
+                )
 
         finally:
             await conn.close()

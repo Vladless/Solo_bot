@@ -18,7 +18,9 @@ async def cmd_add_balance(message: types.Message):
             return
 
         await add_balance_to_client(int(client_id), amount)
-        await message.reply(f"✅ Баланс клиента {client_id} успешно пополнен на {amount}")
+        await message.reply(
+            f"✅ Баланс клиента {client_id} успешно пополнен на {amount}"
+        )
     except ValueError:
         await message.reply(
             "❓ Неверный формат команды!\n"
