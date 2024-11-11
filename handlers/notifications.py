@@ -112,7 +112,7 @@ async def notify_10h_keys(
                         ],
                         [
                             types.InlineKeyboardButton(
-                                text="👤 Мой профиль", callback_data="view_profile"
+                                text="👤 Личный кабинет", callback_data="view_profile"
                             )
                         ],
                     ]
@@ -190,7 +190,7 @@ async def notify_24h_keys(
                         ],
                         [
                             types.InlineKeyboardButton(
-                                text="👤 Мой профиль", callback_data="view_profile"
+                                text="👤 Личный кабинет", callback_data="view_profile"
                             )
                         ],
                     ]
@@ -248,9 +248,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}"
         )
 
-        message_expired = f"Ваша подписка {email} истекла и была удалена!\n\n Перейдите в профиль для создания нового ключа"
+        message_expired = (
+            "❌ Ваша подписка {email} истекла и была удалена!\n\n"
+            "🔍 Перейдите в профиль для создания нового ключа.\n"
+            "💡 Не откладывайте подключение VPN!"
+        )
         button_profile = types.InlineKeyboardButton(
-            text="👤 Мой профиль", callback_data="view_profile"
+            text="👤 Личный кабинет", callback_data="view_profile"
         )
         keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
