@@ -14,14 +14,16 @@ async def cmd_add_balance(message: types.Message):
         amount = float(amount)
 
         if not await check_connection_exists(int(client_id)):
-            await message.reply(f"Клиент с ID {client_id} не найден.")
+            await message.reply(f"❌ Клиент с ID {client_id} не найден в базе данных.")
             return
 
         await add_balance_to_client(int(client_id), amount)
-        await message.reply(f"Баланс клиента {client_id} увеличен на {amount} у.е.")
+        await message.reply(f"✅ Баланс клиента {client_id} успешно пополнен на {amount}")
     except ValueError:
         await message.reply(
-            "Пожалуйста, используйте формат: /add_balance <client_id> <amount>"
+            "❓ Неверный формат команды!\n"
+            "Пожалуйста, используйте следующий шаблон:\n"
+            "/add_balance <ID клиента> <сумма пополнения>"
         )
     except Exception as e:
-        await message.reply(f"Произошла ошибка: {e}")
+        await message.reply(f"🚨 Произошла непредвиденная ошибка: {e}")
