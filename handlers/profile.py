@@ -7,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import CHANNEL_URL, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
+from config import CHANNEL_URL
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
@@ -32,53 +32,32 @@ async def process_callback_view_profile(
 
         if key_count == 0:
             profile_message += (
-                "\n<i>Нажмите ➕Устройство снизу, чтобы добавить устройство в VPN</i>"
+                "\n🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i>"
             )
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
         builder.row(
             InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
-            InlineKeyboardButton(text="📱 Мои устр-ва", callback_data="view_keys"),
+            InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
         )
-        if YOOKASSA_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс ЯКассой",
-                    callback_data="pay_yookassa",
-                )
-            )
-        if FREEKASSA_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс Freekassa",
-                    callback_data="pay_freekassa",
-                )
-            )
-        if CRYPTO_BOT_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс CryptoBot",
-                    callback_data="pay_cryptobot",
-                )
-            )
-        if STARS_ENABLE:
-            builder.row(
-                InlineKeyboardButton(
-                    text="💳 Пополнить баланс Звездами",
-                    callback_data="pay_stars",
-                )
-            )
         builder.row(
-            InlineKeyboardButton(text="👥 Пригласить", callback_data="invite"),
+            InlineKeyboardButton(
+                text="💳 Пополнить баланс",
+                callback_data="pay",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
             InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
         )
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
+        builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu"))
 
         try:
             await callback_query.message.delete()
         except Exception as e:
-            logger.error(f"Ошибка при удалении сообщения: {e}")
+            logger.error(f"❗ Ошибка при удалении сообщения: {e}")
+        
         if os.path.isfile(image_path):
             with open(image_path, "rb") as image_file:
                 await bot.send_photo(
@@ -97,7 +76,7 @@ async def process_callback_view_profile(
             )
 
     except Exception as e:
-        await bot.send_message(chat_id, f"❗️ Ошибка при получении данных профиля: {e}")
+        await bot.send_message(chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}")
 
     await callback_query.answer()
 
@@ -112,7 +91,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     invite_message = invite_message_send(referral_link, referral_stats)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
 
     await callback_query.message.delete()
 

@@ -28,23 +28,23 @@ async def handle_admin_command(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="Статистика пользователей", callback_data="user_stats"
+            text="📊 Статистика пользователей", callback_data="user_stats"
         )
     )
     builder.row(
-        InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")
+        InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor")
     )
     builder.row(
         InlineKeyboardButton(
-            text="Отправить сообщение всем клиентам", callback_data="send_to_alls"
+            text="📢 Массовая рассылка", callback_data="send_to_alls"
         )
     )
-    builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+    builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
     builder.row(
-        InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
+        InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
     await bot.send_message(
-        message.chat.id, "Панель администратора.", reply_markup=builder.as_markup()
+        message.chat.id, "🤖 Панель администратора", reply_markup=builder.as_markup()
     )
 
 
@@ -63,17 +63,17 @@ async def user_stats_menu(callback_query: CallbackQuery):
         expired_keys = total_keys - active_keys
 
         stats_message = (
-            f"🔹 <b>Общая статистика пользователей:</b>\n"
-            f"• Всего пользователей: <b>{total_users}</b>\n"
-            f"• Всего ключей: <b>{total_keys}</b>\n"
-            f"• Всего рефералов: <b>{total_referrals}</b>\n"
-            f"• Активные ключи: <b>{active_keys}</b>\n"
-            f"• Истекшие ключи: <b>{expired_keys}</b>"
+            f"📈 <b>Подробная статистика проекта:</b>\n\n"
+            f"👤 Зарегистрированных пользователей: <b>{total_users}</b>\n"
+            f"🔑 Всего сгенерированных ключей: <b>{total_keys}</b>\n"
+            f"🤝 Привлеченных рефералов: <b>{total_referrals}</b>\n"
+            f"✅ Действующих ключей: <b>{active_keys}</b>\n"
+            f"❌ Просроченных ключей: <b>{expired_keys}</b>"
         )
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu")
+            InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="back_to_admin_menu")
         )
 
         await callback_query.message.edit_text(
@@ -92,9 +92,9 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "backups", IsAdminFilter())
 async def handle_backup(message: Message):
-    await message.answer("Запускаю бэкап базы данных...")
+    await message.answer("💾 Инициализация резервного копирования базы данных...")
     await backup_database()
-    await message.answer("Бэкап завершен и отправлен админу.")
+    await message.answer("✅ Резервная копия успешно создана и отправлена администратору.")
 
 
 @router.callback_query(F.data == "restart_bot", IsAdminFilter)
@@ -106,10 +106,10 @@ async def handle_restart(callback_query: CallbackQuery):
             capture_output=True,
             text=True,
         )
-        await callback_query.message.answer("Бот успешно перезапущен.")
+        await callback_query.message.answer("🔄 Бот успешно перезапущен.")
     except subprocess.CalledProcessError as e:
         await callback_query.message.answer(
-            f"Бот будет перезапущен через 30 секунд {e.stderr}"
+            f"⚠️ Перезагрузка бота будет выполнена через 30 секунд. Детали: {e.stderr}"
         )
 
 
@@ -118,15 +118,15 @@ async def user_editor_menu(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="Поиск по имени ключа", callback_data="search_by_key_name"
+            text="🔍 Поиск по названию ключа", callback_data="search_by_key_name"
         )
     )
     builder.row(
-        InlineKeyboardButton(text="Поиск по tg_id", callback_data="search_by_tg_id")
+        InlineKeyboardButton(text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id")
     )
-    builder.row(InlineKeyboardButton(text="Назад", callback_data="back_to_admin_menu"))
+    builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="back_to_admin_menu"))
     await callback_query.message.edit_text(
-        "Выберите метод поиска:", reply_markup=builder.as_markup()
+        "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
     )
 
 
@@ -141,24 +141,23 @@ async def back_to_admin_menu(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="Статистика пользователей", callback_data="user_stats"
+            text="📊 Статистика пользователей", callback_data="user_stats"
         )
     )
     builder.row(
-        InlineKeyboardButton(text="Редактор пользователей", callback_data="user_editor")
+        InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor")
     )
     builder.row(
         InlineKeyboardButton(
-            text="Отправить сообщение всем клиентам",
-            callback_data="send_to_alls",
+            text="📢 Массовая рассылка", callback_data="send_to_alls"
         )
     )
-    builder.row(InlineKeyboardButton(text="Создать бэкап", callback_data="backups"))
+    builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
     builder.row(
-        InlineKeyboardButton(text="Перезапустить бота", callback_data="restart_bot")
+        InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
     await bot.send_message(
-        tg_id, "Панель администратора", reply_markup=builder.as_markup()
+        tg_id, "🤖 Панель администратора", reply_markup=builder.as_markup()
     )
 
 

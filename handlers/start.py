@@ -25,13 +25,13 @@ async def send_welcome_message(chat_id: int, trial_status: int):
             InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn")
         )
     builder.row(
-        InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
+        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
     )
     builder.row(
-        InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
-        InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL),
+        InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
+        InlineKeyboardButton(text="📢 Официальный канал", url=CHANNEL_URL),
     )
-    builder.row(InlineKeyboardButton(text="🔒 О VPN", callback_data="about_vpn"))
+    builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))
 
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_from_buffer:
@@ -95,34 +95,35 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
             await conn.close()
 
         key_message = (
-            f"<b>Ваш ключ доступа:</b>\n<pre>{trial_key_info['key']}</pre>\n\n"
-            f"<b>Инструкции:</b>\n{INSTRUCTIONS_TRIAL}"
+            f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
+            f"<pre>{trial_key_info['key']}</pre>\n\n"
+            f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text="👤 Мой профиль", callback_data="view_profile")
+            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
         )
 
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Скачать",
-                url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
+                text="🍏 Скачать для iOS", 
+                url="https://apps.apple.com/ru/app/v2raytun/id6476628951"
             ),
             InlineKeyboardButton(
-                text="🤖 Скачать",
-                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
+                text="🤖 Скачать для Android", 
+                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru"
             ),
         )
 
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Подключить",
-                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
+                text="🍏 Подключить на iOS", 
+                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}'
             ),
             InlineKeyboardButton(
-                text="🤖 Подключить",
-                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
+                text="🤖 Подключить на Android", 
+                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}'
             ),
         )
 

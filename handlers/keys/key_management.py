@@ -135,7 +135,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         if existing_key:
             await message.bot.send_message(
                 tg_id,
-                "❌ Это имя уже используется. Пожалуйста, выберите другое имя для ключа.",
+                "❌ Упс! Это имя уже используется. Выберите другое уникальное название для ключа.",
             )
             await state.set_state(Form.waiting_for_key_name)
             return
@@ -168,7 +168,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
             await message.bot.send_message(
                 tg_id,
-                "❗️ Недостаточно средств на балансе для создания подписки на новое устройство.",
+                "💳 Недостаточно средств для создания подписки на новое устройство. Пополните баланс в личном кабинете.",
                 reply_markup=keyboard,
             )
             await state.clear()
@@ -181,7 +181,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     public_link = f"{PUBLIC_LINK}{email}"
 
     button_profile = InlineKeyboardButton(
-        text="👤 Мой профиль", callback_data="view_profile"
+        text="👤 Личный кабинет", callback_data="view_profile"
     )
     button_iphone = InlineKeyboardButton(
         text="🍏 Подключить", url=f"{APP_URL}/?url=v2raytun://import/{public_link}"
@@ -210,7 +210,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     remaining_time = expiry_time - current_time
     days = remaining_time.days
     key_message = key_message_success(
-        public_link, f"Оставшееся время ключа: {days} день"
+        public_link, f"⏳ Осталось дней: {days} 📅"
     )
 
     await message.bot.send_message(
