@@ -209,9 +209,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     remaining_time = expiry_time - current_time
     days = remaining_time.days
-    key_message = key_message_success(
-        public_link, f"⏳ Осталось дней: {days} 📅"
-    )
+    key_message = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
 
     await message.bot.send_message(
         tg_id, key_message, parse_mode="HTML", reply_markup=keyboard
