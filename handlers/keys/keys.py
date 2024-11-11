@@ -574,11 +574,14 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
 
                 balance = await get_balance(tg_id)
                 if balance < cost:
+                    replenish_button = types.InlineKeyboardButton(
+                        text="Пополнить баланс", callback_data="pay"
+                    )
                     view_profile = types.InlineKeyboardButton(
                         text="👤 Мой профиль", callback_data="view_profile"
                     )
                     keyboard = types.InlineKeyboardMarkup(
-                        inline_keyboard=[[view_profile]]
+                        inline_keyboard=[[replenish_button], [view_profile]]
                     )
 
                     await bot.send_message(
