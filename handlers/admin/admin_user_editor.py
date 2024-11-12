@@ -5,16 +5,17 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from loguru import logger
+from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from filters.admin import IsAdminFilter
+from loguru import logger
+
 from bot import bot
 from config import DATABASE_URL, SERVERS
 from database import get_client_id_by_email, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
-from filters.admin import IsAdminFilter
 
 router = Router()
 
@@ -27,13 +28,13 @@ class UserEditorState(StatesGroup):
     waiting_for_expiry_time = State()
 
 
-@router.callback_query(F.data == "search_by_tg_id",IsAdminFilter())
+@router.callback_query(F.data == "search_by_tg_id", IsAdminFilter())
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text("🔍 Введите Telegram ID клиента:")
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
 
-@router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(),IsAdminFilter())
+@router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
 async def handle_tg_id_input(message: types.Message, state: FSMContext):
     tg_id = int(message.text)
 
@@ -52,25 +53,26 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
             await state.clear()
             return
 
-        key_buttons = [
-            [InlineKeyboardButton(text=email, callback_data=f"edit_key_{email}")]
-            for email, in key_records
-        ]
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                *key_buttons,
-                [
-                    InlineKeyboardButton(
-                        text="📝 Изменить баланс",
-                        callback_data=f"change_balance_{tg_id}",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="Назад", callback_data="back_to_user_editor"
-                    )
-                ],
-            ]
+        builder = InlineKeyboardBuilder()
+
+        # Добавляем кнопки ключей
+        for (email,) in key_records:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"🔑 {email}", callback_data=f"edit_key_{email}"
+                )
+            )
+
+        # Кнопка изменения баланса
+        builder.row(
+            InlineKeyboardButton(
+                text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"
+            )
+        )
+
+        # Кнопка возврата
+        builder.row(
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
         )
 
         user_info = (
@@ -79,14 +81,16 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
             f"👥 Количество рефералов: <b>{referral_count}</b>\n"
             f"🔑 Ключи (для редактирования нажмите на ключ):"
         )
-        await message.reply(user_info, reply_markup=keyboard, parse_mode="HTML")
+        await message.reply(
+            user_info, reply_markup=builder.as_markup(), parse_mode="HTML"
+        )
         await state.set_state(UserEditorState.displaying_user_info)
 
     finally:
         await conn.close()
 
 
-@router.callback_query(F.data.startswith("change_balance_"),IsAdminFilter())
+@router.callback_query(F.data.startswith("change_balance_"), IsAdminFilter())
 async def process_balance_change(callback_query: CallbackQuery, state: FSMContext):
     tg_id = int(callback_query.data.split("_")[2])
     await state.update_data(tg_id=tg_id)
@@ -96,7 +100,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
 
-@router.message(UserEditorState.waiting_for_new_balance,IsAdminFilter())
+@router.message(UserEditorState.waiting_for_new_balance, IsAdminFilter())
 async def handle_new_balance_input(message: types.Message, state: FSMContext):
     if not message.text.isdigit() or int(message.text) < 0:
         await message.reply(
@@ -116,12 +120,16 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext):
 
         response_message = f"✅ Баланс успешно изменен на <b>{new_balance}</b>."
 
-        back_button = InlineKeyboardButton(
-            text="Назад в меню админа", callback_data="back_to_user_editor"
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙 Назад в меню администратора",
+                callback_data="back_to_user_editor",
+            )
         )
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-        await message.reply(response_message, reply_markup=keyboard, parse_mode="HTML")
+        await message.reply(
+            response_message, reply_markup=builder.as_markup(), parse_mode="HTML"
+        )
 
     finally:
         await conn.close()
@@ -129,7 +137,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("edit_key_"),IsAdminFilter())
+@router.callback_query(F.data.startswith("edit_key_"), IsAdminFilter())
 async def process_key_edit(callback_query: CallbackQuery):
     email = callback_query.data.split("_", 2)[2]
 
@@ -174,27 +182,26 @@ async def process_key_edit(callback_query: CallbackQuery):
                     f"Сервер: <b>{server_name}</b>"
                 )
 
-                change_expiry_button = types.InlineKeyboardButton(
-                    text="⏳ Изменить время истечения",
-                    callback_data=f"change_expiry|{email}",
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    InlineKeyboardButton(
+                        text="⏳ Изменить время истечения",
+                        callback_data=f"change_expiry|{email}",
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Удалить ключ",
+                        callback_data=f"delete_key_admin|{email}",
+                    ),
                 )
-                delete_button = types.InlineKeyboardButton(
-                    text="❌ Удалить ключ", callback_data=f"delete_key_admin|{email}"
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="back_to_user_editor"
+                    )
                 )
-
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [change_expiry_button, delete_button],
-                        [
-                            InlineKeyboardButton(
-                                text="Назад", callback_data="back_to_user_editor"
-                            )
-                        ],
-                    ]
-                )
-
                 await callback_query.message.edit_text(
-                    response_message, reply_markup=keyboard, parse_mode="HTML"
+                    response_message,
+                    reply_markup=builder.as_markup(),
+                    parse_mode="HTML",
                 )
             else:
                 await callback_query.message.edit_text(
@@ -209,13 +216,13 @@ async def process_key_edit(callback_query: CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "search_by_key_name",IsAdminFilter())
+@router.callback_query(F.data == "search_by_key_name", IsAdminFilter())
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text("🔑 Введите имя ключа:")
     await state.set_state(UserEditorState.waiting_for_key_name)
 
 
-@router.message(UserEditorState.waiting_for_key_name,IsAdminFilter())
+@router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
 async def handle_key_name_input(message: types.Message, state: FSMContext):
     key_name = sanitize_key_name(message.text)
 
@@ -260,20 +267,18 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
 
             key_buttons.row(
                 text="⏳ Изменить время истечения",
-                callback_data=f"change_expiry|{email}"
+                callback_data=f"change_expiry|{email}",
             )
             key_buttons.row(
-                text="❌ Удалить ключ", 
-                callback_data=f"delete_key_admin|{email}"
+                text="❌ Удалить ключ", callback_data=f"delete_key_admin|{email}"
             )
 
-        key_buttons.row(
-            text="🔙 Назад", 
-            callback_data="back_to_user_editor"
-        )
+        key_buttons.row(text="🔙 Назад", callback_data="back_to_user_editor")
 
         await message.reply(
-            "\n".join(response_messages), reply_markup=key_buttons.as_markup(), parse_mode="HTML"
+            "\n".join(response_messages),
+            reply_markup=key_buttons.as_markup(),
+            parse_mode="HTML",
         )
 
     finally:
@@ -282,7 +287,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("change_expiry|"),IsAdminFilter())
+@router.callback_query(F.data.startswith("change_expiry|"), IsAdminFilter())
 async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext):
     email = callback_query.data.split("|")[1]
     await callback_query.message.edit_text(
@@ -293,7 +298,7 @@ async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext)
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
 
-@router.message(UserEditorState.waiting_for_expiry_time,IsAdminFilter())
+@router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
 async def handle_expiry_time_input(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     email = user_data.get("email")
@@ -362,7 +367,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("delete_key_admin|"),IsAdminFilter())
+@router.callback_query(F.data.startswith("delete_key_admin|"), IsAdminFilter())
 async def process_callback_delete_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     email = callback_query.data.split("|")[1]
@@ -384,14 +389,12 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
         builder = InlineKeyboardBuilder()
         builder.row(
             types.InlineKeyboardButton(
-                text="✅ Да, удалить", 
-                callback_data=f"confirm_delete_admin|{client_id}"
+                text="✅ Да, удалить", callback_data=f"confirm_delete_admin|{client_id}"
             )
         )
         builder.row(
             types.InlineKeyboardButton(
-                text="❌ Нет, отменить", 
-                callback_data="view_keys"
+                text="❌ Нет, отменить", callback_data="view_keys"
             )
         )
         await bot.edit_message_text(
@@ -407,7 +410,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(F.data.startswith("confirm_delete_admin|"),IsAdminFilter())
+@router.callback_query(F.data.startswith("confirm_delete_admin|"), IsAdminFilter())
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
     client_id = callback_query.data.split("|")[1]
@@ -424,9 +427,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 response_message = "✅ Ключ успешно удален."
                 builder = InlineKeyboardBuilder()
                 builder.row(
-                    InlineKeyboardButton(
-                        text="⬅️ Назад", callback_data="view_keys"
-                    )
+                    InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys")
                 )
 
                 async def delete_key_from_servers():
@@ -450,9 +451,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 response_message = "🚫 Ключ не найден или уже удален."
                 builder = InlineKeyboardBuilder()
                 builder.row(
-                    InlineKeyboardButton(
-                        text="⬅️ Назад", callback_data="view_keys"
-                    )
+                    InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys")
                 )
                 await bot.edit_message_text(
                     response_message,
