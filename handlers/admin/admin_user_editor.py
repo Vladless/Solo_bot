@@ -13,7 +13,7 @@ from bot import bot
 from config import DATABASE_URL, SERVERS
 from database import get_client_id_by_email, restore_trial, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
-from handlers.filters.admin import IsAdminFilter
+from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
 
