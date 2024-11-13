@@ -7,12 +7,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from filters.admin import IsAdminFilter
+from handlers.filters.admin import IsAdminFilter
 from loguru import logger
 
 from bot import bot
 from config import DATABASE_URL, SERVERS
-from database import get_client_id_by_email, update_key_expiry
+from database import get_client_id_by_email, update_key_expiry, restore_trial
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
@@ -55,7 +55,6 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
 
         builder = InlineKeyboardBuilder()
 
-        # Добавляем кнопки ключей
         for (email,) in key_records:
             builder.row(
                 InlineKeyboardButton(
@@ -63,14 +62,18 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
                 )
             )
 
-        # Кнопка изменения баланса
         builder.row(
             InlineKeyboardButton(
                 text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"
             )
         )
 
-        # Кнопка возврата
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"
+            )
+        )
+
         builder.row(
             InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
         )
@@ -88,6 +91,23 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
 
     finally:
         await conn.close()
+
+
+@router.callback_query(F.data.startswith("restore_trial_"), IsAdminFilter())
+async def handle_restore_trial(callback_query: types.CallbackQuery):
+    tg_id = int(callback_query.data.split("_")[2])
+
+    await restore_trial(tg_id)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="back_to_user_editor")  
+    )
+
+    await callback_query.message.edit_text(
+        "✅ Триал успешно восстановлен.",
+        reply_markup=builder.as_markup()
+    )
 
 
 @router.callback_query(F.data.startswith("change_balance_"), IsAdminFilter())
@@ -239,7 +259,15 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
         )
 
         if not user_records:
-            await message.reply("🚫 Пользователь с указанным именем ключа не найден.")
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="back_to_user_editor")
+            )
+
+            await message.reply(
+                "🚫 Пользователь с указанным именем ключа не найден.",
+                reply_markup=builder.as_markup(),
+            )
             await state.clear()
             return
 

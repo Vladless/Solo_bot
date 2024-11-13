@@ -63,25 +63,25 @@ async def process_callback_pay_yookassa(
 
     builder = InlineKeyboardBuilder()
 
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
-                ),
+    for i in range(0, 4, 2):  
+        builder.row(
+            InlineKeyboardButton(
+                text=PAYMENT_OPTIONS[i]["text"],
+                callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+            ),
+            InlineKeyboardButton(
+                text=PAYMENT_OPTIONS[i + 1]["text"],
+                callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+            ),
+        )
+
+    for i in range(4, len(PAYMENT_OPTIONS)):  
+        builder.row(
+            InlineKeyboardButton(
+                text=PAYMENT_OPTIONS[i]["text"],
+                callback_data=PAYMENT_OPTIONS[i]["callback_data"],
             )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
-                )
-            )
+        )
 
     key_count = await get_key_count(tg_id)
 
@@ -105,6 +105,7 @@ async def process_callback_pay_yookassa(
 
     await state.set_state(ReplenishBalanceState.choosing_amount)
     await callback_query.answer()
+
 
 
 @router.callback_query(F.data == "back_to_profile")

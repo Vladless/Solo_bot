@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta
+from loguru import logger
 
 import asyncpg
 from aiogram import F, Router
@@ -9,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import bot, dp
-from config import APP_URL, DATABASE_URL, PUBLIC_LINK, SERVERS
+from config import DATABASE_URL, PUBLIC_LINK, SERVERS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, CONNECT_ANDROID, CONNECT_IOS
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.keys.key_utils import create_key_on_server
@@ -92,6 +93,8 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
+    logger.info(f"User {tg_id} confirmed creation of a new key.")
+
     balance = await get_balance(tg_id)
     if balance < RENEWAL_PLANS["1"]["price"]:
         replenish_button = InlineKeyboardButton(
@@ -102,14 +105,14 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
         await state.clear()
         return
 
-    await callback_query.message.edit_text(
-        "🔑 Пожалуйста, введите имя подключаемого устройства:"
-    )
+    logger.info(f"Balance for user {tg_id} is sufficient. Asking for device name.")
+
+    await callback_query.message.edit_text("🔑 Пожалуйста, введите имя подключаемого устройства:")
     await state.set_state(Form.waiting_for_key_name)
+    logger.info(f"State set to waiting_for_key_name for user {tg_id}")
     await state.update_data(creating_new_key=True)
 
     await callback_query.answer()
-
 
 @dp.callback_query(F.data == "cancel_create_key")
 async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
@@ -117,18 +120,23 @@ async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.answer()
 
 
+@router.message(Form.waiting_for_key_name)
 async def handle_key_name_input(message: Message, state: FSMContext):
     tg_id = message.from_user.id
     key_name = sanitize_key_name(message.text)
+
+    logger.info(f"User {tg_id} is attempting to create a key with the name: {key_name}")
 
     if not key_name:
         await message.bot.send_message(
             tg_id, "📝 Пожалуйста, назовите устройство на английском языке."
         )
+        logger.warning(f"User {tg_id} entered an invalid key name: {key_name}")
         return
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        logger.info(f"Checking if key name '{key_name}' already exists in the database.")
         existing_key = await conn.fetchrow(
             "SELECT * FROM keys WHERE email = $1", key_name.lower()
         )
@@ -137,6 +145,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
                 tg_id,
                 "❌ Упс! Это имя уже используется. Выберите другое уникальное название для ключа.",
             )
+            logger.warning(f"Key name '{key_name}' already exists in the database for user {tg_id}.")
             await state.set_state(Form.waiting_for_key_name)
             return
     finally:
@@ -149,6 +158,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        logger.info(f"Checking trial status for user {tg_id}.")
         existing_connection = await conn.fetchrow(
             "SELECT trial FROM connections WHERE tg_id = $1", tg_id
         )
@@ -159,6 +169,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=1, hours=3)
+        logger.info(f"Assigned 1-day trial to user {tg_id}.")
     else:
         balance = await get_balance(tg_id)
         if balance < RENEWAL_PLANS["1"]["price"]:
@@ -171,32 +182,36 @@ async def handle_key_name_input(message: Message, state: FSMContext):
                 "💳 Недостаточно средств для создания подписки на новое устройство. Пополните баланс в личном кабинете.",
                 reply_markup=keyboard,
             )
+            logger.warning(f"User {tg_id} has insufficient funds for key creation.")
             await state.clear()
             return
 
         await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
         expiry_time = current_time + timedelta(days=30, hours=3)
+        logger.info(f"User {tg_id} balance deducted for key creation.")
 
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
     public_link = f"{PUBLIC_LINK}{email}"
+
+    logger.info(f"Generated public link for the key: {public_link}")
 
     button_profile = InlineKeyboardButton(
         text="👤 Личный кабинет", callback_data="view_profile"
     )
     button_iphone = InlineKeyboardButton(
-        text="🍏 Подключить", url=f"{APP_URL}/?url=v2raytun://import/{public_link}"
+        text="🍏 Подключить", url=f"{CONNECT_IOS}{public_link}"
     )
     button_android = InlineKeyboardButton(
         text="🤖 Подключить",
-        url=f"{APP_URL}/?url=v2raytun://import-sub?url={public_link}",
+        url=f"{CONNECT_ANDROID}{public_link}",
     )
 
     button_download_ios = InlineKeyboardButton(
-        text="🍏 Скачать", url="https://apps.apple.com/ru/app/v2raytun/id6476628951"
+        text="🍏 Скачать", url=DOWNLOAD_IOS
     )
     button_download_android = InlineKeyboardButton(
         text="🤖 Скачать",
-        url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
+        url=DOWNLOAD_ANDROID,
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -210,6 +225,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     remaining_time = expiry_time - current_time
     days = remaining_time.days
     key_message = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
+
+    logger.info(f"Sending key message to user {tg_id} with the public link.")
 
     await message.bot.send_message(
         tg_id, key_message, parse_mode="HTML", reply_markup=keyboard
@@ -230,6 +247,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
         conn = await asyncpg.connect(DATABASE_URL)
         try:
+            logger.info(f"Updating trial status for user {tg_id} in the database.")
             existing_connection = await conn.fetchrow(
                 "SELECT * FROM connections WHERE tg_id = $1", tg_id
             )
@@ -242,14 +260,17 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         finally:
             await conn.close()
 
+        logger.info(f"Storing key for user {tg_id} in the database.")
         await store_key(
             tg_id, client_id, email, expiry_timestamp, public_link, "all_servers"
         )
 
     except Exception as e:
+        logger.error(f"Error while creating the key for user {tg_id}: {e}")
         await message.bot.send_message(tg_id, f"❌ Ошибка при создании ключа: {e}")
 
     await state.clear()
+
 
 
 @dp.callback_query(F.data == "instructions")

@@ -4,7 +4,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
-from telegram import LabeledPrice
+
+from aiogram.types import LabeledPrice
 
 from bot import bot
 from config import RUB_TO_XTR

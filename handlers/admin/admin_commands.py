@@ -3,7 +3,7 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from filters.admin import IsAdminFilter
+from handlers.filters.admin import IsAdminFilter
 from loguru import logger
 
 from bot import bot
