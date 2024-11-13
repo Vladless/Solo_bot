@@ -12,8 +12,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backup import backup_database
 from bot import bot
 from config import DATABASE_URL
-from handlers.admin.admin_commands import send_message_to_all_clients
 from filters.admin import IsAdminFilter
+from handlers.admin.admin_commands import send_message_to_all_clients
 
 router = Router()
 
