@@ -69,6 +69,8 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
 
         client.id = client_id
         client.expiry_time = new_expiry_time
+        client.flow = "xtls-rprx-vision"
+        client.sub_id = email
 
         if TOTAL_GB > 0:
             client.total_gb = TOTAL_GB
