@@ -300,22 +300,18 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
             key_buttons.row(
                 InlineKeyboardButton(
                     text="⏳ Изменить время истечения",
-                    callback_data=f"change_expiry|{email}"
+                    callback_data=f"change_expiry|{email}",
                 )
             )
             key_buttons.row(
                 InlineKeyboardButton(
-                    text="❌ Удалить ключ",
-                    callback_data=f"delete_key_admin|{email}"
+                    text="❌ Удалить ключ", callback_data=f"delete_key_admin|{email}"
                 )
             )
 
         key_buttons.row(
-                InlineKeyboardButton(
-                    text="🔙 Назад",
-                    callback_data="back_to_user_editor"
-                )
-            )
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
+        )
 
         await message.reply(
             "\n".join(response_messages),

@@ -25,7 +25,7 @@ async def add_client(
             id=client_id,
             email=email.lower(),
             limit_ip=limit_ip,
-            total_gb = TOTAL_GB,
+            total_gb=TOTAL_GB,
             expiry_time=expiry_time,
             enable=enable,
             tg_id=tg_id,

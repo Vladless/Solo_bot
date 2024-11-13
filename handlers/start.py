@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL, DOWNLOAD_IOS, DOWNLOAD_ANDROID, CONNECT_ANDROID, CONNECT_IOS
+from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn

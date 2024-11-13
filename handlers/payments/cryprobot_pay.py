@@ -77,6 +77,12 @@ async def process_callback_pay_cryptobot(
                     callback_data=PAYMENT_OPTIONS[i]["callback_data"],
                 )
             )
+    builder.row(
+        InlineKeyboardButton(
+            text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
+        )
+    )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
 
     key_count = await get_key_count(tg_id)
 
