@@ -1,6 +1,5 @@
 import os
 
-import asyncpg
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
@@ -8,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL, DOWNLOAD_IOS, DOWNLOAD_ANDROID, CONNECT_ANDROID, CONNECT_IOS
+from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
@@ -69,7 +68,7 @@ async def start_command(message: Message):
 
 
 @router.callback_query(F.data == "connect_vpn")
-async def handle_connect_vpn(callback_query: CallbackQuery):
+async def handle_connect_vpn(callback_query: CallbackQuery, session):
     await callback_query.message.delete()
     user_id = callback_query.from_user.id
 
@@ -78,9 +77,8 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
     if "error" in trial_key_info:
         await callback_query.message.answer(trial_key_info["error"])
     else:
-        conn = await asyncpg.connect(DATABASE_URL)
         try:
-            result = await conn.execute(
+            result = await session.execute(
                 """
                 UPDATE connections SET trial = 1 WHERE tg_id = $1
             """,
@@ -90,9 +88,6 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
 
         except Exception as e:
             logger.error(f"Ошибка при обновлении trial: {e}")
-
-        finally:
-            await conn.close()
 
         key_message = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"

@@ -12,8 +12,8 @@ from loguru import logger
 from bot import bot
 from config import DATABASE_URL, SERVERS
 from database import get_client_id_by_email, restore_trial, update_key_expiry
+from filters.admin import IsAdminFilter
 from handlers.admin.admin_panel import back_to_admin_menu
-from handlers.filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
 
@@ -300,22 +300,18 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
             key_buttons.row(
                 InlineKeyboardButton(
                     text="⏳ Изменить время истечения",
-                    callback_data=f"change_expiry|{email}"
+                    callback_data=f"change_expiry|{email}",
                 )
             )
             key_buttons.row(
                 InlineKeyboardButton(
-                    text="❌ Удалить ключ",
-                    callback_data=f"delete_key_admin|{email}"
+                    text="❌ Удалить ключ", callback_data=f"delete_key_admin|{email}"
                 )
             )
 
         key_buttons.row(
-                InlineKeyboardButton(
-                    text="🔙 Назад",
-                    callback_data="back_to_user_editor"
-                )
-            )
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
+        )
 
         await message.reply(
             "\n".join(response_messages),

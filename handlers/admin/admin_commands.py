@@ -8,7 +8,7 @@ from loguru import logger
 from bot import bot
 from config import DATABASE_URL
 from database import add_balance_to_client, check_connection_exists
-from handlers.filters.admin import IsAdminFilter
+from filters.admin import IsAdminFilter
 from handlers.texts import TRIAL
 
 router = Router()

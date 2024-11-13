@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from loguru import logger
 
 
-class UserActivityMiddleware(BaseMiddleware):
+class LoggingMiddleware(BaseMiddleware):
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
