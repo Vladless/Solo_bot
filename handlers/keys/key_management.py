@@ -1,16 +1,16 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta
-from loguru import logger
 
 import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from loguru import logger
 
 from bot import bot, dp
-from config import DATABASE_URL, PUBLIC_LINK, SERVERS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, CONNECT_ANDROID, CONNECT_IOS
+from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SERVERS
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.keys.key_utils import create_key_on_server
@@ -107,12 +107,15 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
     logger.info(f"Balance for user {tg_id} is sufficient. Asking for device name.")
 
-    await callback_query.message.edit_text("🔑 Пожалуйста, введите имя подключаемого устройства:")
+    await callback_query.message.edit_text(
+        "🔑 Пожалуйста, введите имя подключаемого устройства:"
+    )
     await state.set_state(Form.waiting_for_key_name)
     logger.info(f"State set to waiting_for_key_name for user {tg_id}")
     await state.update_data(creating_new_key=True)
 
     await callback_query.answer()
+
 
 @dp.callback_query(F.data == "cancel_create_key")
 async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
@@ -136,7 +139,9 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        logger.info(f"Checking if key name '{key_name}' already exists in the database.")
+        logger.info(
+            f"Checking if key name '{key_name}' already exists in the database."
+        )
         existing_key = await conn.fetchrow(
             "SELECT * FROM keys WHERE email = $1", key_name.lower()
         )
@@ -145,7 +150,9 @@ async def handle_key_name_input(message: Message, state: FSMContext):
                 tg_id,
                 "❌ Упс! Это имя уже используется. Выберите другое уникальное название для ключа.",
             )
-            logger.warning(f"Key name '{key_name}' already exists in the database for user {tg_id}.")
+            logger.warning(
+                f"Key name '{key_name}' already exists in the database for user {tg_id}."
+            )
             await state.set_state(Form.waiting_for_key_name)
             return
     finally:
@@ -206,9 +213,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         url=f"{CONNECT_ANDROID}{public_link}",
     )
 
-    button_download_ios = InlineKeyboardButton(
-        text="🍏 Скачать", url=DOWNLOAD_IOS
-    )
+    button_download_ios = InlineKeyboardButton(text="🍏 Скачать", url=DOWNLOAD_IOS)
     button_download_android = InlineKeyboardButton(
         text="🤖 Скачать",
         url=DOWNLOAD_ANDROID,
@@ -270,7 +275,6 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         await message.bot.send_message(tg_id, f"❌ Ошибка при создании ключа: {e}")
 
     await state.clear()
-
 
 
 @dp.callback_query(F.data == "instructions")

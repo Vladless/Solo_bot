@@ -8,11 +8,9 @@ import requests
 from aiogram import Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from aiogram.types import InlineKeyboardMarkup
-
 
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID

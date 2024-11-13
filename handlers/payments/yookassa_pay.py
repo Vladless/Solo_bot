@@ -63,7 +63,7 @@ async def process_callback_pay_yookassa(
 
     builder = InlineKeyboardBuilder()
 
-    for i in range(0, 4, 2):  
+    for i in range(0, 4, 2):
         builder.row(
             InlineKeyboardButton(
                 text=PAYMENT_OPTIONS[i]["text"],
@@ -75,7 +75,7 @@ async def process_callback_pay_yookassa(
             ),
         )
 
-    for i in range(4, len(PAYMENT_OPTIONS)):  
+    for i in range(4, len(PAYMENT_OPTIONS)):
         builder.row(
             InlineKeyboardButton(
                 text=PAYMENT_OPTIONS[i]["text"],
@@ -105,7 +105,6 @@ async def process_callback_pay_yookassa(
 
     await state.set_state(ReplenishBalanceState.choosing_amount)
     await callback_query.answer()
-
 
 
 @router.callback_query(F.data == "back_to_profile")

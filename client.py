@@ -66,14 +66,16 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
         logger.info(
             f"Обновление ключа клиента {client.email} с ID {client.id} до нового времени: {new_expiry_time}"
         )
-        
+
         client.id = client_id
         client.expiry_time = new_expiry_time
-        
+
         if TOTAL_GB > 0:
             client.total_gb = TOTAL_GB
-            logger.info(f"Установлен объем трафика для клиента {client.email}: {TOTAL_GB} ГБ")
-        
+            logger.info(
+                f"Установлен объем трафика для клиента {client.email}: {TOTAL_GB} ГБ"
+            )
+
         await xui.client.update(client.id, client)
         logger.info(
             f"Ключ клиента {client.email} успешно продлён до {new_expiry_time}."
@@ -81,7 +83,6 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
 
     except Exception as e:
         logger.error(f"Ошибка при обновлении клиента с email {email}: {e}")
-
 
 
 async def delete_client(
