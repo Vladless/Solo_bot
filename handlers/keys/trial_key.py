@@ -6,7 +6,7 @@ import asyncpg
 from py3xui import AsyncApi
 
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK, SERVERS
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK, SERVERS, TRIAL_TIME
 from database import store_key
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email
@@ -39,7 +39,7 @@ async def generate_and_store_keys(
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         current_time = datetime.utcnow()
-        expiry_time = current_time + timedelta(days=1, hours=3)
+        expiry_time = current_time + timedelta(days={TRIAL_TIME}, hours=3)
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
         tasks = []
