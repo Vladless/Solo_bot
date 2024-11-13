@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL
+from config import APP_URL, CHANNEL_URL, DATABASE_URL, SUPPORT_CHAT_URL, DOWNLOAD_IOS, DOWNLOAD_ANDROID, CONNECT_ANDROID, CONNECT_IOS
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
@@ -108,22 +108,22 @@ async def handle_connect_vpn(callback_query: CallbackQuery):
         builder.row(
             InlineKeyboardButton(
                 text="🍏 Скачать для iOS",
-                url="https://apps.apple.com/ru/app/v2raytun/id6476628951",
+                url=DOWNLOAD_IOS,
             ),
             InlineKeyboardButton(
                 text="🤖 Скачать для Android",
-                url="https://play.google.com/store/apps/details?id=com.v2raytun.android&hl=ru",
+                url=DOWNLOAD_ANDROID,
             ),
         )
 
         builder.row(
             InlineKeyboardButton(
                 text="🍏 Подключить на iOS",
-                url=f'{APP_URL}/?url=v2raytun://import/{trial_key_info["key"]}',
+                url=f'{CONNECT_IOS}{trial_key_info["key"]}',
             ),
             InlineKeyboardButton(
                 text="🤖 Подключить на Android",
-                url=f'{APP_URL}/?url=v2raytun://import-sub?url={trial_key_info["key"]}',
+                url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
             ),
         )
 
