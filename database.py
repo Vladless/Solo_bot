@@ -3,7 +3,7 @@ from datetime import datetime
 import asyncpg
 from loguru import logger
 
-from config import DATABASE_URL
+from config import DATABASE_URL, BONUS_PERCENT
 
 
 async def init_db():
@@ -239,7 +239,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
     if referral:
         referrer_tg_id = referral["referrer_tg_id"]
 
-        bonus = amount * 0.25
+        bonus = amount * BONUS_PERCENT
 
         if bonus < 0:
             bonus = 0
