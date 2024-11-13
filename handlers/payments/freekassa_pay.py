@@ -119,6 +119,12 @@ async def process_callback_pay_freekassa(
                     callback_data=PAYMENT_OPTIONS[i]["callback_data"],
                 )
             )
+    builder.row(
+        InlineKeyboardButton(
+            text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
+        )
+    )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
 
     await bot.delete_message(
         chat_id=tg_id, message_id=callback_query.message.message_id

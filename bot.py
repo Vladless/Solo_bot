@@ -2,7 +2,8 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
-from middlewares.logging import UserActivityMiddleware
+from middlewares.database import DatabaseMiddleware
+from middlewares.logging import LoggingMiddleware
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -33,5 +34,9 @@ if STARS_ENABLE:
     dp.include_router(stars_pay.router)
 dp.include_router(notifications.router)
 
-dp.message.middleware(UserActivityMiddleware())
-dp.callback_query.middleware(UserActivityMiddleware())
+dp.message.middleware(LoggingMiddleware())
+dp.callback_query.middleware(LoggingMiddleware())
+
+
+dp.message.middleware(DatabaseMiddleware())
+dp.callback_query.middleware(DatabaseMiddleware())
