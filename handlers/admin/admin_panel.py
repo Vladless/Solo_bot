@@ -3,17 +3,18 @@ from datetime import datetime
 
 import asyncpg
 from aiogram import F, Router, types
+
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from filters.admin import IsAdminFilter
+from handlers.filters.admin import IsAdminFilter
 
 from backup import backup_database
 from bot import bot
-from config import DATABASE_URL
-from handlers.commands import send_message_to_all_clients
+from config import DATABASE_URL, ADMIN_ID
+from handlers.admin.admin_commands import send_message_to_all_clients
 
 router = Router()
 

@@ -217,13 +217,7 @@ async def notify_24h_keys(
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка истекших ключей...")
 
-    current_time = datetime.utcnow().timestamp() * 1000
-    adjusted_current_time = current_time + (3 * 60 * 60 * 1000)
-
-    logger.info(
-        f"Текущее время: {current_time}, Скорректированное текущее время: {adjusted_current_time}"
-    )
-
+    adjusted_current_time = current_time + (3 * 60 * 60 * 1000) 
     expiring_keys = await conn.fetch(
         """
         SELECT tg_id, client_id, expiry_time, email FROM keys 
@@ -231,7 +225,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         """,
         adjusted_current_time,
     )
-
     logger.info(f"Найдено {len(expiring_keys)} истекающих ключей.")
 
     for record in expiring_keys:
@@ -239,17 +232,17 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         client_id = record["client_id"]
         email = record["email"]
         balance = await get_balance(tg_id)
-
         expiry_time = record["expiry_time"]
         expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
         current_date = datetime.utcnow()
         time_left = expiry_date - current_date
+
         logger.info(
             f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}"
         )
 
         message_expired = (
-            "❌ Ваша подписка {email} истекла и была удалена!\n\n"
+            f"❌ Ваша подписка {email} истекла и была удалена!\n\n"
             "🔍 Перейдите в профиль для создания нового ключа.\n"
             "💡 Не откладывайте подключение VPN!"
         )
@@ -265,9 +258,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                     (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
                 )
                 await update_key_expiry(client_id, new_expiry_time)
-                logger.info(
-                    f"Ключ для клиента {tg_id} продлен до {datetime.utcfromtimestamp(new_expiry_time / 1000).strftime('%Y-%m-%d %H:%M:%S')}."
-                )
 
                 all_success = True
                 for server_id in SERVERS:
@@ -281,48 +271,38 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                     )
                     if not success:
                         all_success = False
-                        logger.error(
-                            f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id}."
-                        )
+                        logger.error(f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id}.")
 
                 if all_success:
                     try:
-                        await bot.send_message(
-                            tg_id, KEY_RENEWED, reply_markup=keyboard
-                        )
-                        logger.info(
-                            f"Ключ для пользователя {tg_id} успешно продлен на месяц на всех серверах."
-                        )
+                        await bot.send_message(tg_id, KEY_RENEWED, reply_markup=keyboard)
+                        logger.info(f"Ключ для пользователя {tg_id} успешно продлен.")
                     except Exception as e:
-                        logger.error(
-                            f"Ошибка при отправке уведомления о продлении ключа пользователю {tg_id}: {e}"
-                        )
+                        logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+
             else:
                 try:
-                    await bot.send_message(
-                        tg_id, message_expired, reply_markup=keyboard
-                    )
-                    await delete_key(client_id)
-
-                    for server_id in SERVERS:
-                        xui = AsyncApi(
-                            SERVERS[server_id]["API_URL"],
-                            username=ADMIN_USERNAME,
-                            password=ADMIN_PASSWORD,
-                        )
-                        success = await delete_client(xui, email, client_id)
-                        if success:
-                            logger.info(
-                                f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}."
-                            )
-                        else:
-                            logger.error(
-                                f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}."
-                            )
+                    await bot.send_message(tg_id, message_expired, reply_markup=keyboard)
                 except Exception as e:
-                    logger.error(f"Ошибка при удалении ключа для клиента {tg_id}: {e}")
+                    if "chat not found" in str(e):
+                        logger.warning(f"Чат для клиента {tg_id} не найден. Пропуск отправки сообщения.")
+                
+                await delete_key(client_id)
+
+                for server_id in SERVERS:
+                    xui = AsyncApi(
+                        SERVERS[server_id]["API_URL"],
+                        username=ADMIN_USERNAME,
+                        password=ADMIN_PASSWORD,
+                    )
+                    success = await delete_client(xui, email, client_id)
+                    if success:
+                        logger.info(f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}.")
+                    else:
+                        logger.error(f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}.")
 
         except Exception as e:
             logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
         await asyncio.sleep(1)
+

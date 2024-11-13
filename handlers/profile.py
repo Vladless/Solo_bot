@@ -92,21 +92,46 @@ async def invite_handler(callback_query: types.CallbackQuery):
 
     invite_message = invite_message_send(referral_link, referral_stats)
 
+    image_path = os.path.join(os.path.dirname(__file__), "pic_invite.jpg")
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
     )
 
-    await callback_query.message.delete()
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
 
-    await bot.send_message(
-        chat_id=chat_id,
-        text=invite_message,
-        parse_mode="HTML",
-        reply_markup=builder.as_markup(),
-    )
+    try:
+        if os.path.isfile(image_path):
+            with open(image_path, "rb") as image_file:
+                await bot.send_photo(
+                    chat_id=chat_id,
+                    photo=BufferedInputFile(image_file.read(), filename="pic_invite.jpg"),
+                    caption=invite_message,
+                    parse_mode="HTML",
+                    reply_markup=builder.as_markup(),
+                )
+        else:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=invite_message,
+                parse_mode="HTML",
+                reply_markup=builder.as_markup(),
+            )
+    except Exception as e:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=f"❗️ Не удалось отправить сообщение. Техническая ошибка: {e}",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup(),
+        )
 
     await callback_query.answer()
+
+
 
 
 @router.callback_query(F.data == "view_profile")
