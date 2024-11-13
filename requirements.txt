@@ -28,3 +28,4 @@ yookassa==3.3.0
 loguru
 aiocryptopay
 py3xui
+sqlalchemy
