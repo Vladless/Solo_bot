@@ -103,7 +103,7 @@ async def handle_backup(message: Message):
     )
 
 
-@router.callback_query(F.data == "restart_bot", IsAdminFilter)
+@router.callback_query(F.data == "restart_bot", IsAdminFilter())
 async def handle_restart(callback_query: CallbackQuery):
     try:
         subprocess.run(

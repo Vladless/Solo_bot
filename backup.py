@@ -49,7 +49,7 @@ async def backup_database():
                 "-name",
                 "*.sql",
                 "-mtime",
-                "+7",
+                "+3",
                 "-exec",
                 "rm",
                 "{}",
