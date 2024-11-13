@@ -63,24 +63,32 @@ async def process_callback_pay_yookassa(
 
     builder = InlineKeyboardBuilder()
 
-    for i in range(0, 4, 2):
-        builder.row(
-            InlineKeyboardButton(
-                text=PAYMENT_OPTIONS[i]["text"],
-                callback_data=PAYMENT_OPTIONS[i]["callback_data"],
-            ),
-            InlineKeyboardButton(
-                text=PAYMENT_OPTIONS[i + 1]["text"],
-                callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
-            ),
-        )
-
-    for i in range(4, len(PAYMENT_OPTIONS)):
-        builder.row(
-            InlineKeyboardButton(
-                text=PAYMENT_OPTIONS[i]["text"],
-                callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+    for i in range(0, len(PAYMENT_OPTIONS), 2):
+        if i + 1 < len(PAYMENT_OPTIONS):
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                ),
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i + 1]["text"],
+                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+                ),
             )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=PAYMENT_OPTIONS[i]["text"],
+                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                )
+            )
+        builder.row(
+            InlineKeyboardButton(
+                text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile")
         )
 
     key_count = await get_key_count(tg_id)
