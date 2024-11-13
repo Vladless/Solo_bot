@@ -1,6 +1,7 @@
 from datetime import datetime
-from loguru import logger
+
 import asyncpg
+from loguru import logger
 
 from config import DATABASE_URL
 
@@ -74,19 +75,16 @@ async def init_db():
 
     await conn.close()
 
+
 async def restore_trial(tg_id: int):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        await conn.execute(
-            "UPDATE connections SET trial = 0 WHERE tg_id = $1", tg_id
-        )
+        await conn.execute("UPDATE connections SET trial = 0 WHERE tg_id = $1", tg_id)
     except Exception as e:
 
         logger.error(f"Ошибка при установке значения триала: {e}")
     finally:
         await conn.close()
-
-
 
 
 async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0):

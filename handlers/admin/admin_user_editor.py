@@ -7,13 +7,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.filters.admin import IsAdminFilter
 from loguru import logger
 
 from bot import bot
 from config import DATABASE_URL, SERVERS
-from database import get_client_id_by_email, update_key_expiry, restore_trial
+from database import get_client_id_by_email, restore_trial, update_key_expiry
 from handlers.admin.admin_panel import back_to_admin_menu
+from handlers.filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_server, renew_server_key
 from handlers.utils import sanitize_key_name
 
@@ -101,12 +101,13 @@ async def handle_restore_trial(callback_query: types.CallbackQuery):
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="back_to_user_editor")  
+        InlineKeyboardButton(
+            text="🔙 Назад в меню администратора", callback_data="back_to_user_editor"
+        )
     )
 
     await callback_query.message.edit_text(
-        "✅ Триал успешно восстановлен.",
-        reply_markup=builder.as_markup()
+        "✅ Триал успешно восстановлен.", reply_markup=builder.as_markup()
     )
 
 
@@ -261,7 +262,10 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
         if not user_records:
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="back_to_user_editor")
+                InlineKeyboardButton(
+                    text="🔙 Назад в меню администратора",
+                    callback_data="back_to_user_editor",
+                )
             )
 
             await message.reply(

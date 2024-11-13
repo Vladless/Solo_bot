@@ -109,7 +109,9 @@ async def invite_handler(callback_query: types.CallbackQuery):
             with open(image_path, "rb") as image_file:
                 await bot.send_photo(
                     chat_id=chat_id,
-                    photo=BufferedInputFile(image_file.read(), filename="pic_invite.jpg"),
+                    photo=BufferedInputFile(
+                        image_file.read(), filename="pic_invite.jpg"
+                    ),
                     caption=invite_message,
                     parse_mode="HTML",
                     reply_markup=builder.as_markup(),
@@ -130,8 +132,6 @@ async def invite_handler(callback_query: types.CallbackQuery):
         )
 
     await callback_query.answer()
-
-
 
 
 @router.callback_query(F.data == "view_profile")

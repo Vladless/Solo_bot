@@ -9,7 +9,7 @@ from aiogram.types import BufferedInputFile
 from loguru import logger
 
 from bot import bot
-from config import DATABASE_URL, PUBLIC_LINK, SERVERS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, CONNECT_ANDROID, CONNECT_IOS
+from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SERVERS
 from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
 from handlers.keys.key_utils import delete_key_from_db, delete_key_from_server, renew_server_key, update_key_on_server
 from handlers.texts import INSUFFICIENT_FUNDS_MSG, KEY_NOT_FOUND_MSG, NO_KEYS, PLAN_SELECTION_MSG, RENEWAL_PLANS, SUCCESS_RENEWAL_MSG, key_message
@@ -69,7 +69,9 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                     with open(image_path, "rb") as image_file:
                         await bot.send_photo(
                             chat_id=tg_id,
-                            photo=BufferedInputFile(image_file.read(), filename="pic_keys.jpg"),
+                            photo=BufferedInputFile(
+                                image_file.read(), filename="pic_keys.jpg"
+                            ),
                             caption=response_message,
                             parse_mode="HTML",
                             reply_markup=inline_keyboard,
@@ -108,7 +110,9 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                     with open(image_path, "rb") as image_file:
                         await bot.send_photo(
                             chat_id=tg_id,
-                            photo=BufferedInputFile(image_file.read(), filename="pic_keys.jpg"),
+                            photo=BufferedInputFile(
+                                image_file.read(), filename="pic_keys.jpg"
+                            ),
                             caption=response_message,
                             parse_mode="HTML",
                             reply_markup=keyboard,
@@ -128,7 +132,6 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
         await handle_error(tg_id, callback_query, f"Ошибка при получении ключей: {e}")
 
     await callback_query.answer()
-
 
 
 @router.callback_query(F.data.startswith("view_key|"))
