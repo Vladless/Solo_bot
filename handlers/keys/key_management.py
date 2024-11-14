@@ -10,13 +10,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from loguru import logger
 
 from bot import bot, dp
-from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SERVERS
+from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
-from handlers.keys.key_utils import create_key_on_server
+from handlers.keys.key_utils import create_key_on_cluster
 from handlers.profile import process_callback_view_profile
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
-from handlers.utils import sanitize_key_name
+from handlers.utils import get_least_loaded_cluster, sanitize_key_name
 
 router = Router()
 
@@ -238,15 +238,20 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     )
 
     try:
+        least_loaded_cluster = await get_least_loaded_cluster()
+
         tasks = []
-        for server_id in SERVERS:
-            tasks.append(
-                asyncio.create_task(
-                    create_key_on_server(
-                        server_id, tg_id, client_id, email, expiry_timestamp
-                    )
+        tasks.append(
+            asyncio.create_task(
+                create_key_on_cluster(
+                    least_loaded_cluster,
+                    tg_id,
+                    client_id,
+                    email,
+                    expiry_timestamp,
                 )
             )
+        )
 
         await asyncio.gather(*tasks)
 
@@ -267,7 +272,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
         logger.info(f"Storing key for user {tg_id} in the database.")
         await store_key(
-            tg_id, client_id, email, expiry_timestamp, public_link, "all_servers"
+            tg_id, client_id, email, expiry_timestamp, public_link, least_loaded_cluster
         )
 
     except Exception as e:

@@ -9,11 +9,11 @@ from aiogram.types import BufferedInputFile
 from loguru import logger
 
 from bot import bot
-from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SERVERS
+from config import CLUSTERS, CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, TOTAL_GB
 from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
-from handlers.keys.key_utils import delete_key_from_db, delete_key_from_server, renew_server_key, update_key_on_server
+from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster, update_key_on_cluster
 from handlers.texts import INSUFFICIENT_FUNDS_MSG, KEY_NOT_FOUND_MSG, NO_KEYS, PLAN_SELECTION_MSG, RENEWAL_PLANS, SUCCESS_RENEWAL_MSG, key_message
-from handlers.utils import handle_error
+from handlers.utils import get_least_loaded_cluster, handle_error
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -53,7 +53,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
                 response_message = (
                     "<b>🔑 Список ваших устройств</b>\n\n"
-                    "<i>👆 Выберите устройство для управления подпиской:</i>"
+                    "<i>👇 Выберите устройство для управления подпиской:</i>"
                 )
 
                 image_path = os.path.join(os.path.dirname(__file__), "pic_keys.jpg")
@@ -167,7 +167,14 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 expiry_time = record["expiry_time"]
                 server_id = record["server_id"]
 
-                server_name = SERVERS.get(server_id, {}).get("name", "мультисервер")
+                if server_id == "все кластеры":
+                    server_name = "мультикластер"
+                else:
+                    cluster_name = CLUSTERS.get(server_id, {}).get(
+                        "name", "кластер неизвестен"
+                    )
+                    server_name = cluster_name
+
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
@@ -303,13 +310,14 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                     )
                     return
 
+                least_loaded_cluster_id = await get_least_loaded_cluster()
+
                 tasks = []
-                for server_id in SERVERS:
-                    tasks.append(
-                        update_key_on_server(
-                            tg_id, client_id, email, expiry_time, server_id
-                        )
+                tasks.append(
+                    update_key_on_cluster(
+                        tg_id, client_id, email, expiry_time, least_loaded_cluster_id
                     )
+                )
 
                 await asyncio.gather(*tasks)
 
@@ -319,7 +327,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                     email,
                     expiry_time,
                     public_link,
-                    server_id="все сервера",
+                    server_id=least_loaded_cluster_id,
                 )
 
                 try:
@@ -527,9 +535,9 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                 async def delete_key_from_servers():
                     try:
                         tasks = []
-                        for server_id in SERVERS:
+                        for cluster_id, cluster in CLUSTERS.items():
                             tasks.append(
-                                delete_key_from_server(server_id, email, client_id)
+                                delete_key_from_cluster(cluster_id, email, client_id)
                             )
 
                         await asyncio.gather(*tasks)
@@ -577,14 +585,10 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     )
     days_to_extend = 30 * int(plan)
 
-    try:
-        try:
-            await bot.delete_message(
-                chat_id=tg_id, message_id=callback_query.message.message_id
-            )
-        except Exception:
-            pass
+    gb_multiplier = {"1": 1, "3": 3, "6": 6, "12": 12}
+    total_gb = TOTAL_GB * gb_multiplier.get(plan, 1) if TOTAL_GB > 0 else 0
 
+    try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow(
@@ -643,10 +647,10 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
 
                 async def renew_key_on_servers():
                     tasks = []
-                    for server_id in SERVERS:
+                    for cluster_id in CLUSTERS:
                         task = asyncio.create_task(
-                            renew_server_key(
-                                server_id, email, client_id, new_expiry_time
+                            renew_key_in_cluster(
+                                cluster_id, email, client_id, new_expiry_time, total_gb
                             )
                         )
                         tasks.append(task)

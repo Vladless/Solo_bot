@@ -4,7 +4,7 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
-from config import SERVERS
+from config import CLUSTERS
 
 
 async def fetch_url_content(url):
@@ -50,9 +50,10 @@ async def handle_subscription(request):
     logger.info(f"Получен запрос на подписку для email: {email}")
 
     urls = []
-    for server in SERVERS.values():
-        server_subscription_url = f"{server['SUBSCRIPTION']}/{email}"
-        urls.append(server_subscription_url)
+    for cluster in CLUSTERS.values():
+        for server in cluster.values():
+            server_subscription_url = f"{server['SUBSCRIPTION']}/{email}"
+            urls.append(server_subscription_url)
 
     query_string = request.query_string
     logger.debug(f"Извлечен query string: {query_string}")

@@ -47,7 +47,9 @@ async def add_client(
         return {"status": "failed", "error": str(e)}
 
 
-async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: str):
+async def extend_client_key(
+    xui, email: str, new_expiry_time: int, client_id: str, total_gb: int
+):
     """
     Функция для обновления срока действия ключа клиента по email.
     """
@@ -71,12 +73,7 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
         client.expiry_time = new_expiry_time
         client.flow = "xtls-rprx-vision"
         client.sub_id = email
-
-        if TOTAL_GB > 0:
-            client.total_gb = TOTAL_GB
-            logger.info(
-                f"Установлен объем трафика для клиента {client.email}: {TOTAL_GB} ГБ"
-            )
+        client.total_gb = total_gb
 
         await xui.client.update(client.id, client)
         logger.info(
@@ -91,23 +88,26 @@ async def delete_client(
     xui,
     email: str,
     client_id: str,
-):
+) -> bool:
     """
-    Функция для удаления клиента с сервера 3x-ui
+    Функция для удаления клиента с сервера 3x-ui.
+    Возвращает True при успешном удалении, иначе False.
     """
     await xui.login()
     try:
         client = await xui.client.get_by_email(email)
-        client.id = client_id
 
         if not client:
-            logger.warning(f"Клиент с email {client_id} не найден.")
-            return
+            logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")
+            return False
 
+        client.id = client_id
         inbound_id = 1
-        await xui.client.delete(inbound_id, client.id)
 
+        await xui.client.delete(inbound_id, client.id)
         logger.info(f"Клиент с ID {client_id} был удален успешно.")
+        return True
 
     except Exception as e:
         logger.error(f"Ошибка при удалении клиента с ID {client_id}: {e}")
+        return False

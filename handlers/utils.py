@@ -1,10 +1,11 @@
 import random
 import re
 
+import asyncpg
 from loguru import logger
 
 from bot import bot
-from config import SERVERS
+from config import CLUSTERS, DATABASE_URL
 
 
 def sanitize_key_name(key_name: str) -> str:
@@ -17,21 +18,52 @@ def generate_random_email():
     return random_string
 
 
-async def get_least_loaded_server(conn):
-    """Находит сервер с наименьшей загрузкой."""
-    least_loaded_server_id = None
-    min_load_percentage = float("inf")
+async def get_least_loaded_cluster():
+    """
+    Функция для получения кластера с наименьшей загрузкой (по количеству ключей).
+    Возвращает идентификатор кластера с наименьшей загрузкой или первый кластер из конфигурации,
+    если загруженность не определяется. В случае отсутствия кластеров с номером, возвращает 'cluster1'.
+    """
+    cluster_loads = {}
 
-    for server_id, server in SERVERS.items():
-        count = await conn.fetchval(
-            "SELECT COUNT(*) FROM keys WHERE server_id = $1", server_id
-        )
-        percent_full = (count / 60) * 100 if count <= 60 else 100
-        if percent_full < min_load_percentage:
-            min_load_percentage = percent_full
-            least_loaded_server_id = server_id
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        keys = await conn.fetch("SELECT * FROM keys")
+        for key in keys:
+            cluster_id = key["server_id"]
 
-    return least_loaded_server_id
+            if re.match(r"^cluster\d+$", cluster_id):
+                if cluster_id not in cluster_loads:
+                    cluster_loads[cluster_id] = 0
+                cluster_loads[cluster_id] += 1
+    finally:
+        await conn.close()
+
+    logger.info(f"Cluster loads: {cluster_loads}")
+
+    if not cluster_loads:
+        available_clusters = [
+            cluster_id
+            for cluster_id in CLUSTERS.keys()
+            if re.match(r"^cluster\d+$", cluster_id)
+        ]
+
+        logger.info(f"Available clusters from config: {available_clusters}")
+
+        if available_clusters:
+            logger.info(
+                f"Returning the first available cluster: {available_clusters[0]}"
+            )
+            return available_clusters[0]
+        else:
+            logger.warning("No valid clusters found in config, returning 'cluster1'.")
+            return "cluster1"
+
+    least_loaded_cluster = min(cluster_loads, key=cluster_loads.get)
+
+    logger.info(f"Least loaded cluster selected: {least_loaded_cluster}")
+
+    return least_loaded_cluster
 
 
 async def handle_error(tg_id, callback_query, message):

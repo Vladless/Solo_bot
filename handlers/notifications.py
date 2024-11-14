@@ -7,7 +7,7 @@ from loguru import logger
 from py3xui import AsyncApi
 
 from client import delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SERVERS
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL
 from database import delete_key, get_balance, update_balance, update_key_expiry
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 
@@ -259,23 +259,28 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 )
                 await update_key_expiry(client_id, new_expiry_time)
 
-                all_success = True
-                for server_id in SERVERS:
-                    xui = AsyncApi(
-                        SERVERS[server_id]["API_URL"],
-                        username=ADMIN_USERNAME,
-                        password=ADMIN_PASSWORD,
-                    )
-                    success = await extend_client_key(
-                        xui, email, new_expiry_time, client_id
-                    )
-                    if not success:
-                        all_success = False
-                        logger.error(
-                            f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id}."
+                renewal_success = False
+                for cluster_id, cluster in CLUSTERS.items():
+                    for server_id, server in cluster.items():
+                        xui = AsyncApi(
+                            server["API_URL"],
+                            username=ADMIN_USERNAME,
+                            password=ADMIN_PASSWORD,
                         )
+                        success = await extend_client_key(
+                            xui, email, new_expiry_time, client_id
+                        )
+                        if success:
+                            renewal_success = True
+                            logger.info(
+                                f"Ключ для пользователя {tg_id} успешно продлен на сервере {server_id} в кластере {cluster_id}."
+                            )
+                        else:
+                            logger.error(
+                                f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id} в кластере {cluster_id}."
+                            )
 
-                if all_success:
+                if renewal_success:
                     try:
                         await bot.send_message(
                             tg_id, KEY_RENEWED, reply_markup=keyboard
@@ -299,21 +304,14 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
                 await delete_key(client_id)
 
-                for server_id in SERVERS:
-                    xui = AsyncApi(
-                        SERVERS[server_id]["API_URL"],
-                        username=ADMIN_USERNAME,
-                        password=ADMIN_PASSWORD,
-                    )
-                    success = await delete_client(xui, email, client_id)
-                    if success:
-                        logger.info(
-                            f"Ключ для клиента {tg_id} успешно удален с сервера {server_id}."
+                for cluster_id, cluster in CLUSTERS.items():
+                    for server_id, server in cluster.items():
+                        xui = AsyncApi(
+                            server["API_URL"],
+                            username=ADMIN_USERNAME,
+                            password=ADMIN_PASSWORD,
                         )
-                    else:
-                        logger.error(
-                            f"Не удалось удалить ключ для клиента {tg_id} на сервере {server_id}."
-                        )
+                        await delete_client(xui, email, client_id)
 
         except Exception as e:
             logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
