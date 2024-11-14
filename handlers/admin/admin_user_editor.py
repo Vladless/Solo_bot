@@ -10,11 +10,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import DATABASE_URL, SERVERS
+from config import CLUSTERS, DATABASE_URL
 from database import get_client_id_by_email, restore_trial, update_key_expiry
 from filters.admin import IsAdminFilter
 from handlers.admin.admin_panel import back_to_admin_menu
-from handlers.keys.key_utils import delete_key_from_server, renew_server_key
+from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
 
 router = Router()
@@ -178,9 +178,14 @@ async def process_key_edit(callback_query: CallbackQuery):
                 key = record["key"]
                 expiry_time = record["expiry_time"]
                 server_id = record["server_id"]
-                server_name = SERVERS.get(server_id, {}).get(
-                    "name", "Неизвестный сервер"
-                )
+                server_name = "Неизвестный сервер"
+
+                for cluster in CLUSTERS.values():
+                    if server_id in cluster:
+                        server_name = cluster[server_id].get(
+                            "name", "Неизвестный сервер"
+                        )
+                        break
 
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
@@ -284,7 +289,12 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
             key = record["key"]
             expiry_time = record["expiry_time"]
             server_id = record["server_id"]
-            server_name = SERVERS.get(server_id, {}).get("name", "Неизвестный сервер")
+            server_name = "Неизвестный сервер"
+
+            for cluster in CLUSTERS.values():
+                if server_id in cluster:
+                    server_name = cluster[server_id].get("name", "Неизвестный сервер")
+                    break
 
             expiry_date = datetime.utcfromtimestamp(expiry_time / 1000).strftime(
                 "%d %B %Y"
@@ -370,10 +380,12 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
 
             async def update_key_on_all_servers():
                 tasks = []
-                for server_id in SERVERS:
+                for cluster_id in CLUSTERS:  # Разворачиваем на cluster_id и cluster
                     tasks.append(
                         asyncio.create_task(
-                            renew_server_key(server_id, email, client_id, expiry_time)
+                            renew_key_in_cluster(
+                                cluster_id, email, client_id, expiry_time
+                            )
                         )
                     )
                 await asyncio.gather(*tasks)
@@ -468,15 +480,15 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
                     InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys")
                 )
 
-                async def delete_key_from_servers():
+                async def delete_key_from_servers(email, client_id):
                     tasks = []
-                    for server_id in SERVERS:
+                    for cluster_id in CLUSTERS:
                         tasks.append(
-                            delete_key_from_server(server_id, email, client_id)
+                            delete_key_from_cluster(cluster_id, email, client_id)
                         )
                     await asyncio.gather(*tasks)
 
-                await delete_key_from_servers()
+                await delete_key_from_servers(email, client_id)
                 await delete_key_from_db(client_id)
 
                 await bot.edit_message_text(

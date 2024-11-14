@@ -6,10 +6,10 @@ import asyncpg
 from py3xui import AsyncApi
 
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, PUBLIC_LINK, SERVERS, TRIAL_TIME
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, PUBLIC_LINK, TRIAL_TIME
 from database import store_key
 from handlers.texts import INSTRUCTIONS
-from handlers.utils import generate_random_email
+from handlers.utils import generate_random_email, get_least_loaded_cluster
 
 
 async def create_trial_key(tg_id: int):
@@ -39,13 +39,20 @@ async def generate_and_store_keys(
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         current_time = datetime.utcnow()
-        expiry_time = current_time + timedelta(days={TRIAL_TIME}, hours=3)
+        expiry_time = current_time + timedelta(days=TRIAL_TIME, hours=3)
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
+        least_loaded_cluster = await get_least_loaded_cluster()
+
         tasks = []
-        for server_id in SERVERS:
+        for server_id, server in CLUSTERS[least_loaded_cluster].items():
             task = create_key_on_server(
-                server_id, client_id, email, tg_id, expiry_timestamp
+                least_loaded_cluster,
+                server_id,
+                client_id,
+                email,
+                tg_id,
+                expiry_timestamp,
             )
             tasks.append(task)
 
@@ -57,15 +64,15 @@ async def generate_and_store_keys(
             email,
             expiry_timestamp,
             public_link,
-            server_id="all_servers",
+            server_id=least_loaded_cluster,
         )
 
         await conn.execute(
             """
-                INSERT INTO connections (tg_id, trial) 
-                VALUES ($1, 1) 
-                ON CONFLICT (tg_id) 
-                DO UPDATE SET trial = 1
+            INSERT INTO connections (tg_id, trial) 
+            VALUES ($1, 1) 
+            ON CONFLICT (tg_id) 
+            DO UPDATE SET trial = 1
             """,
             tg_id,
         )
@@ -74,12 +81,19 @@ async def generate_and_store_keys(
 
 
 async def create_key_on_server(
-    server_id: str, client_id: str, email: str, tg_id: int, expiry_timestamp: int
+    cluster_id: str,
+    server_id: str,
+    client_id: str,
+    email: str,
+    tg_id: int,
+    expiry_timestamp: int,
 ):
-    """Создает ключ на сервере и возвращает результат."""
+    """Создает ключ на сервере в указанном кластере и возвращает результат."""
 
     xui = AsyncApi(
-        SERVERS[server_id]["API_URL"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD
+        CLUSTERS[cluster_id][server_id]["API_URL"],
+        username=ADMIN_USERNAME,
+        password=ADMIN_PASSWORD,
     )
 
     response = await add_client(
