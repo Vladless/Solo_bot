@@ -74,6 +74,7 @@ async def extend_client_key(
         client.flow = "xtls-rprx-vision"
         client.sub_id = email
         client.total_gb = total_gb
+        client.enable = True
 
         await xui.client.update(client.id, client)
         logger.info(
