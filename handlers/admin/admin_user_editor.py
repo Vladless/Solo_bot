@@ -380,7 +380,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
 
             async def update_key_on_all_servers():
                 tasks = []
-                for cluster_id in CLUSTERS:  # Разворачиваем на cluster_id и cluster
+                for cluster_id in CLUSTERS:
                     tasks.append(
                         asyncio.create_task(
                             renew_key_in_cluster(
