@@ -82,12 +82,12 @@ async def process_callback_pay_yookassa(
                     callback_data=PAYMENT_OPTIONS[i]["callback_data"],
                 )
             )
-        builder.row(
+    builder.row(
             InlineKeyboardButton(
                 text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
             )
         )
-        builder.row(
+    builder.row(
             InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile")
         )
 
