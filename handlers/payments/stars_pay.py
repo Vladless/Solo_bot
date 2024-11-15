@@ -102,7 +102,7 @@ async def process_callback_pay_stars(
     await callback_query.answer()
 
 
-@router.callback_query(F.data.startswith("starts_amount|"))
+@router.callback_query(F.data.startswith("stars_amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
