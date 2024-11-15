@@ -35,10 +35,7 @@ async def add_client(
 
         response = await xui.client.add(1, [client])
 
-        if response:
-            logger.info(f"Клиент {email} успешно добавлен с ID {client_id}.")
-        else:
-            logger.error(f"Не удалось добавить клиента {email} с ID {client_id}.")
+        logger.info(f"Клиент {email} успешно добавлен с ID {client_id}.")
 
         return response if response else {"status": "failed"}
 
