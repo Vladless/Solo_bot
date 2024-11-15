@@ -12,7 +12,6 @@ from yookassa import Configuration, Payment
 from bot import bot
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import add_connection, check_connection_exists, get_key_count, update_balance
-from handlers.profile import process_callback_view_profile
 from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
@@ -25,9 +24,9 @@ if YOOKASSA_ENABLE:
 
 
 class ReplenishBalanceState(StatesGroup):
-    choosing_amount = State()
-    waiting_for_payment_confirmation = State()
-    entering_custom_amount = State()
+    choosing_amount_yookassa = State()
+    waiting_for_payment_confirmation_yookassa = State()
+    entering_custom_amount_yookassa = State()
 
 
 async def send_message_with_deletion(
@@ -68,23 +67,23 @@ async def process_callback_pay_yookassa(
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
                 ),
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]},',
                 ),
             )
         else:
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
     builder.row(
         InlineKeyboardButton(
-            text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
+            text="💰 Ввести свою сумму", callback_data="enter_custom_amount_yookassa"
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
@@ -109,18 +108,11 @@ async def process_callback_pay_yookassa(
         reply_markup=builder.as_markup(),
     )
 
-    await state.set_state(ReplenishBalanceState.choosing_amount)
+    await state.set_state(ReplenishBalanceState.choosing_amount_yookassa)
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "back_to_profile")
-async def back_to_profile_handler(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
-    await process_callback_view_profile(callback_query, state)
-
-
-@router.callback_query(F.data.startswith("amount|"))
+@router.callback_query(F.data.startswith("yookassa_amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -148,7 +140,9 @@ async def process_amount_selection(
         return
 
     await state.update_data(amount=amount)
-    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
+    await state.set_state(
+        ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
+    )
 
     # state_data = await state.get_data()
     customer_name = callback_query.from_user.full_name
@@ -188,7 +182,7 @@ async def process_amount_selection(
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Пополнить", url=payment_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile")],
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
             ]
         )
 
@@ -238,16 +232,16 @@ async def yookassa_webhook(request):
     return web.Response(status=200)
 
 
-@router.callback_query(F.data == "enter_custom_amount")
+@router.callback_query(F.data == "enter_custom_amount_yookassa")
 async def process_enter_custom_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
-    await state.set_state(ReplenishBalanceState.entering_custom_amount)
+    await state.set_state(ReplenishBalanceState.entering_custom_amount_yookassa)
     await callback_query.answer()
 
 
-@router.message(State(ReplenishBalanceState.entering_custom_amount))
+@router.message(ReplenishBalanceState.entering_custom_amount_yookassa)
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
@@ -258,7 +252,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             return
 
         await state.update_data(amount=amount)
-        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation)
+        await state.set_state(
+            ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
+        )
 
         try:
             payment = Payment.create(
@@ -296,11 +292,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 confirm_keyboard = InlineKeyboardMarkup(
                     inline_keyboard=[
                         [InlineKeyboardButton(text="Пополнить", url=payment_url)],
-                        [
-                            InlineKeyboardButton(
-                                text="⬅️ Назад", callback_data="back_to_profile"
-                            )
-                        ],
+                        [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
                     ]
                 )
 

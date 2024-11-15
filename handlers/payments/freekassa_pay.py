@@ -5,7 +5,7 @@ import time
 import uuid
 
 import requests
-from aiogram import Router, types
+from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,9 +22,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class ReplenishBalanceState(StatesGroup):
-    choosing_amount = State()
-    waiting_for_payment_confirmation = State()
-    entering_custom_amount = State()
+    choosing_amount_freekassa = State()
+    waiting_for_payment_confirmation_freekassa = State()
+    entering_custom_amount_freekassa = State()
 
 
 def generate_signature(params, api_key):
@@ -105,23 +105,23 @@ async def process_callback_pay_freekassa(
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
                 ),
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=PAYMENT_OPTIONS[i + 1]["callback_data"],
+                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
                 ),
             )
         else:
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=PAYMENT_OPTIONS[i]["callback_data"],
+                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
     builder.row(
         InlineKeyboardButton(
-            text="💰 Ввести свою сумму", callback_data="enter_custom_amount"
+            text="💰 Ввести свою сумму", callback_data="enter_custom_amount_freekassa"
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
@@ -136,11 +136,11 @@ async def process_callback_pay_freekassa(
         reply_markup=builder.as_markup(),
     )
 
-    await state.set_state(ReplenishBalanceState.choosing_amount)
+    await state.set_state(ReplenishBalanceState.choosing_amount_freekassa)
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith("amount|"))
+@router.callback_query(F.data.startswith("freekassa_amount|"))
 async def process_amount_selection(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
@@ -166,7 +166,7 @@ async def process_amount_selection(
                         text=f"Оплатить {amount} рублей", url=payment_url
                     )
                 ],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile")],
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
             ]
         )
 
@@ -184,16 +184,16 @@ async def process_amount_selection(
     await callback_query.answer()
 
 
-@router.callback_query(lambda c: c.data == "enter_custom_amount")
+@router.callback_query(F.data == "enter_custom_amount_freekassa")
 async def process_enter_custom_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
-    await state.set_state(ReplenishBalanceState.entering_custom_amount)
+    await state.set_state(ReplenishBalanceState.entering_custom_amount_freekassa)
     await callback_query.answer()
 
 
-@router.message(ReplenishBalanceState.entering_custom_amount)
+@router.message(ReplenishBalanceState.entering_custom_amount_freekassa)
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
