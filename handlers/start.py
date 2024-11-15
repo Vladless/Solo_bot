@@ -133,7 +133,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session):
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
-    about_vpn_message = get_about_vpn("3.0.5_preStable")
+    about_vpn_message = get_about_vpn("3.0.6_preStable")
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))

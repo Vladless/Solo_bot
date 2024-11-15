@@ -10,15 +10,17 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import commands, notifications, pay, profile, start
-from handlers.admin import admin_commands, admin_panel, admin_user_editor
+from handlers import commands, coupons, notifications, pay, profile, start
+from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
 from handlers.keys import key_management, keys
 from handlers.payments import cryprobot_pay, freekassa_pay, stars_pay, yookassa_pay
 
 dp.include_router(admin_commands.router)
+dp.include_router(admin_coupons.router)
 dp.include_router(admin_panel.router)
 dp.include_router(admin_user_editor.router)
 dp.include_router(commands.router)
+dp.include_router(coupons.router)
 dp.include_router(start.router)
 dp.include_router(profile.router)
 dp.include_router(keys.router)
