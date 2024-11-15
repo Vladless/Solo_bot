@@ -216,7 +216,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 inline_keyboard = [
                     [download_iphone_button, download_android_button],
                     [connect_iphone_button, connect_android_button],
-                    [connect_pc_button],  # Добавляем кнопки для Windows и Linux
+                    [connect_pc_button],
                     [renew_button, delete_button],
                 ]
 
