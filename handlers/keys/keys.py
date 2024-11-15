@@ -165,16 +165,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
             if record:
                 key = record["key"]
                 expiry_time = record["expiry_time"]
-                server_id = record["server_id"]
-
-                if server_id == "все кластеры":
-                    server_name = "мультикластер"
-                else:
-                    cluster_name = CLUSTERS.get(server_id, {}).get(
-                        "name", "кластер неизвестен"
-                    )
-                    server_name = cluster_name
-
+                server_name = record["server_id"]
                 expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
                 current_date = datetime.utcnow()
                 time_left = expiry_date - current_date
