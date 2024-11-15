@@ -86,9 +86,7 @@ async def process_callback_pay_stars(
             await add_connection(tg_id, balance=0.0, trial=0)
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
 
@@ -109,30 +107,32 @@ async def process_amount_selection(
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
-        await send_message_with_deletion(
-            callback_query.from_user.id,
-            "Неверные данные для выбора суммы.",
-            state=state,
-            message_key="amount_error_message_id",
-        )
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
+        await callback_query.message.answer("Неверные данные для выбора суммы.")
         return
 
     amount_str = data[1]
     try:
         amount = int(amount_str)
     except ValueError:
-        await send_message_with_deletion(
-            callback_query.from_user.id,
-            "Некорректная сумма.",
-            state=state,
-            message_key="amount_error_message_id",
-        )
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
+        await callback_query.message.answer("Некорректная сумма.")
         return
 
     await state.update_data(amount=amount)
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
 
     try:
+        await callback_query.message.delete()
+
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="Пополнить", pay=True),
@@ -140,6 +140,7 @@ async def process_amount_selection(
         builder.row(
             InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"),
         )
+
         await callback_query.message.answer_invoice(
             title=f"Вы выбрали пополнение на {amount} рублей.",
             description=f"Вы выбрали пополнение на {amount} рублей.",
@@ -152,6 +153,7 @@ async def process_amount_selection(
     except Exception as e:
         logger.error(f"Ошибка при создании платежа: {e}")
         await callback_query.message.answer("Произошла ошибка при создании платежа.")
+
     await callback_query.answer()
 
 
