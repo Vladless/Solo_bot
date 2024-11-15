@@ -38,11 +38,11 @@ class LoggingMiddleware(BaseMiddleware):
 
 class InterceptHandler(logging.Handler):
     def emit(self, record):
-        level = (
-            logger.level(record.levelname).name
-            if logger.level(record.levelname)
-            else record.levelno
-        )
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = "INFO"
+
         logger.log(level, record.getMessage())
 
 
