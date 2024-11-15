@@ -105,7 +105,7 @@ async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
     await pre_checkout_query.answer(ok=True)
 
 
-@router.message(F.successful_payment,DonateState.waiting_for_donate_payment)
+@router.message(F.successful_payment, DonateState.waiting_for_donate_payment)
 async def on_successful_donate(message: types.Message, state: FSMContext):
     try:
         user_id = int(message.from_user.id)
@@ -117,7 +117,9 @@ async def on_successful_donate(message: types.Message, state: FSMContext):
 
         if previous_message_id:
             try:
-                await bot.delete_message(chat_id=user_id, message_id=previous_message_id)
+                await bot.delete_message(
+                    chat_id=user_id, message_id=previous_message_id
+                )
             except Exception as e:
                 logger.error(f"Не удалось удалить сообщение: {e}")
 
