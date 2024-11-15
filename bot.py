@@ -1,7 +1,7 @@
 from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
+from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
 from middlewares.database import DatabaseMiddleware
 from middlewares.logging import LoggingMiddleware
 
@@ -13,7 +13,7 @@ router = Router()
 from handlers import commands, coupons, notifications, pay, profile, start
 from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
 from handlers.keys import key_management, keys
-from handlers.payments import cryprobot_pay, freekassa_pay, stars_pay, yookassa_pay
+from handlers.payments import cryprobot_pay, freekassa_pay, robokassa_pay, stars_pay, yookassa_pay
 
 dp.include_router(admin_commands.router)
 dp.include_router(admin_coupons.router)
@@ -34,6 +34,8 @@ if CRYPTO_BOT_ENABLE:
     dp.include_router(cryprobot_pay.router)
 if STARS_ENABLE:
     dp.include_router(stars_pay.router)
+if ROBOKASSA_ENABLE:
+    dp.include_router(robokassa_pay.router)
 dp.include_router(notifications.router)
 
 dp.message.middleware(LoggingMiddleware())
