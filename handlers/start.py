@@ -138,6 +138,9 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     about_vpn_message = get_about_vpn("3.0.6_preStable")
 
     builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+    )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu"))
 
     await callback_query.message.answer(

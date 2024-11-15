@@ -50,6 +50,9 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
         )
         builder.row(
+            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+        )
+        builder.row(
             InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu")
         )
 
