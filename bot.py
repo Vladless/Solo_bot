@@ -27,6 +27,7 @@ dp.include_router(keys.router)
 dp.include_router(key_management.router)
 dp.include_router(pay.router)
 dp.include_router(notifications.router)
+dp.include_router(donate.router)
 if YOOKASSA_ENABLE:
     dp.include_router(yookassa_pay.router)
 if FREEKASSA_ENABLE:
@@ -37,7 +38,6 @@ if STARS_ENABLE:
     dp.include_router(stars_pay.router)
 if ROBOKASSA_ENABLE:
     dp.include_router(robokassa_pay.router)
-dp.include_router(donate.router)
 
 dp.message.middleware(LoggingMiddleware())
 dp.callback_query.middleware(LoggingMiddleware())
