@@ -114,30 +114,35 @@ async def process_amount_selection(
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
-        await send_message_with_deletion(
-            callback_query.from_user.id,
-            "Неверные данные для выбора суммы.",
-            state=state,
-            message_key="amount_error_message_id",
-        )
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
+        await callback_query.message.answer("Неверные данные для выбора суммы.")
         return
 
     amount_str = data[1]
     try:
         amount = int(amount_str)
     except ValueError:
-        await send_message_with_deletion(
-            callback_query.from_user.id,
-            "Некорректная сумма.",
-            state=state,
-            message_key="amount_error_message_id",
-        )
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
+        await callback_query.message.answer("Некорректная сумма.")
         return
 
     await state.update_data(amount=amount)
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_crypto)
 
     try:
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
         invoice = await crypto.create_invoice(
             asset="USDT",
             amount=str(int(amount // RUB_TO_USDT)),
@@ -151,18 +156,19 @@ async def process_amount_selection(
                 InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url)
             )
             builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
-            await callback_query.message.edit_text(
+            await bot.send_message(
+                chat_id=callback_query.from_user.id,
                 text=f"Вы выбрали пополнение на {amount} рублей.",
                 reply_markup=builder.as_markup(),
             )
         else:
-            await send_message_with_deletion(
-                callback_query.from_user.id, "Ошибка при создании платежа.", state=state
-            )
+            await callback_query.message.answer("Ошибка при создании платежа.")
     except Exception as e:
         logger.error(f"Ошибка при создании платежа: {e}")
         await callback_query.message.answer("Произошла ошибка при создании платежа.")
+
     await callback_query.answer()
+
 
 
 async def send_payment_success_notification(user_id: int, amount: float):
