@@ -28,10 +28,16 @@ async def handle_activate_coupon(
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
+    )
+
     await callback_query.message.answer(
         "<b>Введите код купона:</b>\n\n"
         "Пожалуйста, введите действующий код купона, который вы хотите активировать.",
         parse_mode="HTML",
+        reply_markup=builder.as_markup(),
     )
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
     await callback_query.answer()

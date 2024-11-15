@@ -28,6 +28,8 @@ async def send_welcome_message(chat_id: int, trial_status: int):
     )
     builder.row(
         InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
+    )
+    builder.row(
         InlineKeyboardButton(text="📢 Официальный канал", url=CHANNEL_URL),
     )
     builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))

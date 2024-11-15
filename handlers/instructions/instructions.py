@@ -18,7 +18,9 @@ async def send_instructions(callback_query: types.CallbackQuery):
         await callback_query.answer()
         return
 
-    back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")
+    back_button = InlineKeyboardButton(
+        text="⬅️ Вернуться в профиль", callback_data="view_profile"
+    )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
     with open(image_path, "rb") as image_from_buffer:
