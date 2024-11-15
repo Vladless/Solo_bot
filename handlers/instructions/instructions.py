@@ -4,8 +4,13 @@ from aiogram import types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.texts import INSTRUCTIONS
+from bot import bot
+from aiogram import F, Router, types
+from config import SUPPORT_CHAT_URL, CONNECT_WINDOWS
+from loguru import logger
+from handlers.texts import KEY_MESSAGE, INSTRUCTION_PC
 
-
+router = Router()
 async def send_instructions(callback_query: types.CallbackQuery):
     await callback_query.message.delete()
 
@@ -30,5 +35,50 @@ async def send_instructions(callback_query: types.CallbackQuery):
             parse_mode="Markdown",
             reply_markup=keyboard,
         )
+
+    await callback_query.answer()
+
+
+@router.callback_query(F.data.startswith("connect_pc|"))
+async def process_connect_pc(callback_query: types.CallbackQuery):
+    tg_id = callback_query.from_user.id
+    key = callback_query.data.split("|")[1]
+
+    try:
+        await bot.delete_message(
+            chat_id=tg_id, message_id=callback_query.message.message_id
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+
+    key_message = KEY_MESSAGE.format(key)
+
+    instruction_message = f"{key_message}{INSTRUCTION_PC}"
+
+    connect_windows_button = types.InlineKeyboardButton(
+        text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
+    )
+
+    support_button = types.InlineKeyboardButton(
+        text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"
+    )
+
+    back_button = types.InlineKeyboardButton(
+        text="🔙 Назад в профиль", callback_data="view_profile"
+    )
+
+    inline_keyboard = [
+        [connect_windows_button],
+        [support_button],
+        [back_button]
+    ]
+    keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+    await bot.send_message(
+        tg_id,
+        instruction_message,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
 
     await callback_query.answer()

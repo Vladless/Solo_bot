@@ -14,6 +14,7 @@ from handlers import commands, coupons, donate, notifications, pay, profile, sta
 from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
 from handlers.keys import key_management, keys
 from handlers.payments import cryprobot_pay, freekassa_pay, robokassa_pay, stars_pay, yookassa_pay
+from handlers.instructions import instructions
 
 dp.include_router(admin_commands.router)
 dp.include_router(admin_coupons.router)
@@ -27,6 +28,7 @@ dp.include_router(keys.router)
 dp.include_router(key_management.router)
 dp.include_router(pay.router)
 dp.include_router(notifications.router)
+dp.include_router(instructions.router)
 dp.include_router(donate.router)
 if YOOKASSA_ENABLE:
     dp.include_router(yookassa_pay.router)
