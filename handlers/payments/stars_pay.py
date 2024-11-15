@@ -76,6 +76,11 @@ async def process_callback_pay_stars(
             text="💰 Ввести свою сумму", callback_data="enter_custom_amount_stars"
         )
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
+        )
+    )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
 
     key_count = await get_key_count(tg_id)
