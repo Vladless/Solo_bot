@@ -20,7 +20,7 @@ from handlers.payments.yookassa_pay import yookassa_webhook
 async def periodic_notifications():
     while True:
         await notify_expiring_keys(bot)
-        await asyncio.sleep(3600)
+        await asyncio.sleep(1800)
 
 
 async def periodic_database_backup():

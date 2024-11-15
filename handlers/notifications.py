@@ -6,9 +6,10 @@ from aiogram import Bot, Router, types
 from loguru import logger
 from py3xui import AsyncApi
 
-from client import delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL
+from client import delete_client
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB
 from database import delete_key, get_balance, update_balance, update_key_expiry
+from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 
 router = Router()
@@ -227,7 +228,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     )
     logger.info(f"Найдено {len(expiring_keys)} истекающих ключей.")
 
-    for record in expiring_keys:
+    async def process_key(record):
         tg_id = record["tg_id"]
         client_id = record["client_id"]
         email = record["email"]
@@ -243,13 +244,18 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
         message_expired = (
             f"❌ Ваша подписка {email} истекла и была удалена!\n\n"
-            "🔍 Перейдите в профиль для создания нового ключа.\n"
+            "🔍 Перейдите в профиль для создания новой подписки.\n"
             "💡 Не откладывайте подключение VPN!"
         )
-        button_profile = types.InlineKeyboardButton(
-            text="👤 Личный кабинет", callback_data="view_profile"
+        keyboard = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    types.InlineKeyboardButton(
+                        text="👤 Личный кабинет", callback_data="view_profile"
+                    )
+                ]
+            ]
         )
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[button_profile]])
 
         try:
             if balance >= RENEWAL_PLANS["1"]["price"]:
@@ -259,49 +265,41 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 )
                 await update_key_expiry(client_id, new_expiry_time)
 
-                renewal_success = False
-                for cluster_id, cluster in CLUSTERS.items():
-                    for server_id, server in cluster.items():
-                        xui = AsyncApi(
-                            server["API_URL"],
-                            username=ADMIN_USERNAME,
-                            password=ADMIN_PASSWORD,
-                        )
-                        success = await extend_client_key(
-                            xui, email, new_expiry_time, client_id
-                        )
-                        if success:
-                            renewal_success = True
-                            logger.info(
-                                f"Ключ для пользователя {tg_id} успешно продлен на сервере {server_id} в кластере {cluster_id}."
-                            )
-                        else:
-                            logger.error(
-                                f"Не удалось продлить ключ для пользователя {tg_id} на сервере {server_id} в кластере {cluster_id}."
-                            )
+                for cluster_id in CLUSTERS:
+                    await renew_key_in_cluster(
+                        cluster_id, email, client_id, new_expiry_time, TOTAL_GB
+                    )
+                    logger.info(
+                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
+                    )
 
-                if renewal_success:
-                    try:
-                        await bot.send_message(
-                            tg_id, KEY_RENEWED, reply_markup=keyboard
-                        )
-                        logger.info(f"Ключ для пользователя {tg_id} успешно продлен.")
-                    except Exception as e:
-                        logger.error(
-                            f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
-                        )
-
-            else:
+                await conn.execute(
+                    """
+                    UPDATE keys
+                    SET notified = FALSE, notified_24h = FALSE
+                    WHERE client_id = $1
+                    """,
+                    client_id,
+                )
+                logger.info(
+                    f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}."
+                )
                 try:
                     await bot.send_message(
-                        tg_id, message_expired, reply_markup=keyboard
+                        tg_id, text=KEY_RENEWED, reply_markup=keyboard
+                    )
+                    logger.info(
+                        f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
                     )
                 except Exception as e:
-                    if "chat not found" in str(e):
-                        logger.warning(
-                            f"Чат для клиента {tg_id} не найден. Пропуск отправки сообщения."
-                        )
+                    logger.error(
+                        f"Ошибка при отправке уведомления клиенту {tg_id}: {e}"
+                    )
 
+            else:
+                await safe_send_message(
+                    bot, tg_id, message_expired, reply_markup=keyboard
+                )
                 await delete_key(client_id)
 
                 for cluster_id, cluster in CLUSTERS.items():
@@ -316,4 +314,14 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         except Exception as e:
             logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
-        await asyncio.sleep(1)
+    await asyncio.gather(*[process_key(record) for record in expiring_keys])
+
+
+async def safe_send_message(bot, tg_id, text, reply_markup=None):
+    try:
+        await bot.send_message(tg_id, text, reply_markup=reply_markup)
+    except Exception as e:
+        if "chat not found" in str(e):
+            logger.warning(f"Чат для клиента {tg_id} не найден.")
+        else:
+            logger.error(f"Ошибка при отправке сообщения клиенту {tg_id}: {e}")
