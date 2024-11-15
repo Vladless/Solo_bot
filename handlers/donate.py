@@ -104,11 +104,20 @@ async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
 
 
 @router.message(F.successful_payment)
-async def on_successful_donate(message: types.Message):
+async def on_successful_donate(message: types.Message, state: FSMContext):
     try:
         user_id = int(message.from_user.id)
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         logger.debug(f"Donate succeeded for user_id: {user_id}, amount: {amount}")
+
+        state_data = await state.get_data()
+        previous_message_id = state_data.get("last_message_id")
+
+        if previous_message_id:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=previous_message_id)
+            except Exception as e:
+                logger.error(f"Не удалось удалить сообщение: {e}")
 
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -117,11 +126,15 @@ async def on_successful_donate(message: types.Message):
             )
         )
 
-        await bot.send_message(
+        sent_message = await bot.send_message(
             chat_id=user_id,
             text=f"🙏 Спасибо за донат {amount} рублей! Ваша поддержка очень важна для нас. 💖",
             reply_markup=builder.as_markup(),
-            message_effect_id="5104841245755180586",
         )
+
+        await state.update_data(last_message_id=sent_message.message_id)
+
     except ValueError as e:
         logger.error(f"Ошибка конвертации user_id или amount: {e}")
+    except Exception as e:
+        logger.error(f"Произошла ошибка при обработке доната: {e}")
