@@ -37,6 +37,11 @@ async def handle_admin_command(message: types.Message):
         )
     )
     builder.row(
+        InlineKeyboardButton(
+            text="🎟️ Управление купонами", callback_data="coupons_editor"
+        )
+    )
+    builder.row(
         InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
     )
     builder.row(
@@ -163,6 +168,11 @@ async def back_to_admin_menu(callback_query: CallbackQuery):
     )
     builder.row(
         InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🎟️ Управление купонами", callback_data="coupons_editor"
+        )
     )
     builder.row(
         InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")

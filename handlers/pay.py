@@ -17,7 +17,7 @@ async def handle_pay(callback_query: CallbackQuery):
     if YOOKASSA_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💳 ЯКасса: быстрый перевод",
+                text="💳 ЮКасса: быстрый перевод",
                 callback_data="pay_yookassa",
             )
         )
@@ -42,6 +42,11 @@ async def handle_pay(callback_query: CallbackQuery):
                 callback_data="pay_stars",
             )
         )
+    builder.row(
+        InlineKeyboardButton(
+            text="🎟️ Активировать купон", callback_data="activate_coupon"
+        )
+    )
 
     builder.row(
         InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")

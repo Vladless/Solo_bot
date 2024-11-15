@@ -9,6 +9,7 @@ from config import BONUS_PERCENT, DATABASE_URL
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
 
+    # Таблица для хранения информации о пользователях
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS connections (
@@ -16,9 +17,10 @@ async def init_db():
             balance REAL NOT NULL DEFAULT 0.0,
             trial INTEGER NOT NULL DEFAULT 0
         )
-    """
+        """
     )
 
+    # Таблица для хранения ключей
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS keys (
@@ -28,52 +30,121 @@ async def init_db():
             created_at BIGINT NOT NULL,
             expiry_time BIGINT NOT NULL,
             key TEXT NOT NULL,
-            server_id TEXT NOT NULL DEFAULT 'server1',  -- поле для идентификатора сервера
-            notified BOOLEAN NOT NULL DEFAULT FALSE,  -- новое поле для статуса уведомления
+            server_id TEXT NOT NULL DEFAULT 'cluster1',
+            notified BOOLEAN NOT NULL DEFAULT FALSE,
+            notified_24h BOOLEAN NOT NULL DEFAULT FALSE,
             PRIMARY KEY (tg_id, client_id)
         )
-    """
+        """
     )
+
+    # Таблица для хранения рефералов
     await conn.execute(
         """
         CREATE TABLE IF NOT EXISTS referrals (
-            referred_tg_id BIGINT PRIMARY KEY NOT NULL,  -- ID приглашенного пользователя
-            referrer_tg_id BIGINT NOT NULL,  -- ID пригласившего пользователя
-            reward_issued BOOLEAN DEFAULT FALSE  -- Был ли начислен бонус
+            referred_tg_id BIGINT PRIMARY KEY NOT NULL,
+            referrer_tg_id BIGINT NOT NULL,
+            reward_issued BOOLEAN DEFAULT FALSE
         )
-    """
+        """
     )
 
-    try:
-        await conn.execute(
-            """
-            ALTER TABLE keys
-            ADD COLUMN server_id TEXT NOT NULL DEFAULT 'server1'
+    # Таблица для хранения купонов
+    await conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS coupons (
+            id SERIAL PRIMARY KEY,
+            code TEXT UNIQUE NOT NULL,
+            amount INTEGER NOT NULL,
+            usage_limit INTEGER NOT NULL DEFAULT 1,  
+            usage_count INTEGER NOT NULL DEFAULT 0,  
+            is_used BOOLEAN NOT NULL DEFAULT FALSE  
         )
-    except asyncpg.exceptions.DuplicateColumnError:
-        pass
+        """
+    )
 
-    try:
-        await conn.execute(
-            """
-            ALTER TABLE keys
-            ADD COLUMN notified BOOLEAN NOT NULL DEFAULT FALSE
+    # Таблица для отслеживания использований купонов пользователями
+    await conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS coupon_usages (
+            coupon_id INTEGER NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+            user_id BIGINT NOT NULL,
+            used_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (coupon_id, user_id)
         )
-    except asyncpg.exceptions.DuplicateColumnError:
-        pass
-    try:
-        await conn.execute(
-            """
-            ALTER TABLE keys
-            ADD COLUMN notified_24h BOOLEAN NOT NULL DEFAULT FALSE
         """
-        )
-    except asyncpg.exceptions.DuplicateColumnError:
-        pass
+    )
 
     await conn.close()
+
+
+async def create_coupon(coupon_code: str, amount: float, usage_limit: int):
+    conn = await asyncpg.connect(DATABASE_URL)
+
+    try:
+        await conn.execute(
+            """
+            INSERT INTO coupons (code, amount, usage_limit, usage_count, is_used)
+            VALUES ($1, $2, $3, 0, FALSE)
+        """,
+            coupon_code,
+            amount,
+            usage_limit,
+        )
+    except Exception as e:
+        print(f"Ошибка при создании купона: {e}")
+        raise
+    finally:
+        await conn.close()
+
+
+async def get_all_coupons():
+    """Получить список всех купонов"""
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        coupons = await conn.fetch(
+            """
+            SELECT code, amount, usage_limit, usage_count
+            FROM coupons
+        """
+        )
+        return coupons
+    except Exception as e:
+        print(f"Ошибка при получении купонов: {e}")
+        return []
+    finally:
+        await conn.close()
+
+
+async def delete_coupon_from_db(coupon_code: str):
+    """Удалить купон из базы данных по его коду"""
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+
+        coupon_record = await conn.fetchrow(
+            """
+            SELECT id FROM coupons WHERE code = $1
+        """,
+            coupon_code,
+        )
+
+        if not coupon_record:
+            return False
+
+        await conn.execute(
+            """
+            DELETE FROM coupons WHERE code = $1
+        """,
+            coupon_code,
+        )
+
+        return True
+
+    except Exception as e:
+        print(f"Ошибка при удалении купона: {e}")
+        return False
+    finally:
+        await conn.close()
 
 
 async def restore_trial(tg_id: int):
