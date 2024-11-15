@@ -7,12 +7,13 @@ from loguru import logger
 
 from backup import backup_database
 from bot import bot, dp, router
-from config import CRYPTO_BOT_ENABLE, DEV_MODE, FREEKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
+from config import CRYPTO_BOT_ENABLE, DEV_MODE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
 from database import init_db
 from handlers.keys.subscriptions import handle_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
+from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
 
 
@@ -71,6 +72,8 @@ async def main():
         if CRYPTO_BOT_ENABLE:
             app.router.add_post("/cryptobot/webhook", cryptobot_webhook)
         app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
+        if ROBOKASSA_ENABLE:
+            app.router.add_post("/robokassa/webhook", robokassa_webhook)
 
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)

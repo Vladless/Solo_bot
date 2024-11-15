@@ -170,7 +170,6 @@ async def process_amount_selection(
     await callback_query.answer()
 
 
-
 async def send_payment_success_notification(user_id: int, amount: float):
     try:
         builder = InlineKeyboardBuilder()

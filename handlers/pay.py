@@ -2,7 +2,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
+from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
 from database import get_trial
 from handlers.start import send_welcome_message
 
@@ -40,6 +40,13 @@ async def handle_pay(callback_query: CallbackQuery):
             InlineKeyboardButton(
                 text="⭐ Оплата Звездами",
                 callback_data="pay_stars",
+            )
+        )
+    if ROBOKASSA_ENABLE:
+        builder.row(
+            InlineKeyboardButton(
+                text="⭐ RoboKassa",
+                callback_data="pay_robokassa",
             )
         )
     builder.row(
