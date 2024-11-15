@@ -86,7 +86,7 @@ async def process_callback_pay_yookassa(
             text="💰 Ввести свою сумму", callback_data="enter_custom_amount_yookassa"
         )
     )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
 
     key_count = await get_key_count(tg_id)
 
