@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from loguru import logger
 
 from bot import bot
-from config import CLUSTERS, DATABASE_URL
+from config import CLUSTERS, DATABASE_URL, TOTAL_GB
 from database import get_client_id_by_email, restore_trial, update_key_expiry
 from filters.admin import IsAdminFilter
 from handlers.admin.admin_panel import back_to_admin_menu
@@ -384,7 +384,11 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
                     tasks.append(
                         asyncio.create_task(
                             renew_key_in_cluster(
-                                cluster_id, email, client_id, expiry_time
+                                cluster_id,
+                                email,
+                                client_id,
+                                expiry_time,
+                                total_gb=TOTAL_GB,
                             )
                         )
                     )
