@@ -1,16 +1,16 @@
 import os
 
-from aiogram import types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-
-from handlers.texts import INSTRUCTIONS
-from bot import bot
 from aiogram import F, Router, types
-from config import SUPPORT_CHAT_URL, CONNECT_WINDOWS
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from loguru import logger
-from handlers.texts import KEY_MESSAGE, INSTRUCTION_PC
+
+from bot import bot
+from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL
+from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 
 router = Router()
+
+
 async def send_instructions(callback_query: types.CallbackQuery):
     await callback_query.message.delete()
 
@@ -67,18 +67,11 @@ async def process_connect_pc(callback_query: types.CallbackQuery):
         text="🔙 Назад в профиль", callback_data="view_profile"
     )
 
-    inline_keyboard = [
-        [connect_windows_button],
-        [support_button],
-        [back_button]
-    ]
+    inline_keyboard = [[connect_windows_button], [support_button], [back_button]]
     keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
     await bot.send_message(
-        tg_id,
-        instruction_message,
-        reply_markup=keyboard,
-        parse_mode="HTML"
+        tg_id, instruction_message, reply_markup=keyboard, parse_mode="HTML"
     )
 
     await callback_query.answer()

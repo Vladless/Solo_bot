@@ -12,9 +12,9 @@ router = Router()
 
 from handlers import commands, coupons, donate, notifications, pay, profile, start
 from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
+from handlers.instructions import instructions
 from handlers.keys import key_management, keys
 from handlers.payments import cryprobot_pay, freekassa_pay, robokassa_pay, stars_pay, yookassa_pay
-from handlers.instructions import instructions
 
 dp.include_router(admin_commands.router)
 dp.include_router(admin_coupons.router)
