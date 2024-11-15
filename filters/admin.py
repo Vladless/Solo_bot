@@ -6,4 +6,9 @@ from config import ADMIN_ID
 
 class IsAdminFilter(BaseFilter):
     async def __call__(self, message: Message) -> bool:
-        return message.from_user.id == ADMIN_ID
+        if isinstance(ADMIN_ID, list):
+            return message.from_user.id in ADMIN_ID
+        elif isinstance(ADMIN_ID, int):
+            return message.from_user.id == ADMIN_ID
+        else:
+            return False
