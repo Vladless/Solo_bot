@@ -10,7 +10,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import commands, coupons, notifications, pay, profile, start
+from handlers import commands, coupons, donate, notifications, pay, profile, start
 from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
 from handlers.keys import key_management, keys
 from handlers.payments import cryprobot_pay, freekassa_pay, robokassa_pay, stars_pay, yookassa_pay
@@ -26,6 +26,8 @@ dp.include_router(profile.router)
 dp.include_router(keys.router)
 dp.include_router(key_management.router)
 dp.include_router(pay.router)
+dp.include_router(donate.router)
+
 if YOOKASSA_ENABLE:
     dp.include_router(yookassa_pay.router)
 if FREEKASSA_ENABLE:
