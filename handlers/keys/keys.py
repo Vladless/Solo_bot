@@ -186,20 +186,21 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 )
 
                 download_android_button = types.InlineKeyboardButton(
-                    text="🤖 Скачать",
-                    url=DOWNLOAD_ANDROID,
+                    text="🤖 Скачать", url=DOWNLOAD_ANDROID
                 )
                 download_iphone_button = types.InlineKeyboardButton(
-                    text="🍏 Скачать",
-                    url=DOWNLOAD_IOS,
+                    text="🍏 Скачать", url=DOWNLOAD_IOS
                 )
 
                 connect_iphone_button = types.InlineKeyboardButton(
                     text="🍏 Подключить", url=f"{CONNECT_IOS}{key}"
                 )
                 connect_android_button = types.InlineKeyboardButton(
-                    text="🤖 Подключить",
-                    url=f"{CONNECT_ANDROID}{key}",
+                    text="🤖 Подключить", url=f"{CONNECT_ANDROID}{key}"
+                )
+
+                connect_pc_button = types.InlineKeyboardButton(
+                    text="💻 Windows/Linux", callback_data=f"connect_pc|{key}"
                 )
 
                 renew_button = types.InlineKeyboardButton(
@@ -215,6 +216,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 inline_keyboard = [
                     [download_iphone_button, download_android_button],
                     [connect_iphone_button, connect_android_button],
+                    [connect_pc_button],  # Добавляем кнопки для Windows и Linux
                     [renew_button, delete_button],
                 ]
 
