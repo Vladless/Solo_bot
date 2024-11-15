@@ -1,9 +1,9 @@
+import logging
 from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from loguru import logger
-import logging
 
 
 class LoggingMiddleware(BaseMiddleware):
@@ -38,8 +38,13 @@ class LoggingMiddleware(BaseMiddleware):
 
 class InterceptHandler(logging.Handler):
     def emit(self, record):
-        level = logger.level(record.levelname).name if logger.level(record.levelname) else record.levelno
+        level = (
+            logger.level(record.levelname).name
+            if logger.level(record.levelname)
+            else record.levelno
+        )
         logger.log(level, record.getMessage())
+
 
 logging.basicConfig(handlers=[InterceptHandler()], level=0)
 
