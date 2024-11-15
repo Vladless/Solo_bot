@@ -5,7 +5,7 @@ from loguru import logger
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB
 
 
 async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_timestamp):
@@ -38,7 +38,7 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     email,
                     tg_id,
                     limit_ip=1,
-                    total_gb=0,
+                    total_gb=TOTAL_GB,
                     expiry_time=expiry_timestamp,
                     enable=True,
                     flow="xtls-rprx-vision",
@@ -145,7 +145,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     email,
                     tg_id,
                     limit_ip=1,
-                    total_gb=0,
+                    total_gb=TOTAL_GB,
                     expiry_time=expiry_time,
                     enable=True,
                     flow="xtls-rprx-vision",
