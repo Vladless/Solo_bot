@@ -222,7 +222,7 @@ async def process_enter_custom_amount(
     await callback_query.answer()
 
 
-@router.message(State(ReplenishBalanceState.entering_custom_amount_crypto))
+@router.message(ReplenishBalanceState.entering_custom_amount_crypto)
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
