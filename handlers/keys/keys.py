@@ -582,6 +582,13 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery):
     total_gb = TOTAL_GB * gb_multiplier.get(plan, 1) if TOTAL_GB > 0 else 0
 
     try:
+        try:
+            await bot.delete_message(
+                chat_id=tg_id, message_id=callback_query.message.message_id
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при удалении сообщения: {e}")
+
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow(
