@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
 from loguru import logger
+import logging
 
 
 class LoggingMiddleware(BaseMiddleware):
@@ -33,3 +34,16 @@ class LoggingMiddleware(BaseMiddleware):
         )
 
         return await handler(event, data)
+
+
+class InterceptHandler(logging.Handler):
+    def emit(self, record):
+        level = logger.level(record.levelname).name if logger.level(record.levelname) else record.levelno
+        logger.log(level, record.getMessage())
+
+logging.basicConfig(handlers=[InterceptHandler()], level=0)
+
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+logger.add("logs/app.log", level="INFO", rotation="10 MB", compression="zip")
