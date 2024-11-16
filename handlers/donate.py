@@ -3,10 +3,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from loguru import logger
 
 from bot import bot
 from config import RUB_TO_XTR
+from logger import logger
 
 
 class DonateState(StatesGroup):

@@ -3,13 +3,13 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from loguru import logger
 
 from bot import bot
 from config import DATABASE_URL
 from database import add_balance_to_client, check_connection_exists
 from filters.admin import IsAdminFilter
 from handlers.texts import TRIAL
+from logger import logger
 
 router = Router()
 

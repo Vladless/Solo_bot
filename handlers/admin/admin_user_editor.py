@@ -7,7 +7,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from loguru import logger
 
 from bot import bot
 from config import CLUSTERS, DATABASE_URL, TOTAL_GB
@@ -16,6 +15,7 @@ from filters.admin import IsAdminFilter
 from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
+from logger import logger
 
 router = Router()
 

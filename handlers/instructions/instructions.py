@@ -2,11 +2,11 @@ import os
 
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from loguru import logger
 
 from bot import bot
 from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
+from logger import logger
 
 router = Router()
 
