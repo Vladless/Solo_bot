@@ -7,7 +7,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from loguru import logger
 
 from bot import bot, dp
 from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK
@@ -17,6 +16,7 @@ from handlers.keys.key_utils import create_key_on_cluster
 from handlers.profile import process_callback_view_profile
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import get_least_loaded_cluster, sanitize_key_name
+from logger import logger
 
 router = Router()
 

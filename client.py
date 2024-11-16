@@ -1,7 +1,7 @@
 import py3xui
-from loguru import logger
 
 from config import TOTAL_GB
+from logger import logger
 
 
 async def add_client(
@@ -72,7 +72,7 @@ async def extend_client_key(
         client.sub_id = email
         client.total_gb = total_gb
         client.enable = True
-        client.limit_ip = 1 
+        client.limit_ip = 1
 
         await xui.client.update(client.id, client)
         logger.info(

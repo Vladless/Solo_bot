@@ -1,9 +1,9 @@
 from datetime import datetime
 
 import asyncpg
-from loguru import logger
 
 from config import BONUS_PERCENT, DATABASE_URL
+from logger import logger
 
 
 async def init_db():
