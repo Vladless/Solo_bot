@@ -23,7 +23,7 @@ class UserEditorState(StatesGroup):
     displaying_user_info = State()
 
 
-@router.message(Command("admin"), IsAdminFilter())
+@router.message(Command("admin"),F.data == "admin", IsAdminFilter())
 async def handle_admin_command(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.row(
