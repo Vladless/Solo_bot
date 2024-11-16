@@ -49,3 +49,5 @@ handlers/texts.py
 .DS_Store
 Thumbs.db
 
+nginx.conf
+scripts/nginx.sh
