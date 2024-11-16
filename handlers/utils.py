@@ -2,10 +2,10 @@ import random
 import re
 
 import asyncpg
-from loguru import logger
 
 from bot import bot
 from config import CLUSTERS, DATABASE_URL
+from logger import logger
 
 
 def sanitize_key_name(key_name: str) -> str:

@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile
-from loguru import logger
 
 from bot import bot
 from config import CLUSTERS, CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, TOTAL_GB
@@ -14,6 +13,7 @@ from database import delete_key, get_balance, store_key, update_balance, update_
 from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster, update_key_on_cluster
 from handlers.texts import INSUFFICIENT_FUNDS_MSG, KEY_NOT_FOUND_MSG, NO_KEYS, PLAN_SELECTION_MSG, RENEWAL_PLANS, SUCCESS_RENEWAL_MSG, key_message
 from handlers.utils import get_least_loaded_cluster, handle_error
+from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 

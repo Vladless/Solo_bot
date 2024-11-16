@@ -6,13 +6,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from loguru import logger
 from yookassa import Configuration, Payment
 
 from bot import bot
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import add_connection, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
+from logger import logger
 
 router = Router()
 
