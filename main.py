@@ -3,7 +3,6 @@ import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-from loguru import logger
 
 from backup import backup_database
 from bot import bot, dp, router
@@ -15,6 +14,7 @@ from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
 from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
+from logger import logger
 
 
 async def periodic_notifications():

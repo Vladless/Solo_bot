@@ -1,11 +1,11 @@
 import asyncio
 
 import asyncpg
-from loguru import logger
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB
+from logger import logger
 
 
 async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_timestamp):

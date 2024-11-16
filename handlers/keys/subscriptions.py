@@ -2,9 +2,9 @@ import base64
 
 import aiohttp
 from aiohttp import web
-from loguru import logger
 
 from config import CLUSTERS
+from logger import logger
 
 
 async def fetch_url_content(url):

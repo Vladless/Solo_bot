@@ -5,12 +5,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from loguru import logger
 
 from bot import bot
 from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
 from database import add_connection, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
+from logger import logger
 
 router = Router()
 
