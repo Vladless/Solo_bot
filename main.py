@@ -71,9 +71,9 @@ async def main():
             app.router.add_post("/freekassa/webhook", freekassa_webhook)
         if CRYPTO_BOT_ENABLE:
             app.router.add_post("/cryptobot/webhook", cryptobot_webhook)
-        app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
         if ROBOKASSA_ENABLE:
             app.router.add_post("/robokassa/webhook", robokassa_webhook)
+        app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
 
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)
