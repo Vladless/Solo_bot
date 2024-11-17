@@ -16,7 +16,7 @@ async def send_instructions(callback_query: types.CallbackQuery):
 
     instructions_message = INSTRUCTIONS
 
-    image_path = os.path.join(os.path.dirname(__file__), "instructions.jpg")
+    image_path = os.path.join("img", "instructions.jpg")
 
     if not os.path.isfile(image_path):
         await callback_query.message.answer("Файл изображения не найден.")

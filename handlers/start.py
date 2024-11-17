@@ -16,7 +16,7 @@ router = Router()
 
 
 async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
-    image_path = os.path.join(os.path.dirname(__file__), "pic.jpg")
+    image_path = os.path.join("img", "pic.jpg")
 
     builder = InlineKeyboardBuilder()
     if trial_status == 0:

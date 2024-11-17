@@ -20,7 +20,7 @@ async def process_callback_view_profile(
     chat_id = callback_query.from_user.id
     username = callback_query.from_user.full_name
 
-    image_path = os.path.join(os.path.dirname(__file__), "pic.jpg")
+    image_path = os.path.join("img", "pic.jpg")
 
     try:
         key_count = await get_key_count(chat_id)
@@ -99,7 +99,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
 
     invite_message = invite_message_send(referral_link, referral_stats)
 
-    image_path = os.path.join(os.path.dirname(__file__), "pic_invite.jpg")
+    image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -142,6 +142,6 @@ async def invite_handler(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "view_profile")
-async def view_profile_handler(callback_query: types.CallbackQuery, state: FSMContext):
+async def view_profile_handler(callback_query: types.CallbackQuery, state: FSMContext,admin:bool):
     await state.clear()
-    await process_callback_view_profile(callback_query, state)
+    await process_callback_view_profile(callback_query, state,admin)
