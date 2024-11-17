@@ -22,10 +22,11 @@ class UserEditorState(StatesGroup):
     waiting_for_tg_id = State()
     displaying_user_info = State()
 
+
 @router.callback_query(F.data == "admin", IsAdminFilter())
 async def handle_admin_callback_query(callback_query: CallbackQuery):
     await handle_admin_message(callback_query.message)
-    
+
 
 @router.message(Command("admin"), F.data == "admin", IsAdminFilter())
 async def handle_admin_message(message: types.Message):
