@@ -56,7 +56,7 @@ async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
         )
 
 
-@router.message(Command("start"))
+@router.message(Command("start"), Command("menu"))
 async def start_command(message: Message, admin: bool):
     logger.info(f"Received start command with text: {message.text}")
     if "referral_" in message.text:
