@@ -143,7 +143,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
 
 @router.callback_query(F.data == "view_profile")
 async def view_profile_handler(
-    callback_query: types.CallbackQuery, state: FSMContext, admin: bool
+    callback_query: types.CallbackQuery, state: FSMContext, admin: bool=False
 ):
     await state.clear()
     await process_callback_view_profile(callback_query, state, admin)

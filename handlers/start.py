@@ -152,7 +152,7 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
 
 @router.callback_query(F.data == "back_to_menu")
-async def handle_back_to_menu(callback_query: CallbackQuery, admin: bool):
+async def handle_back_to_menu(callback_query: CallbackQuery, admin: bool=False):
     await callback_query.message.delete()
     trial_status = await get_trial(callback_query.from_user.id)
     await send_welcome_message(callback_query.from_user.id, trial_status, admin)
