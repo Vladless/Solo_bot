@@ -10,7 +10,7 @@ from loguru import logger
 from robokassa import HashAlgorithm, Robokassa
 
 from bot import bot
-from config import ROBOKASSA_ENABLE,ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
+from config import ROBOKASSA_ENABLE, ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
 from database import add_connection, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 
@@ -20,6 +20,7 @@ router = Router()
 class ReplenishBalanceState(StatesGroup):
     choosing_amount_robokassa = State()
     waiting_for_payment_confirmation_robokassa = State()
+
 
 if ROBOKASSA_ENABLE:
     robokassa = Robokassa(

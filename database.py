@@ -438,10 +438,17 @@ async def get_tg_id_by_client_id(client_id: str):
         await conn.close()
 
 
-async def upsert_user(tg_id: int, username: str = None, first_name: str = None, last_name: str = None, language_code: str = None, is_bot: bool = False):
+async def upsert_user(
+    tg_id: int,
+    username: str = None,
+    first_name: str = None,
+    last_name: str = None,
+    language_code: str = None,
+    is_bot: bool = False,
+):
     """
     Создает или обновляет информацию о пользователе в базе данных.
-    
+
     Args:
         tg_id (int): Уникальный идентификатор пользователя в Telegram
         username (str, optional): Никнейм пользователя
@@ -465,9 +472,14 @@ async def upsert_user(tg_id: int, username: str = None, first_name: str = None, 
                 is_bot = EXCLUDED.is_bot,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            tg_id, username, first_name, last_name, language_code, is_bot
+            tg_id,
+            username,
+            first_name,
+            last_name,
+            language_code,
+            is_bot,
         )
-        
+
         # Создаем запись в connections, если ее еще нет
         await conn.execute(
             """
@@ -475,7 +487,7 @@ async def upsert_user(tg_id: int, username: str = None, first_name: str = None, 
             VALUES ($1, 0.0, 0)
             ON CONFLICT (tg_id) DO NOTHING
             """,
-            tg_id
+            tg_id,
         )
     finally:
         await conn.close()
