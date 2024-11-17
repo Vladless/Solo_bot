@@ -21,6 +21,8 @@ class AdminMiddleware(BaseMiddleware):
             elif isinstance(ADMIN_ID, int):
                 if event.from_user.id == ADMIN_ID:
                     data["admin"] = True
+            else:
+                data["admin"] = False
         except Exception as e:
             logger.error(e)
             data["admin"] = False
