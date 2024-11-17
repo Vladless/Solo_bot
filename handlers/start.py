@@ -1,7 +1,6 @@
 import os
 
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -56,7 +55,6 @@ async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
         )
 
 
-@router.message(Command("start"), Command("menu"))
 async def start_command(message: Message, admin: bool):
     logger.info(f"Received start command with text: {message.text}")
     if "referral_" in message.text:
