@@ -14,6 +14,7 @@ class AdminMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
+        data["admin"] = False
         try:
             if isinstance(ADMIN_ID, list):
                 if event.from_user.id in ADMIN_ID:
