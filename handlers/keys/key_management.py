@@ -9,7 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from bot import bot, dp
-from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK
+from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK,SUPPORT_CHAT_URL
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.keys.key_utils import create_key_on_cluster
@@ -202,6 +202,10 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     logger.info(f"Generated public link for the key: {public_link}")
 
+    button_support = InlineKeyboardButton(
+        text="💬 Поддержка", url=SUPPORT_CHAT_URL
+    )
+    
     button_profile = InlineKeyboardButton(
         text="👤 Личный кабинет", callback_data="view_profile"
     )
@@ -221,6 +225,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
+            [button_support]
             [button_download_ios, button_download_android],
             [button_iphone, button_android],
             [button_profile],
