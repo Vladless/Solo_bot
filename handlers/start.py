@@ -55,7 +55,7 @@ async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
         )
 
 
-async def start_command(message: Message, admin: bool):
+async def start_command(message: Message, admin: bool = False):
     logger.info(f"Received start command with text: {message.text}")
     if "referral_" in message.text:
         referrer_tg_id = int(message.text.split("referral_")[1])
