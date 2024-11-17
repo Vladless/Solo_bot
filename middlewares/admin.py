@@ -23,6 +23,5 @@ class AdminMiddleware(BaseMiddleware):
                     data["admin"] = True
         except Exception as e:
             logger.error(e)
-        finally:
             data["admin"] = False
         return await handler(event, data)
