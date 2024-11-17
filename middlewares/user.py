@@ -13,16 +13,16 @@ class UserMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
-        user: User = data.get("event_from_user")
-
-        if user:
-            await upsert_user(
-                tg_id=user.id,
-                username=user.username,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                language_code=user.language_code,
-                is_bot=user.is_bot,
-            )
-
+        if user := data.get("event_from_user"):
+            await self._process_user(user)
         return await handler(event, data)
+
+    async def _process_user(self, user: User) -> None:
+        await upsert_user(
+            tg_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            language_code=user.language_code,
+            is_bot=user.is_bot,
+        )
