@@ -14,7 +14,7 @@ class UserMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         user: User = data.get("event_from_user")
-        
+
         if user:
             await upsert_user(
                 tg_id=user.id,
@@ -22,7 +22,7 @@ class UserMiddleware(BaseMiddleware):
                 first_name=user.first_name,
                 last_name=user.last_name,
                 language_code=user.language_code,
-                is_bot=user.is_bot
+                is_bot=user.is_bot,
             )
-        
+
         return await handler(event, data)

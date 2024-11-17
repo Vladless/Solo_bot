@@ -51,3 +51,4 @@ Thumbs.db
 
 nginx.conf
 scripts
+models.py

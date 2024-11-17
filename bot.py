@@ -2,10 +2,10 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
-from middlewares.user import UserMiddleware
 from middlewares.admin import AdminMiddleware
 from middlewares.database import DatabaseMiddleware
 from middlewares.logging import LoggingMiddleware
+from middlewares.user import UserMiddleware
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
