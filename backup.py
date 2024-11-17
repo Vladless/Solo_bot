@@ -34,7 +34,11 @@ async def backup_database():
             backup_input_file = BufferedInputFile(
                 backup_file.read(), filename=os.path.basename(BACKUP_FILE)
             )
-            await bot.send_document(ADMIN_ID, backup_input_file)
+            if isinstance(ADMIN_ID, list):
+                for id in ADMIN_ID:
+                    await bot.send_document(id, backup_input_file)
+            elif isinstance(ADMIN_ID, int):
+                await bot.send_document(ADMIN_ID, backup_input_file)
         logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
     except Exception as e:
         logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
