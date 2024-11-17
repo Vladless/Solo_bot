@@ -15,7 +15,7 @@ router = Router()
 
 
 async def process_callback_view_profile(
-    callback_query: types.CallbackQuery, state: FSMContext
+    callback_query: types.CallbackQuery, state: FSMContext, admin: bool
 ):
     chat_id = callback_query.from_user.id
     username = callback_query.from_user.full_name
@@ -52,6 +52,10 @@ async def process_callback_view_profile(
         builder.row(
             InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
         )
+        if admin:
+            builder.row(
+                InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+            )
         builder.row(
             InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu")
         )
