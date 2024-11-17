@@ -11,7 +11,7 @@ storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 router = Router()
 
-from handlers import commands, coupons, donate, notifications, pay, profile, start
+from handlers import coupons, donate, notifications, pay, profile, start
 from handlers.admin import admin_commands, admin_coupons, admin_panel, admin_user_editor
 from handlers.instructions import instructions
 from handlers.keys import key_management, keys
@@ -21,7 +21,6 @@ dp.include_router(admin_commands.router)
 dp.include_router(admin_coupons.router)
 dp.include_router(admin_panel.router)
 dp.include_router(admin_user_editor.router)
-dp.include_router(commands.router)
 dp.include_router(coupons.router)
 dp.include_router(start.router)
 dp.include_router(profile.router)
