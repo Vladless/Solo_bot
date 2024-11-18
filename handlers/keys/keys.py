@@ -38,11 +38,11 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 buttons = []
                 for record in records:
                     key_name = record["email"]
-                    client_id = record["client_id"]
                     button = types.InlineKeyboardButton(
                         text=f"🔑 {key_name}",
-                        callback_data=f"view_key|{key_name}|{client_id}",
+                        callback_data=f"view_key|{key_name}",
                     )
+
                     buttons.append([button])
 
                 back_button = types.InlineKeyboardButton(
@@ -137,10 +137,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    key_name, client_id = (
-        callback_query.data.split("|")[1],
-        callback_query.data.split("|")[2],
-    )
+    key_name = callback_query.data.split("|")[1] 
 
     try:
         try:
@@ -157,7 +154,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 SELECT k.expiry_time, k.server_id, k.key
                 FROM keys k
                 WHERE k.tg_id = $1 AND k.email = $2
-            """,
+                """,
                 tg_id,
                 key_name,
             )
@@ -200,14 +197,14 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 )
 
                 connect_pc_button = types.InlineKeyboardButton(
-                    text="💻 Windows/Linux", callback_data=f"connect_pc|{key}"
+                    text="💻 Windows/Linux", callback_data=f"connect_pc|{key_name}"
                 )
 
                 renew_button = types.InlineKeyboardButton(
-                    text="⏳ Продлить", callback_data=f"renew_key|{client_id}"
+                    text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
                 )
                 delete_button = types.InlineKeyboardButton(
-                    text="❌ Удалить", callback_data=f"delete_key|{client_id}"
+                    text="❌ Удалить", callback_data=f"delete_key|{key_name}"
                 )
                 back_button = types.InlineKeyboardButton(
                     text="🔙 Назад в профиль", callback_data="view_profile"
@@ -223,7 +220,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
                 if not key.startswith(PUBLIC_LINK):
                     update_subscription_button = types.InlineKeyboardButton(
                         text="🔄 Обновить подписку",
-                        callback_data=f"update_subscription|{client_id}",
+                        callback_data=f"update_subscription|{key_name}",
                     )
                     inline_keyboard.append([update_subscription_button])
 

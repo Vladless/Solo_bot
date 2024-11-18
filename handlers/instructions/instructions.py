@@ -4,9 +4,10 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import bot
-from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL
+from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL, DATABASE_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 from logger import logger
+import asyncpg
 
 router = Router()
 
@@ -42,7 +43,7 @@ async def send_instructions(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("connect_pc|"))
 async def process_connect_pc(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    key = callback_query.data.split("|")[1]
+    key_name = callback_query.data.split("|")[1]
 
     try:
         await bot.delete_message(
@@ -51,27 +52,64 @@ async def process_connect_pc(callback_query: types.CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
-    key_message = KEY_MESSAGE.format(key)
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            # Поиск ключа по имени ключа
+            record = await conn.fetchrow(
+                """
+                SELECT k.key
+                FROM keys k
+                WHERE k.tg_id = $1 AND k.email = $2
+                """,
+                tg_id,
+                key_name,
+            )
 
-    instruction_message = f"{key_message}{INSTRUCTION_PC}"
+            if not record:
+                await bot.send_message(
+                    chat_id=tg_id,
+                    text="<b>Ключ не найден. Проверьте имя ключа.</b>",
+                    parse_mode="HTML",
+                )
+                return
 
-    connect_windows_button = types.InlineKeyboardButton(
-        text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
-    )
+            key = record["key"]
+            key_message = KEY_MESSAGE.format(key)
+            instruction_message = f"{key_message}{INSTRUCTION_PC}"
 
-    support_button = types.InlineKeyboardButton(
-        text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"
-    )
+            connect_windows_button = types.InlineKeyboardButton(
+                text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
+            )
 
-    back_button = types.InlineKeyboardButton(
-        text="🔙 Назад в профиль", callback_data="view_profile"
-    )
+            support_button = types.InlineKeyboardButton(
+                text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"
+            )
 
-    inline_keyboard = [[connect_windows_button], [support_button], [back_button]]
-    keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+            back_button = types.InlineKeyboardButton(
+                text="🔙 Назад в профиль", callback_data="view_profile"
+            )
 
-    await bot.send_message(
-        tg_id, instruction_message, reply_markup=keyboard, parse_mode="HTML"
-    )
+            inline_keyboard = [
+                [connect_windows_button],
+                [support_button],
+                [back_button],
+            ]
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+
+            await bot.send_message(
+                tg_id, instruction_message, reply_markup=keyboard, parse_mode="HTML"
+            )
+
+        finally:
+            await conn.close()
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении ключа: {e}")
+        await bot.send_message(
+            chat_id=tg_id,
+            text="<b>Произошла ошибка. Пожалуйста, повторите попытку позже.</b>",
+            parse_mode="HTML",
+        )
 
     await callback_query.answer()
