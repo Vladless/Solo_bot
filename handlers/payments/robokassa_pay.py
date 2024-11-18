@@ -34,15 +34,13 @@ if ROBOKASSA_ENABLE:
     logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
 
 
-def generate_payment_link(amount, inv_id, description):
+def generate_payment_link(amount, inv_id, description, tg_id):
     """Генерация ссылки на оплату."""
     logger.debug(
         f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}"
     )
     payment_link = robokassa._payment.link.generate_by_script(
-        out_sum=amount,
-        inv_id=inv_id,
-        description="description",
+        out_sum=amount, inv_id=inv_id, description="пополнение баланса", id=f"{tg_id}"
     )
     logger.info(f"Generated payment link: {payment_link}")
     return payment_link
@@ -171,13 +169,10 @@ async def process_amount_selection(
 
     await state.update_data(amount=amount)
     logger.info(f"User {callback_query.from_user.id} selected amount: {amount}.")
+    inv_id = 0
 
     tg_id = callback_query.from_user.id
-    payment_url = generate_payment_link(
-        amount,
-        tg_id,
-        "Пополнение баланса",
-    )
+    payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
 
     logger.info(f"Payment URL for user {callback_query.from_user.id}: {payment_url}")
 
@@ -197,50 +192,64 @@ async def process_amount_selection(
 
 
 async def robokassa_webhook(request):
-    """Обработка webhook-уведомлений от Robokassa."""
+    """Обработка webhook-уведомлений от Robokassa с учетом shp_id."""
     try:
         params = await request.post()
-        logger.debug(f"Received webhook params: {params}")
+
+        logger.info(f"Received webhook params: {params}")
+
+        amount = params.get("OutSum")
+        inv_id = params.get("InvId")
+        shp_id = params.get("shp_id")
+        signature_value = params.get("SignatureValue")
+
+        logger.info(
+            f"OutSum: {amount}, InvId: {inv_id}, shp_id: {shp_id}, SignatureValue: {signature_value}"
+        )
 
         if not check_payment_signature(params):
             logger.error("Неверная подпись или данные запроса.")
             return web.Response(status=400)
 
-        amount = params.get("OutSum")
-        inv_id = params.get("InvId")
-
-        if not amount or not inv_id:
+        if not amount or not inv_id or not shp_id:
             logger.error("Отсутствуют обязательные параметры.")
             return web.Response(status=400)
 
-        tg_id = inv_id
+        tg_id = shp_id
+
+        logger.info(f"Processing payment for user {tg_id} with amount {amount}.")
 
         await update_balance(int(tg_id), float(amount))
         await send_payment_success_notification(tg_id, float(amount))
 
         logger.info(f"Payment successful. Balance updated for user {tg_id}.")
+
         return web.Response(text=f"OK{inv_id}")
+
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         return web.Response(status=500)
 
 
 def check_payment_signature(params):
-    """Проверка подписи запроса от Robokassa."""
+    """Проверка подписи запроса от Robokassa с учетом shp_id."""
     out_sum = params.get("OutSum")
     inv_id = params.get("InvId")
     signature_value = params.get("SignatureValue")
+    shp_id = params.get("shp_id")
 
-    signature_string = f"{out_sum}:{inv_id}:{ROBOKASSA_PASSWORD2}"
+    signature_string = f"{out_sum}:{inv_id}:{ROBOKASSA_PASSWORD2}:shp_id={shp_id}"
+
+    logger.info(f"Signature string before hashing: {signature_string}")
 
     expected_signature = (
         hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
     )
 
-    logger.debug(f"Expected signature: {expected_signature}")
-    logger.debug(f"Received signature: {signature_value}")
+    logger.info(f"Expected signature: {expected_signature}")
+    logger.info(f"Received signature: {signature_value}")
 
-    return signature_value == expected_signature
+    return signature_value.upper() == expected_signature.upper()
 
 
 async def send_payment_success_notification(user_id: int, amount: float):
@@ -277,6 +286,7 @@ async def process_custom_amount_selection(
 async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
     logger.info(f"User {tg_id} entered custom amount: {message.text}")
+    inv_id = 0
 
     try:
         amount = int(message.text)
@@ -287,8 +297,9 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
 
         payment_url = generate_payment_link(
             amount,
-            tg_id,
+            inv_id,
             "Пополнение баланса",
+            tg_id
         )
 
         logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
