@@ -1,13 +1,13 @@
 import os
 
+import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import bot
-from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL, DATABASE_URL
+from config import CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 from logger import logger
-import asyncpg
 
 router = Router()
 

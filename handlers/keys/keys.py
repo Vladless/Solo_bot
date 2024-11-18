@@ -137,7 +137,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    key_name = callback_query.data.split("|")[1] 
+    key_name = callback_query.data.split("|")[1]
 
     try:
         try:

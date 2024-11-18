@@ -1,4 +1,4 @@
-from typing import Any, Awaitable, Callable, Dict,Union
+from typing import Any, Awaitable, Callable, Dict, Union
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
@@ -20,7 +20,7 @@ class AdminMiddleware(BaseMiddleware):
     def _check_admin_access(self, event: TelegramObject) -> bool:
         try:
             admin_ids: Union[int, list[int]] = ADMIN_ID
-            
+
             if isinstance(admin_ids, list):
                 return event.from_user.id in admin_ids
             return event.from_user.id == admin_ids
