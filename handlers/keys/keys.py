@@ -265,34 +265,34 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("update_subscription|"))
 async def process_callback_update_subscription(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split("|")[1]
+    email = callback_query.data.split("|")[1]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow(
                 """
-                SELECT k.key, k.expiry_time, k.email, k.server_id
+                SELECT k.key, k.expiry_time, k.email, k.server_id, k.client_id
                 FROM keys k
-                WHERE k.tg_id = $1 AND k.client_id = $2
-            """,
+                WHERE k.tg_id = $1 AND k.email = $2
+                """,
                 tg_id,
-                client_id,
+                email,
             )
 
             if record:
                 expiry_time = record["expiry_time"]
-                email = record["email"]
+                client_id = record["client_id"]
                 public_link = f"{PUBLIC_LINK}{email}"
 
                 try:
                     await conn.execute(
                         """
                         DELETE FROM keys
-                        WHERE tg_id = $1 AND client_id = $2
-                    """,
+                        WHERE tg_id = $1 AND email = $2
+                        """,
                         tg_id,
-                        client_id,
+                        email,
                     )
                 except Exception as delete_error:
                     await bot.send_message(
