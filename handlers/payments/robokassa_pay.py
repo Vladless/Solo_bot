@@ -10,7 +10,7 @@ from loguru import logger
 from robokassa import HashAlgorithm, Robokassa
 
 from bot import bot
-from config import ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
+from config import ROBOKASSA_ENABLE, ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
 from database import add_connection, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 
@@ -22,15 +22,16 @@ class ReplenishBalanceState(StatesGroup):
     waiting_for_payment_confirmation_robokassa = State()
 
 
-robokassa = Robokassa(
-    merchant_login=ROBOKASSA_LOGIN,
-    password1=ROBOKASSA_PASSWORD1,
-    password2=ROBOKASSA_PASSWORD2,
-    algorithm=HashAlgorithm.md5,
-    is_test=ROBOKASSA_TEST_MODE,
-)
+if ROBOKASSA_ENABLE:
+    robokassa = Robokassa(
+        merchant_login=ROBOKASSA_LOGIN,
+        password1=ROBOKASSA_PASSWORD1,
+        password2=ROBOKASSA_PASSWORD2,
+        algorithm=HashAlgorithm.md5,
+        is_test=ROBOKASSA_TEST_MODE,
+    )
 
-logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
+    logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
 
 
 def generate_payment_link(amount, inv_id, description):

@@ -8,10 +8,10 @@ router = Router()
 
 
 @router.message(Command("start"))
-async def handle_start(message: types.Message, state: FSMContext):
-    await start_command(message)
+async def handle_start(message: types.Message, state: FSMContext, admin: bool = False):
+    await start_command(message, admin)
 
 
 @router.message(Command("menu"))
-async def handle_menu(message: types.Message, state: FSMContext):
-    await start_command(message)
+async def handle_menu(message: types.Message, state: FSMContext, admin: bool = False):
+    await start_command(message, admin)

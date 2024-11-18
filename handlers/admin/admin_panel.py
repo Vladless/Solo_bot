@@ -23,8 +23,13 @@ class UserEditorState(StatesGroup):
     displaying_user_info = State()
 
 
-@router.message(Command("admin"), IsAdminFilter())
-async def handle_admin_command(message: types.Message):
+@router.callback_query(F.data == "admin", IsAdminFilter())
+async def handle_admin_callback_query(callback_query: CallbackQuery):
+    await handle_admin_message(callback_query.message)
+
+
+@router.message(Command("admin"), F.data == "admin", IsAdminFilter())
+async def handle_admin_message(message: types.Message):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -49,6 +54,9 @@ async def handle_admin_command(message: types.Message):
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
     )
     await bot.send_message(
         message.chat.id, "🤖 Панель администратора", reply_markup=builder.as_markup()

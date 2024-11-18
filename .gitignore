@@ -50,4 +50,5 @@ handlers/texts.py
 Thumbs.db
 
 nginx.conf
-scripts/nginx.sh
+scripts
+models.py

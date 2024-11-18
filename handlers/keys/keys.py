@@ -56,7 +56,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                     "<i>👇 Выберите устройство для управления подпиской:</i>"
                 )
 
-                image_path = os.path.join(os.path.dirname(__file__), "pic_keys.jpg")
+                image_path = os.path.join("img", "pic_keys.jpg")
 
                 try:
                     await bot.delete_message(
@@ -104,7 +104,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery):
                 except Exception as e:
                     logger.error(f"Ошибка при удалении сообщения: {e}")
 
-                image_path = os.path.join(os.path.dirname(__file__), "pic_keys.jpg")
+                image_path = os.path.join("img", "pic_keys.jpg")
 
                 if os.path.isfile(image_path):
                     with open(image_path, "rb") as image_file:
@@ -231,7 +231,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery):
 
                 keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-                image_path = os.path.join(os.path.dirname(__file__), "pic_view.jpg")
+                image_path = os.path.join("img", "pic_view.jpg")
 
                 if not os.path.isfile(image_path):
                     await bot.send_message(tg_id, "Файл изображения не найден.")

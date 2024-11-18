@@ -1,4 +1,4 @@
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
@@ -13,23 +13,30 @@ class LoggingMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
+        user_info = self._extract_user_info(event)
+
+        logger.info(
+            f"Активность пользователя - "
+            f"ID пользователя: {user_info['user_id']}, "
+            f"Имя пользователя: {user_info['username']}, "
+            f"Действие: {user_info['action']}"
+        )
+        return await handler(event, data)
+
+    def _extract_user_info(self, event: TelegramObject) -> Dict[str, Optional[str]]:
         user_id = None
         username = None
         action = None
 
         if isinstance(event, Message):
-            user_id = event.from_user.id
-            username = event.from_user.username
+            user = event.from_user
+            user_id = user.id
+            username = user.username
             action = f"Сообщение: {event.text}"
         elif isinstance(event, CallbackQuery):
-            user_id = event.from_user.id
-            username = event.from_user.username
+            user = event.from_user
+            user_id = user.id
+            username = user.username
             action = f"Обратный вызов: {event.data}"
 
-        logger.info(
-            f"Активность пользователя - "
-            f"ID пользователя: {user_id}, "
-            f"Имя пользователя: {username}, "
-            f"Действие: {action}"
-        )
-        return await handler(event, data)
+        return {"user_id": user_id, "username": username, "action": action}

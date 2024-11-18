@@ -1,7 +1,6 @@
 import os
 
 from aiogram import F, Router
-from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -15,8 +14,8 @@ from logger import logger
 router = Router()
 
 
-async def send_welcome_message(chat_id: int, trial_status: int):
-    image_path = os.path.join(os.path.dirname(__file__), "pic.jpg")
+async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
+    image_path = os.path.join("img", "pic.jpg")
 
     builder = InlineKeyboardBuilder()
     if trial_status == 0:
@@ -26,6 +25,10 @@ async def send_welcome_message(chat_id: int, trial_status: int):
     builder.row(
         InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
     )
+    if admin:
+        builder.row(
+            InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+        )
     builder.row(
         InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
     )
@@ -52,8 +55,7 @@ async def send_welcome_message(chat_id: int, trial_status: int):
         )
 
 
-@router.message(Command("start"))
-async def start_command(message: Message):
+async def start_command(message: Message, admin: bool = False):
     logger.info(f"Received start command with text: {message.text}")
     if "referral_" in message.text:
         referrer_tg_id = int(message.text.split("referral_")[1])
@@ -66,7 +68,7 @@ async def start_command(message: Message):
             await message.answer("Вы уже зарегистрированы в системе!")
 
     trial_status = await get_trial(message.from_user.id)
-    await send_welcome_message(message.chat.id, trial_status)
+    await send_welcome_message(message.chat.id, trial_status, admin)
 
 
 @router.callback_query(F.data == "connect_vpn")
@@ -150,8 +152,8 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
 
 @router.callback_query(F.data == "back_to_menu")
-async def handle_back_to_menu(callback_query: CallbackQuery):
+async def handle_back_to_menu(callback_query: CallbackQuery, admin: bool = False):
     await callback_query.message.delete()
     trial_status = await get_trial(callback_query.from_user.id)
-    await send_welcome_message(callback_query.from_user.id, trial_status)
+    await send_welcome_message(callback_query.from_user.id, trial_status, admin)
     await callback_query.answer()

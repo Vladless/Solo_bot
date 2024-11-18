@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import create_coupon, delete_coupon_from_db, get_all_coupons
+from filters.admin import IsAdminFilter
 from logger import logger
 
 
@@ -15,7 +16,7 @@ class AdminCouponsState(StatesGroup):
 router = Router()
 
 
-@router.callback_query(F.data == "coupons_editor")
+@router.callback_query(F.data == "coupons_editor", IsAdminFilter())
 async def show_coupon_management_menu(callback_query: types.CallbackQuery):
     try:
         await callback_query.message.delete()
@@ -38,7 +39,7 @@ async def show_coupon_management_menu(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "coupons")
+@router.callback_query(F.data == "coupons", IsAdminFilter())
 async def show_coupon_list(callback_query: types.CallbackQuery):
     try:
         try:
@@ -99,7 +100,7 @@ async def show_coupon_list(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(F.data.startswith("delete_coupon_"))
+@router.callback_query(F.data.startswith("delete_coupon_"), IsAdminFilter())
 async def handle_delete_coupon(callback_query: types.CallbackQuery):
     coupon_code = callback_query.data[len("delete_coupon_") :]
 
@@ -127,24 +128,29 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery):
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "create_coupon")
+@router.callback_query(F.data == "create_coupon", IsAdminFilter())
 async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     try:
         await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+    markup = builder.as_markup()
+
     await callback_query.message.answer(
         "<b>Введите данные для создания купона в формате:</b>\n\n"
         "<i>код</i> <i>сумма</i> <i>лимит</i>\n\n"
         "Пример: <b>'COUPON1 50 5'</b>\n\n",
         parse_mode="HTML",
+        reply_markup=markup,
     )
     await state.set_state(AdminCouponsState.waiting_for_coupon_data)
     await callback_query.answer()
 
 
-@router.message(AdminCouponsState.waiting_for_coupon_data)
+@router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
 async def process_coupon_data(message: types.Message, state: FSMContext):
     text = message.text.strip()
 
@@ -202,6 +208,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "back_to_coupons_menu")
-async def back_to_coupons_menu(callback_query: types.CallbackQuery):
+async def back_to_coupons_menu(callback_query: types.CallbackQuery, state: FSMContext):
     """Возвращаем пользователя в меню управления купонами"""
+    await state.clear()
     await show_coupon_management_menu(callback_query)
