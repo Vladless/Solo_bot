@@ -295,12 +295,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
 
         await state.update_data(amount=amount)
 
-        payment_url = generate_payment_link(
-            amount,
-            inv_id,
-            "Пополнение баланса",
-            tg_id
-        )
+        payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
 
         logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
 
