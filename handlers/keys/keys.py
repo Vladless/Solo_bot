@@ -408,7 +408,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("renew_key|"))
 async def process_callback_renew_key(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split("|")[1]
+    key_name = callback_query.data.split("|")[1]
 
     try:
         try:
@@ -421,11 +421,18 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow(
-                "SELECT email, expiry_time FROM keys WHERE client_id = $1", client_id
+                """
+                SELECT client_id, expiry_time 
+                FROM keys 
+                WHERE email = $1
+                """,
+                key_name,
             )
 
             if record:
+                client_id = record["client_id"]
                 expiry_time = record["expiry_time"]
+
                 keyboard = types.InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
@@ -461,6 +468,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                 )
 
                 balance = await get_balance(tg_id)
+
                 response_message = PLAN_SELECTION_MSG.format(
                     balance=balance,
                     expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime(
@@ -474,8 +482,8 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                     reply_markup=keyboard,
                     parse_mode="HTML",
                 )
-
             else:
+                # Если ключ не найден
                 response_message = "<b>Ключ не найден.</b>"
                 await bot.send_message(
                     chat_id=tg_id, text=response_message, parse_mode="HTML"
@@ -497,17 +505,17 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
 @router.callback_query(F.data.startswith("confirm_delete|"))
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery):
     tg_id = callback_query.from_user.id
-    client_id = callback_query.data.split("|")[1]
+    email = callback_query.data.split("|")[1]
 
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             record = await conn.fetchrow(
-                "SELECT email FROM keys WHERE client_id = $1", client_id
+                "SELECT client_id FROM keys WHERE email = $1", email
             )
 
             if record:
-                email = record["email"]
+                client_id = record["client_id"]
                 response_message = "Ключ успешно удален."
                 back_button = types.InlineKeyboardButton(
                     text="Назад", callback_data="view_keys"
