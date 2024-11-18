@@ -17,7 +17,9 @@ router = Router()
 
 
 @router.callback_query(F.data == "coupons_editor", IsAdminFilter())
-async def show_coupon_management_menu(callback_query: types.CallbackQuery,state: FSMContext):
+async def show_coupon_management_menu(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     try:
         await callback_query.message.delete()
     except Exception as e:
@@ -159,9 +161,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext):
     parts = text.split()
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
     markup = builder.as_markup()
 
     if len(parts) != 3:
@@ -183,7 +183,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext):
             "<b>⚠️ Проверьте правильность введенных данных.</b>\n"
             "Сумма должна быть числом, а лимит — целым числом.",
             parse_mode="HTML",
-            reply_markup=markup,    
+            reply_markup=markup,
         )
         return
 

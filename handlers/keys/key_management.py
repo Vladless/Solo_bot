@@ -118,8 +118,10 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
 
 @dp.callback_query(F.data == "cancel_create_key")
-async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext):
-    await process_callback_view_profile(callback_query, state)
+async def cancel_create_key(
+    callback_query: CallbackQuery, state: FSMContext, admin: bool
+):
+    await process_callback_view_profile(callback_query, state, admin)
     await callback_query.answer()
 
 
@@ -291,6 +293,8 @@ async def handle_instructions(callback_query: CallbackQuery):
 
 
 @dp.callback_query(F.data == "back_to_main")
-async def handle_back_to_main(callback_query: CallbackQuery, state: FSMContext):
-    await process_callback_view_profile(callback_query, state)
+async def handle_back_to_main(
+    callback_query: CallbackQuery, state: FSMContext, admin: bool
+):
+    await process_callback_view_profile(callback_query, state, admin)
     await callback_query.answer()
