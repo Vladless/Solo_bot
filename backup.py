@@ -1,6 +1,7 @@
 import os
 import subprocess
 from datetime import datetime
+from typing import Union
 
 from aiogram.types import BufferedInputFile
 
@@ -11,6 +12,15 @@ from logger import logger
 async def backup_database():
     from bot import bot
 
+    try:
+        if backup_file_path := _create_database_backup():
+            await _send_backup_to_admin(bot, backup_file_path)
+            _cleanup_old_backups()
+    except Exception as e:
+        logger.error(f"Ошибка при создании или отправке бэкапа: {e}")
+
+
+def _create_database_backup():
     USER = DB_USER
     HOST = "localhost"
     BACKUP_DIR = BACK_DIR
@@ -25,25 +35,37 @@ async def backup_database():
             check=True,
         )
         logger.info(f"Бэкап базы данных создан: {BACKUP_FILE}")
+        return BACKUP_FILE
     except subprocess.CalledProcessError as e:
         logger.error(f"Ошибка при создании бэкапа базы данных: {e}")
-        return
+        return None
+    finally:
+        del os.environ["PGPASSWORD"]
 
+
+async def _send_backup_to_admin(bot, backup_file_path):
     try:
-        with open(BACKUP_FILE, "rb") as backup_file:
+        with open(backup_file_path, "rb") as backup_file:
             backup_input_file = BufferedInputFile(
-                backup_file.read(), filename=os.path.basename(BACKUP_FILE)
+                backup_file.read(), filename=os.path.basename(backup_file_path)
             )
-            await bot.send_document(ADMIN_ID, backup_input_file)
+            admin_ids: Union[int, list[int]] = ADMIN_ID
+            if isinstance(admin_ids, list):
+                for id in admin_ids:
+                    await bot.send_document(id, backup_input_file)
+            else:
+                await bot.send_document(admin_ids, backup_input_file)
         logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
     except Exception as e:
         logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
 
+
+def _cleanup_old_backups():
     try:
         subprocess.run(
             [
                 "find",
-                BACKUP_DIR,
+                BACK_DIR,
                 "-type",
                 "f",
                 "-name",
@@ -60,5 +82,3 @@ async def backup_database():
         logger.info("Старые бэкапы удалены.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Ошибка при удалении старых бэкапов: {e}")
-
-    del os.environ["PGPASSWORD"]

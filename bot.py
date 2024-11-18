@@ -2,8 +2,9 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
-from middlewares.database import DatabaseMiddleware
+from middlewares.admin import AdminMiddleware
 from middlewares.logging import LoggingMiddleware
+from middlewares.user import UserMiddleware
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -44,6 +45,8 @@ if ROBOKASSA_ENABLE:
 dp.message.middleware(LoggingMiddleware())
 dp.callback_query.middleware(LoggingMiddleware())
 
+dp.message.middleware(AdminMiddleware())
+dp.callback_query.middleware(AdminMiddleware())
 
-dp.message.middleware(DatabaseMiddleware())
-dp.callback_query.middleware(DatabaseMiddleware())
+dp.message.middleware(UserMiddleware())
+dp.callback_query.middleware(UserMiddleware())

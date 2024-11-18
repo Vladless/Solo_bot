@@ -51,6 +51,11 @@ async def process_callback_pay_stars(
     tg_id = callback_query.from_user.id
 
     builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
+        )
+    )
 
     for i in range(0, len(PAYMENT_OPTIONS), 2):
         if i + 1 < len(PAYMENT_OPTIONS):
@@ -74,11 +79,6 @@ async def process_callback_pay_stars(
     builder.row(
         InlineKeyboardButton(
             text="💰 Ввести свою сумму", callback_data="enter_custom_amount_stars"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
