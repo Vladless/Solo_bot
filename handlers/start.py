@@ -137,7 +137,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session):
 async def handle_about_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
-    about_vpn_message = get_about_vpn("3.1.0_Stable")
+    about_vpn_message = get_about_vpn("3.1.1_Stable")
 
     builder = InlineKeyboardBuilder()
     builder.row(
