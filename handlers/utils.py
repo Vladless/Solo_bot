@@ -72,7 +72,10 @@ async def get_least_loaded_cluster() -> str:
         logger.warning("No valid clusters found in config, returning 'cluster1'.")
         return "cluster1"
 
-    least_loaded_cluster = min(cluster_loads, key=cluster_loads.get)
+    least_loaded_cluster = min(
+        cluster_loads, key=lambda k: (cluster_loads.get(k, 0), k)
+    )
+
     logger.info(f"Least loaded cluster selected: {least_loaded_cluster}")
 
     return least_loaded_cluster
