@@ -483,7 +483,6 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery):
                     parse_mode="HTML",
                 )
             else:
-                # Если ключ не найден
                 response_message = "<b>Ключ не найден.</b>"
                 await bot.send_message(
                     chat_id=tg_id, text=response_message, parse_mode="HTML"
