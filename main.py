@@ -6,9 +6,9 @@ from aiohttp import web
 
 from backup import backup_database
 from bot import bot, dp, router
-from config import CRYPTO_BOT_ENABLE, DEV_MODE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
+from config import CRYPTO_BOT_ENABLE, DEV_MODE, FREEKASSA_ENABLE, LEGACY_ENABLE, ROBOKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
 from database import init_db
-from handlers.keys.subscriptions import handle_subscription
+from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
@@ -56,12 +56,10 @@ async def main():
     dp.include_router(router)
 
     if DEV_MODE:
-        # Запуск в режиме полинга для разработки
         await bot.delete_webhook()
         await init_db()
         await dp.start_polling(bot)
     else:
-        # Стандартный режим вебхука
         app = web.Application()
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
@@ -73,7 +71,10 @@ async def main():
             app.router.add_post("/cryptobot/webhook", cryptobot_webhook)
         if ROBOKASSA_ENABLE:
             app.router.add_post("/robokassa/webhook", robokassa_webhook)
-        app.router.add_get(f"{SUB_PATH}{{email}}", handle_subscription)
+        if LEGACY_ENABLE:
+            app.router.add_get(f"{SUB_PATH}{{email}}", handle_old_subscription)
+
+        app.router.add_get(f"{SUB_PATH}{{email}}/{{tg_id}}", handle_new_subscription)
 
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)

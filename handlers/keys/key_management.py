@@ -142,19 +142,19 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         logger.info(
-            f"Checking if key name '{key_name}' already exists in the database."
+            f"Checking if key name '{key_name}' already exists for user {tg_id} in the database."
         )
         existing_key = await conn.fetchrow(
-            "SELECT * FROM keys WHERE email = $1", key_name.lower()
+            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
+            key_name.lower(),
+            tg_id,
         )
         if existing_key:
             await message.bot.send_message(
                 tg_id,
                 "❌ Упс! Это имя уже используется. Выберите другое уникальное название для ключа.",
             )
-            logger.warning(
-                f"Key name '{key_name}' already exists in the database for user {tg_id}."
-            )
+            logger.warning(f"Key name '{key_name}' already exists for user {tg_id}.")
             await state.set_state(Form.waiting_for_key_name)
             return
     finally:
@@ -200,7 +200,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         logger.info(f"User {tg_id} balance deducted for key creation.")
 
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
-    public_link = f"{PUBLIC_LINK}{email}"
+    public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
     logger.info(f"Generated public link for the key: {public_link}")
 
