@@ -6,7 +6,6 @@ from middlewares.admin import AdminMiddleware
 from middlewares.database import DatabaseMiddleware
 from middlewares.logging import LoggingMiddleware
 from middlewares.user import UserMiddleware
-from middlewares.database import DatabaseMiddleware
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()

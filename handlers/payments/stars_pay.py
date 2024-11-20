@@ -6,7 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from config import RUB_TO_XTR
-from database import add_connection, check_connection_exists, get_key_count, update_balance
+from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
@@ -237,6 +237,7 @@ async def on_successful_payment(
         user_id = int(message.from_user.id)
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+        await add_payment(int(user_id), float(amount), "stars")
         await update_balance(user_id, amount)
         await send_payment_success_notification(user_id, amount)
     except ValueError as e:
