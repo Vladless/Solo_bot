@@ -12,7 +12,6 @@ from bot import bot
 from config import CLUSTERS, DATABASE_URL, TOTAL_GB
 from database import get_client_id_by_email, restore_trial, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.admin.admin_panel import back_to_admin_menu
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
 from logger import logger
@@ -74,9 +73,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
             )
         )
 
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
-        )
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
 
         user_info = (
             f"📊 Информация о пользователе:\n"
@@ -102,7 +99,7 @@ async def handle_restore_trial(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад в меню администратора", callback_data="back_to_user_editor"
+            text="🔙 Назад в меню администратора", callback_data="admin"
         )
     )
 
@@ -145,7 +142,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext):
         builder.row(
             InlineKeyboardButton(
                 text="🔙 Назад в меню администратора",
-                callback_data="back_to_user_editor",
+                callback_data="admin",
             )
         )
         await message.reply(
@@ -220,9 +217,7 @@ async def process_key_edit(callback_query: CallbackQuery):
                     ),
                 )
                 builder.row(
-                    InlineKeyboardButton(
-                        text="🔙 Назад", callback_data="back_to_user_editor"
-                    )
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="admin")
                 )
                 await callback_query.message.edit_text(
                     response_message,
@@ -269,7 +264,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
             builder.row(
                 InlineKeyboardButton(
                     text="🔙 Назад в меню администратора",
-                    callback_data="back_to_user_editor",
+                    callback_data="admin",
                 )
             )
 
@@ -319,9 +314,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext):
                 )
             )
 
-        key_buttons.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_user_editor")
-        )
+        key_buttons.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
 
         await message.reply(
             "\n".join(response_messages),
@@ -401,11 +394,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext):
             response_message = f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
 
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data="back_to_user_editor"
-                )
-            )
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
             await message.reply(
                 response_message, reply_markup=builder.as_markup(), parse_mode="HTML"
             )
@@ -536,8 +525,3 @@ async def delete_key_from_db(client_id):
         logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
     finally:
         await conn.close()
-
-
-@router.callback_query(F.data == "back_to_user_editor")
-async def back_to_user_editor(callback_query: CallbackQuery):
-    await back_to_admin_menu(callback_query)
