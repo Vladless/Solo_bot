@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from loguru import logger
+from logger import logger
 from robokassa import HashAlgorithm, Robokassa
 
 from bot import bot

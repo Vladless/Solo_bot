@@ -22,6 +22,7 @@ router = Router()
 async def process_donate(callback_query: types.CallbackQuery, state: FSMContext):
 
     try:
+        await state.clear()
         await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
@@ -54,7 +55,12 @@ async def process_donate(callback_query: types.CallbackQuery, state: FSMContext)
 async def process_enter_donate_amount(
     callback_query: types.CallbackQuery, state: FSMContext
 ):
-    await callback_query.message.edit_text(f"💸 Введите сумму доната в рублях:")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
+    await callback_query.message.edit_text(
+        f"💸 Введите сумму доната в рублях:", 
+        reply_markup=builder.as_markup()
+    )
     await state.set_state(DonateState.entering_donate_amount)
     await callback_query.answer()
 
