@@ -109,7 +109,7 @@ async def start_command(message: Message, admin: bool = False):
         await send_welcome_message(message.chat.id, trial_status, admin)
 
     except Exception as e:
-        logger.exception(
+        logger.error(
             f"Ошибка в обработке команды /start для user_id {message.from_user.id}: {e}"
         )
         await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")

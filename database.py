@@ -108,7 +108,7 @@ async def create_coupon(coupon_code: str, amount: float, usage_limit: int):
             usage_limit,
         )
     except Exception as e:
-        print(f"Ошибка при создании купона: {e}")
+        logger.error(f"Ошибка при создании купона: {e}")
         raise
     finally:
         await conn.close()
@@ -126,7 +126,7 @@ async def get_all_coupons():
         )
         return coupons
     except Exception as e:
-        print(f"Ошибка при получении купонов: {e}")
+        logger.error(f"Ошибка при получении купонов: {e}")
         return []
     finally:
         await conn.close()
@@ -157,7 +157,7 @@ async def delete_coupon_from_db(coupon_code: str):
         return True
 
     except Exception as e:
-        print(f"Ошибка при удалении купона: {e}")
+        logger.error(f"Ошибка при удалении купона: {e}")
         return False
     finally:
         await conn.close()
