@@ -5,6 +5,7 @@ from config import API_TOKEN, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENA
 from middlewares.admin import AdminMiddleware
 from middlewares.logging import LoggingMiddleware
 from middlewares.user import UserMiddleware
+from middlewares.database import DatabaseMiddleware
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -50,3 +51,6 @@ dp.callback_query.middleware(AdminMiddleware())
 
 dp.message.middleware(UserMiddleware())
 dp.callback_query.middleware(UserMiddleware())
+
+dp.message.middleware(DatabaseMiddleware())
+dp.callback_query.middleware(DatabaseMiddleware())
