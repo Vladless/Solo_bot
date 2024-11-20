@@ -3,6 +3,8 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from config import DATABASE_URL
@@ -112,9 +114,17 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
 async def send_message_to_all_clients(
     message: types.Message, state: FSMContext, from_panel=False
 ):
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     if from_panel:
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
         await message.answer(
-            "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам:"
+            "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам:",
+            reply_markup=builder.as_markup(),
         )
         await state.set_state(Form.waiting_for_message)
 
