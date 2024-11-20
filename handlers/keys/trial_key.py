@@ -18,7 +18,7 @@ async def create_trial_key(tg_id: int):
         client_id = str(uuid.uuid4())
         email = generate_random_email()
 
-        public_link = f"{PUBLIC_LINK}{email}"
+        public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
         instructions = INSTRUCTIONS
 
         result = {"key": public_link, "instructions": instructions}
