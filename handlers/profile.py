@@ -87,8 +87,6 @@ async def process_callback_view_profile(
             chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}"
         )
 
-    await callback_query.answer()
-
 
 @router.callback_query(F.data == "invite")
 async def invite_handler(callback_query: types.CallbackQuery):

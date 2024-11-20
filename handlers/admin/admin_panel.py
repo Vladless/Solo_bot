@@ -30,6 +30,12 @@ async def handle_admin_callback_query(callback_query: CallbackQuery):
 
 @router.message(Command("admin"), F.data == "admin", IsAdminFilter())
 async def handle_admin_message(message: types.Message):
+
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -104,9 +110,7 @@ async def user_stats_menu(callback_query: CallbackQuery):
 
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(
-                text="🔙 Вернуться в меню", callback_data="back_to_admin_menu"
-            )
+            InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin")
         )
 
         await callback_query.message.edit_text(
@@ -161,54 +165,9 @@ async def user_editor_menu(callback_query: CallbackQuery):
             text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Вернуться назад", callback_data="back_to_admin_menu"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="admin"))
     await callback_query.message.edit_text(
         "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
-    )
-
-
-@router.callback_query(F.data == "back_to_admin_menu", IsAdminFilter())
-async def back_to_admin_menu(callback_query: CallbackQuery):
-    try:
-        await callback_query.message.delete()
-    except Exception:
-        pass
-
-    tg_id = callback_query.from_user.id
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="📊 Статистика пользователей", callback_data="user_stats"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="👥 Управление пользователями", callback_data="user_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🎟️ Управление купонами", callback_data="coupons_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
-    )
-    await bot.send_message(
-        tg_id, "🤖 Панель администратора", reply_markup=builder.as_markup()
     )
 
 

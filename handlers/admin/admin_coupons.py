@@ -32,9 +32,7 @@ async def show_coupon_management_menu(
         InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon")
     )
     builder.row(InlineKeyboardButton(text="Купоны", callback_data="coupons"))
-    builder.row(
-        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin_menu")
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
 
     markup = builder.as_markup()
     await callback_query.message.answer(
