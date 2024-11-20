@@ -1,11 +1,12 @@
 import os
 
+import asyncpg
 from aiogram import F, Router
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
@@ -56,23 +57,66 @@ async def send_welcome_message(chat_id: int, trial_status: int, admin: bool):
 
 
 async def start_command(message: Message, admin: bool = False):
-    logger.info(f"Received start command with text: {message.text}")
-    if "referral_" in message.text:
-        referrer_tg_id = int(message.text.split("referral_")[1])
-        logger.info(f"Referral ID: {referrer_tg_id}")
-        if not await check_connection_exists(message.from_user.id):
-            await add_connection(message.from_user.id)
-            await add_referral(message.from_user.id, referrer_tg_id)
-            await message.answer("Вас пригласил друг, добро пожаловать!")
-        else:
-            await message.answer("Вы уже зарегистрированы в системе!")
+    try:
+        logger.info(
+            f"Получена команда /start. Текст сообщения: {message.text}, user_id: {message.from_user.id}"
+        )
 
-    trial_status = await get_trial(message.from_user.id)
-    await send_welcome_message(message.chat.id, trial_status, admin)
+        if "referral_" in message.text:
+            logger.info("Обнаружен реферальный код.")
+            try:
+                referrer_tg_id = int(message.text.split("referral_")[1])
+                logger.info(f"ID пригласившего пользователя: {referrer_tg_id}")
+            except ValueError:
+                logger.error("Ошибка парсинга реферального ID.")
+                await message.answer("Некорректный реферальный код.")
+                return
+
+            connection_exists = await check_connection_exists(message.from_user.id)
+            logger.info(
+                f"Результат проверки подключения для user_id {message.from_user.id}: {connection_exists}"
+            )
+
+            if not connection_exists:
+                logger.info(
+                    f"Добавляем подключение для пользователя: {message.from_user.id}"
+                )
+                await add_connection(message.from_user.id)
+
+                logger.info(
+                    f"Добавляем реферал для пользователя {message.from_user.id}, приглашённым {referrer_tg_id}"
+                )
+                await add_referral(message.from_user.id, referrer_tg_id)
+
+                await message.answer("Вас пригласил друг, добро пожаловать!")
+            else:
+                logger.warning(
+                    f"Пользователь {message.from_user.id} уже зарегистрирован."
+                )
+                await message.answer("Вы уже зарегистрированы в системе!")
+
+        logger.info(
+            f"Проверяем статус пробного периода для user_id {message.from_user.id}"
+        )
+        trial_status = await get_trial(message.from_user.id)
+        logger.info(
+            f"Статус пробного периода для user_id {message.from_user.id}: {trial_status}"
+        )
+
+        logger.info(
+            f"Отправка приветственного сообщения для user_id {message.from_user.id}"
+        )
+        await send_welcome_message(message.chat.id, trial_status, admin)
+
+    except Exception as e:
+        logger.exception(
+            f"Ошибка в обработке команды /start для user_id {message.from_user.id}: {e}"
+        )
+        await message.answer("Произошла ошибка. Пожалуйста, попробуйте позже.")
 
 
 @router.callback_query(F.data == "connect_vpn")
-async def handle_connect_vpn(callback_query: CallbackQuery, session):
+async def handle_connect_vpn(callback_query: CallbackQuery):
     await callback_query.message.delete()
     user_id = callback_query.from_user.id
 
@@ -82,16 +126,24 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session):
         await callback_query.message.answer(trial_key_info["error"])
     else:
         try:
-            result = await session.execute(
+
+            conn = await asyncpg.connect(DATABASE_URL)
+
+            result = await conn.execute(
                 """
                 UPDATE connections SET trial = 1 WHERE tg_id = $1
-            """,
+                """,
                 user_id,
             )
             logger.info(f"Rows updated: {result}")
 
+            await conn.close()
+
         except Exception as e:
             logger.error(f"Ошибка при обновлении trial: {e}")
+            await callback_query.message.answer(
+                "Произошла ошибка при обновлении статуса."
+            )
 
         key_message = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
@@ -103,22 +155,13 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session):
         builder.row(
             InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
         )
-
         builder.row(
-            InlineKeyboardButton(
-                text="🍏 Скачать для iOS",
-                url=DOWNLOAD_IOS,
-            ),
-            InlineKeyboardButton(
-                text="🤖 Скачать для Android",
-                url=DOWNLOAD_ANDROID,
-            ),
+            InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
+            InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
         )
-
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Подключить на iOS",
-                url=f'{CONNECT_IOS}{trial_key_info["key"]}',
+                text="🍏 Подключить на iOS", url=f'{CONNECT_IOS}{trial_key_info["key"]}'
             ),
             InlineKeyboardButton(
                 text="🤖 Подключить на Android",
