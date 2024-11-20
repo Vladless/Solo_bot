@@ -71,7 +71,7 @@ async def process_callback_pay_yookassa(
                 ),
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]},',
+                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
                 ),
             )
         else:

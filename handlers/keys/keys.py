@@ -283,7 +283,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
             if record:
                 expiry_time = record["expiry_time"]
                 client_id = record["client_id"]
-                public_link = f"{PUBLIC_LINK}{email}"
+                public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
                 try:
                     await conn.execute(
