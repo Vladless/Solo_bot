@@ -6,13 +6,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from logger import logger
 from robokassa import HashAlgorithm, Robokassa
 
 from bot import bot
 from config import ROBOKASSA_ENABLE, ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
-from database import add_connection, check_connection_exists, get_key_count, update_balance
+from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
+from logger import logger
 
 router = Router()
 
@@ -221,6 +221,8 @@ async def robokassa_webhook(request):
 
         await update_balance(int(tg_id), float(amount))
         await send_payment_success_notification(tg_id, float(amount))
+
+        await add_payment(int(tg_id), float(amount), "robokassa")
 
         logger.info(f"Payment successful. Balance updated for user {tg_id}.")
 

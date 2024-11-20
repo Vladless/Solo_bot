@@ -58,8 +58,7 @@ async def process_enter_donate_amount(
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
     await callback_query.message.edit_text(
-        f"💸 Введите сумму доната в рублях:", 
-        reply_markup=builder.as_markup()
+        f"💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup()
     )
     await state.set_state(DonateState.entering_donate_amount)
     await callback_query.answer()

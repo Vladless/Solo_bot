@@ -10,7 +10,7 @@ from yookassa import Configuration, Payment
 
 from bot import bot
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from database import add_connection, check_connection_exists, get_key_count, update_balance
+from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
@@ -224,6 +224,7 @@ async def yookassa_webhook(request):
             user_id = int(user_id_str)
             amount = float(amount_str)
             logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            await add_payment(int(user_id), float(amount), "yookassa")
             await update_balance(user_id, amount)
             await send_payment_success_notification(user_id, amount)
         except ValueError as e:

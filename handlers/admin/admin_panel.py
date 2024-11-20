@@ -71,6 +71,16 @@ async def user_stats_menu(callback_query: CallbackQuery):
         total_keys = await conn.fetchval("SELECT COUNT(*) FROM keys")
         total_referrals = await conn.fetchval("SELECT COUNT(*) FROM referrals")
 
+        total_payments_today = await conn.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE"
+        )
+        total_payments_week = await conn.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+        )
+        total_payments_all_time = await conn.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments"
+        )
+
         active_keys = await conn.fetchval(
             "SELECT COUNT(*) FROM keys WHERE expiry_time > $1",
             int(datetime.utcnow().timestamp() * 1000),
@@ -79,11 +89,17 @@ async def user_stats_menu(callback_query: CallbackQuery):
 
         stats_message = (
             f"📈 <b>Подробная статистика проекта:</b>\n\n"
-            f"👤 Зарегистрированных пользователей: <b>{total_users}</b>\n"
-            f"🔑 Всего сгенерированных ключей: <b>{total_keys}</b>\n"
-            f"🤝 Привлеченных рефералов: <b>{total_referrals}</b>\n"
-            f"✅ Действующих ключей: <b>{active_keys}</b>\n"
-            f"❌ Просроченных ключей: <b>{expired_keys}</b>"
+            f"👥 Пользователи:\n"
+            f"   • Зарегистрировано: <b>{total_users}</b>\n"
+            f"   • Привлеченных рефералов: <b>{total_referrals}</b>\n\n"
+            f"🔑 Ключи:\n"
+            f"   • Всего сгенерировано: <b>{total_keys}</b>\n"
+            f"   • Действующих: <b>{active_keys}</b>\n"
+            f"   • Просроченных: <b>{expired_keys}</b>\n\n"
+            f"💰 Финансовая статистика:\n"
+            f"   • За день: <b>{total_payments_today} ₽</b>\n"
+            f"   • За неделю: <b>{total_payments_week} ₽</b>\n"
+            f"   • За все время: <b>{total_payments_all_time} ₽</b>\n"
         )
 
         builder = InlineKeyboardBuilder()
@@ -98,7 +114,7 @@ async def user_stats_menu(callback_query: CallbackQuery):
         )
     finally:
         await conn.close()
-    await callback_query.answer()
+    # await callback_query.answer()
 
 
 @router.callback_query(F.data == "send_to_alls", IsAdminFilter())
@@ -187,6 +203,9 @@ async def back_to_admin_menu(callback_query: CallbackQuery):
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
     )
     await bot.send_message(
         tg_id, "🤖 Панель администратора", reply_markup=builder.as_markup()

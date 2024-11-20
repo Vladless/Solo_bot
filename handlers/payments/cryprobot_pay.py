@@ -8,7 +8,7 @@ from aiohttp import web
 
 from bot import bot
 from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
-from database import add_connection, check_connection_exists, get_key_count, update_balance
+from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
@@ -209,6 +209,7 @@ async def process_crypto_payment(payload):
         try:
             user_id = int(user_id_str)
             amount = int(amount_str)
+            await add_payment(int(user_id), float(amount), "cryptobot")
             logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
             await update_balance(user_id, amount)
             await send_payment_success_notification(user_id, amount)

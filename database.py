@@ -9,6 +9,21 @@ from logger import logger
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
 
+    # Таблица для хранения информации о платежах
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            tg_id BIGINT NOT NULL,
+            amount REAL NOT NULL,
+            payment_system TEXT NOT NULL,
+            status TEXT DEFAULT 'success',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
+        )
+        """
+    )
+
     # Таблица для хранения основной информации о пользователях из Telegram
     await conn.execute(
         """
@@ -489,5 +504,31 @@ async def upsert_user(
             """,
             tg_id,
         )
+    finally:
+        await conn.close()
+
+
+async def add_payment(tg_id: int, amount: float, payment_system: str):
+    """
+    Создает запись о платеже в базе данных.
+
+    Args:
+        tg_id (int): Уникальный идентификатор пользователя в Telegram
+        amount (float): Сумма платежа
+        payment_system (str): Система, через которую был совершен платеж
+    """
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        await conn.execute(
+            """
+            INSERT INTO payments (tg_id, amount, payment_system, status)
+            VALUES ($1, $2, $3, 'success')
+            """,
+            tg_id,
+            amount,
+            payment_system,
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении платежа: {e}")
     finally:
         await conn.close()

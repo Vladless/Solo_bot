@@ -14,7 +14,7 @@ from aiohttp import web
 
 from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
-from database import update_balance
+from database import add_payment, update_balance
 from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
@@ -86,6 +86,7 @@ async def freekassa_webhook(request):
     if data["status"] == "completed":
         user_id = data["metadata"]["user_id"]
         amount = float(data["amount"])
+        await add_payment(int(user_id), float(amount), "freekassa")
 
         await update_balance(user_id, amount)
         await send_payment_success_notification(user_id, amount)
