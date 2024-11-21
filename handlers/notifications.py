@@ -93,6 +93,7 @@ async def notify_10h_keys(
             email=email,
             expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
             days_left_message=days_left_message,
+            price=RENEWAL_PLANS["1"]["price"],
         )
 
         if not await is_bot_blocked(bot, tg_id):
