@@ -168,6 +168,11 @@ async def user_editor_menu(callback_query: CallbackQuery):
             text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
         )
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="🌐 Поиск по Username", callback_data="search_by_username"
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="admin"))
     await callback_query.message.edit_text(
         "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
