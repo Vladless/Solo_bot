@@ -94,18 +94,18 @@ async def user_stats_menu(callback_query: CallbackQuery):
         expired_keys = total_keys - active_keys
 
         stats_message = (
-            f"📈 <b>Подробная статистика проекта:</b>\n\n"
+            f"📊 <b>Подробная статистика проекта:</b>\n\n"
             f"👥 Пользователи:\n"
-            f"   • Зарегистрировано: <b>{total_users}</b>\n"
-            f"   • Привлеченных рефералов: <b>{total_referrals}</b>\n\n"
+            f"   🌐 Зарегистрировано: <b>{total_users}</b>\n"
+            f"   🤝 Привлеченных рефералов: <b>{total_referrals}</b>\n\n"
             f"🔑 Ключи:\n"
-            f"   • Всего сгенерировано: <b>{total_keys}</b>\n"
-            f"   • Действующих: <b>{active_keys}</b>\n"
-            f"   • Просроченных: <b>{expired_keys}</b>\n\n"
+            f"   🌈 Всего сгенерировано: <b>{total_keys}</b>\n"
+            f"   ✅ Действующих: <b>{active_keys}</b>\n"
+            f"   ❌ Просроченных: <b>{expired_keys}</b>\n\n"
             f"💰 Финансовая статистика:\n"
-            f"   • За день: <b>{total_payments_today} ₽</b>\n"
-            f"   • За неделю: <b>{total_payments_week} ₽</b>\n"
-            f"   • За все время: <b>{total_payments_all_time} ₽</b>\n"
+            f"   📅 За день: <b>{total_payments_today} ₽</b>\n"
+            f"   📆 За неделю: <b>{total_payments_week} ₽</b>\n"
+            f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n"
         )
 
         builder = InlineKeyboardBuilder()
