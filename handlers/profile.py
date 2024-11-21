@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot import bot
 from config import CHANNEL_URL
 from database import get_balance, get_key_count, get_referral_stats
-from handlers.texts import get_referral_link, invite_message_send, profile_message_send
+from handlers.texts import get_referral_link, invite_message_send, profile_message_send,RENEWAL_PLANS
 from logger import logger
 
 router = Router()
@@ -35,6 +35,9 @@ async def process_callback_view_profile(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
+        builder.row(
+            InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs")
+        )
         builder.row(
             InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
             InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
@@ -86,6 +89,31 @@ async def process_callback_view_profile(
         await bot.send_message(
             chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}"
         )
+
+
+@router.callback_query(F.data == "view_tariffs")
+async def view_tariffs_handler(callback_query: types.CallbackQuery):
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
+    )
+
+    await callback_query.message.answer(
+        "<b>🚀 Доступные тарифы VPN:</b>\n\n" + 
+        "\n".join([
+            f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
+            f"{RENEWAL_PLANS[months]['price']} "
+            f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
+            for months in sorted(RENEWAL_PLANS.keys(), key=int)
+        ]),
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+    await callback_query.answer()
 
 
 @router.callback_query(F.data == "invite")
