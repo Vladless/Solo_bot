@@ -21,6 +21,7 @@ router = Router()
 
 class UserEditorState(StatesGroup):
     waiting_for_tg_id = State()
+    waiting_for_username = State()
     displaying_user_info = State()
     waiting_for_new_balance = State()
     waiting_for_key_name = State()
@@ -33,12 +34,27 @@ async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
 
-@router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
-async def handle_tg_id_input(message: types.Message, state: FSMContext):
-    tg_id = int(message.text)
+@router.callback_query(F.data == "search_by_username", IsAdminFilter())
+async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_text("🔍 Введите Username клиента:")
+    await state.set_state(UserEditorState.waiting_for_username)
 
+
+@router.message(UserEditorState.waiting_for_username, IsAdminFilter())
+async def handle_username_input(message: types.Message, state: FSMContext):
+    username = message.text.strip()
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        user_record = await conn.fetchrow(
+            "SELECT tg_id FROM users WHERE username = $1", username
+        )
+
+        if not user_record:
+            await message.reply("🔍 Пользователь с указанным username не найден. 🚫")
+            await state.clear()
+            return
+
+        tg_id = user_record["tg_id"]
         balance = await conn.fetchval(
             "SELECT balance FROM connections WHERE tg_id = $1", tg_id
         )
@@ -73,7 +89,64 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext):
             )
         )
 
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+
+        user_info = (
+            f"📊 Информация о пользователе:\n"
+            f"💰 Баланс: <b>{balance}</b>\n"
+            f"👥 Количество рефералов: <b>{referral_count}</b>\n"
+            f"🔑 Ключи (для редактирования нажмите на ключ):"
+        )
+        await message.reply(
+            user_info, reply_markup=builder.as_markup(), parse_mode="HTML"
+        )
+        await state.set_state(UserEditorState.displaying_user_info)
+
+    finally:
+        await conn.close()
+
+
+@router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
+async def handle_tg_id_input(message: types.Message, state: FSMContext):
+    tg_id = int(message.text)
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        balance = await conn.fetchval(
+            "SELECT balance FROM connections WHERE tg_id = $1", tg_id
+        )
+        key_records = await conn.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+        referral_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
+        )
+
+        if balance is None:
+            await message.reply("❌ Пользователь с указанным tg_id не найден. 🔍")
+            await state.clear()
+            return
+
+        builder = InlineKeyboardBuilder()
+
+        for (email,) in key_records:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"🔑 {email}", callback_data=f"edit_key_{email}"
+                )
+            )
+
+        builder.row(
+            InlineKeyboardButton(
+                text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"
+            )
+        )
+
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"
+            )
+        )
+
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
         user_info = (
             f"📊 Информация о пользователе:\n"
