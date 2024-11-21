@@ -110,6 +110,9 @@ async def user_stats_menu(callback_query: CallbackQuery):
 
         builder = InlineKeyboardBuilder()
         builder.row(
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="user_stats")
+        )
+        builder.row(
             InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin")
         )
 
