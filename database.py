@@ -461,17 +461,6 @@ async def upsert_user(
     language_code: str = None,
     is_bot: bool = False,
 ):
-    """
-    Создает или обновляет информацию о пользователе в базе данных.
-
-    Args:
-        tg_id (int): Уникальный идентификатор пользователя в Telegram
-        username (str, optional): Никнейм пользователя
-        first_name (str, optional): Имя пользователя
-        last_name (str, optional): Фамилия пользователя
-        language_code (str, optional): Код языка пользователя
-        is_bot (bool, optional): Флаг, указывающий является ли пользователь ботом
-    """
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         await conn.execute(
@@ -494,29 +483,11 @@ async def upsert_user(
             language_code,
             is_bot,
         )
-
-        # Создаем запись в connections, если ее еще нет
-        await conn.execute(
-            """
-            INSERT INTO connections (tg_id, balance, trial)
-            VALUES ($1, 0.0, 0)
-            ON CONFLICT (tg_id) DO NOTHING
-            """,
-            tg_id,
-        )
     finally:
         await conn.close()
 
 
 async def add_payment(tg_id: int, amount: float, payment_system: str):
-    """
-    Создает запись о платеже в базе данных.
-
-    Args:
-        tg_id (int): Уникальный идентификатор пользователя в Telegram
-        amount (float): Сумма платежа
-        payment_system (str): Система, через которую был совершен платеж
-    """
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         await conn.execute(
