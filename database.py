@@ -216,7 +216,12 @@ async def check_connection_exists(tg_id: int):
 
 
 async def store_key(
-    tg_id: int, client_id: str, email: str, expiry_time: int, key: str, server_id: str
+    tg_id: int,
+    client_id: str,
+    email: str,
+    expiry_time: int,
+    key: str,
+    server_id: str,
 ):
     conn = await asyncpg.connect(DATABASE_URL)
     await conn.execute(
@@ -273,9 +278,7 @@ async def has_active_key(tg_id: int) -> bool:
 
 async def get_balance(tg_id: int) -> float:
     conn = await asyncpg.connect(DATABASE_URL)
-    balance = await conn.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     await conn.close()
     return balance if balance is not None else 0.0
 
@@ -378,7 +381,10 @@ async def get_referral_stats(referrer_tg_id: int):
 
     await conn.close()
 
-    return {"total_referrals": total_referrals, "active_referrals": active_referrals}
+    return {
+        "total_referrals": total_referrals,
+        "active_referrals": active_referrals,
+    }
 
 
 async def update_key_expiry(client_id: str, new_expiry_time: int):
@@ -445,9 +451,7 @@ async def get_client_id_by_email(email: str):
 async def get_tg_id_by_client_id(client_id: str):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        result = await conn.fetchrow(
-            "SELECT tg_id FROM keys WHERE client_id = $1", client_id
-        )
+        result = await conn.fetchrow("SELECT tg_id FROM keys WHERE client_id = $1", client_id)
         return result["tg_id"] if result else None
     finally:
         await conn.close()

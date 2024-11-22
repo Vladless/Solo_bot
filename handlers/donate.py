@@ -28,14 +28,11 @@ async def process_donate(callback_query: types.CallbackQuery, state: FSMContext)
         logger.error(f"Не удалось удалить сообщение: {e}")
 
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
     builder.row(
         InlineKeyboardButton(
-            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести сумму доната", callback_data="enter_custom_donate_amount"
+            text="💰 Ввести сумму доната",
+            callback_data="enter_custom_donate_amount",
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
@@ -52,14 +49,10 @@ async def process_donate(callback_query: types.CallbackQuery, state: FSMContext)
 
 
 @router.callback_query(F.data == "enter_custom_donate_amount")
-async def process_enter_donate_amount(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_enter_donate_amount(callback_query: types.CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
-    await callback_query.message.edit_text(
-        f"💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.edit_text(f"💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup())
     await state.set_state(DonateState.entering_donate_amount)
     await callback_query.answer()
 
@@ -75,9 +68,7 @@ async def process_donate_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount // RUB_TO_XTR <= 0:
-            await message.answer(
-                f"Сумма доната должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:"
-            )
+            await message.answer(f"Сумма доната должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:")
             return
 
         await state.update_data(amount=amount)
@@ -122,18 +113,12 @@ async def on_successful_donate(message: types.Message, state: FSMContext):
 
         if previous_message_id:
             try:
-                await bot.delete_message(
-                    chat_id=user_id, message_id=previous_message_id
-                )
+                await bot.delete_message(chat_id=user_id, message_id=previous_message_id)
             except Exception as e:
                 logger.error(f"Не удалось удалить сообщение: {e}")
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="Вернуться в профиль", callback_data="view_profile"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="Вернуться в профиль", callback_data="view_profile"))
 
         sent_message = await bot.send_message(
             chat_id=user_id,

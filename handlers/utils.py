@@ -56,11 +56,7 @@ async def get_least_loaded_cluster() -> str:
     logger.info(f"Cluster loads: {cluster_loads}")
 
     if not cluster_loads:
-        available_clusters = [
-            cluster_id
-            for cluster_id in CLUSTERS.keys()
-            if re.match(r"^cluster\d+$", cluster_id)
-        ]
+        available_clusters = [cluster_id for cluster_id in CLUSTERS.keys() if re.match(r"^cluster\d+$", cluster_id)]
 
         logger.info(f"Available clusters from config: {available_clusters}")
 
@@ -72,18 +68,14 @@ async def get_least_loaded_cluster() -> str:
         logger.warning("No valid clusters found in config, returning 'cluster1'.")
         return "cluster1"
 
-    least_loaded_cluster = min(
-        cluster_loads, key=lambda k: (cluster_loads.get(k, 0), k)
-    )
+    least_loaded_cluster = min(cluster_loads, key=lambda k: (cluster_loads.get(k, 0), k))
 
     logger.info(f"Least loaded cluster selected: {least_loaded_cluster}")
 
     return least_loaded_cluster
 
 
-async def handle_error(
-    tg_id: int, callback_query: Optional[object] = None, message: str = ""
-) -> None:
+async def handle_error(tg_id: int, callback_query: Optional[object] = None, message: str = "") -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
 
@@ -95,9 +87,7 @@ async def handle_error(
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
-                await bot.delete_message(
-                    chat_id=tg_id, message_id=callback_query.message.message_id
-                )
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 

@@ -29,22 +29,16 @@ class ReplenishBalanceState(StatesGroup):
     entering_custom_amount_yookassa = State()
 
 
-async def send_message_with_deletion(
-    chat_id, text, reply_markup=None, state=None, message_key="last_message_id"
-):
+async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key="last_message_id"):
     if state:
         try:
             state_data = await state.get_data()
             previous_message_id = state_data.get(message_key)
 
             if previous_message_id:
-                await bot.delete_message(
-                    chat_id=chat_id, message_id=previous_message_id
-                )
+                await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
 
-            sent_message = await bot.send_message(
-                chat_id=chat_id, text=text, reply_markup=reply_markup
-            )
+            sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
             await state.update_data({message_key: sent_message.message_id})
 
         except Exception as e:
@@ -55,9 +49,7 @@ async def send_message_with_deletion(
 
 
 @router.callback_query(F.data == "pay_yookassa")
-async def process_callback_pay_yookassa(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
     builder = InlineKeyboardBuilder()
@@ -83,7 +75,8 @@ async def process_callback_pay_yookassa(
             )
     builder.row(
         InlineKeyboardButton(
-            text="💰 Ввести свою сумму", callback_data="enter_custom_amount_yookassa"
+            text="💰 Ввести свою сумму",
+            callback_data="enter_custom_amount_yookassa",
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
@@ -96,9 +89,7 @@ async def process_callback_pay_yookassa(
             await add_connection(tg_id, balance=0.0, trial=0)
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
 
@@ -113,9 +104,7 @@ async def process_callback_pay_yookassa(
 
 
 @router.callback_query(F.data.startswith("yookassa_amount|"))
-async def process_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
@@ -140,9 +129,7 @@ async def process_amount_selection(
         return
 
     await state.update_data(amount=amount)
-    await state.set_state(
-        ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
-    )
+    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_yookassa)
 
     # state_data = await state.get_data()
     customer_name = callback_query.from_user.full_name
@@ -153,7 +140,10 @@ async def process_amount_selection(
     payment = Payment.create(
         {
             "amount": {"value": str(amount), "currency": "RUB"},
-            "confirmation": {"type": "redirect", "return_url": "https://pocomacho.ru/"},
+            "confirmation": {
+                "type": "redirect",
+                "return_url": "https://pocomacho.ru/",
+            },
             "capture": True,
             "description": "Пополнение баланса",
             "receipt": {
@@ -192,7 +182,9 @@ async def process_amount_selection(
         )
     else:
         await send_message_with_deletion(
-            callback_query.from_user.id, "Ошибка при создании платежа.", state=state
+            callback_query.from_user.id,
+            "Ошибка при создании платежа.",
+            state=state,
         )
 
     await callback_query.answer()
@@ -201,9 +193,7 @@ async def process_amount_selection(
 async def send_payment_success_notification(user_id: int, amount: float):
     try:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
-        )
+        builder.row(InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile"))
 
         await bot.send_message(
             chat_id=user_id,
@@ -234,9 +224,7 @@ async def yookassa_webhook(request):
 
 
 @router.callback_query(F.data == "enter_custom_amount_yookassa")
-async def process_enter_custom_amount(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_yookassa)
     await callback_query.answer()
@@ -247,15 +235,11 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount <= 0:
-            await message.answer(
-                "Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:"
-            )
+            await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
             return
 
         await state.update_data(amount=amount)
-        await state.set_state(
-            ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
-        )
+        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_yookassa)
 
         try:
             payment = Payment.create(
@@ -277,7 +261,10 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                             {
                                 "description": "Пополнение баланса",
                                 "quantity": "1.00",
-                                "amount": {"value": str(amount), "currency": "RUB"},
+                                "amount": {
+                                    "value": str(amount),
+                                    "currency": "RUB",
+                                },
                                 "vat_code": 6,
                             }
                         ],

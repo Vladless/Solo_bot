@@ -36,35 +36,28 @@ if ROBOKASSA_ENABLE:
 
 def generate_payment_link(amount, inv_id, description, tg_id):
     """Генерация ссылки на оплату."""
-    logger.debug(
-        f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}"
-    )
+    logger.debug(f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}")
     payment_link = robokassa._payment.link.generate_by_script(
-        out_sum=amount, inv_id=inv_id, description="пополнение баланса", id=f"{tg_id}"
+        out_sum=amount,
+        inv_id=inv_id,
+        description="пополнение баланса",
+        id=f"{tg_id}",
     )
     logger.info(f"Generated payment link: {payment_link}")
     return payment_link
 
 
-async def send_message_with_deletion(
-    chat_id, text, reply_markup=None, state=None, message_key="last_message_id"
-):
+async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key="last_message_id"):
     if state:
         try:
             state_data = await state.get_data()
             previous_message_id = state_data.get(message_key)
 
             if previous_message_id:
-                logger.debug(
-                    f"Deleting previous message with ID: {previous_message_id}"
-                )
-                await bot.delete_message(
-                    chat_id=chat_id, message_id=previous_message_id
-                )
+                logger.debug(f"Deleting previous message with ID: {previous_message_id}")
+                await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
 
-            sent_message = await bot.send_message(
-                chat_id=chat_id, text=text, reply_markup=reply_markup
-            )
+            sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
             await state.update_data({message_key: sent_message.message_id})
 
             logger.debug(f"Sent new message with ID: {sent_message.message_id}")
@@ -76,9 +69,7 @@ async def send_message_with_deletion(
 
 
 @router.callback_query(F.data == "pay_robokassa")
-async def process_callback_pay_robokassa(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     logger.info(f"User {tg_id} initiated Robokassa payment.")
 
@@ -104,7 +95,8 @@ async def process_callback_pay_robokassa(
             )
     builder.row(
         InlineKeyboardButton(
-            text="💰 Ввести свою сумму", callback_data="enter_custom_amount_robokassa"
+            text="💰 Ввести свою сумму",
+            callback_data="enter_custom_amount_robokassa",
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
@@ -118,9 +110,7 @@ async def process_callback_pay_robokassa(
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
         logger.debug(f"Deleted message with ID: {callback_query.message.message_id}")
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
@@ -136,9 +126,7 @@ async def process_callback_pay_robokassa(
 
 
 @router.callback_query(F.data.startswith("robokassa_amount|"))
-async def process_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     logger.info(f"Получены данные callback_data: {callback_query.data}")
 
     data = callback_query.data.split("|")
@@ -203,9 +191,7 @@ async def robokassa_webhook(request):
         shp_id = params.get("shp_id")
         signature_value = params.get("SignatureValue")
 
-        logger.info(
-            f"OutSum: {amount}, InvId: {inv_id}, shp_id: {shp_id}, SignatureValue: {signature_value}"
-        )
+        logger.info(f"OutSum: {amount}, InvId: {inv_id}, shp_id: {shp_id}, SignatureValue: {signature_value}")
 
         if not check_payment_signature(params):
             logger.error("Неверная подпись или данные запроса.")
@@ -244,9 +230,7 @@ def check_payment_signature(params):
 
     logger.info(f"Signature string before hashing: {signature_string}")
 
-    expected_signature = (
-        hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
-    )
+    expected_signature = hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
 
     logger.info(f"Expected signature: {expected_signature}")
     logger.info(f"Received signature: {signature_value}")
@@ -256,9 +240,7 @@ def check_payment_signature(params):
 
 async def send_payment_success_notification(user_id: int, amount: float):
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile"))
 
     await bot.send_message(
         chat_id=user_id,
@@ -269,18 +251,12 @@ async def send_payment_success_notification(user_id: int, amount: float):
 
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
-async def process_custom_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
-    await callback_query.message.edit_text(
-        text="Пожалуйста, введите сумму пополнения в рублях (например, 150):"
-    )
-    await state.set_state(
-        ReplenishBalanceState.waiting_for_payment_confirmation_robokassa
-    )
+    await callback_query.message.edit_text(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")
+    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
     await callback_query.answer()
 
 
@@ -315,6 +291,4 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         await state.clear()
     except ValueError as e:
         logger.error(f"Некорректная сумма от пользователя {tg_id}: {e}")
-        await message.answer(
-            text="Введите корректную сумму в рублях (целое положительное число)."
-        )
+        await message.answer(text="Введите корректную сумму в рублях (целое положительное число).")
