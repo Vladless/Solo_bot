@@ -69,31 +69,23 @@ async def start_command(message: Message, admin: bool = False):
                 logger.info(f"ID пригласившего пользователя: {referrer_tg_id}")
             except ValueError:
                 logger.error("Ошибка парсинга реферального ID.")
-                await message.answer("Некорректный реферальный код.")
                 return
 
             connection_exists = await check_connection_exists(message.from_user.id)
             logger.info(
                 f"Результат проверки подключения для user_id {message.from_user.id}: {connection_exists}"
             )
-
             if not connection_exists:
                 logger.info(
                     f"Добавляем подключение для пользователя: {message.from_user.id}"
                 )
                 await add_connection(message.from_user.id)
-
                 logger.info(
                     f"Добавляем реферал для пользователя {message.from_user.id}, приглашённым {referrer_tg_id}"
                 )
                 await add_referral(message.from_user.id, referrer_tg_id)
-
-                await message.answer("Вас пригласил друг, добро пожаловать!")
             else:
-                logger.warning(
-                    f"Пользователь {message.from_user.id} уже зарегистрирован."
-                )
-                await message.answer("Вы уже зарегистрированы в системе!")
+                logger.info(f"Пользователь {message.from_user.id} уже зарегистрирован.")
 
         logger.info(
             f"Проверяем статус пробного периода для user_id {message.from_user.id}"
