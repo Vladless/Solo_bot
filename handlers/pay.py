@@ -49,15 +49,9 @@ async def handle_pay(callback_query: CallbackQuery):
                 callback_data="pay_robokassa",
             )
         )
-    builder.row(
-        InlineKeyboardButton(
-            text="🎟️ Активировать купон", callback_data="activate_coupon"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🎟️ Активировать купон", callback_data="activate_coupon"))
 
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
 
     await callback_query.message.answer(
         "💸 <b>Выберите удобный способ пополнения баланса:</b>\n\n"

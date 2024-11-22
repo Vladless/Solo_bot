@@ -1,0 +1,27 @@
+[tool.black]
+line-length = 120 # Совпадает с flake8
+target-version = ['py39','py310','py311'] # Укажите версию Python вашего проекта
+skip-string-normalization = true # Отключает нормализацию кавычек
+include = '\.pyi?$' # Включает Python-файлы
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+''' # Исключает системные папки
+
+[tool.isort]
+profile = "black" # Устанавливает совместимость с black
+line_length = 120
+multi_line_output = 3 # Формат многострочных импортов
+include_trailing_comma = true # Совместимость с black
+force_sort_within_sections = true # Сортировка внутри секций
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+skip_gitignore = true # Учитывать .gitignore

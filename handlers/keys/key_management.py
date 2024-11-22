@@ -1,15 +1,23 @@
 import asyncio
-import uuid
 from datetime import datetime, timedelta
+import uuid
 
-import asyncpg
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+import asyncpg
 
 from bot import bot, dp
-from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
+from config import (
+    CONNECT_ANDROID,
+    CONNECT_IOS,
+    DATABASE_URL,
+    DOWNLOAD_ANDROID,
+    DOWNLOAD_IOS,
+    PUBLIC_LINK,
+    SUPPORT_CHAT_URL,
+)
 from database import add_connection, get_balance, store_key, update_balance
 from handlers.instructions.instructions import send_instructions
 from handlers.keys.key_utils import create_key_on_cluster
@@ -33,9 +41,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
     tg_id = callback_query.from_user.id
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
     except Exception:
         pass
 
@@ -71,18 +77,16 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext):
                             callback_data="confirm_create_new_key",
                         )
                     ],
-                    [
-                        InlineKeyboardButton(
-                            text="↩️ Назад", callback_data="cancel_create_key"
-                        )
-                    ],
+                    [InlineKeyboardButton(text="↩️ Назад", callback_data="cancel_create_key")],
                 ]
             ),
         )
         await state.update_data(creating_new_key=True)
     else:
         await bot.send_message(
-            chat_id=callback_query.from_user.id, text=KEY_TRIAL, parse_mode="HTML"
+            chat_id=callback_query.from_user.id,
+            text=KEY_TRIAL,
+            parse_mode="HTML",
         )
         await state.set_state(Form.waiting_for_key_name)
 
@@ -97,9 +101,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
     balance = await get_balance(tg_id)
     if balance < RENEWAL_PLANS["1"]["price"]:
-        replenish_button = InlineKeyboardButton(
-            text="Перейти в профиль", callback_data="view_profile"
-        )
+        replenish_button = InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
         await callback_query.message.edit_text(NULL_BALANCE, reply_markup=keyboard)
         await state.clear()
@@ -107,9 +109,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
     logger.info(f"Balance for user {tg_id} is sufficient. Asking for device name.")
 
-    await callback_query.message.edit_text(
-        "🔑 Пожалуйста, введите имя подключаемого устройства:"
-    )
+    await callback_query.message.edit_text("🔑 Пожалуйста, введите имя подключаемого устройства:")
     await state.set_state(Form.waiting_for_key_name)
     logger.info(f"State set to waiting_for_key_name for user {tg_id}")
     await state.update_data(creating_new_key=True)
@@ -118,9 +118,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
 
 @dp.callback_query(F.data == "cancel_create_key")
-async def cancel_create_key(
-    callback_query: CallbackQuery, state: FSMContext, admin: bool
-):
+async def cancel_create_key(callback_query: CallbackQuery, state: FSMContext, admin: bool):
     await process_callback_view_profile(callback_query, state, admin)
     await callback_query.answer()
 
@@ -133,17 +131,13 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     logger.info(f"User {tg_id} is attempting to create a key with the name: {key_name}")
 
     if not key_name:
-        await message.bot.send_message(
-            tg_id, "📝 Пожалуйста, назовите устройство на английском языке."
-        )
+        await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите устройство на английском языке.")
         logger.warning(f"User {tg_id} entered an invalid key name: {key_name}")
         return
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        logger.info(
-            f"Checking if key name '{key_name}' already exists for user {tg_id} in the database."
-        )
+        logger.info(f"Checking if key name '{key_name}' already exists for user {tg_id} in the database.")
         existing_key = await conn.fetchrow(
             "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
             key_name.lower(),
@@ -168,9 +162,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         logger.info(f"Checking trial status for user {tg_id}.")
-        existing_connection = await conn.fetchrow(
-            "SELECT trial FROM connections WHERE tg_id = $1", tg_id
-        )
+        existing_connection = await conn.fetchrow("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
     finally:
         await conn.close()
 
@@ -182,9 +174,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
     else:
         balance = await get_balance(tg_id)
         if balance < RENEWAL_PLANS["1"]["price"]:
-            replenish_button = InlineKeyboardButton(
-                text="Перейти в профиль", callback_data="view_profile"
-            )
+            replenish_button = InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
             await message.bot.send_message(
                 tg_id,
@@ -206,12 +196,8 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     button_support = InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL)
 
-    button_profile = InlineKeyboardButton(
-        text="👤 Личный кабинет", callback_data="view_profile"
-    )
-    button_iphone = InlineKeyboardButton(
-        text="🍏 Подключить", url=f"{CONNECT_IOS}{public_link}"
-    )
+    button_profile = InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
+    button_iphone = InlineKeyboardButton(text="🍏 Подключить", url=f"{CONNECT_IOS}{public_link}")
     button_android = InlineKeyboardButton(
         text="🤖 Подключить",
         url=f"{CONNECT_ANDROID}{public_link}",
@@ -238,9 +224,7 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
     logger.info(f"Sending key message to user {tg_id} with the public link.")
 
-    await message.bot.send_message(
-        tg_id, key_message, parse_mode="HTML", reply_markup=keyboard
-    )
+    await message.bot.send_message(tg_id, key_message, parse_mode="HTML", reply_markup=keyboard)
 
     try:
         least_loaded_cluster = await get_least_loaded_cluster()
@@ -263,13 +247,9 @@ async def handle_key_name_input(message: Message, state: FSMContext):
         conn = await asyncpg.connect(DATABASE_URL)
         try:
             logger.info(f"Updating trial status for user {tg_id} in the database.")
-            existing_connection = await conn.fetchrow(
-                "SELECT * FROM connections WHERE tg_id = $1", tg_id
-            )
+            existing_connection = await conn.fetchrow("SELECT * FROM connections WHERE tg_id = $1", tg_id)
             if existing_connection:
-                await conn.execute(
-                    "UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id
-                )
+                await conn.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
             else:
                 await add_connection(tg_id, 0, 1)
         finally:
@@ -277,7 +257,12 @@ async def handle_key_name_input(message: Message, state: FSMContext):
 
         logger.info(f"Storing key for user {tg_id} in the database.")
         await store_key(
-            tg_id, client_id, email, expiry_timestamp, public_link, least_loaded_cluster
+            tg_id,
+            client_id,
+            email,
+            expiry_timestamp,
+            public_link,
+            least_loaded_cluster,
         )
 
     except Exception as e:
@@ -293,8 +278,6 @@ async def handle_instructions(callback_query: CallbackQuery):
 
 
 @dp.callback_query(F.data == "back_to_main")
-async def handle_back_to_main(
-    callback_query: CallbackQuery, state: FSMContext, admin: bool
-):
+async def handle_back_to_main(callback_query: CallbackQuery, state: FSMContext, admin: bool):
     await process_callback_view_profile(callback_query, state, admin)
     await callback_query.answer()

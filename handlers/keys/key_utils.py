@@ -24,9 +24,7 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
             )
 
             conn = await asyncpg.connect(DATABASE_URL)
-            existing_key = await conn.fetchrow(
-                "SELECT 1 FROM keys WHERE email = $1", email
-            )
+            existing_key = await conn.fetchrow("SELECT 1 FROM keys WHERE email = $1", email)
 
             if existing_key:
                 raise ValueError(f"Email {email} уже существует в базе данных.")
@@ -72,16 +70,12 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 password=ADMIN_PASSWORD,
             )
 
-            tasks.append(
-                extend_client_key(xui, email, new_expiry_time, client_id, total_gb)
-            )
+            tasks.append(extend_client_key(xui, email, new_expiry_time, client_id, total_gb))
 
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(
-            f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
 
 
@@ -117,9 +111,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(
-            f"Не удалось удалить ключ {client_id} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"Не удалось удалить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
 
 
@@ -154,12 +146,8 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
 
         await asyncio.gather(*tasks)
 
-        logger.info(
-            f"Ключ успешно обновлен для {client_id} на всех серверах в кластере {cluster_id}"
-        )
+        logger.info(f"Ключ успешно обновлен для {client_id} на всех серверах в кластере {cluster_id}")
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при обновлении ключа на серверах кластера {cluster_id} для {client_id}: {e}"
-        )
+        logger.error(f"Ошибка при обновлении ключа на серверах кластера {cluster_id} для {client_id}: {e}")
         raise e

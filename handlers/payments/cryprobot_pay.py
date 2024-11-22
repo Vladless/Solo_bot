@@ -24,22 +24,16 @@ class ReplenishBalanceState(StatesGroup):
     entering_custom_amount_crypto = State()
 
 
-async def send_message_with_deletion(
-    chat_id, text, reply_markup=None, state=None, message_key="last_message_id"
-):
+async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key="last_message_id"):
     if state:
         try:
             state_data = await state.get_data()
             previous_message_id = state_data.get(message_key)
 
             if previous_message_id:
-                await bot.delete_message(
-                    chat_id=chat_id, message_id=previous_message_id
-                )
+                await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
 
-            sent_message = await bot.send_message(
-                chat_id=chat_id, text=text, reply_markup=reply_markup
-            )
+            sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
             await state.update_data({message_key: sent_message.message_id})
 
         except Exception as e:
@@ -50,9 +44,7 @@ async def send_message_with_deletion(
 
 
 @router.callback_query(F.data == "pay_cryptobot")
-async def process_callback_pay_cryptobot(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
 
     builder = InlineKeyboardBuilder()
@@ -78,7 +70,8 @@ async def process_callback_pay_cryptobot(
             )
     builder.row(
         InlineKeyboardButton(
-            text="💰 Ввести свою сумму", callback_data="enter_custom_amount_crypto"
+            text="💰 Ввести свою сумму",
+            callback_data="enter_custom_amount_crypto",
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
@@ -91,9 +84,7 @@ async def process_callback_pay_cryptobot(
             await add_connection(tg_id, balance=0.0, trial=0)
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
 
@@ -108,9 +99,7 @@ async def process_callback_pay_cryptobot(
 
 
 @router.callback_query(F.data.startswith("crypto_amount|"))
-async def process_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
@@ -152,9 +141,7 @@ async def process_amount_selection(
 
         if hasattr(invoice, "bot_invoice_url"):
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url)
-            )
+            builder.row(InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url))
             builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
             await bot.send_message(
                 chat_id=callback_query.from_user.id,
@@ -173,9 +160,7 @@ async def process_amount_selection(
 async def send_payment_success_notification(user_id: int, amount: float):
     try:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile")
-        )
+        builder.row(InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile"))
         await bot.send_message(
             chat_id=user_id,
             text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
@@ -193,9 +178,7 @@ async def cryptobot_webhook(request):
             await process_crypto_payment(data["payload"])
             return web.Response(status=200)
         else:
-            logger.warning(
-                f"Неподдерживаемый тип обновления: {data.get('update_type')}"
-            )
+            logger.warning(f"Неподдерживаемый тип обновления: {data.get('update_type')}")
             return web.Response(status=400)
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
@@ -220,9 +203,7 @@ async def process_crypto_payment(payload):
 
 
 @router.callback_query(F.data == "enter_custom_amount_crypto")
-async def process_enter_custom_amount(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_crypto)
     await callback_query.answer()
@@ -233,15 +214,11 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount // RUB_TO_USDT <= 0:
-            await message.answer(
-                f"Сумма должна быть больше {RUB_TO_USDT}. Пожалуйста, введите сумму еще раз:"
-            )
+            await message.answer(f"Сумма должна быть больше {RUB_TO_USDT}. Пожалуйста, введите сумму еще раз:")
             return
 
         await state.update_data(amount=amount)
-        await state.set_state(
-            ReplenishBalanceState.waiting_for_payment_confirmation_crypto
-        )
+        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_crypto)
         try:
             invoice = await crypto.create_invoice(
                 asset="USDT",
@@ -252,9 +229,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
 
             if hasattr(invoice, "bot_invoice_url"):
                 builder = InlineKeyboardBuilder()
-                builder.row(
-                    InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url)
-                )
+                builder.row(InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url))
                 builder.row(
                     InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"),
                 )
@@ -264,7 +239,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 )
             else:
                 await send_message_with_deletion(
-                    message.from_user.id, "Ошибка при создании платежа.", state=state
+                    message.from_user.id,
+                    "Ошибка при создании платежа.",
+                    state=state,
                 )
         except Exception as e:
             logger.error(f"Ошибка при создании платежа: {e}")

@@ -6,7 +6,19 @@ from aiohttp import web
 
 from backup import backup_database
 from bot import bot, dp, router
-from config import CRYPTO_BOT_ENABLE, DEV_MODE, FREEKASSA_ENABLE, LEGACY_ENABLE, ROBOKASSA_ENABLE, SUB_PATH, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL, YOOKASSA_ENABLE
+from config import (
+    CRYPTO_BOT_ENABLE,
+    DEV_MODE,
+    FREEKASSA_ENABLE,
+    LEGACY_ENABLE,
+    ROBOKASSA_ENABLE,
+    SUB_PATH,
+    WEBAPP_HOST,
+    WEBAPP_PORT,
+    WEBHOOK_PATH,
+    WEBHOOK_URL,
+    YOOKASSA_ENABLE,
+)
 from database import init_db
 from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
@@ -88,9 +100,7 @@ async def main():
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(
-                sig, lambda: asyncio.create_task(shutdown_site(site))
-            )
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_site(site)))
 
         try:
             await asyncio.Event().wait()

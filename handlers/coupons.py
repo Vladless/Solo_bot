@@ -1,11 +1,11 @@
 from datetime import datetime
 
-import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncpg
 
 from config import DATABASE_URL
 from database import update_balance
@@ -20,18 +20,14 @@ router = Router()
 
 
 @router.callback_query(F.data == "activate_coupon")
-async def handle_activate_coupon(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     try:
         await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
 
     await callback_query.message.answer(
         "<b>🎫 Введите код купона:</b>\n\n"
@@ -54,13 +50,9 @@ async def process_coupon_code(message: types.Message, state: FSMContext):
     activation_result = await activate_coupon(message.from_user.id, coupon_code)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile"))
 
-    await message.answer(
-        activation_result, reply_markup=builder.as_markup(), parse_mode="HTML"
-    )
+    await message.answer(activation_result, reply_markup=builder.as_markup(), parse_mode="HTML")
     await state.clear()
 
 
