@@ -1,6 +1,6 @@
+from datetime import datetime
 import os
 import subprocess
-from datetime import datetime
 from typing import Union
 
 from aiogram.types import BufferedInputFile
@@ -31,7 +31,18 @@ def _create_database_backup():
 
     try:
         subprocess.run(
-            ["pg_dump", "-U", USER, "-h", HOST, "-F", "c", "-f", BACKUP_FILE, DB_NAME],
+            [
+                "pg_dump",
+                "-U",
+                USER,
+                "-h",
+                HOST,
+                "-F",
+                "c",
+                "-f",
+                BACKUP_FILE,
+                DB_NAME,
+            ],
             check=True,
         )
         logger.info(f"Бэкап базы данных создан: {BACKUP_FILE}")
@@ -46,9 +57,7 @@ def _create_database_backup():
 async def _send_backup_to_admin(bot, backup_file_path):
     try:
         with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(
-                backup_file.read(), filename=os.path.basename(backup_file_path)
-            )
+            backup_input_file = BufferedInputFile(backup_file.read(), filename=os.path.basename(backup_file_path))
             admin_ids: Union[int, list[int]] = ADMIN_ID
             if isinstance(admin_ids, list):
                 for id in admin_ids:

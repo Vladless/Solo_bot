@@ -9,6 +9,21 @@ from logger import logger
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
 
+    # Таблица для хранения информации о платежах
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            tg_id BIGINT NOT NULL,
+            amount REAL NOT NULL,
+            payment_system TEXT NOT NULL,
+            status TEXT DEFAULT 'success',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
+        )
+        """
+    )
+
     # Таблица для хранения основной информации о пользователях из Telegram
     await conn.execute(
         """
@@ -108,7 +123,7 @@ async def create_coupon(coupon_code: str, amount: float, usage_limit: int):
             usage_limit,
         )
     except Exception as e:
-        print(f"Ошибка при создании купона: {e}")
+        logger.error(f"Ошибка при создании купона: {e}")
         raise
     finally:
         await conn.close()
@@ -126,7 +141,7 @@ async def get_all_coupons():
         )
         return coupons
     except Exception as e:
-        print(f"Ошибка при получении купонов: {e}")
+        logger.error(f"Ошибка при получении купонов: {e}")
         return []
     finally:
         await conn.close()
@@ -157,7 +172,7 @@ async def delete_coupon_from_db(coupon_code: str):
         return True
 
     except Exception as e:
-        print(f"Ошибка при удалении купона: {e}")
+        logger.error(f"Ошибка при удалении купона: {e}")
         return False
     finally:
         await conn.close()
@@ -201,7 +216,12 @@ async def check_connection_exists(tg_id: int):
 
 
 async def store_key(
-    tg_id: int, client_id: str, email: str, expiry_time: int, key: str, server_id: str
+    tg_id: int,
+    client_id: str,
+    email: str,
+    expiry_time: int,
+    key: str,
+    server_id: str,
 ):
     conn = await asyncpg.connect(DATABASE_URL)
     await conn.execute(
@@ -258,9 +278,7 @@ async def has_active_key(tg_id: int) -> bool:
 
 async def get_balance(tg_id: int) -> float:
     conn = await asyncpg.connect(DATABASE_URL)
-    balance = await conn.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     await conn.close()
     return balance if balance is not None else 0.0
 
@@ -363,7 +381,10 @@ async def get_referral_stats(referrer_tg_id: int):
 
     await conn.close()
 
-    return {"total_referrals": total_referrals, "active_referrals": active_referrals}
+    return {
+        "total_referrals": total_referrals,
+        "active_referrals": active_referrals,
+    }
 
 
 async def update_key_expiry(client_id: str, new_expiry_time: int):
@@ -430,9 +451,7 @@ async def get_client_id_by_email(email: str):
 async def get_tg_id_by_client_id(client_id: str):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        result = await conn.fetchrow(
-            "SELECT tg_id FROM keys WHERE client_id = $1", client_id
-        )
+        result = await conn.fetchrow("SELECT tg_id FROM keys WHERE client_id = $1", client_id)
         return result["tg_id"] if result else None
     finally:
         await conn.close()
@@ -446,17 +465,6 @@ async def upsert_user(
     language_code: str = None,
     is_bot: bool = False,
 ):
-    """
-    Создает или обновляет информацию о пользователе в базе данных.
-
-    Args:
-        tg_id (int): Уникальный идентификатор пользователя в Telegram
-        username (str, optional): Никнейм пользователя
-        first_name (str, optional): Имя пользователя
-        last_name (str, optional): Фамилия пользователя
-        language_code (str, optional): Код языка пользователя
-        is_bot (bool, optional): Флаг, указывающий является ли пользователь ботом
-    """
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         await conn.execute(
@@ -479,15 +487,23 @@ async def upsert_user(
             language_code,
             is_bot,
         )
+    finally:
+        await conn.close()
 
-        # Создаем запись в connections, если ее еще нет
+
+async def add_payment(tg_id: int, amount: float, payment_system: str):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
         await conn.execute(
             """
-            INSERT INTO connections (tg_id, balance, trial)
-            VALUES ($1, 0.0, 0)
-            ON CONFLICT (tg_id) DO NOTHING
+            INSERT INTO payments (tg_id, amount, payment_system, status)
+            VALUES ($1, $2, $3, 'success')
             """,
             tg_id,
+            amount,
+            payment_system,
         )
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении платежа: {e}")
     finally:
         await conn.close()

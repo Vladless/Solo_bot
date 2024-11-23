@@ -1,6 +1,6 @@
 import asyncio
-import uuid
 from datetime import datetime, timedelta
+import uuid
 
 import asyncpg
 from py3xui import AsyncApi
@@ -23,9 +23,7 @@ async def create_trial_key(tg_id: int):
 
         result = {"key": public_link, "instructions": instructions}
 
-        asyncio.create_task(
-            generate_and_store_keys(tg_id, client_id, email, public_link)
-        )
+        asyncio.create_task(generate_and_store_keys(tg_id, client_id, email, public_link))
 
         return result
 
@@ -33,9 +31,7 @@ async def create_trial_key(tg_id: int):
         await conn.close()
 
 
-async def generate_and_store_keys(
-    tg_id: int, client_id: str, email: str, public_link: str
-):
+async def generate_and_store_keys(tg_id: int, client_id: str, email: str, public_link: str):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         current_time = datetime.utcnow()

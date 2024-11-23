@@ -1,8 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
 
-import asyncpg
 from aiogram import Bot, Router, types
+import asyncpg
 from py3xui import AsyncApi
 
 from client import delete_client
@@ -22,9 +22,7 @@ async def notify_expiring_keys(bot: Bot):
         logger.info("Подключение к базе данных успешно.")
 
         current_time = datetime.utcnow().timestamp() * 1000
-        threshold_time_10h = (
-            datetime.utcnow() + timedelta(hours=10)
-        ).timestamp() * 1000
+        threshold_time_10h = (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000
         threshold_time_24h = (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000
 
         logger.info("Начало обработки уведомлений.")
@@ -48,19 +46,18 @@ async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id, bot.id)
         blocked = member.status == "left"
-        logger.info(
-            f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}"
-        )
+        logger.info(f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}")
         return blocked
     except Exception as e:
-        logger.warning(
-            f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
-        )
+        logger.warning(f"Не удалось проверить статус бота для пользователя {chat_id}: {e}")
         return False
 
 
 async def notify_10h_keys(
-    bot: Bot, conn: asyncpg.Connection, current_time: float, threshold_time_10h: float
+    bot: Bot,
+    conn: asyncpg.Connection,
+    current_time: float,
+    threshold_time_10h: float,
 ):
     records = await conn.fetch(
         """
@@ -93,6 +90,7 @@ async def notify_10h_keys(
             email=email,
             expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
             days_left_message=days_left_message,
+            price=RENEWAL_PLANS["1"]["price"],
         )
 
         if not await is_bot_blocked(bot, tg_id):
@@ -113,7 +111,8 @@ async def notify_10h_keys(
                         ],
                         [
                             types.InlineKeyboardButton(
-                                text="👤 Личный кабинет", callback_data="view_profile"
+                                text="👤 Личный кабинет",
+                                callback_data="view_profile",
                             )
                         ],
                     ]
@@ -121,9 +120,7 @@ async def notify_10h_keys(
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
-                logger.error(
-                    f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
-                )
+                logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
                 continue
 
             await conn.execute(
@@ -136,7 +133,10 @@ async def notify_10h_keys(
 
 
 async def notify_24h_keys(
-    bot: Bot, conn: asyncpg.Connection, current_time: float, threshold_time_24h: float
+    bot: Bot,
+    conn: asyncpg.Connection,
+    current_time: float,
+    threshold_time_24h: float,
 ):
     logger.info("Проверка истекших ключей...")
 
@@ -191,7 +191,8 @@ async def notify_24h_keys(
                         ],
                         [
                             types.InlineKeyboardButton(
-                                text="👤 Личный кабинет", callback_data="view_profile"
+                                text="👤 Личный кабинет",
+                                callback_data="view_profile",
                             )
                         ],
                     ]
@@ -199,18 +200,14 @@ async def notify_24h_keys(
                 await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
-                logger.error(
-                    f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}"
-                )
+                logger.error(f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}")
                 continue
 
             await conn.execute(
                 "UPDATE keys SET notified_24h = TRUE WHERE client_id = $1",
                 record["client_id"],
             )
-            logger.info(
-                f"Обновлено поле notified_24h для клиента {record['client_id']}."
-            )
+            logger.info(f"Обновлено поле notified_24h для клиента {record['client_id']}.")
 
         await asyncio.sleep(1)
 
@@ -248,30 +245,18 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             "💡 Не откладывайте подключение VPN!"
         )
         keyboard = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text="👤 Личный кабинет", callback_data="view_profile"
-                    )
-                ]
-            ]
+            inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")]]
         )
 
         try:
             if balance >= RENEWAL_PLANS["1"]["price"]:
                 await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-                new_expiry_time = int(
-                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
-                )
+                new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
                 await update_key_expiry(client_id, new_expiry_time)
 
                 for cluster_id in CLUSTERS:
-                    await renew_key_in_cluster(
-                        cluster_id, email, client_id, new_expiry_time, TOTAL_GB
-                    )
-                    logger.info(
-                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
-                    )
+                    await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
+                    logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
 
                 await conn.execute(
                     """
@@ -281,25 +266,15 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                     """,
                     client_id,
                 )
-                logger.info(
-                    f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}."
-                )
+                logger.info(f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}.")
                 try:
-                    await bot.send_message(
-                        tg_id, text=KEY_RENEWED, reply_markup=keyboard
-                    )
-                    logger.info(
-                        f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
-                    )
+                    await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+                    logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
                 except Exception as e:
-                    logger.error(
-                        f"Ошибка при отправке уведомления клиенту {tg_id}: {e}"
-                    )
+                    logger.error(f"Ошибка при отправке уведомления клиенту {tg_id}: {e}")
 
             else:
-                await safe_send_message(
-                    bot, tg_id, message_expired, reply_markup=keyboard
-                )
+                await safe_send_message(bot, tg_id, message_expired, reply_markup=keyboard)
                 await delete_key(client_id)
 
                 for cluster_id, cluster in CLUSTERS.items():
