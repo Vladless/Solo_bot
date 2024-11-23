@@ -140,10 +140,10 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
 
 
 @router.callback_query(F.data.startswith("restore_trial_"), IsAdminFilter())
-async def handle_restore_trial(callback_query: types.CallbackQuery):
+async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any):
     tg_id = int(callback_query.data.split("_")[2])
 
-    await restore_trial(tg_id)
+    await restore_trial(tg_id, session)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="admin"))

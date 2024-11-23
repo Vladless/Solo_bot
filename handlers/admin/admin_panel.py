@@ -40,7 +40,7 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     builder.row(InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls"))
     builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
     builder.row(InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot"))
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     await message.answer("🤖 Панель администратора", reply_markup=builder.as_markup())
 
 

@@ -6,7 +6,8 @@ import uuid
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
 from database import add_connection, get_balance, store_key, update_balance
@@ -41,19 +42,15 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext, sessio
     trial_status = existing_connection["trial"] if existing_connection else 0
 
     if trial_status == 1:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="✅ Да, подключить новое устройство", callback_data="confirm_create_new_key")
+        )
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
         await callback_query.message.answer(
             text=KEY,
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="✅ Да, подключить новое устройство",
-                            callback_data="confirm_create_new_key",
-                        )
-                    ],
-                    [InlineKeyboardButton(text="↩️ Назад", callback_data="profile")],
-                ]
-            ),
+            reply_markup=builder.as_markup(),
         )
         await state.update_data(creating_new_key=True)
     else:
@@ -69,9 +66,9 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
     balance = await get_balance(tg_id)
     if balance < RENEWAL_PLANS["1"]["price"]:
-        replenish_button = InlineKeyboardButton(text="Перейти в профиль", callback_data="profile")
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
-        await callback_query.message.edit_text(NULL_BALANCE, reply_markup=keyboard)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        await callback_query.message.edit_text(NULL_BALANCE, reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -125,11 +122,11 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     else:
         balance = await get_balance(tg_id)
         if balance < RENEWAL_PLANS["1"]["price"]:
-            replenish_button = InlineKeyboardButton(text="Перейти в профиль", callback_data="profile")
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[replenish_button]])
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
             await message.answer(
                 "💳 Недостаточно средств для создания подписки на новое устройство. Пополните баланс в личном кабинете.",
-                reply_markup=keyboard,
+                reply_markup=builder.as_markup(),
             )
             logger.warning(f"User {tg_id} has insufficient funds for key creation.")
             await state.clear()
@@ -144,29 +141,17 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
 
     logger.info(f"Generated public link for the key: {public_link}")
 
-    button_support = InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL)
-
-    button_profile = InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    button_iphone = InlineKeyboardButton(text="🍏 Подключить", url=f"{CONNECT_IOS}{public_link}")
-    button_android = InlineKeyboardButton(
-        text="🤖 Подключить",
-        url=f"{CONNECT_ANDROID}{public_link}",
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.row(
+        InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
+        InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
     )
-
-    button_download_ios = InlineKeyboardButton(text="🍏 Скачать", url=DOWNLOAD_IOS)
-    button_download_android = InlineKeyboardButton(
-        text="🤖 Скачать",
-        url=DOWNLOAD_ANDROID,
+    builder.row(
+        InlineKeyboardButton(text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{public_link}"),
+        InlineKeyboardButton(text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{public_link}"),
     )
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [button_support],
-            [button_download_ios, button_download_android],
-            [button_iphone, button_android],
-            [button_profile],
-        ]
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     remaining_time = expiry_time - current_time
     days = remaining_time.days
@@ -174,7 +159,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
 
     logger.info(f"Sending key message to user {tg_id} with the public link.")
 
-    await message.answer(key_message, reply_markup=keyboard)
+    await message.answer(key_message, reply_markup=builder.as_markup())
 
     try:
         least_loaded_cluster = await get_least_loaded_cluster()

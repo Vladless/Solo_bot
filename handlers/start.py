@@ -8,30 +8,32 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
-from database import add_connection, add_referral, check_connection_exists, get_trial, restore_trial
+from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
+from logger import logger
 
 router = Router()
 
 
 @router.callback_query(F.data == "start")
-async def handle_start_callback_query(callback_query: CallbackQuery, state: FSMContext):
-    await start_command(callback_query.message, state)
+async def handle_start_callback_query(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
+    await start_command(callback_query.message, state, session, admin)
 
 
 @router.message(Command("start"))
-async def start_command(message: Message, admin: bool):
+async def start_command(message: Message, state: FSMContext, session: Any, admin: bool):
     if message.text:
         try:
             referrer_tg_id = int(message.text.split("referral_")[1])
-            await add_referral(message.from_user.id, referrer_tg_id)
-        except (ValueError,IndexError):
+            await add_referral(message.from_user.id, referrer_tg_id, session)
+        except (ValueError, IndexError):
             pass
         connection_exists = await check_connection_exists(message.from_user.id)
         if not connection_exists:
-            await add_connection(message.from_user.id)
-    trial_status = await get_trial(message.from_user.id)
+            await add_connection(message.from_user.id, session)
+    trial_status = await get_trial(message.from_user.id, session)
+    logger.info(f'trial_status {trial_status}')
     image_path = os.path.join("img", "pic.jpg")
 
     builder = InlineKeyboardBuilder()
@@ -71,7 +73,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
     if "error" in trial_key_info:
         await callback_query.message.answer(trial_key_info["error"])
     else:
-        await restore_trial(user_id)
+        await use_trial(user_id, session)
 
         key_message = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"

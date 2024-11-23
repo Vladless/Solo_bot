@@ -5,7 +5,8 @@ import os
 from typing import Any
 
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CLUSTERS, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, TOTAL_GB
 from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
@@ -44,20 +45,14 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery, sessio
         )
 
         if records:
-            buttons = []
+            builder = InlineKeyboardBuilder()
             for record in records:
                 key_name = record["email"]
-                button = types.InlineKeyboardButton(
-                    text=f"🔑 {key_name}",
-                    callback_data=f"view_key|{key_name}",
-                )
+                builder.row(InlineKeyboardButton(text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"))
 
-                buttons.append([button])
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            back_button = types.InlineKeyboardButton(text="🔙 Назад", callback_data="profile")
-            buttons.append([back_button])
-
-            inline_keyboard = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+            inline_keyboard = builder.as_markup()
             response_message = (
                 "<b>🔑 Список ваших устройств</b>\n\n" "<i>👇 Выберите устройство для управления подпиской:</i>"
             )
@@ -78,10 +73,11 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery, sessio
 
         else:
             response_message = NO_KEYS
-            create_key_button = types.InlineKeyboardButton(text="➕ Создать подписку", callback_data="create_key")
-            back_button = types.InlineKeyboardButton(text="🔙 Назад", callback_data="profile")
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="➕ Создать подписку", callback_data="create_key"))
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[create_key_button], [back_button]])
+            keyboard = builder.as_markup()
 
             image_path = os.path.join("img", "pic_keys.jpg")
 
@@ -135,38 +131,33 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
             formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
             response_message = key_message(key, formatted_expiry_date, days_left_message, server_name)
 
-            download_android_button = types.InlineKeyboardButton(text="🤖 Скачать", url=DOWNLOAD_ANDROID)
-            download_iphone_button = types.InlineKeyboardButton(text="🍏 Скачать", url=DOWNLOAD_IOS)
+            builder = InlineKeyboardBuilder()
 
-            connect_iphone_button = types.InlineKeyboardButton(text="🍏 Подключить", url=f"{CONNECT_IOS}{key}")
-            connect_android_button = types.InlineKeyboardButton(text="🤖 Подключить", url=f"{CONNECT_ANDROID}{key}")
-
-            connect_pc_button = types.InlineKeyboardButton(
-                text="💻 Windows/Linux",
-                callback_data=f"connect_pc|{key_name}",
+            builder.row(
+                InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
+                InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
             )
 
-            renew_button = types.InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}")
-            delete_button = types.InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}")
-            back_button = types.InlineKeyboardButton(text="🔙 Назад в профиль", callback_data="profile")
+            builder.row(
+                InlineKeyboardButton(text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{key}"),
+                InlineKeyboardButton(text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{key}"),
+            )
 
-            inline_keyboard = [
-                [download_iphone_button, download_android_button],
-                [connect_iphone_button, connect_android_button],
-                [connect_pc_button],
-                [renew_button, delete_button],
-            ]
+            builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{key_name}"))
+
+            builder.row(
+                InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
+                InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
+            )
 
             if not key.startswith(PUBLIC_LINK):
-                update_subscription_button = types.InlineKeyboardButton(
-                    text="🔄 Обновить подписку",
-                    callback_data=f"update_subscription|{key_name}",
+                builder.row(
+                    InlineKeyboardButton(text="🔄 Обновить подписку", callback_data=f"update_subscription|{key_name}")
                 )
-                inline_keyboard.append([update_subscription_button])
 
-            inline_keyboard.append([back_button])
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
+            keyboard = builder.as_markup()
 
             image_path = os.path.join("img", "pic_view.jpg")
 
@@ -251,12 +242,12 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 server_id=least_loaded_cluster_id,
             )
             response_message = f"Ваша подписка {email} обновлена!"
-            back_button = types.InlineKeyboardButton(text="🔙 Назад в профиль", callback_data="profile")
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             await callback_query.message.answer(
                 response_message,
-                reply_markup=keyboard,
+                reply_markup=builder.as_markup(),
             )
         else:
             await callback_query.message.answer(
@@ -309,36 +300,31 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
             client_id = record["client_id"]
             expiry_time = record["expiry_time"]
 
-            keyboard = types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        types.InlineKeyboardButton(
-                            text=f'📅 1 месяц ({RENEWAL_PLANS["1"]["price"]} руб.)',
-                            callback_data=f"renew_plan|1|{client_id}",
-                        )
-                    ],
-                    [
-                        types.InlineKeyboardButton(
-                            text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.)',
-                            callback_data=f"renew_plan|3|{client_id}",
-                        )
-                    ],
-                    [
-                        types.InlineKeyboardButton(
-                            text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.)',
-                            callback_data=f"renew_plan|6|{client_id}",
-                        )
-                    ],
-                    [
-                        types.InlineKeyboardButton(
-                            text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.)',
-                            callback_data=f"renew_plan|12|{client_id}",
-                        )
-                    ],
-                    [types.InlineKeyboardButton(text="🔙 Назад", callback_data="profile")],
-                ]
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(
+                    text=f'📅 1 месяц ({RENEWAL_PLANS["1"]["price"]} руб.)',
+                    callback_data=f"renew_plan|1|{client_id}",
+                )
             )
-
+            builder.row(
+                InlineKeyboardButton(
+                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.)',
+                    callback_data=f"renew_plan|3|{client_id}",
+                )
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.)',
+                    callback_data=f"renew_plan|6|{client_id}",
+                )
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.)',
+                    callback_data=f"renew_plan|12|{client_id}",
+                )
+            )
             balance = await get_balance(tg_id)
 
             response_message = PLAN_SELECTION_MSG.format(
@@ -348,7 +334,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
             await callback_query.message.answer(
                 text=response_message,
-                reply_markup=keyboard,
+                reply_markup=builder.as_markup(),
             )
         else:
             await callback_query.message.answer("<b>Ключ не найден.</b>")
@@ -434,21 +420,21 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
 
             balance = await get_balance(tg_id)
             if balance < cost:
-                replenish_button = types.InlineKeyboardButton(text="Пополнить баланс", callback_data="pay")
-                view_profile = types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[replenish_button], [view_profile]])
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="Пополнить баланс", callback_data="pay"))
+                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
                 await callback_query.message.answer(
                     INSUFFICIENT_FUNDS_MSG,
-                    reply_markup=keyboard,
+                    reply_markup=builder.as_markup(),
                 )
                 return
 
             response_message = SUCCESS_RENEWAL_MSG.format(months=RENEWAL_PLANS[plan]["months"])
-            back_button = types.InlineKeyboardButton(text="Назад", callback_data="profile")
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            await callback_query.message.answer(response_message, reply_markup=keyboard)
+            await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
 
             async def renew_key_on_servers():
                 tasks = []
