@@ -4,9 +4,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot import bot
 from config import RUB_TO_XTR
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
@@ -17,25 +17,6 @@ class ReplenishBalanceState(StatesGroup):
     choosing_amount_stars = State()
     waiting_for_payment_confirmation_stars = State()
     entering_custom_amount_stars = State()
-
-
-async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key="last_message_id"):
-    if state:
-        try:
-            state_data = await state.get_data()
-            previous_message_id = state_data.get(message_key)
-
-            if previous_message_id:
-                await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
-
-            sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-            await state.update_data({message_key: sent_message.message_id})
-
-        except Exception as e:
-            logger.error(f"Ошибка при удалении/отправке сообщения: {e}")
-            return None
-
-    return sent_message
 
 
 @router.callback_query(F.data == "pay_stars")
@@ -84,14 +65,12 @@ async def process_callback_pay_stars(callback_query: types.CallbackQuery, state:
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
 
-    await bot.send_message(
-        chat_id=tg_id,
+    await callback_query.message.answer(
         text="Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),
     )
 
     await state.set_state(ReplenishBalanceState.choosing_amount_stars)
-    await callback_query.answer()
 
 
 @router.callback_query(F.data.startswith("stars_amount|"))
@@ -146,27 +125,11 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         logger.error(f"Ошибка при создании платежа: {e}")
         await callback_query.message.answer("Произошла ошибка при создании платежа.")
 
-    await callback_query.answer()
-
-
-async def send_payment_success_notification(user_id: int, amount: float):
-    try:
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile"))
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
-            reply_markup=builder.as_markup(),
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
-
 
 @router.callback_query(F.data == "enter_custom_amount_stars")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_stars)
-    await callback_query.answer()
 
 
 @router.message(ReplenishBalanceState.entering_custom_amount_stars)

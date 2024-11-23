@@ -12,9 +12,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 import requests
 
-from bot import bot
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import add_payment, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 
 router = Router()
@@ -65,16 +65,6 @@ async def create_payment(user_id, amount, email, ip):
         return None
 
 
-async def send_payment_success_notification(user_id, amount):
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
-        )
-    except Exception as e:
-        logging.error(f"Ошибка при отправке уведомления пользователю {user_id}: {e}")
-
-
 async def freekassa_webhook(request):
     data = await request.json()
     logging.debug(f"Получен вебхук от FreeKassa: {data}")
@@ -94,8 +84,6 @@ async def freekassa_webhook(request):
 
 @router.callback_query(lambda c: c.data == "pay_freekassa")
 async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.from_user.id
-
     builder = InlineKeyboardBuilder()
     for i in range(0, len(PAYMENT_OPTIONS), 2):
         if i + 1 < len(PAYMENT_OPTIONS):
@@ -124,16 +112,12 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
 
-    await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
-
-    await bot.send_message(
-        chat_id=tg_id,
+    await callback_query.message.answer(
         text="Выберите сумму пополнения через FreeKassa:",
         reply_markup=builder.as_markup(),
     )
 
     await state.set_state(ReplenishBalanceState.choosing_amount_freekassa)
-    await callback_query.answer()
 
 
 @router.callback_query(F.data.startswith("freekassa_amount|"))
@@ -143,7 +127,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     try:
         amount = int(amount_str)
     except ValueError:
-        await bot.send_message(callback_query.from_user.id, "Некорректная сумма.")
+        await callback_query.message.answer("Некорректная сумма.")
         return
 
     user_email = f"{callback_query.from_user.id}@solo.net"
@@ -158,25 +142,20 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             ]
         )
 
-        await bot.send_message(
-            callback_query.from_user.id,
+        await callback_query.message.answer(
             f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
             reply_markup=confirm_keyboard,
         )
     else:
-        await bot.send_message(
-            callback_query.from_user.id,
+        await callback_query.message.answer(
             "Ошибка при создании платежа. Попробуйте позже.",
         )
-
-    await callback_query.answer()
 
 
 @router.callback_query(F.data == "enter_custom_amount_freekassa")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_freekassa)
-    await callback_query.answer()
 
 
 @router.message(ReplenishBalanceState.entering_custom_amount_freekassa)

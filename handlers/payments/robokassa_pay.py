@@ -8,9 +8,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from robokassa import HashAlgorithm, Robokassa
 
-from bot import bot
 from config import ROBOKASSA_ENABLE, ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
@@ -45,27 +45,6 @@ def generate_payment_link(amount, inv_id, description, tg_id):
     )
     logger.info(f"Generated payment link: {payment_link}")
     return payment_link
-
-
-async def send_message_with_deletion(chat_id, text, reply_markup=None, state=None, message_key="last_message_id"):
-    if state:
-        try:
-            state_data = await state.get_data()
-            previous_message_id = state_data.get(message_key)
-
-            if previous_message_id:
-                logger.debug(f"Deleting previous message with ID: {previous_message_id}")
-                await bot.delete_message(chat_id=chat_id, message_id=previous_message_id)
-
-            sent_message = await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-            await state.update_data({message_key: sent_message.message_id})
-
-            logger.debug(f"Sent new message with ID: {sent_message.message_id}")
-        except Exception as e:
-            logger.error(f"Ошибка при удалении/отправке сообщения: {e}")
-            return None
-
-    return sent_message
 
 
 @router.callback_query(F.data == "pay_robokassa")
@@ -109,20 +88,12 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
             await add_connection(tg_id, balance=0.0, trial=0)
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
-    try:
-        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
-        logger.debug(f"Deleted message with ID: {callback_query.message.message_id}")
-    except Exception as e:
-        logger.error(f"Не удалось удалить сообщение: {e}")
-
-    await bot.send_message(
-        chat_id=tg_id,
+    await callback_query.message.answer(
         text="Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),
     )
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
     logger.info(f"Displayed amount selection for user {tg_id}.")
-    await callback_query.answer()
 
 
 @router.callback_query(F.data.startswith("robokassa_amount|"))
@@ -132,12 +103,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     data = callback_query.data.split("|")
     if len(data) != 3 or data[1] != "amount":
         logger.error("Ошибка: callback_data не соответствует формату.")
-        await send_message_with_deletion(
-            chat_id=callback_query.from_user.id,
-            text="Неверные данные для выбора суммы.",
-            state=state,
-        )
-        await callback_query.answer("Ошибка: данные повреждены.")
+        await callback_query.message.answer("Ошибка: данные повреждены.")
         return
 
     amount_str = data[2]
@@ -147,12 +113,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             raise ValueError("Сумма должна быть положительным числом.")
     except ValueError as e:
         logger.error(f"Некорректное значение суммы: {amount_str}. Ошибка: {e}")
-        await send_message_with_deletion(
-            chat_id=callback_query.from_user.id,
-            text="Некорректная сумма. Попробуйте снова.",
-            state=state,
-        )
-        await callback_query.answer("Некорректная сумма.")
+        await callback_query.message.answer("Некорректная сумма.")
         return
 
     await state.update_data(amount=amount)
@@ -176,7 +137,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         reply_markup=confirm_keyboard,
     )
     logger.info(f"Payment link sent to user {callback_query.from_user.id}.")
-    await callback_query.answer()
 
 
 async def robokassa_webhook(request):
@@ -238,18 +198,6 @@ def check_payment_signature(params):
     return signature_value.upper() == expected_signature.upper()
 
 
-async def send_payment_success_notification(user_id: int, amount: float):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Перейти в профиль", callback_data="view_profile"))
-
-    await bot.send_message(
-        chat_id=user_id,
-        text=f"Ваш баланс успешно пополнен на {amount} рублей. Спасибо за оплату!",
-        reply_markup=builder.as_markup(),
-    )
-    logger.info(f"Sent payment success notification to user {user_id}.")
-
-
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.from_user.id
@@ -257,7 +205,6 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
 
     await callback_query.message.edit_text(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
-    await callback_query.answer()
 
 
 @router.message(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)

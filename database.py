@@ -8,22 +8,6 @@ from logger import logger
 
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
-
-    # Таблица для хранения информации о платежах
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id SERIAL PRIMARY KEY,
-            tg_id BIGINT NOT NULL,
-            amount REAL NOT NULL,
-            payment_system TEXT NOT NULL,
-            status TEXT DEFAULT 'success',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
-        )
-        """
-    )
-
     # Таблица для хранения основной информации о пользователях из Telegram
     await conn.execute(
         """
@@ -36,6 +20,21 @@ async def init_db():
             is_bot BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+    # Таблица для хранения информации о платежах
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            tg_id BIGINT NOT NULL,
+            amount REAL NOT NULL,
+            payment_system TEXT NOT NULL,
+            status TEXT DEFAULT 'success',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
         )
         """
     )
@@ -183,7 +182,6 @@ async def restore_trial(tg_id: int):
     try:
         await conn.execute("UPDATE connections SET trial = 0 WHERE tg_id = $1", tg_id)
     except Exception as e:
-
         logger.error(f"Ошибка при установке значения триала: {e}")
     finally:
         await conn.close()
