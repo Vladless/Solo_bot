@@ -112,7 +112,7 @@ async def notify_10h_keys(
                         [
                             types.InlineKeyboardButton(
                                 text="👤 Личный кабинет",
-                                callback_data="view_profile",
+                                callback_data="profile",
                             )
                         ],
                     ]
@@ -192,7 +192,7 @@ async def notify_24h_keys(
                         [
                             types.InlineKeyboardButton(
                                 text="👤 Личный кабинет",
-                                callback_data="view_profile",
+                                callback_data="profile",
                             )
                         ],
                     ]
@@ -245,7 +245,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             "💡 Не откладывайте подключение VPN!"
         )
         keyboard = types.InlineKeyboardMarkup(
-            inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")]]
+            inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
         )
 
         try:
