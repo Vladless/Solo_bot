@@ -9,22 +9,6 @@ from logger import logger
 
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
-
-    # Таблица для хранения информации о платежах
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id SERIAL PRIMARY KEY,
-            tg_id BIGINT NOT NULL,
-            amount REAL NOT NULL,
-            payment_system TEXT NOT NULL,
-            status TEXT DEFAULT 'success',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
-        )
-        """
-    )
-
     # Таблица для хранения основной информации о пользователях из Telegram
     await conn.execute(
         """
@@ -140,31 +124,49 @@ async def init_db():
     await conn.close()
 
 
-async def create_coupon(coupon_code: str, amount: float, usage_limit: int):
-    conn = await asyncpg.connect(DATABASE_URL)
+async def create_coupon(coupon_code: str, amount: float, usage_limit: int, session: Any):
+    """
+    Создает новый купон в базе данных.
 
+    Args:
+        coupon_code (str): Уникальный код купона.
+        amount (float): Сумма, которую дает купон.
+        usage_limit (int): Максимальное количество использований купона.
+        session (Any): Сессия базы данных для выполнения запроса.
+
+    Raises:
+        Exception: В случае ошибки при создании купона.
+
+    Example:
+        await create_coupon('SALE50', 50.0, 5, session)
+    """
+    await session.execute(
+        """
+        INSERT INTO coupons (code, amount, usage_limit, usage_count, is_used)
+        VALUES ($1, $2, $3, 0, FALSE)
+    """,
+        coupon_code,
+        amount,
+        usage_limit,
+    )
+
+
+async def get_all_coupons(session: Any):
+    """
+    Получает список всех купонов из базы данных.
+
+    Returns:
+        list: Список словарей с информацией о купонах, каждый словарь содержит:
+            - code (str): Код купона
+            - amount (int): Сумма купона
+            - usage_limit (int): Максимальное количество использований
+            - usage_count (int): Текущее количество использований купона
+
+    Raises:
+        Exception: В случае ошибки при получении данных из базы
+    """
     try:
-        await conn.execute(
-            """
-            INSERT INTO coupons (code, amount, usage_limit, usage_count, is_used)
-            VALUES ($1, $2, $3, 0, FALSE)
-        """,
-            coupon_code,
-            amount,
-            usage_limit,
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при создании купона: {e}")
-        raise
-    finally:
-        await conn.close()
-
-
-async def get_all_coupons():
-    """Получить список всех купонов"""
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        coupons = await conn.fetch(
+        coupons = await session.fetch(
             """
             SELECT code, amount, usage_limit, usage_count
             FROM coupons
@@ -174,16 +176,28 @@ async def get_all_coupons():
     except Exception as e:
         logger.error(f"Ошибка при получении купонов: {e}")
         return []
-    finally:
-        await conn.close()
 
 
-async def delete_coupon_from_db(coupon_code: str):
-    """Удалить купон из базы данных по его коду"""
-    conn = await asyncpg.connect(DATABASE_URL)
+async def delete_coupon_from_db(coupon_code: str, session: Any):
+    """
+    Удаляет купон из базы данных по его коду.
+
+    Args:
+        coupon_code (str): Код купона для удаления
+        session (Any): Сессия базы данных для выполнения запроса
+
+    Returns:
+        bool: True, если купон успешно удален, False если купон не найден или произошла ошибка
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса к базе данных
+
+    Example:
+        result = await delete_coupon_from_db('SALE50', session)
+    """
     try:
 
-        coupon_record = await conn.fetchrow(
+        coupon_record = await session.fetchrow(
             """
             SELECT id FROM coupons WHERE code = $1
         """,
@@ -193,7 +207,7 @@ async def delete_coupon_from_db(coupon_code: str):
         if not coupon_record:
             return False
 
-        await conn.execute(
+        await session.execute(
             """
             DELETE FROM coupons WHERE code = $1
         """,
@@ -205,8 +219,6 @@ async def delete_coupon_from_db(coupon_code: str):
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
         return False
-    finally:
-        await conn.close()
 
 
 async def restore_trial(tg_id: int, session: Any):
