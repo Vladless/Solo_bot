@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Router, types
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
 
@@ -97,28 +98,12 @@ async def notify_10h_keys(
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            types.InlineKeyboardButton(
-                                text="🔄 Продлить VPN",
-                                callback_data=f'renew_key|{record["client_id"]}',
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="pay",
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="👤 Личный кабинет",
-                                callback_data="profile",
-                            )
-                        ],
-                    ]
-                )
+                keyboard = types.InlineKeyboardBuilder()
+                keyboard.button(text="🔄 Продлить VPN", callback_data=f'renew_key|{record["client_id"]}')
+                keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
+                keyboard.button(text="👤 Личный кабинет", callback_data="profile")
+                keyboard.adjust(1)
+                keyboard = keyboard.as_markup()
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
@@ -177,28 +162,26 @@ async def notify_24h_keys(
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            types.InlineKeyboardButton(
-                                text="🔄 Продлить VPN",
-                                callback_data=f'renew_key|{record["client_id"]}',
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="pay",
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="👤 Личный кабинет",
-                                callback_data="profile",
-                            )
-                        ],
-                    ]
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="🔄 Продлить VPN",
+                        callback_data=f'renew_key|{record["client_id"]}',
+                    )
                 )
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="💳 Пополнить баланс",
+                        callback_data="pay",
+                    )
+                )
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="👤 Личный кабинет",
+                        callback_data="profile",
+                    )
+                )
+                keyboard = builder.as_markup()
                 await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
@@ -236,12 +219,12 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
         try:
             if not await is_bot_blocked(bot, tg_id):
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key")],
-                        [types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")],
-                    ]
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key")
                 )
+                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                keyboard = builder.as_markup()
 
                 message = (
                     f"👋 Привет, {username}!\n\n"
