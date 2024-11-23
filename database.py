@@ -9,21 +9,6 @@ from logger import logger
 async def init_db():
     conn = await asyncpg.connect(DATABASE_URL)
 
-    # Таблица для хранения информации о платежах
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id SERIAL PRIMARY KEY,
-            tg_id BIGINT NOT NULL,
-            amount REAL NOT NULL,
-            payment_system TEXT NOT NULL,
-            status TEXT DEFAULT 'success',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
-        )
-        """
-    )
-
     # Таблица для хранения основной информации о пользователях из Telegram
     await conn.execute(
         """
@@ -47,6 +32,21 @@ async def init_db():
             tg_id BIGINT PRIMARY KEY NOT NULL,
             balance REAL NOT NULL DEFAULT 0.0,
             trial INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+    # Таблица для хранения информации о платежах
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            tg_id BIGINT NOT NULL,
+            amount REAL NOT NULL,
+            payment_system TEXT NOT NULL,
+            status TEXT DEFAULT 'success',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
         )
         """
     )
