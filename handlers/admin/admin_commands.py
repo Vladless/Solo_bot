@@ -1,8 +1,10 @@
-import asyncpg
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
@@ -32,9 +34,7 @@ async def cmd_add_balance(message: types.Message):
             return
 
         await add_balance_to_client(int(client_id), amount)
-        await message.reply(
-            f"✅ Баланс клиента {client_id} успешно пополнен на {amount}"
-        )
+        await message.reply(f"✅ Баланс клиента {client_id} успешно пополнен на {amount}")
     except ValueError:
         await message.reply(
             "❓ Неверный формат команды!\n"
@@ -51,9 +51,7 @@ async def backup_command(message: types.Message):
 
     await message.answer("🔄 Инициализация резервного копирования базы данных...")
     await backup_database()
-    await message.answer(
-        "✅ Бэкап базы данных успешно завершен и отправлен администратору."
-    )
+    await message.answer("✅ Бэкап базы данных успешно завершен и отправлен администратору.")
 
 
 @router.message(Command("send_trial"), IsAdminFilter())
@@ -81,14 +79,10 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                     except Exception as e:
                         if "Forbidden: bot was blocked by the user" in str(e):
                             blocked_count += 1
-                            logger.info(
-                                f"🚫 Бот заблокирован пользователем с tg_id: {tg_id}"
-                            )
+                            logger.info(f"🚫 Бот заблокирован пользователем с tg_id: {tg_id}")
                         else:
                             error_count += 1
-                            logger.error(
-                                f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}"
-                            )
+                            logger.error(f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}")
 
                 await message.answer(
                     f"📊 Результаты рассылки пробных периодов:\n"
@@ -97,9 +91,7 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
                     f"❌ Ошибок: {error_count}"
                 )
             else:
-                await message.answer(
-                    "📭 Нет пользователей с неиспользованными пробными ключами."
-                )
+                await message.answer("📭 Нет пользователей с неиспользованными пробными ключами.")
 
         finally:
             await conn.close()
@@ -109,12 +101,18 @@ async def handle_send_trial_command(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("send_to_all"), IsAdminFilter())
-async def send_message_to_all_clients(
-    message: types.Message, state: FSMContext, from_panel=False
-):
+async def send_message_to_all_clients(message: types.Message, state: FSMContext, from_panel=False):
+    try:
+        await message.delete()
+    except Exception:
+        pass
+
     if from_panel:
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
         await message.answer(
-            "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам:"
+            "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам:",
+            reply_markup=builder.as_markup(),
         )
         await state.set_state(Form.waiting_for_message)
 
@@ -141,9 +139,7 @@ async def process_message_to_all(
                 success_count += 1
             except Exception as e:
                 error_count += 1
-                logger.error(
-                    f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}"
-                )
+                logger.error(f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}")
 
         await message.answer(
             f"📤 Рассылка завершена:\n"

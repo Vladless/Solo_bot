@@ -8,15 +8,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot import bot
 from config import CHANNEL_URL
 from database import get_balance, get_key_count, get_referral_stats
-from handlers.texts import get_referral_link, invite_message_send, profile_message_send
+from handlers.texts import RENEWAL_PLANS, get_referral_link, invite_message_send, profile_message_send
 from logger import logger
 
 router = Router()
 
 
-async def process_callback_view_profile(
-    callback_query: types.CallbackQuery, state: FSMContext, admin: bool
-):
+async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext, admin: bool):
     chat_id = callback_query.from_user.id
     username = callback_query.from_user.full_name
 
@@ -35,6 +33,7 @@ async def process_callback_view_profile(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
+        builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
         builder.row(
             InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
             InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
@@ -49,16 +48,10 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
             InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
         )
-        builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
-        )
+        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
         if admin:
-            builder.row(
-                InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
-            )
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu")
-        )
+            builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
+        builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="back_to_menu"))
 
         try:
             await callback_query.message.delete()
@@ -84,9 +77,33 @@ async def process_callback_view_profile(
 
     except Exception as e:
         await bot.send_message(
-            chat_id, f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}"
+            chat_id,
+            f"❗️ Не удалось загрузить профиль. Техническая ошибка: {e}",
         )
 
+
+@router.callback_query(F.data == "view_tariffs")
+async def view_tariffs_handler(callback_query: types.CallbackQuery):
+    try:
+        await callback_query.message.delete()
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сообщения: {e}")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
+
+    await callback_query.message.answer(
+        "<b>🚀 Доступные тарифы VPN:</b>\n\n"
+        + "\n".join(
+            [
+                f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
+                f"{RENEWAL_PLANS[months]['price']} "
+                f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
+                for months in sorted(RENEWAL_PLANS.keys(), key=int)
+            ]
+        ),
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
     await callback_query.answer()
 
 
@@ -102,9 +119,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
 
     try:
         await callback_query.message.delete()
@@ -116,9 +131,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
             with open(image_path, "rb") as image_file:
                 await bot.send_photo(
                     chat_id=chat_id,
-                    photo=BufferedInputFile(
-                        image_file.read(), filename="pic_invite.jpg"
-                    ),
+                    photo=BufferedInputFile(image_file.read(), filename="pic_invite.jpg"),
                     caption=invite_message,
                     parse_mode="HTML",
                     reply_markup=builder.as_markup(),
@@ -142,8 +155,6 @@ async def invite_handler(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "view_profile")
-async def view_profile_handler(
-    callback_query: types.CallbackQuery, state: FSMContext, admin: bool = False
-):
+async def view_profile_handler(callback_query: types.CallbackQuery, state: FSMContext, admin: bool = False):
     await state.clear()
     await process_callback_view_profile(callback_query, state, admin)

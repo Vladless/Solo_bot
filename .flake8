@@ -1,6 +1,6 @@
 [flake8]
-max-line-length = 250
+max-line-length = 120
 ignore = E203, E266, E501, W503, F541, E704, W293, W291, E126, E121, E123, E128, E302, E131, E231, W292, E402, E261, E305, E701
-max-complexity = 25
+max-complexity = 15
 select = B, C, E, F, W, T4, B9
-exclude = .venv,.git,.tox,dist,doc,*lib/python*,*egg,build,.txt
+exclude = .venv,.git,.tox,dist,doc,*lib/python*,*egg,build,.txt,config.py

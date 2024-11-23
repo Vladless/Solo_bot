@@ -1,8 +1,9 @@
 import os
 
-import asyncpg
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncpg
 
 from bot import bot
 from config import CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
@@ -24,17 +25,18 @@ async def send_instructions(callback_query: types.CallbackQuery):
         await callback_query.answer()
         return
 
-    back_button = InlineKeyboardButton(
-        text="⬅️ Вернуться в профиль", callback_data="view_profile"
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"),
     )
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
     with open(image_path, "rb") as image_from_buffer:
         await callback_query.message.answer_photo(
             BufferedInputFile(image_from_buffer.read(), filename="instructions.jpg"),
             caption=instructions_message,
             parse_mode="Markdown",
-            reply_markup=keyboard,
+            reply_markup=builder.as_markup(),
         )
 
     await callback_query.answer()
@@ -46,9 +48,7 @@ async def process_connect_pc(callback_query: types.CallbackQuery):
     key_name = callback_query.data.split("|")[1]
 
     try:
-        await bot.delete_message(
-            chat_id=tg_id, message_id=callback_query.message.message_id
-        )
+        await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
@@ -82,13 +82,9 @@ async def process_connect_pc(callback_query: types.CallbackQuery):
                 text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
             )
 
-            support_button = types.InlineKeyboardButton(
-                text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"
-            )
+            support_button = types.InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}")
 
-            back_button = types.InlineKeyboardButton(
-                text="🔙 Назад в профиль", callback_data="view_profile"
-            )
+            back_button = types.InlineKeyboardButton(text="🔙 Назад в профиль", callback_data="view_profile")
 
             inline_keyboard = [
                 [connect_windows_button],
@@ -98,7 +94,10 @@ async def process_connect_pc(callback_query: types.CallbackQuery):
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
             await bot.send_message(
-                tg_id, instruction_message, reply_markup=keyboard, parse_mode="HTML"
+                tg_id,
+                instruction_message,
+                reply_markup=keyboard,
+                parse_mode="HTML",
             )
 
         finally:

@@ -1,11 +1,11 @@
 from datetime import datetime
 
-import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncpg
 
 from config import DATABASE_URL
 from database import update_balance
@@ -20,22 +20,18 @@ router = Router()
 
 
 @router.callback_query(F.data == "activate_coupon")
-async def handle_activate_coupon(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     try:
         await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Ошибка при удалении сообщения: {e}")
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="view_profile"))
 
     await callback_query.message.answer(
-        "<b>Введите код купона:</b>\n\n"
-        "Пожалуйста, введите действующий код купона, который вы хотите активировать.",
+        "<b>🎫 Введите код купона:</b>\n\n"
+        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
         parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
@@ -54,13 +50,9 @@ async def process_coupon_code(message: types.Message, state: FSMContext):
     activation_result = await activate_coupon(message.from_user.id, coupon_code)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile"))
 
-    markup = builder.as_markup()
-
-    await message.answer(activation_result, reply_markup=markup, parse_mode="HTML")
+    await message.answer(activation_result, reply_markup=builder.as_markup(), parse_mode="HTML")
     await state.clear()
 
 
@@ -79,7 +71,7 @@ async def activate_coupon(user_id: int, coupon_code: str):
         )
 
         if not coupon_record:
-            return "<b>❌ Купон не найден</b> или его использование ограничено. Пожалуйста, проверьте код и попробуйте снова."
+            return "<b>❌ Купон не найден</b> 🚫 или его использование ограничено. 🔒 Пожалуйста, проверьте код и попробуйте снова. 🔍"
 
         usage_exists = await conn.fetchrow(
             """
@@ -90,7 +82,7 @@ async def activate_coupon(user_id: int, coupon_code: str):
         )
 
         if usage_exists:
-            return "<b>❌ Вы уже активировали этот купон.</b> Купоны могут быть активированы только один раз."
+            return "<b>❌ Вы уже активировали этот купон.</b> 🚫 Купоны могут быть активированы только один раз. 🔒"
 
         coupon_amount = coupon_record["amount"]
 
@@ -116,13 +108,11 @@ async def activate_coupon(user_id: int, coupon_code: str):
             )
 
         await update_balance(user_id, coupon_amount)
-        return f"<b>✅ Купон успешно активирован!</b>\n\nНа ваш баланс добавлено <b>{coupon_amount} рублей</b>."
+        return f"<b>✅ Купон успешно активирован! 🎉</b>\n\nНа ваш баланс добавлено <b>{coupon_amount} рублей</b> 💰."
 
     except Exception as e:
         logger.error(f"Ошибка при активации купона: {e}")
-        return (
-            "<b>⚠️ Произошла ошибка при активации купона.</b>\nПопробуйте ещё раз позже."
-        )
+        return "<b>⚠️ Произошла ошибка при активации купона! 🔧</b>\nПопробуйте ещё раз позже. 🕒"
 
     finally:
         await conn.close()
