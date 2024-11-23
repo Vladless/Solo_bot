@@ -1,3 +1,5 @@
+from typing import Any
+
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -27,9 +29,9 @@ async def show_coupon_management_menu(callback_query: types.CallbackQuery, state
 
 
 @router.callback_query(F.data == "coupons", IsAdminFilter())
-async def show_coupon_list(callback_query: types.CallbackQuery):
+async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
     try:
-        coupons = await get_all_coupons()
+        coupons = await get_all_coupons(session)
 
         if not coupons:
             builder = InlineKeyboardBuilder()
@@ -67,11 +69,11 @@ async def show_coupon_list(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("delete_coupon_"), IsAdminFilter())
-async def handle_delete_coupon(callback_query: types.CallbackQuery):
+async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any):
     coupon_code = callback_query.data[len("delete_coupon_") :]
 
     try:
-        result = await delete_coupon_from_db(coupon_code)
+        result = await delete_coupon_from_db(coupon_code, session)
 
         if result:
             await show_coupon_list(callback_query)
@@ -100,7 +102,7 @@ async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMCo
 
 
 @router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
-async def process_coupon_data(message: types.Message, state: FSMContext):
+async def process_coupon_data(message: types.Message, state: FSMContext, session: Any):
     text = message.text.strip()
 
     parts = text.split()
@@ -130,7 +132,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext):
         return
 
     try:
-        await create_coupon(coupon_code, coupon_amount, usage_limit)
+        await create_coupon(coupon_code, coupon_amount, usage_limit, session)
 
         result_message = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан! 🎉\n"
