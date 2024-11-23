@@ -133,35 +133,26 @@ async def handle_restart(callback_query: CallbackQuery, state: FSMContext):
     IsAdminFilter(),
 )
 async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
     try:
-        # Перезапуск службы бота
         subprocess.run(
-            ["sudo", "systemctl", "restart", "bot.service"],
+            ["systemctl", "restart", "bot.service"],
             check=True,
             capture_output=True,
             text=True,
         )
-
-        # Очистка состояния
         await state.clear()
-
-        # Создание клавиатуры для возврата в меню администратора
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
-
-        # Уведомление о успешной перезагрузке
         await callback_query.message.edit_text("🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup())
-    except subprocess.CalledProcessError as e:
-        # Обработка ошибок при перезагрузке
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
-
+    except subprocess.CalledProcessError:
+        await callback_query.message.edit_text("🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup())
+    except Exception as e:
         await callback_query.message.edit_text(
             f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
             reply_markup=builder.as_markup(),
         )
-
-    await callback_query.answer()
+    finally:
+        await callback_query.answer()
 
 
 @router.callback_query(F.data == "user_editor", IsAdminFilter())
