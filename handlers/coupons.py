@@ -20,7 +20,7 @@ router = Router()
 @router.callback_query(F.data == "activate_coupon")
 async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
         "<b>🎫 Введите код купона:</b>\n\n"

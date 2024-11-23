@@ -66,7 +66,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
 @router.callback_query(F.data == "view_tariffs")
 async def view_tariffs_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
         "<b>🚀 Доступные тарифы VPN:</b>\n\n"
@@ -94,7 +94,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Вернуться в профиль", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_file:
             await callback_query.message.answer_photo(

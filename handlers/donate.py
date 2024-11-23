@@ -29,7 +29,7 @@ async def process_donate(callback_query: types.CallbackQuery, state: FSMContext)
             callback_data="enter_custom_donate_amount",
         )
     )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
         text="🌟 Поддержите наш проект! 💪\n\n"
@@ -89,7 +89,7 @@ async def on_successful_donate(message: types.Message, state: FSMContext):
     try:
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Вернуться в профиль", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
         await message.answer(
             text=f"🙏 Спасибо за донат {amount} рублей! Ваша поддержка очень важна для нас. 💖",
             reply_markup=builder.as_markup(),

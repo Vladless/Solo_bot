@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 import asyncpg
 
@@ -177,19 +178,64 @@ async def delete_coupon_from_db(coupon_code: str):
         await conn.close()
 
 
-async def restore_trial(tg_id: int):
-    conn = await asyncpg.connect(DATABASE_URL)
+async def restore_trial(tg_id: int, session: Any):
+    """
+    Восстанавливает возможность использования триального периода для пользователя.
+
+    Args:
+        tg_id (int): Telegram ID пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        bool: True, если триал успешно восстановлен, False в случае ошибки
+    """
     try:
-        await conn.execute("UPDATE connections SET trial = 0 WHERE tg_id = $1", tg_id)
+        response = await session.execute(
+            """
+            INSERT INTO connections (tg_id, trial) 
+            VALUES ($1, 0) 
+            ON CONFLICT (tg_id) 
+            DO UPDATE SET trial = 0
+            """,
+            tg_id,
+        )
+        logger.info(response)
+        return True
     except Exception as e:
         logger.error(f"Ошибка при установке значения триала: {e}")
-    finally:
-        await conn.close()
+        return False
 
 
-async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0):
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(
+async def use_trial(tg_id: int, session: Any):
+    """
+    Отмечает использование триального периода для пользователя.
+
+    Args:
+        tg_id (int): Telegram ID пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        bool: True, если триал успешно использован, False в случае ошибки
+    """
+    try:
+        response = await session.execute(
+            """
+            INSERT INTO connections (tg_id, trial) 
+            VALUES ($1, 1) 
+            ON CONFLICT (tg_id) 
+            DO UPDATE SET trial = 1
+            """,
+            tg_id,
+        )
+        logger.info(response)
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при использовании триала: {e}")
+        return False
+
+
+async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0, session: Any = None):
+    await session.execute(
         """
         INSERT INTO connections (tg_id, balance, trial)
         VALUES ($1, $2, $3)
@@ -198,7 +244,6 @@ async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0):
         balance,
         trial,
     )
-    await conn.close()
 
 
 async def check_connection_exists(tg_id: int):
@@ -298,10 +343,8 @@ async def update_balance(tg_id: int, amount: float):
     await conn.close()
 
 
-async def get_trial(tg_id: int) -> int:
-    conn = await asyncpg.connect(DATABASE_URL)
-    trial = await conn.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
-    await conn.close()
+async def get_trial(tg_id: int, session: Any) -> int:
+    trial = await session.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
     return trial if trial is not None else 0
 
 
@@ -316,9 +359,8 @@ async def get_all_users(conn):
     return await conn.fetch("SELECT tg_id FROM connections")
 
 
-async def add_referral(referred_tg_id: int, referrer_tg_id: int):
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(
+async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
+    await session.execute(
         """
         INSERT INTO referrals (referred_tg_id, referrer_tg_id)
         VALUES ($1, $2)
@@ -326,7 +368,6 @@ async def add_referral(referred_tg_id: int, referrer_tg_id: int):
         referred_tg_id,
         referrer_tg_id,
     )
-    await conn.close()
 
 
 async def handle_referral_on_balance_update(tg_id: int, amount: float):
