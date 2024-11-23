@@ -42,33 +42,24 @@ async def get_least_loaded_cluster() -> str:
     Returns:
         str: Идентификатор наименее загруженного кластера.
     """
-    cluster_loads: dict[str, int] = {}
+    cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in CLUSTERS.keys()}
 
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
-            keys = await conn.fetch("SELECT * FROM keys")
+            keys = await conn.fetch("SELECT server_id FROM keys")
 
             for key in keys:
                 cluster_id = key["server_id"]
-                if re.match(r"^cluster\d+$", cluster_id):
-                    cluster_loads[cluster_id] = cluster_loads.get(cluster_id, 0) + 1
+                if cluster_id in cluster_loads:
+                    cluster_loads[cluster_id] += 1
 
-    logger.info(f"Cluster loads: {cluster_loads}")
+    logger.info(f"Cluster loads after database query: {cluster_loads}")
 
     if not cluster_loads:
-        available_clusters = [cluster_id for cluster_id in CLUSTERS.keys() if re.match(r"^cluster\d+$", cluster_id)]
-
-        logger.info(f"Available clusters from config: {available_clusters}")
-
-        if available_clusters:
-            selected_cluster = available_clusters[0]
-            logger.info(f"Returning the first available cluster: {selected_cluster}")
-            return selected_cluster
-
-        logger.warning("No valid clusters found in config, returning 'cluster1'.")
+        logger.warning("No clusters found in database or configuration.")
         return "cluster1"
 
-    least_loaded_cluster = min(cluster_loads, key=lambda k: (cluster_loads.get(k, 0), k))
+    least_loaded_cluster = min(cluster_loads, key=lambda k: (cluster_loads[k], k))
 
     logger.info(f"Least loaded cluster selected: {least_loaded_cluster}")
 
