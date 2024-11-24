@@ -130,9 +130,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await callback_query.message.answer("Некорректная сумма.")
         return
 
-    user_email = f"{callback_query.from_user.id}@solo.net"
+    user_email = f"{callback_query.chat.id}@solo.net"
     user_ip = callback_query.message.chat.id
-    payment_url = await create_payment(callback_query.from_user.id, amount, user_email, user_ip)
+    payment_url = await create_payment(callback_query.chat.id, amount, user_email, user_ip)
 
     if payment_url:
         confirm_keyboard = InlineKeyboardMarkup(
@@ -166,9 +166,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
             return
 
-        user_email = f"{message.from_user.id}@solo.net"
+        user_email = f"{message.chat.id}@solo.net"
         user_ip = message.chat.id
-        payment_url = await create_payment(message.from_user.id, amount, user_email, user_ip)
+        payment_url = await create_payment(message.chat.id, amount, user_email, user_ip)
 
         if payment_url:
             keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton("Оплатить", url=payment_url)]])

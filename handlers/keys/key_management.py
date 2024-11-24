@@ -34,7 +34,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = await get_trial(callback_query.from_user.id, session)
+    trial_status = await get_trial(callback_query.chat.id, session)
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -54,7 +54,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext, sessio
 
 @router.callback_query(F.data == "confirm_create_new_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
-    tg_id = callback_query.from_user.id
+    tg_id = callback_query.chat.id
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
 
@@ -76,7 +76,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
 @router.message(Form.waiting_for_key_name)
 async def handle_key_name_input(message: Message, state: FSMContext, session: Any):
-    tg_id = message.from_user.id
+    tg_id = message.chat.id
     key_name = sanitize_key_name(message.text)
 
     logger.info(f"User {tg_id} is attempting to create a key with the name: {key_name}")
@@ -106,7 +106,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     expiry_time = None
 
     logger.info(f"Checking trial status for user {tg_id}.")
-    trial_status = await get_trial(message.from_user.id, session)
+    trial_status = await get_trial(message.chat.id, session)
 
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=1, hours=3)
@@ -172,9 +172,9 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         await asyncio.gather(*tasks)
 
         logger.info(f"Updating trial status for user {tg_id} in the database.")
-        trial_status = await get_trial(message.from_user.id, session)
+        trial_status = await get_trial(message.chat.id, session)
         if trial_status == 0:
-            await use_trial(message.from_user.id, session)
+            await use_trial(message.chat.id, session)
         else:
             await add_connection(tg_id, 0, 1)
 
