@@ -42,12 +42,7 @@ async def create_trial_key(tg_id: int, session: Any):
         )
 
     await store_key(
-        tg_id,
-        client_id,
-        email,
-        expiry_timestamp,
-        public_link,
-        server_id=least_loaded_cluster,
+        tg_id, client_id, email, expiry_timestamp, public_link, server_id=least_loaded_cluster, session=session
     )
     await use_trial(tg_id, session)
     return result

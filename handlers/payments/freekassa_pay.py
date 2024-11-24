@@ -110,7 +110,7 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
             callback_data="enter_custom_amount_freekassa",
         )
     )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
 
     await callback_query.message.answer(
         text="Выберите сумму пополнения через FreeKassa:",
