@@ -13,7 +13,7 @@ async def add_client(
     expiry_time: int,
     enable: bool,
     flow: str,
-    inbound_id: int, 
+    inbound_id: int,
 ):
     """
     Adds a client to the server via 3x-ui.

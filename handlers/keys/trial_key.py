@@ -5,7 +5,7 @@ import uuid
 from py3xui import AsyncApi
 
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, PUBLIC_LINK, TRIAL_TIME, TOTAL_GB
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
 from database import store_key, use_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
