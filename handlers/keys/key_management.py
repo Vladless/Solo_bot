@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
-from database import add_connection, get_balance, get_trial, store_key, update_balance, use_trial
+from database import add_connection, check_connection_exists, get_balance, get_trial, store_key, update_balance, use_trial
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import get_least_loaded_cluster, sanitize_key_name
@@ -172,8 +172,8 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         await asyncio.gather(*tasks)
 
         logger.info(f"Updating trial status for user {tg_id} in the database.")
-        trial_status = await get_trial(message.chat.id, session)
-        if trial_status == 0:
+        connection_exists = await check_connection_exists(message.chat.id)
+        if connection_exists:
             await use_trial(message.chat.id, session)
         else:
             await add_connection(tg_id=tg_id, balance=0, trial=1, session=session)
