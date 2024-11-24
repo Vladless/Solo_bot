@@ -283,7 +283,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
         builder.row(
             InlineKeyboardButton(
                 text="🔙 Назад в меню администратора",
-                callback_data="admin",
+                callback_data="user_editor",
             )
         )
 
@@ -314,7 +314,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
             callback_data=f"delete_key_admin|{key_name}",
         )
     )
-    key_buttons.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    key_buttons.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     await message.answer(response_message, reply_markup=key_buttons.as_markup())
     await state.clear()
