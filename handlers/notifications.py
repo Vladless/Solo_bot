@@ -7,7 +7,7 @@ import asyncpg
 from py3xui import AsyncApi
 
 from client import delete_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB, TRIAL_TIME
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB, TRIAL_TIME,RENEWAL_PLANS
 from database import (
     add_notification,
     check_notification_time,
@@ -17,7 +17,7 @@ from database import (
     update_key_expiry,
 )
 from handlers.keys.key_utils import renew_key_in_cluster
-from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
+from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
 router = Router()
