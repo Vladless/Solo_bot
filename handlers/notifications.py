@@ -98,7 +98,7 @@ async def notify_10h_keys(
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                keyboard = types.InlineKeyboardBuilder()
+                keyboard = InlineKeyboardBuilder()
                 keyboard.button(text="🔄 Продлить VPN", callback_data=f'renew_key|{record["client_id"]}')
                 keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
                 keyboard.button(text="👤 Личный кабинет", callback_data="profile")

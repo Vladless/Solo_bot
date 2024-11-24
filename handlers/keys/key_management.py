@@ -34,7 +34,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = get_trial(callback_query.message.from_user.id, session)
+    trial_status = await get_trial(callback_query.message.from_user.id, session)
     logger.info(f'trial_status {trial_status}')
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
@@ -107,7 +107,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     expiry_time = None
 
     logger.info(f"Checking trial status for user {tg_id}.")
-    trial_status = get_trial(message.from_user.id, session)
+    trial_status = await get_trial(message.from_user.id, session)
 
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=1, hours=3)
