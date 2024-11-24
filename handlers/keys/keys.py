@@ -8,7 +8,7 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CLUSTERS, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, TOTAL_GB
+from config import CLUSTERS, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, TOTAL_GB,RENEWAL_PLANS
 from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
@@ -21,7 +21,6 @@ from handlers.texts import (
     KEY_NOT_FOUND_MSG,
     NO_KEYS,
     PLAN_SELECTION_MSG,
-    RENEWAL_PLANS,
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
