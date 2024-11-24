@@ -74,7 +74,7 @@ async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, st
             callback_data="enter_custom_amount_crypto",
         )
     )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
 
     key_count = await get_key_count(tg_id)
 
