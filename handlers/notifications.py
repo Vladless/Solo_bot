@@ -28,8 +28,8 @@ async def notify_expiring_keys(bot: Bot):
 
         logger.info("Начало обработки уведомлений.")
 
-        await notify_inactive_trial_users(bot, conn)
-        await asyncio.sleep(1)
+        # await notify_inactive_trial_users(bot, conn)
+        # await asyncio.sleep(1)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
         await asyncio.sleep(1)
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)

@@ -33,7 +33,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
         if not connection_exists:
             await add_connection(message.from_user.id, session)
     trial_status = await get_trial(message.from_user.id, session)
-    logger.info(f'trial_status {trial_status}')
     image_path = os.path.join("img", "pic.jpg")
 
     builder = InlineKeyboardBuilder()
