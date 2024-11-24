@@ -23,6 +23,11 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                 password=ADMIN_PASSWORD,
             )
 
+            inbound_id = server_info.get("INBOUND_ID")
+            if not inbound_id:
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_info.get('name', 'unknown')}. Пропуск.")
+                continue
+
             conn = await asyncpg.connect(DATABASE_URL)
             existing_key = await conn.fetchrow("SELECT 1 FROM keys WHERE email = $1", email)
 
@@ -40,6 +45,7 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     expiry_time=expiry_timestamp,
                     enable=True,
                     flow="xtls-rprx-vision",
+                    inbound_id=int(inbound_id),
                 )
             )
             await conn.close()
@@ -70,14 +76,27 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 password=ADMIN_PASSWORD,
             )
 
-            tasks.append(extend_client_key(xui, email, new_expiry_time, client_id, total_gb))
+            inbound_id = server_info.get("INBOUND_ID")
+            if not inbound_id:
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_info.get('name', 'unknown')}. Пропуск.")
+                continue
+
+            tasks.append(
+                extend_client_key(
+                    xui,
+                    int(inbound_id),
+                    email,
+                    new_expiry_time,
+                    client_id,
+                    total_gb,
+                )
+            )
 
         await asyncio.gather(*tasks)
 
     except Exception as e:
         logger.error(f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
-
 
 async def delete_key_from_db(client_id, session):
     try:
@@ -102,7 +121,19 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 password=ADMIN_PASSWORD,
             )
 
-            tasks.append(delete_client(xui, email, client_id))
+            inbound_id = server_info.get("INBOUND_ID")
+            if not inbound_id:
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_info.get('name', 'unknown')}. Пропуск.")
+                continue
+
+            tasks.append(
+                delete_client(
+                    xui,
+                    int(inbound_id),
+                    email,
+                    client_id,
+                )
+            )
 
         await asyncio.gather(*tasks)
 
@@ -126,6 +157,11 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 password=ADMIN_PASSWORD,
             )
 
+            inbound_id = server_info.get("INBOUND_ID")
+            if not inbound_id:
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_info.get('name', 'unknown')}. Пропуск.")
+                continue
+
             tasks.append(
                 add_client(
                     xui,
@@ -137,6 +173,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     expiry_time=expiry_time,
                     enable=True,
                     flow="xtls-rprx-vision",
+                    inbound_id=int(inbound_id),
                 )
             )
 
