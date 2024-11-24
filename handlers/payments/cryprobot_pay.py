@@ -1,4 +1,5 @@
 from typing import Any
+
 from aiocryptopay import AioCryptoPay, Networks
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -26,7 +27,7 @@ class ReplenishBalanceState(StatesGroup):
 
 
 @router.callback_query(F.data == "pay_cryptobot")
-async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, state: FSMContext,session:Any):
+async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     builder = InlineKeyboardBuilder()
     for i in range(0, len(PAYMENT_OPTIONS), 2):
         if i + 1 < len(PAYMENT_OPTIONS):
@@ -58,7 +59,7 @@ async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, st
     if key_count == 0:
         exists = await check_connection_exists(callback_query.message.chat.id)
         if not exists:
-            await add_connection(tg_id=callback_query.message.chat.id, balance=0.0, trial=0,session=session)
+            await add_connection(tg_id=callback_query.message.chat.id, balance=0.0, trial=0, session=session)
     await callback_query.message.answer(
         "Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),

@@ -8,7 +8,14 @@ from py3xui import AsyncApi
 
 from client import delete_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB, TRIAL_TIME
-from database import delete_key, get_balance, update_balance, update_key_expiry,add_notification,check_notification_time
+from database import (
+    add_notification,
+    check_notification_time,
+    delete_key,
+    get_balance,
+    update_balance,
+    update_key_expiry,
+)
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 from logger import logger
@@ -220,10 +227,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         try:
             # Проверяем, можно ли отправить уведомление
             can_notify = await check_notification_time(
-                tg_id, 
-                'inactive_trial', 
-                hours=24,  # Уведомление не чаще, чем раз в 24 часа
-                session=conn
+                tg_id, 'inactive_trial', hours=24, session=conn  # Уведомление не чаще, чем раз в 24 часа
             )
 
             if can_notify and not await is_bot_blocked(bot, tg_id):
@@ -245,11 +249,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
 
                 # Добавляем запись о notification
-                await add_notification(
-                    tg_id, 
-                    'inactive_trial', 
-                    session=conn
-                )
+                await add_notification(tg_id, 'inactive_trial', session=conn)
 
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}")

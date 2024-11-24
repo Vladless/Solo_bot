@@ -49,7 +49,7 @@ def generate_payment_link(amount, inv_id, description, tg_id):
 
 
 @router.callback_query(F.data == "pay_robokassa")
-async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext,session:Any):
+async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} initiated Robokassa payment.")
 
@@ -86,7 +86,7 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
-            await add_connection(tg_id, balance=0.0, trial=0,session=session)
+            await add_connection(tg_id, balance=0.0, trial=0, session=session)
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
     await callback_query.message.answer(

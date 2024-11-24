@@ -1,7 +1,8 @@
 from typing import Any, Awaitable, Callable, Dict
-from logger import logger
+
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
+
 
 class DeleteMessageMiddleware(BaseMiddleware):
     async def __call__(

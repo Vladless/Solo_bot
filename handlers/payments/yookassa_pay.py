@@ -31,7 +31,7 @@ class ReplenishBalanceState(StatesGroup):
 
 
 @router.callback_query(F.data == "pay_yookassa")
-async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext,session:Any):
+async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
     builder = InlineKeyboardBuilder()
@@ -68,7 +68,7 @@ async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, sta
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
-            await add_connection(tg_id, balance=0.0, trial=0,session=session)
+            await add_connection(tg_id, balance=0.0, trial=0, session=session)
 
     await callback_query.message.answer(
         text="Выберите сумму пополнения:",
