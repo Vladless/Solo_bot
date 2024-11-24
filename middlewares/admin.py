@@ -20,7 +20,7 @@ class AdminMiddleware(BaseMiddleware):
         try:
             admin_ids: Union[int, list[int]] = ADMIN_ID
             if isinstance(admin_ids, list):
-                return event.chat.id in admin_ids
-            return event.chat.id == admin_ids
+                return event.from_user.id in admin_ids
+            return event.from_user.id == admin_ids
         except Exception:
             return False
