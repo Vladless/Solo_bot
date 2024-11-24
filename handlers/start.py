@@ -75,7 +75,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
 
         key_message = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
-            f"<pre>{trial_key_info['key']}</pre>\n\n"
+            f"<code>{trial_key_info['key']}</code>\n\n"
             f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 

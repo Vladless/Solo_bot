@@ -243,7 +243,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
         return
 
     response_message = (
-        f"🔑 Ключ: <pre>{key_details['key']}</pre>\n"
+        f"🔑 Ключ: <code>{key_details['key']}</code>\n"
         f"⏰ Дата истечения: <b>{key_details['expiry_date']}</b>\n"
         f"💰 Баланс пользователя: <b>{key_details['balance']}</b>\n"
         f"🌐 Сервер: <b>{key_details['server_name']}</b>"
@@ -295,7 +295,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
         return
 
     response_message = (
-        f"🔑 Ключ: <pre>{key_details['key']}</pre>\n"
+        f"🔑 Ключ: <code>{key_details['key']}</code>\n"
         f"⏰ Дата истечения: <b>{key_details['expiry_date']}</b>\n"
         f"💰 Баланс пользователя: <b>{key_details['balance']}</b>\n"
         f"🌐 Сервер: <b>{key_details['server_name']}</b>"
