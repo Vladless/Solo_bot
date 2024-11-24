@@ -326,6 +326,10 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                     callback_data=f"renew_plan|12|{client_id}",
                 )
             )
+
+            back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys")
+            builder.row(back_button)
+
             balance = await get_balance(tg_id)
 
             response_message = PLAN_SELECTION_MSG.format(
