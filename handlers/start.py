@@ -111,4 +111,4 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
 
-    await callback_query.message.answer(get_about_vpn("3.1.1_Stable"), reply_markup=builder.as_markup())
+    await callback_query.message.answer(get_about_vpn("3.2_Stable"), reply_markup=builder.as_markup())
