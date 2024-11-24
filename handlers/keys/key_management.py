@@ -34,8 +34,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = await get_trial(callback_query.message.from_user.id, session)
-    logger.info(f'trial_status {trial_status}')
+    trial_status = await get_trial(callback_query.from_user.id, session)
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
         builder.row(
