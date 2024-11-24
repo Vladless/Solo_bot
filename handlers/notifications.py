@@ -8,7 +8,7 @@ from py3xui import AsyncApi
 
 from client import delete_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB, TRIAL_TIME
-from database import delete_key, get_balance, update_balance, update_key_expiry#,add_notification,check_notification_time
+from database import delete_key, get_balance, update_balance, update_key_expiry,add_notification,check_notification_time
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 from logger import logger
@@ -218,7 +218,15 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user.get('username', 'Пользователь')
 
         try:
-            if not await is_bot_blocked(bot, tg_id):
+            # Проверяем, можно ли отправить уведомление
+            can_notify = await check_notification_time(
+                tg_id, 
+                'inactive_trial', 
+                hours=24,  # Уведомление не чаще, чем раз в 24 часа
+                session=conn
+            )
+
+            if can_notify and not await is_bot_blocked(bot, tg_id):
                 builder = InlineKeyboardBuilder()
                 builder.row(
                     types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key")
@@ -235,6 +243,13 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
+
+                # Добавляем запись о notification
+                await add_notification(
+                    tg_id, 
+                    'inactive_trial', 
+                    session=conn
+                )
 
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}")
