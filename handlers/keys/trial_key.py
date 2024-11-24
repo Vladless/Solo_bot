@@ -5,7 +5,7 @@ import uuid
 from py3xui import AsyncApi
 
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, PUBLIC_LINK, TRIAL_TIME
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
 from database import store_key, use_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
@@ -22,12 +22,17 @@ async def create_trial_key(tg_id: int, session: Any):
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     least_loaded_cluster = await get_least_loaded_cluster()
-    for server_id, server in CLUSTERS[least_loaded_cluster].items():
+
+    for server_id, server_info in CLUSTERS[least_loaded_cluster].items():
         xui = AsyncApi(
-            CLUSTERS[least_loaded_cluster][server_id]["API_URL"],
+            server_info["API_URL"],
             username=ADMIN_USERNAME,
             password=ADMIN_PASSWORD,
         )
+
+        inbound_id = server_info.get("INBOUND_ID")
+        if not inbound_id:
+            raise ValueError(f"INBOUND_ID отсутствует для сервера {server_info.get('name', 'unknown')}")
 
         await add_client(
             xui,
@@ -35,14 +40,21 @@ async def create_trial_key(tg_id: int, session: Any):
             email,
             tg_id,
             limit_ip=1,
-            total_gb=0,
+            total_gb=TOTAL_GB,
             expiry_time=expiry_timestamp,
             enable=True,
             flow="xtls-rprx-vision",
+            inbound_id=int(inbound_id),
         )
 
     await store_key(
-        tg_id, client_id, email, expiry_timestamp, public_link, server_id=least_loaded_cluster, session=session
+        tg_id,
+        client_id,
+        email,
+        expiry_timestamp,
+        public_link,
+        server_id=least_loaded_cluster,
+        session=session,
     )
     await use_trial(tg_id, session)
     return result

@@ -1,6 +1,5 @@
 import py3xui
 
-from config import TOTAL_GB
 from logger import logger
 
 
@@ -14,6 +13,7 @@ async def add_client(
     expiry_time: int,
     enable: bool,
     flow: str,
+    inbound_id: int,
 ):
     """
     Adds a client to the server via 3x-ui.
@@ -25,7 +25,7 @@ async def add_client(
             id=client_id,
             email=email.lower(),
             limit_ip=limit_ip,
-            total_gb=TOTAL_GB,
+            total_gb=total_gb,
             expiry_time=expiry_time,
             enable=enable,
             tg_id=tg_id,
@@ -33,7 +33,7 @@ async def add_client(
             flow=flow,
         )
 
-        response = await xui.client.add(1, [client])
+        response = await xui.client.add(inbound_id, [client])
 
         logger.info(f"Клиент {email} успешно добавлен с ID {client_id}.")
 
@@ -44,7 +44,7 @@ async def add_client(
         return {"status": "failed", "error": str(e)}
 
 
-async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: str, total_gb: int):
+async def extend_client_key(xui, inbound_id, email: str, new_expiry_time: int, client_id: str, total_gb: int):
     """
     Функция для обновления срока действия ключа клиента по email.
     """
@@ -69,6 +69,7 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
         client.total_gb = total_gb
         client.enable = True
         client.limit_ip = 1
+        client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)
         logger.info(f"Ключ клиента {client.email} успешно продлён до {new_expiry_time}.")
@@ -79,6 +80,7 @@ async def extend_client_key(xui, email: str, new_expiry_time: int, client_id: st
 
 async def delete_client(
     xui,
+    inbound_id: int,
     email: str,
     client_id: str,
 ) -> bool:
@@ -95,7 +97,6 @@ async def delete_client(
             return False
 
         client.id = client_id
-        inbound_id = 1
 
         await xui.client.delete(inbound_id, client.id)
         logger.info(f"Клиент с ID {client_id} был удален успешно.")
