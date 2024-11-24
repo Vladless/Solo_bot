@@ -35,7 +35,7 @@ router = Router()
 
 @router.callback_query(F.data == "view_keys")
 async def process_callback_view_keys(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     try:
         records = await session.fetch(
             """
@@ -99,7 +99,7 @@ async def process_callback_view_keys(callback_query: types.CallbackQuery, sessio
 
 @router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
         record = await session.fetchrow(
@@ -185,7 +185,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
 @router.callback_query(F.data.startswith("update_subscription|"))
 async def process_callback_update_subscription(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
     try:
         record = await session.fetchrow(
@@ -284,7 +284,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("renew_key|"))
 async def process_callback_renew_key(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
         record = await session.fetchrow(
@@ -390,7 +390,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
 
 @router.callback_query(F.data.startswith("renew_plan|"))
 async def process_callback_renew_plan(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     plan, client_id = (
         callback_query.data.split("|")[1],
         callback_query.data.split("|")[2],

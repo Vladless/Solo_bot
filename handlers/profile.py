@@ -14,7 +14,7 @@ router = Router()
 
 @router.callback_query(F.data == "profile")
 async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext, admin: bool):
-    chat_id = callback_query.chat.id
+    chat_id = callback_query.message.chat.id
     username = callback_query.from_user.full_name
     image_path = os.path.join("img", "pic.jpg")
     key_count = await get_key_count(chat_id)
@@ -84,7 +84,7 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
 
 @router.callback_query(F.data == "invite")
 async def invite_handler(callback_query: types.CallbackQuery):
-    chat_id = callback_query.chat.id
+    chat_id = callback_query.message.chat.id
     referral_link = get_referral_link(chat_id)
 
     referral_stats = await get_referral_stats(chat_id)

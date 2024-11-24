@@ -1,4 +1,5 @@
 import hashlib
+from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -48,8 +49,8 @@ def generate_payment_link(amount, inv_id, description, tg_id):
 
 
 @router.callback_query(F.data == "pay_robokassa")
-async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.chat.id
+async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext,session:Any):
+    tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} initiated Robokassa payment.")
 
     builder = InlineKeyboardBuilder()
@@ -85,7 +86,7 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
-            await add_connection(tg_id, balance=0.0, trial=0)
+            await add_connection(tg_id, balance=0.0, trial=0,session=session)
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
     await callback_query.message.answer(
@@ -117,13 +118,13 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    logger.info(f"User {callback_query.chat.id} selected amount: {amount}.")
+    logger.info(f"User {callback_query.message.chat.id} selected amount: {amount}.")
     inv_id = 0
 
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
 
-    logger.info(f"Payment URL for user {callback_query.chat.id}: {payment_url}")
+    logger.info(f"Payment URL for user {callback_query.message.chat.id}: {payment_url}")
 
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -136,7 +137,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
         reply_markup=confirm_keyboard,
     )
-    logger.info(f"Payment link sent to user {callback_query.chat.id}.")
+    logger.info(f"Payment link sent to user {callback_query.message.chat.id}.")
 
 
 async def robokassa_webhook(request):
@@ -200,7 +201,7 @@ def check_payment_signature(params):
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
     await callback_query.message.answer(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")

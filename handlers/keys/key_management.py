@@ -34,7 +34,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = await get_trial(callback_query.chat.id, session)
+    trial_status = await get_trial(callback_query.message.chat.id, session)
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -54,7 +54,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext, sessio
 
 @router.callback_query(F.data == "confirm_create_new_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
-    tg_id = callback_query.chat.id
+    tg_id = callback_query.message.chat.id
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
 
@@ -176,7 +176,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         if trial_status == 0:
             await use_trial(message.chat.id, session)
         else:
-            await add_connection(tg_id, 0, 1)
+            await add_connection(tg_id=tg_id, balance=0, trial=1, session=session)
 
         logger.info(f"Storing key for user {tg_id} in the database.")
         await store_key(tg_id, client_id, email, expiry_timestamp, public_link, least_loaded_cluster, session)

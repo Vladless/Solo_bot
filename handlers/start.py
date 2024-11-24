@@ -30,7 +30,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
             pass
         connection_exists = await check_connection_exists(message.chat.id)
         if not connection_exists:
-            await add_connection(message.chat.id, session)
+            await add_connection(tg_id=message.chat.id, session=session)
     trial_status = await get_trial(message.chat.id, session)
     image_path = os.path.join("img", "pic.jpg")
 
@@ -64,7 +64,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
 @router.callback_query(F.data == "connect_vpn")
 async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
-    user_id = callback_query.chat.id
+    user_id = callback_query.message.chat.id
 
     trial_key_info = await create_trial_key(user_id, session)
 
