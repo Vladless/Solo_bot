@@ -3,7 +3,7 @@ from typing import Any
 
 import asyncpg
 
-from config import BONUS_PERCENT, DATABASE_URL
+from config import REFERRAL_BONUS_PERCENTAGES, DATABASE_URL
 from logger import logger
 
 
@@ -638,69 +638,91 @@ async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
 
 async def handle_referral_on_balance_update(tg_id: int, amount: float):
     """
-    Обработка реферальной системы при обновлении баланса.
+    Обработка многоуровневой реферальной системы при обновлении баланса пользователя.
 
-    Эта функция проверяет, есть ли у пользователя реферер,
-    и если есть, начисляет бонус за пополнение баланса.
+    Метод анализирует цепочку рефералов для указанного пользователя и начисляет
+    бонусы рефереерам на разных уровнях согласно настроенным процентам.
 
     Args:
-        tg_id (int): Telegram ID пользователя
+        tg_id (int): Идентификатор Telegram пользователя, пополнившего баланс
         amount (float): Сумма пополнения баланса
 
-    Returns:
-        None
+    Raises:
+        Exception: В случае ошибки при работе с базой данных
     """
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(f"Установлено подключение к базе данных для обработки реферала пользователя {tg_id}")
+        logger.info(f"Начало обработки реферальной системы для пользователя {tg_id}")
 
-        referral = await conn.fetchrow(
-            """
-            SELECT referrer_tg_id FROM referrals WHERE referred_tg_id = $1
-            """,
-            tg_id,
-        )
+        # Максимальное количество уровней рефералов
+        MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
 
-        if referral:
-            referrer_tg_id = referral["referrer_tg_id"]
-            logger.info(f"Найден реферер {referrer_tg_id} для пользователя {tg_id}")
+        # Текущий уровень для отслеживания
+        current_tg_id = tg_id
+        referral_chain = []
 
-            bonus = amount * BONUS_PERCENT
+        # Собираем цепочку рефералов
+        for level in range(1, MAX_REFERRAL_LEVELS + 1):
+            # Получаем информацию о рефере текущего уровня
+            referral = await conn.fetchrow(
+                """
+                SELECT referrer_tg_id 
+                FROM referrals 
+                WHERE referred_tg_id = $1
+                """,
+                current_tg_id,
+            )
+
+            # Если реферер не найден, прекращаем поиск
+            if not referral:
+                break
+
+            referrer_tg_id = referral['referrer_tg_id']
+            referral_chain.append({
+                'tg_id': referrer_tg_id,
+                'level': level
+            })
+
+            # Переходим к следующему уровню
+            current_tg_id = referrer_tg_id
+
+        # Начисляем бонусы по цепочке рефералов
+        for referral in referral_chain:
+            referrer_tg_id = referral['tg_id']
+            level = referral['level']
+            
+            # Расчет бонуса для текущего уровня
+            bonus_percent = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
+            bonus = amount * bonus_percent
             bonus = max(bonus, 0)  # Гарантируем неотрицательный бонус
 
-            logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id}")
-            await update_balance(referrer_tg_id, bonus)
-
-            await conn.execute(
-                """
-                UPDATE referrals SET reward_issued = TRUE
-                WHERE referrer_tg_id = $1 AND referred_tg_id = $2
-                """,
-                referrer_tg_id,
-                tg_id,
-            )
-            logger.info(f"Обновлен статус реферала для {referrer_tg_id}")
+            if bonus > 0:
+                logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}")
+                
+                # Обновляем баланс реферера
+                await update_balance(referrer_tg_id, bonus)
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке реферала для пользователя {tg_id}: {e}")
+        logger.error(f"Ошибка при обработке многоуровневой реферальной системы для {tg_id}: {e}")
     finally:
         if conn:
             await conn.close()
-            logger.info("Закрытие подключения к базе данных")
 
 
 async def get_referral_stats(referrer_tg_id: int):
     """
-    Получение статистики рефералов для указанного пользователя.
+    Получение подробной статистики рефералов для указанного пользователя.
 
     Args:
         referrer_tg_id (int): Telegram ID пользователя, для которого запрашивается статистика рефералов.
 
     Returns:
-        dict: Словарь со статистикой рефералов, содержащий:
+        dict: Словарь с детальной статистикой рефералов, содержащий:
             - total_referrals (int): Общее количество рефералов
             - active_referrals (int): Количество активных рефералов (с начисленным бонусом)
+            - referrals_by_level (dict): Количество рефералов по каждому уровню
+            - total_referral_bonus (float): Общая сумма бонусов от рефералов
 
     Raises:
         Exception: В случае ошибки при подключении к базе данных или выполнении запроса
@@ -712,6 +734,7 @@ async def get_referral_stats(referrer_tg_id: int):
             f"Установлено подключение к базе данных для получения статистики рефералов пользователя {referrer_tg_id}"
         )
 
+        # Общее количество рефералов
         total_referrals = await conn.fetchval(
             """
             SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1
@@ -720,6 +743,7 @@ async def get_referral_stats(referrer_tg_id: int):
         )
         logger.debug(f"Получено общее количество рефералов: {total_referrals}")
 
+        # Активные рефералы
         active_referrals = await conn.fetchval(
             """
             SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1 AND reward_issued = TRUE
@@ -728,9 +752,61 @@ async def get_referral_stats(referrer_tg_id: int):
         )
         logger.debug(f"Получено количество активных рефералов: {active_referrals}")
 
+        # Рефералы по уровням
+        referrals_by_level_records = await conn.fetch(
+            """
+            WITH RECURSIVE referral_levels AS (
+                SELECT referred_tg_id, referrer_tg_id, 1 AS level
+                FROM referrals 
+                WHERE referrer_tg_id = $1
+                
+                UNION
+                
+                SELECT r.referred_tg_id, r.referrer_tg_id, rl.level + 1
+                FROM referrals r
+                JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
+                WHERE rl.level < 5
+            )
+            SELECT level, 
+                   COUNT(*) AS level_count, 
+                   COUNT(CASE WHEN reward_issued = TRUE THEN 1 END) AS active_level_count
+            FROM referral_levels rl
+            JOIN referrals r ON rl.referred_tg_id = r.referred_tg_id
+            GROUP BY level
+            ORDER BY level
+        """,
+            referrer_tg_id,
+        )
+        
+        # Преобразование результатов в словарь
+        referrals_by_level = {
+            record['level']: {
+                'total': record['level_count'], 
+                'active': record['active_level_count']
+            } for record in referrals_by_level_records
+        }
+        logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
+
+        # Общая сумма бонусов от рефералов
+        total_referral_bonus = await conn.fetchval(
+            """
+            SELECT COALESCE(SUM(amount), 0) 
+            FROM payments 
+            WHERE tg_id IN (
+                SELECT referred_tg_id 
+                FROM referrals 
+                WHERE referrer_tg_id = $1
+            ) AND status = 'success'
+        """,
+            referrer_tg_id,
+        )
+        logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
+
         return {
             "total_referrals": total_referrals,
             "active_referrals": active_referrals,
+            "referrals_by_level": referrals_by_level,
+            "total_referral_bonus": total_referral_bonus,
         }
 
     except Exception as e:
