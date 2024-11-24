@@ -9,7 +9,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL,RENEWAL_PLANS
+from config import (
+    CONNECT_ANDROID,
+    CONNECT_IOS,
+    DOWNLOAD_ANDROID,
+    DOWNLOAD_IOS,
+    PUBLIC_LINK,
+    RENEWAL_PLANS,
+    SUPPORT_CHAT_URL,
+)
 from database import (
     add_connection,
     check_connection_exists,
