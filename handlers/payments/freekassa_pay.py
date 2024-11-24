@@ -130,9 +130,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await callback_query.message.answer("Некорректная сумма.")
         return
 
-    user_email = f"{callback_query.chat.id}@solo.net"
+    user_email = f"{callback_query.message.chat.id}@solo.net"
     user_ip = callback_query.message.chat.id
-    payment_url = await create_payment(callback_query.chat.id, amount, user_email, user_ip)
+    payment_url = await create_payment(callback_query.message.chat.id, amount, user_email, user_ip)
 
     if payment_url:
         confirm_keyboard = InlineKeyboardMarkup(
