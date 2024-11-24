@@ -132,7 +132,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         ]
     )
 
-    await callback_query.message.edit_text(
+    await callback_query.message.answer(
         text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
         reply_markup=confirm_keyboard,
     )
@@ -203,7 +203,7 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
     tg_id = callback_query.from_user.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
-    await callback_query.message.edit_text(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")
+    await callback_query.message.answer(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
 
 

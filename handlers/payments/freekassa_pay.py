@@ -154,7 +154,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
 @router.callback_query(F.data == "enter_custom_amount_freekassa")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.message.edit_text(text="Введите сумму пополнения:")
+    await callback_query.message.answer(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_freekassa)
 
 

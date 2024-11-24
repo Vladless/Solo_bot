@@ -68,13 +68,13 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
     if balance < RENEWAL_PLANS["1"]["price"]:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-        await callback_query.message.edit_text(NULL_BALANCE, reply_markup=builder.as_markup())
+        await callback_query.message.answer(NULL_BALANCE, reply_markup=builder.as_markup())
         await state.clear()
         return
 
     logger.info(f"Balance for user {tg_id} is sufficient. Asking for device name.")
 
-    await callback_query.message.edit_text("🔑 Пожалуйста, введите имя подключаемого устройства:")
+    await callback_query.message.answer("🔑 Пожалуйста, введите имя подключаемого устройства:")
     await state.set_state(Form.waiting_for_key_name)
     logger.info(f"State set to waiting_for_key_name for user {tg_id}")
     await state.update_data(creating_new_key=True)
