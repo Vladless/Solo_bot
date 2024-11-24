@@ -14,10 +14,9 @@ class DatabaseMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: Dict[str, Any],
     ) -> Any:
-        async with await asyncpg.create_pool(DATABASE_URL) as pool:
-            async with pool.acquire() as session:
-                data["session"] = session
-                try:
-                    return await handler(event, data)
-                finally:
-                    await pool.release(session)
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            data["session"] = conn
+            return await handler(event, data)
+        finally:
+            await conn.close()

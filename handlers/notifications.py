@@ -2,12 +2,20 @@ import asyncio
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Router, types
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
 
 from client import delete_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB
-from database import delete_key, get_balance, update_balance, update_key_expiry
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, TOTAL_GB, TRIAL_TIME
+from database import (
+    add_notification,
+    check_notification_time,
+    delete_key,
+    get_balance,
+    update_balance,
+    update_key_expiry,
+)
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED, RENEWAL_PLANS
 from logger import logger
@@ -27,6 +35,8 @@ async def notify_expiring_keys(bot: Bot):
 
         logger.info("Начало обработки уведомлений.")
 
+        await notify_inactive_trial_users(bot, conn)
+        await asyncio.sleep(1)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
         await asyncio.sleep(1)
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
@@ -95,28 +105,12 @@ async def notify_10h_keys(
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            types.InlineKeyboardButton(
-                                text="🔄 Продлить VPN",
-                                callback_data=f'renew_key|{record["client_id"]}',
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="pay",
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="👤 Личный кабинет",
-                                callback_data="view_profile",
-                            )
-                        ],
-                    ]
-                )
+                keyboard = InlineKeyboardBuilder()
+                keyboard.button(text="🔄 Продлить VPN", callback_data=f'renew_key|{record["client_id"]}')
+                keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
+                keyboard.button(text="👤 Личный кабинет", callback_data="profile")
+                keyboard.adjust(1)
+                keyboard = keyboard.as_markup()
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
@@ -175,28 +169,26 @@ async def notify_24h_keys(
 
         if not await is_bot_blocked(bot, tg_id):
             try:
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            types.InlineKeyboardButton(
-                                text="🔄 Продлить VPN",
-                                callback_data=f'renew_key|{record["client_id"]}',
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="💳 Пополнить баланс",
-                                callback_data="pay",
-                            )
-                        ],
-                        [
-                            types.InlineKeyboardButton(
-                                text="👤 Личный кабинет",
-                                callback_data="view_profile",
-                            )
-                        ],
-                    ]
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="🔄 Продлить VPN",
+                        callback_data=f'renew_key|{record["client_id"]}',
+                    )
                 )
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="💳 Пополнить баланс",
+                        callback_data="pay",
+                    )
+                )
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="👤 Личный кабинет",
+                        callback_data="profile",
+                    )
+                )
+                keyboard = builder.as_markup()
                 await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
@@ -210,6 +202,59 @@ async def notify_24h_keys(
             logger.info(f"Обновлено поле notified_24h для клиента {record['client_id']}.")
 
         await asyncio.sleep(1)
+
+
+async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
+    logger.info("Проверка пользователей, не активировавших пробный период...")
+
+    inactive_trial_users = await conn.fetch(
+        """
+        SELECT tg_id, username FROM users 
+        WHERE tg_id IN (
+            SELECT tg_id FROM connections 
+            WHERE trial = 0
+        ) AND tg_id NOT IN (
+            SELECT DISTINCT tg_id FROM keys
+        )
+        """
+    )
+    logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
+
+    for user in inactive_trial_users:
+        tg_id = user['tg_id']
+        username = user.get('username', 'Пользователь')
+
+        try:
+            # Проверяем, можно ли отправить уведомление
+            can_notify = await check_notification_time(
+                tg_id, 'inactive_trial', hours=24, session=conn  # Уведомление не чаще, чем раз в 24 часа
+            )
+
+            if can_notify and not await is_bot_blocked(bot, tg_id):
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key")
+                )
+                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                keyboard = builder.as_markup()
+
+                message = (
+                    f"👋 Привет, {username}!\n\n"
+                    f"🎉 У тебя есть бесплатный пробный период на {TRIAL_TIME} дней!\n"
+                    "🕒 Не упусти возможность попробовать наш VPN прямо сейчас.\n\n"
+                    "💡 Нажми на кнопку ниже, чтобы активировать пробный доступ."
+                )
+
+                await bot.send_message(tg_id, message, reply_markup=keyboard)
+                logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
+
+                # Добавляем запись о notification
+                await add_notification(tg_id, 'inactive_trial', session=conn)
+
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}")
+
+        await asyncio.sleep(1)  # Небольшая задержка между отправками
 
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
@@ -245,7 +290,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             "💡 Не откладывайте подключение VPN!"
         )
         keyboard = types.InlineKeyboardMarkup(
-            inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="view_profile")]]
+            inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
         )
 
         try:

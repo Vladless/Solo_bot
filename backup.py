@@ -62,9 +62,10 @@ async def _send_backup_to_admin(bot, backup_file_path):
             if isinstance(admin_ids, list):
                 for id in admin_ids:
                     await bot.send_document(id, backup_input_file)
+                    logger.info(f"Бэкап базы данных отправлен админу: {id}")
             else:
                 await bot.send_document(admin_ids, backup_input_file)
-        logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
+                logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
     except Exception as e:
         logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
 

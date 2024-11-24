@@ -79,15 +79,11 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
         raise e
 
 
-async def delete_key_from_db(client_id):
-    """Удаление ключа из базы данных"""
+async def delete_key_from_db(client_id, session):
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute("DELETE FROM keys WHERE client_id = $1", client_id)
+        await session.execute("DELETE FROM keys WHERE client_id = $1", client_id)
     except Exception as e:
         logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
-    finally:
-        await conn.close()
 
 
 async def delete_key_from_cluster(cluster_id, email, client_id):
