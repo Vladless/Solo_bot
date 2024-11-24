@@ -1151,7 +1151,7 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
             FROM notifications 
             WHERE tg_id = $2 AND notification_type = $3
             """,
-            str(hours),  # Преобразуем hours в строку
+            hours,  # Убираем преобразование в строку
             tg_id,
             notification_type,
         )
