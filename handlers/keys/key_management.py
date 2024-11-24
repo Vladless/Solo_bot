@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
-from database import add_connection, get_balance, store_key, update_balance
+from database import add_connection, get_balance, get_trial, store_key, update_balance
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import get_least_loaded_cluster, sanitize_key_name
@@ -34,13 +34,8 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    existing_connection = await session.fetchrow(
-        "SELECT trial FROM connections WHERE tg_id = $1",
-        callback_query.from_user.id,
-    )
-
-    trial_status = existing_connection["trial"] if existing_connection else 0
-
+    trial_status = get_trial(callback_query.message.from_user.id,session)
+    logger.info(f'trial_status {trial_status}')
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
         builder.row(
