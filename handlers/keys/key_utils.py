@@ -98,6 +98,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
         logger.error(f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
 
+
 async def delete_key_from_db(client_id, session):
     try:
         await session.execute("DELETE FROM keys WHERE client_id = $1", client_id)
