@@ -138,7 +138,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             ]
         )
 
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             text=f"Вы выбрали пополнение на {amount} рублей.",
             reply_markup=confirm_keyboard,
         )
