@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
-from database import add_connection, get_balance, get_trial, store_key, update_balance
+from database import add_connection, get_balance, get_trial, store_key, update_balance, use_trial
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import get_least_loaded_cluster, sanitize_key_name
@@ -34,7 +34,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 
 
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = get_trial(callback_query.message.from_user.id,session)
+    trial_status = get_trial(callback_query.message.from_user.id, session)
     logger.info(f'trial_status {trial_status}')
     if trial_status == 1:
         builder = InlineKeyboardBuilder()
@@ -107,9 +107,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     expiry_time = None
 
     logger.info(f"Checking trial status for user {tg_id}.")
-    existing_connection = await session.fetchrow("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
-
-    trial_status = existing_connection["trial"] if existing_connection else 0
+    trial_status = get_trial(message.from_user.id, session)
 
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=1, hours=3)
@@ -175,21 +173,14 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         await asyncio.gather(*tasks)
 
         logger.info(f"Updating trial status for user {tg_id} in the database.")
-        existing_connection = await session.fetchrow("SELECT * FROM connections WHERE tg_id = $1", tg_id)
-        if existing_connection:
-            await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
+        trial_status = await get_trial(message.from_user.id, session)
+        if trial_status == 0:
+            await use_trial(message.from_user.id, session)
         else:
             await add_connection(tg_id, 0, 1)
 
         logger.info(f"Storing key for user {tg_id} in the database.")
-        await store_key(
-            tg_id,
-            client_id,
-            email,
-            expiry_timestamp,
-            public_link,
-            least_loaded_cluster,
-        )
+        await store_key(tg_id, client_id, email, expiry_timestamp, public_link, least_loaded_cluster, session)
 
     except Exception as e:
         logger.error(f"Error while creating the key for user {tg_id}: {e}")
