@@ -25,21 +25,6 @@ async def init_db():
         """
     )
 
-    # Таблица для хранения информации о платежах
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id SERIAL PRIMARY KEY,
-            tg_id BIGINT NOT NULL,
-            amount REAL NOT NULL,
-            payment_system TEXT NOT NULL,
-            status TEXT DEFAULT 'success',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
-        )
-        """
-    )
-
     # Таблица для хранения информации о пользователях
     await conn.execute(
         """
@@ -117,6 +102,18 @@ async def init_db():
             user_id BIGINT NOT NULL,
             used_at TIMESTAMP NOT NULL DEFAULT NOW(),
             PRIMARY KEY (coupon_id, user_id)
+        )
+        """
+    )
+
+    # Таблица для отслеживания отправленных уведомлений
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notifications (
+            tg_id BIGINT NOT NULL,
+            last_notification_time TIMESTAMP NOT NULL DEFAULT NOW(),
+            notification_type TEXT NOT NULL,
+            PRIMARY KEY (tg_id, notification_type)
         )
         """
     )
@@ -1018,3 +1015,81 @@ async def add_payment(tg_id: int, amount: float, payment_system: str):
         if conn:
             await conn.close()
             logger.info("Закрытие подключения к базе данных после добавления платежа")
+
+
+async def add_notification(tg_id: int, notification_type: str, session: Any):
+    """
+    Добавляет запись о notification в базу данных.
+
+    Args:
+        tg_id (int): Идентификатор пользователя в Telegram
+        notification_type (str): Тип уведомления
+        session (Any): Сессия базы данных для выполнения запроса
+
+    Raises:
+        Exception: В случае ошибки при добавлении notification
+    """
+    try:
+        await session.execute(
+            """
+            INSERT INTO notifications (tg_id, notification_type)
+            VALUES ($1, $2)
+            ON CONFLICT (tg_id, notification_type) 
+            DO UPDATE SET last_notification_time = NOW()
+            """,
+            tg_id,
+            notification_type,
+        )
+        logger.info(f"Успешно добавлено уведомление типа {notification_type} для пользователя {tg_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении notification для пользователя {tg_id}: {e}")
+        raise
+
+
+async def check_notification_time(tg_id: int, notification_type: str, hours: int = 12, session: Any = None) -> bool:
+    """
+    Проверяет, прошло ли указанное количество часов с момента последнего уведомления.
+
+    Args:
+        tg_id (int): Идентификатор пользователя в Telegram
+        notification_type (str): Тип уведомления
+        hours (int, optional): Количество часов для проверки. По умолчанию 12.
+        session (Any): Сессия базы данных для выполнения запроса
+
+    Returns:
+        bool: True, если с момента последнего уведомления прошло больше указанного времени, иначе False
+
+    Raises:
+        Exception: В случае ошибки при проверке времени уведомления
+    """
+    try:
+        result = await session.fetchrow(
+            """
+            SELECT 
+                CASE 
+                    WHEN last_notification_time IS NULL THEN TRUE
+                    WHEN NOW() - last_notification_time > INTERVAL '$1 hours' THEN TRUE
+                    ELSE FALSE 
+                END as can_notify
+            FROM notifications 
+            WHERE tg_id = $2 AND notification_type = $3
+            """, 
+            hours, 
+            tg_id, 
+            notification_type
+        )
+
+        # Если записи нет, значит уведомление можно отправить
+        if result is None:
+            return True
+
+        can_notify = result['can_notify']
+        
+        logger.info(f"Проверка уведомления типа {notification_type} для пользователя {tg_id}: {'можно отправить' if can_notify else 'слишком рано'}")
+        
+        return can_notify
+    
+    except Exception as e:
+        logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
+        raise
+
