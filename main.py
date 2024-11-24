@@ -55,23 +55,25 @@ async def on_shutdown(app):
     try:
         await asyncio.gather(*asyncio.all_tasks(), return_exceptions=True)
     except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
+        logger.error(f"Ошибка при завершении работы: {e}")
 
 
 async def shutdown_site(site):
-    logger.info("Остановка сайта...")
+    logger.info("Остановка сайт...")
     await site.stop()
-    logger.info("Сервер остановлен.")
+    logger.info("Сервер сайт.")
 
 
 async def main():
     dp.include_router(router)
 
     if DEV_MODE:
+        logger.info("Запуск в режиме разработки...")
         await bot.delete_webhook()
         await init_db()
         await dp.start_polling(bot)
     else:
+        logger.info("Запуск в production режиме...")
         app = web.Application()
         app.on_startup.append(on_startup)
         app.on_shutdown.append(on_shutdown)
@@ -96,7 +98,7 @@ async def main():
         site = web.TCPSite(runner, host=WEBAPP_HOST, port=WEBAPP_PORT)
         await site.start()
 
-        logger.info(f"Webhook URL: {WEBHOOK_URL}")
+        logger.info(f"URL вебхука: {WEBHOOK_URL}")
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -107,7 +109,10 @@ async def main():
         finally:
             pending = asyncio.all_tasks()
             for task in pending:
-                task.cancel()
+                try:
+                    task.cancel()
+                except Exception as e:
+                    logger.error(e)
             await asyncio.gather(*pending, return_exceptions=True)
 
 
