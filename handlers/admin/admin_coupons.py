@@ -76,12 +76,12 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any
         result = await delete_coupon_from_db(coupon_code, session)
 
         if result:
-            await show_coupon_list(callback_query)
+            await show_coupon_list(callback_query,session)
         else:
             await callback_query.message.answer(
                 f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
             )
-            await show_coupon_list(callback_query)
+            await show_coupon_list(callback_query,session)
 
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
