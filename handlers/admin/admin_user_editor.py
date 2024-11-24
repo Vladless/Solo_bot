@@ -45,7 +45,9 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
     user_record = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
 
     if not user_record:
-        await message.answer("🔍 Пользователь с указанным username не найден. 🚫")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer("🔍 Пользователь с указанным username не найден. 🚫", reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -56,7 +58,9 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
-        await message.answer("🚫 Пользователь с указанным tg_id не найден. 🔍")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer("🚫 Пользователь с указанным tg_id не найден. 🔍", reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -102,7 +106,9 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
-        await message.answer("❌ Пользователь с указанным tg_id не найден. 🔍")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer("❌ Пользователь с указанным tg_id не найден. 🔍", reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -163,7 +169,11 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
 @router.message(UserEditorState.waiting_for_new_balance, IsAdminFilter())
 async def handle_new_balance_input(message: types.Message, state: FSMContext, session: Any):
     if not message.text.isdigit() or int(message.text) < 0:
-        await message.answer("❌ Пожалуйста, введите корректную сумму для изменения баланса.")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer(
+            "❌ Пожалуйста, введите корректную сумму для изменения баланса.", reply_markup=builder.as_markup()
+        )
         return
 
     new_balance = int(message.text)
@@ -239,7 +249,11 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
     key_details = await get_key_details(email, session)
 
     if not key_details:
-        await callback_query.message.answer("🔍 <b>Информация о ключе не найдена.</b> 🚫")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await callback_query.message.answer(
+            "🔍 <b>Информация о ключе не найдена.</b> 🚫", reply_markup=builder.as_markup()
+        )
         return
 
     response_message = (
@@ -280,13 +294,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
 
     if not key_details:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🔙 Назад в меню администратора",
-                callback_data="user_editor",
-            )
-        )
-
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
         await message.answer(
             "🚫 Пользователь с указанным именем ключа не найден.",
             reply_markup=builder.as_markup(),
@@ -336,7 +344,9 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
     email = user_data.get("email")
 
     if not email:
-        await message.answer("📧 Email не найден в состоянии. 🚫")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer("📧 Email не найден в состоянии. 🚫", reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -346,13 +356,17 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
 
         client_id = await get_client_id_by_email(email)
         if client_id is None:
-            await message.answer(f"🚫 Клиент с email {email} не найден. 🔍")
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+            await message.answer(f"🚫 Клиент с email {email} не найден. 🔍", reply_markup=builder.as_markup())
             await state.clear()
             return
 
         record = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
         if not record:
-            await message.answer("🚫 Клиент не найден в базе данных. 🔍")
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+            await message.answer("🚫 Клиент не найден в базе данных. 🔍", reply_markup=builder.as_markup())
             await state.clear()
             return
 
@@ -384,7 +398,11 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
         await message.answer(response_message, reply_markup=builder.as_markup())
     except ValueError:
-        await message.answer("❌ Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.")
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await message.answer(
+            "❌ Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.", reply_markup=builder.as_markup()
+        )
     except Exception as e:
         logger.error(e)
     await state.clear()
@@ -396,9 +414,9 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
     client_id = await session.fetchval("SELECT client_id FROM keys WHERE email = $1", email)
 
     if client_id is None:
-        await callback_query.message.answer(
-            "🔍 Ключ не найден. 🚫",
-        )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        await callback_query.message.answer("🔍 Ключ не найден. 🚫", reply_markup=builder.as_markup())
         return
 
     builder = InlineKeyboardBuilder()
