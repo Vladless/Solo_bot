@@ -72,6 +72,7 @@ async def extend_client_key(xui, inbound_id, email: str, new_expiry_time: int, c
         client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)
+        await xui.client.reset_stats(inbound_id, email)
         logger.info(f"Ключ клиента {client.email} успешно продлён до {new_expiry_time}.")
 
     except Exception as e:
