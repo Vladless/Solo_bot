@@ -10,7 +10,15 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, SUPPORT_CHAT_URL
-from database import add_connection, check_connection_exists, get_balance, get_trial, store_key, update_balance, use_trial
+from database import (
+    add_connection,
+    check_connection_exists,
+    get_balance,
+    get_trial,
+    store_key,
+    update_balance,
+    use_trial,
+)
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, RENEWAL_PLANS, key_message_success
 from handlers.utils import get_least_loaded_cluster, sanitize_key_name

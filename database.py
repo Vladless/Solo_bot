@@ -3,7 +3,7 @@ from typing import Any
 
 import asyncpg
 
-from config import REFERRAL_BONUS_PERCENTAGES, DATABASE_URL
+from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -611,9 +611,9 @@ async def get_all_users(conn):
         Exception: В случае ошибки при получении данных
     """
     try:
-        пользователи = await conn.fetch("SELECT tg_id FROM connections")
-        logger.info(f"Получен список всех пользователей. Количество: {len(пользователи)}")
-        return пользователи
+        users = await conn.fetch("SELECT tg_id FROM connections")
+        logger.info(f"Получен список всех пользователей. Количество: {len(users)}")
+        return users
     except Exception as e:
         logger.error(f"Ошибка при получении списка пользователей: {e}")
         raise
@@ -679,10 +679,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
                 break
 
             referrer_tg_id = referral['referrer_tg_id']
-            referral_chain.append({
-                'tg_id': referrer_tg_id,
-                'level': level
-            })
+            referral_chain.append({'tg_id': referrer_tg_id, 'level': level})
 
             # Переходим к следующему уровню
             current_tg_id = referrer_tg_id
@@ -691,7 +688,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         for referral in referral_chain:
             referrer_tg_id = referral['tg_id']
             level = referral['level']
-            
+
             # Расчет бонуса для текущего уровня
             bonus_percent = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
             bonus = amount * bonus_percent
@@ -699,7 +696,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
             if bonus > 0:
                 logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}")
-                
+
                 # Обновляем баланс реферера
                 await update_balance(referrer_tg_id, bonus)
 
@@ -777,13 +774,11 @@ async def get_referral_stats(referrer_tg_id: int):
         """,
             referrer_tg_id,
         )
-        
+
         # Преобразование результатов в словарь
         referrals_by_level = {
-            record['level']: {
-                'total': record['level_count'], 
-                'active': record['active_level_count']
-            } for record in referrals_by_level_records
+            record['level']: {'total': record['level_count'], 'active': record['active_level_count']}
+            for record in referrals_by_level_records
         }
         logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
 
@@ -1139,7 +1134,13 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
         Exception: В случае ошибки при проверке времени уведомления
     """
     try:
-        result = await session.fetchrow(
+        # Если сессия не передана, создаем новое подключение
+        if session is None:
+            conn = await asyncpg.connect(DATABASE_URL)
+        else:
+            conn = session
+
+        result = await conn.fetchrow(
             """
             SELECT 
                 CASE 
@@ -1149,23 +1150,28 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
                 END as can_notify
             FROM notifications 
             WHERE tg_id = $2 AND notification_type = $3
-            """, 
-            hours, 
-            tg_id, 
-            notification_type
+            """,
+            str(hours),  # Преобразуем hours в строку
+            tg_id,
+            notification_type,
         )
+
+        # Если сессия не была передана, закрываем подключение
+        if session is None and conn:
+            await conn.close()
 
         # Если записи нет, значит уведомление можно отправить
         if result is None:
             return True
 
         can_notify = result['can_notify']
-        
-        logger.info(f"Проверка уведомления типа {notification_type} для пользователя {tg_id}: {'можно отправить' if can_notify else 'слишком рано'}")
-        
+
+        logger.info(
+            f"Проверка уведомления типа {notification_type} для пользователя {tg_id}: {'можно отправить' if can_notify else 'слишком рано'}"
+        )
+
         return can_notify
-    
+
     except Exception as e:
         logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
-        raise
-
+        return True  # По умолчанию разрешаем отправку уведомления

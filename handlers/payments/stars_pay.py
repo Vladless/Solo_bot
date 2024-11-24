@@ -1,4 +1,5 @@
 from typing import Any
+
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -21,7 +22,7 @@ class ReplenishBalanceState(StatesGroup):
 
 
 @router.callback_query(F.data == "pay_stars")
-async def process_callback_pay_stars(callback_query: types.CallbackQuery, state: FSMContext,session:Any):
+async def process_callback_pay_stars(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
     builder = InlineKeyboardBuilder()
@@ -59,7 +60,7 @@ async def process_callback_pay_stars(callback_query: types.CallbackQuery, state:
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
-            await add_connection(tg_id, balance=0.0, trial=0,session=session)
+            await add_connection(tg_id, balance=0.0, trial=0, session=session)
 
     try:
         await callback_query.message.delete()
