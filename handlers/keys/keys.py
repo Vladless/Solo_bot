@@ -240,6 +240,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 expiry_time,
                 public_link,
                 server_id=least_loaded_cluster_id,
+                session=session,
             )
             response_message = f"Ваша подписка {email} обновлена!"
             builder = InlineKeyboardBuilder()
