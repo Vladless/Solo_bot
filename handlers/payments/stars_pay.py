@@ -21,7 +21,7 @@ class ReplenishBalanceState(StatesGroup):
 
 @router.callback_query(F.data == "pay_stars")
 async def process_callback_pay_stars(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.from_user.id
+    tg_id = callback_query.chat.id
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
@@ -176,7 +176,7 @@ async def on_successful_payment(
     message: types.Message,
 ):
     try:
-        user_id = int(message.from_user.id)
+        user_id = int(message.chat.id)
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
         await add_payment(int(user_id), float(amount), "stars")

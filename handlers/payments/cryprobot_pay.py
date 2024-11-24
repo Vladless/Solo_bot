@@ -53,11 +53,11 @@ async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, st
         )
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_profile"))
-    key_count = await get_key_count(callback_query.from_user.id)
+    key_count = await get_key_count(callback_query.chat.id)
     if key_count == 0:
-        exists = await check_connection_exists(callback_query.from_user.id)
+        exists = await check_connection_exists(callback_query.chat.id)
         if not exists:
-            await add_connection(callback_query.from_user.id, balance=0.0, trial=0)
+            await add_connection(callback_query.chat.id, balance=0.0, trial=0)
     await callback_query.message.answer(
         "Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),
@@ -88,7 +88,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             asset="USDT",
             amount=str(int(amount // RUB_TO_USDT)),
             description=f"Пополнения баланса на {amount} руб",
-            payload=f"{callback_query.from_user.id}:{int(amount)}",
+            payload=f"{callback_query.chat.id}:{int(amount)}",
         )
 
         if hasattr(invoice, "bot_invoice_url"):
@@ -158,7 +158,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 asset="USDT",
                 amount=str(int(amount // RUB_TO_USDT)),
                 description=f"Пополнения баланса на {amount} руб",
-                payload=f"{message.from_user.id}:{amount}",
+                payload=f"{message.chat.id}:{amount}",
             )
 
             if hasattr(invoice, "bot_invoice_url"):

@@ -33,7 +33,7 @@ async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSM
 @router.message(CouponActivationState.waiting_for_coupon_code)
 async def process_coupon_code(message: types.Message, state: FSMContext, session: Any):
     coupon_code = message.text.strip()
-    activation_result = await activate_coupon(message.from_user.id, coupon_code, session)
+    activation_result = await activate_coupon(message.chat.id, coupon_code, session)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))

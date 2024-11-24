@@ -31,7 +31,7 @@ class ReplenishBalanceState(StatesGroup):
 
 @router.callback_query(F.data == "pay_yookassa")
 async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.from_user.id
+    tg_id = callback_query.chat.id
 
     builder = InlineKeyboardBuilder()
 
@@ -95,7 +95,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     # state_data = await state.get_data()
     customer_name = callback_query.from_user.full_name
-    customer_id = callback_query.from_user.id
+    customer_id = callback_query.chat.id
 
     customer_email = f"{customer_id}@solo.net"
 
@@ -195,7 +195,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                     "receipt": {
                         "customer": {
                             "full_name": message.from_user.full_name,
-                            "email": f"{message.from_user.id}@solo.net",
+                            "email": f"{message.chat.id}@solo.net",
                             "phone": "79000000000",
                         },
                         "items": [
@@ -210,7 +210,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                             }
                         ],
                     },
-                    "metadata": {"user_id": message.from_user.id},
+                    "metadata": {"user_id": message.chat.id},
                 },
                 uuid.uuid4(),
             )

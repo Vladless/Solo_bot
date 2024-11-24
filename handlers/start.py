@@ -11,7 +11,6 @@ from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, 
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
-from logger import logger
 
 router = Router()
 
@@ -26,13 +25,13 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     if message.text:
         try:
             referrer_tg_id = int(message.text.split("referral_")[1])
-            await add_referral(message.from_user.id, referrer_tg_id, session)
+            await add_referral(message.chat.id, referrer_tg_id, session)
         except (ValueError, IndexError):
             pass
-        connection_exists = await check_connection_exists(message.from_user.id)
+        connection_exists = await check_connection_exists(message.chat.id)
         if not connection_exists:
-            await add_connection(message.from_user.id, session)
-    trial_status = await get_trial(message.from_user.id, session)
+            await add_connection(message.chat.id, session)
+    trial_status = await get_trial(message.chat.id, session)
     image_path = os.path.join("img", "pic.jpg")
 
     builder = InlineKeyboardBuilder()
@@ -65,7 +64,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
 @router.callback_query(F.data == "connect_vpn")
 async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
-    user_id = callback_query.from_user.id
+    user_id = callback_query.chat.id
 
     trial_key_info = await create_trial_key(user_id, session)
 
