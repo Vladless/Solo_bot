@@ -17,6 +17,7 @@ from config import (
     PUBLIC_LINK,
     RENEWAL_PLANS,
     SUPPORT_CHAT_URL,
+    TRIAL_TIME,
 )
 from database import (
     add_connection,
@@ -125,7 +126,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     trial_status = await get_trial(message.chat.id, session)
 
     if trial_status == 0:
-        expiry_time = current_time + timedelta(days=1, hours=3)
+        expiry_time = current_time + timedelta(days=TRIAL_TIME)
         logger.info(f"Assigned 1-day trial to user {tg_id}.")
     else:
         balance = await get_balance(tg_id)
@@ -141,7 +142,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
             return
 
         await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-        expiry_time = current_time + timedelta(days=30, hours=3)
+        expiry_time = current_time + timedelta(days=30)
         logger.info(f"User {tg_id} balance deducted for key creation.")
 
     expiry_timestamp = int(expiry_time.timestamp() * 1000)

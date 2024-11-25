@@ -53,3 +53,4 @@ nginx.conf
 scripts
 models.py
 Dockerfile
+.csv

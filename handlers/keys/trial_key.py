@@ -18,7 +18,7 @@ async def create_trial_key(tg_id: int, session: Any):
     instructions = INSTRUCTIONS
     result = {"key": public_link, "instructions": instructions}
     current_time = datetime.utcnow()
-    expiry_time = current_time + timedelta(days=TRIAL_TIME, hours=3)
+    expiry_time = current_time + timedelta(days=TRIAL_TIME)
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     least_loaded_cluster = await get_least_loaded_cluster()
