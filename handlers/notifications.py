@@ -320,8 +320,6 @@ async def process_key(record, bot, conn):
                 logger.error(f"Ошибка при отправке уведомления клиенту {tg_id}: {e}")
 
         else:
-            await delete_key(client_id)
-
             for cluster_id, cluster in CLUSTERS.items():
                 for server_id, server in cluster.items():
                     xui = AsyncApi(
@@ -330,7 +328,7 @@ async def process_key(record, bot, conn):
                         password=ADMIN_PASSWORD,
                     )
                     await delete_client(xui, email, client_id)
-
+            await delete_key(client_id)
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
@@ -338,7 +336,7 @@ async def process_key(record, bot, conn):
 async def check_online_users():
     for cluster_id, cluster in CLUSTERS.items():
         for server_id, server in cluster.items():
-            xui = AsyncApi(server["API_URL"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+            xui = AsyncApi(server["API_URL"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
             await xui.login()
             try:
                 online_users = len(await xui.client.online())
