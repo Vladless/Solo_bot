@@ -248,6 +248,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 expiry_time,
                 public_link,
                 server_id=least_loaded_cluster_id,
+                session=session,
             )
             response_message = f"Ваша подписка {email} обновлена!"
             builder = InlineKeyboardBuilder()
@@ -333,6 +334,10 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                     callback_data=f"renew_plan|12|{client_id}",
                 )
             )
+
+            back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys")
+            builder.row(back_button)
+
             balance = await get_balance(tg_id)
 
             response_message = PLAN_SELECTION_MSG.format(
