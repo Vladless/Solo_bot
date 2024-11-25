@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import BytesIO
 import subprocess
 from typing import Any
 
@@ -6,7 +7,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
@@ -82,11 +83,105 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="user_stats"))
+        builder.row(InlineKeyboardButton(text="📥 Выгрузить пользователей в CSV", callback_data="export_users_csv"))
+        builder.row(InlineKeyboardButton(text="📥 Выгрузить оплаты в CSV", callback_data="export_payments_csv"))
         builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
 
         await callback_query.message.answer(stats_message, reply_markup=builder.as_markup())
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
+
+
+@router.callback_query(F.data == "export_users_csv", IsAdminFilter())
+async def export_users_csv(callback_query: CallbackQuery, session: Any):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    try:
+        users = await session.fetch(
+            """
+            SELECT 
+                u.tg_id, 
+                u.username, 
+                u.first_name, 
+                u.last_name, 
+                u.language_code, 
+                u.is_bot, 
+                c.balance, 
+                c.trial 
+            FROM users u
+            LEFT JOIN connections c ON u.tg_id = c.tg_id
+        """
+        )
+
+        if not users:
+            await callback_query.message.answer("📭 Нет пользователей для экспорта.", reply_markup=builder.as_markup())
+            return
+
+        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"  # Заголовки CSV
+        for user in users:
+            csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
+
+        file_name = BytesIO(csv_data.encode("utf-8-sig"))
+        file_name.seek(0)
+
+        file = BufferedInputFile(file_name.getvalue(), filename="users_export.csv")
+
+        await callback_query.message.answer_document(
+            file, caption="📥 Экспорт пользователей в CSV", reply_markup=builder.as_markup()
+        )
+        file_name.close()
+
+    except Exception as e:
+        logger.error(f"Ошибка при экспорте пользователей в CSV: {e}")
+        await callback_query.message.answer(
+            "❗ Произошла ошибка при экспорте пользователей.", reply_markup=builder.as_markup()
+        )
+
+
+@router.callback_query(F.data == "export_payments_csv", IsAdminFilter())
+async def export_payments_csv(callback_query: CallbackQuery, session: Any):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    try:
+        payments = await session.fetch(
+            """
+            SELECT 
+                u.tg_id, 
+                u.username, 
+                u.first_name, 
+                u.last_name, 
+                p.amount, 
+                p.payment_system,
+                p.status,
+                p.created_at 
+            FROM users u
+            JOIN payments p ON u.tg_id = p.tg_id
+        """
+        )
+
+        if not payments:
+            await callback_query.message.answer("📭 Нет платежей для экспорта.", reply_markup=builder.as_markup())
+            return
+
+        csv_data = "tg_id,username,first_name,last_name,amount,payment_system,status,created_at\n"  # Заголовки CSV
+        for payment in payments:
+            csv_data += f"{payment['tg_id']},{payment['username']},{payment['first_name']},{payment['last_name']},{payment['amount']},{payment['payment_system']},{payment['status']},{payment['created_at']}\n"
+
+        file_name = BytesIO(csv_data.encode("utf-8-sig"))
+        file_name.seek(0)
+
+        file = BufferedInputFile(file_name.getvalue(), filename="payments_export.csv")
+
+        await callback_query.message.answer_document(
+            file, caption="📥 Экспорт платежей в CSV", reply_markup=builder.as_markup()
+        )
+        file_name.close()
+
+    except Exception as e:
+        logger.error(f"Ошибка при экспорте платежей в CSV: {e}")
+        await callback_query.message.answer(
+            "❗ Произошла ошибка при экспорте платежей.", reply_markup=builder.as_markup()
+        )
 
 
 @router.callback_query(F.data == "send_to_alls", IsAdminFilter())

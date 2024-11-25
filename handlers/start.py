@@ -22,6 +22,7 @@ async def handle_start_callback_query(callback_query: CallbackQuery, state: FSMC
 
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, session: Any, admin: bool):
+    await state.clear()
     if message.text:
         try:
             referrer_tg_id = int(message.text.split("referral_")[1])

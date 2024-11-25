@@ -161,8 +161,9 @@ async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any
 async def process_balance_change(callback_query: CallbackQuery, state: FSMContext):
     tg_id = int(callback_query.data.split("_")[2])
     await state.update_data(tg_id=tg_id)
-
-    await callback_query.message.answer("💸 Введите новую сумму баланса:")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    await callback_query.message.answer("💸 Введите новую сумму баланса:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
 
@@ -266,6 +267,12 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
+            text="ℹ️ Получить информацию о юзере",
+            callback_data=f"user_info|{key_details['tg_id']}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="⏳ Изменить время истечения",
             callback_data=f"change_expiry|{email}",
         )
@@ -283,7 +290,9 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data == "search_by_key_name", IsAdminFilter())
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("🔑 Введите имя ключа:")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    await callback_query.message.answer("🔑 Введите имя ключа:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_key_name)
 
 
@@ -310,6 +319,12 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
     )
 
     key_buttons = InlineKeyboardBuilder()
+    key_buttons.row(
+        InlineKeyboardButton(
+            text="ℹ️ Получить информацию о юзере",
+            callback_data=f"user_info|{key_details['tg_id']}",
+        )
+    )
     key_buttons.row(
         InlineKeyboardButton(
             text="⏳ Изменить время истечения",
@@ -458,3 +473,44 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())
+async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+    tg_id = int(callback_query.data.split("|")[1])
+    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
+    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
+    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+
+    builder = InlineKeyboardBuilder()
+
+    for (email,) in key_records:
+        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📝 Изменить баланс",
+            callback_data=f"change_balance_{tg_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 Восстановить пробник",
+            callback_data=f"restore_trial_{tg_id}",
+        )
+    )
+
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+
+    user_info = (
+        f"📊 Информация о пользователе:\n\n"
+        f"🆔 ID пользователя: <b>{tg_id}</b>\n"
+        f"👤 Логин пользователя: <b>@{username}</b>\n"
+        f"💰 Баланс: <b>{balance}</b>\n"
+        f"👥 Количество рефералов: <b>{referral_count}</b>\n"
+        f"🔑 Ключи (для редактирования нажмите на ключ):"
+    )
+    await callback_query.message.answer(user_info, reply_markup=builder.as_markup())
+    await state.set_state(UserEditorState.displaying_user_info)
