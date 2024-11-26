@@ -13,11 +13,12 @@ class DeleteMessageMiddleware(BaseMiddleware):
     ) -> Any:
         if isinstance(event, (Message, CallbackQuery)):
             if isinstance(event, Message):
-                try:
-                    await event.bot.delete_message(event.chat.id, event.message_id - 1)
-                except Exception:
-                    pass
-                await event.delete()
+                if not event.entities[0].type == "bot_command" and event.text == "/start":
+                    try:
+                        await event.bot.delete_message(event.chat.id, event.message_id - 1)
+                    except Exception:
+                        pass
+                    await event.delete()
             elif isinstance(event, CallbackQuery):
                 await event.answer()
                 await event.message.delete()

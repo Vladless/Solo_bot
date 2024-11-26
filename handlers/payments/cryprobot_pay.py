@@ -54,9 +54,7 @@ async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, st
             callback_data="enter_custom_amount_crypto",
         )
     )
-
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_profile"))
-
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
     key_count = await get_key_count(callback_query.message.chat.id)
     if key_count == 0:
         exists = await check_connection_exists(callback_query.message.chat.id)

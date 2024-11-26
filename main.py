@@ -71,6 +71,7 @@ async def main():
         logger.info("Запуск в режиме разработки...")
         await bot.delete_webhook()
         await init_db()
+        asyncio.create_task(periodic_notifications())
         await dp.start_polling(bot)
     else:
         logger.info("Запуск в production режиме...")
