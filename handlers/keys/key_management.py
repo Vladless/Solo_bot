@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Union
 import uuid
 
 from aiogram import F, Router
@@ -30,7 +30,7 @@ from database import (
 )
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, key_message_success
-from handlers.utils import get_least_loaded_cluster, sanitize_key_name
+from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
 router = Router()
@@ -70,7 +70,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext, sessio
 
 
 @router.callback_query(F.data == "confirm_create_new_key")
-async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext):
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
@@ -83,39 +83,32 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
         await state.clear()
         return
 
-    logger.info(f"Balance for user {tg_id} is sufficient. Asking for device name.")
+    logger.info(f"Balance for user {tg_id} is sufficient. Proceeding with key creation.")
 
-    await callback_query.message.answer("🔑 Пожалуйста, введите имя подключаемого устройства:")
-    await state.set_state(Form.waiting_for_key_name)
-    logger.info(f"State set to waiting_for_key_name for user {tg_id}")
-    await state.update_data(creating_new_key=True)
+    await handle_key_creation(tg_id, state, session, callback_query)
 
 
-@router.message(Form.waiting_for_key_name)
-async def handle_key_name_input(message: Message, state: FSMContext, session: Any):
-    tg_id = message.chat.id
-    key_name = sanitize_key_name(message.text)
+async def handle_key_creation(
+    tg_id: int, state: FSMContext, session: Any, message_or_query: Union[Message, CallbackQuery]
+):
+    """Создание ключа с рандомным именем."""
+    while True:
+        key_name = generate_random_email()
 
-    logger.info(f"User {tg_id} is attempting to create a key with the name: {key_name}")
+        logger.info(f"Generated random key name for user {tg_id}: {key_name}")
 
-    if not key_name:
-        await message.bot.send_message(tg_id, "📝 Пожалуйста, назовите устройство на английском языке.")
-        logger.warning(f"User {tg_id} entered an invalid key name: {key_name}")
-        return
-
-    logger.info(f"Checking if key name '{key_name}' already exists for user {tg_id} in the database.")
-    existing_key = await session.fetchrow(
-        "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
-        key_name.lower(),
-        tg_id,
-    )
-    if existing_key:
-        await message.answer(
-            "❌ Упс! Это имя уже используется. Выберите другое уникальное название для ключа.",
+        existing_key = await session.fetchrow(
+            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
+            key_name,
+            tg_id,
         )
-        logger.warning(f"Key name '{key_name}' already exists for user {tg_id}.")
-        await state.set_state(Form.waiting_for_key_name)
-        return
+
+        if not existing_key:
+            break
+
+        logger.warning(
+            f"Randomly generated key name '{key_name}' already exists for user {tg_id}. Generating a new one."
+        )
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()
@@ -123,7 +116,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     expiry_time = None
 
     logger.info(f"Checking trial status for user {tg_id}.")
-    trial_status = await get_trial(message.chat.id, session)
+    trial_status = await get_trial(tg_id, session)
 
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=TRIAL_TIME)
@@ -133,7 +126,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         if balance < RENEWAL_PLANS["1"]["price"]:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-            await message.answer(
+            await message_or_query.message.answer(
                 "💳 Недостаточно средств для создания подписки на новое устройство. Пополните баланс в личном кабинете.",
                 reply_markup=builder.as_markup(),
             )
@@ -168,13 +161,12 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
 
     logger.info(f"Sending key message to user {tg_id} with the public link.")
 
-    await message.answer(key_message, reply_markup=builder.as_markup())
+    await message_or_query.message.answer(key_message, reply_markup=builder.as_markup())
 
     try:
         least_loaded_cluster = await get_least_loaded_cluster()
 
-        tasks = []
-        tasks.append(
+        tasks = [
             asyncio.create_task(
                 create_key_on_cluster(
                     least_loaded_cluster,
@@ -184,14 +176,14 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
                     expiry_timestamp,
                 )
             )
-        )
+        ]
 
         await asyncio.gather(*tasks)
 
         logger.info(f"Updating trial status for user {tg_id} in the database.")
-        connection_exists = await check_connection_exists(message.chat.id)
+        connection_exists = await check_connection_exists(tg_id)
         if connection_exists:
-            await use_trial(message.chat.id, session)
+            await use_trial(tg_id, session)
         else:
             await add_connection(tg_id=tg_id, balance=0, trial=1, session=session)
 
@@ -200,4 +192,5 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
 
     except Exception as e:
         logger.error(f"Error while creating the key for user {tg_id}: {e}")
-    await state.clear()
+    finally:
+        await state.clear()
