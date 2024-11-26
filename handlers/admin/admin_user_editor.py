@@ -29,13 +29,17 @@ class UserEditorState(StatesGroup):
 
 @router.callback_query(F.data == "search_by_tg_id", IsAdminFilter())
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("🔍 Введите Telegram ID клиента:")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    await callback_query.message.answer("🔍 Введите Telegram ID клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
 
 @router.callback_query(F.data == "search_by_username", IsAdminFilter())
 async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("🔍 Введите Username клиента:")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    await callback_query.message.answer("🔍 Введите Username клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_username)
 
 

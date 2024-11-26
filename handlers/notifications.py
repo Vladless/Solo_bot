@@ -328,6 +328,7 @@ async def process_key(record, bot, conn):
                         password=ADMIN_PASSWORD,
                     )
                     await delete_client(xui, email, client_id)
+                    # await xui.client.delete_depleted(-1)
             await delete_key(client_id)
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
