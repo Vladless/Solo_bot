@@ -6,7 +6,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
 
-from client import delete_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
 from database import (
     add_notification,
@@ -16,7 +15,7 @@ from database import (
     update_balance,
     update_key_expiry,
 )
-from handlers.keys.key_utils import renew_key_in_cluster
+from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
@@ -320,16 +319,22 @@ async def process_key(record, bot, conn):
                 logger.error(f"Ошибка при отправке уведомления клиенту {tg_id}: {e}")
 
         else:
-            for cluster_id, cluster in CLUSTERS.items():
-                for server_id, server in cluster.items():
-                    xui = AsyncApi(
-                        server["API_URL"],
-                        username=ADMIN_USERNAME,
-                        password=ADMIN_PASSWORD,
-                    )
-                    await delete_client(xui, email, client_id)
-                    # await xui.client.delete_depleted(-1)
+            message_expired = "Ваша подписка истекла и была удалена. Получите новую через личный кабинет"
+
+            try:
+                await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
+                logger.info(f"Уведомление об истечении подписки и удалении ключа отправлено пользователю {tg_id}.")
+            except Exception as e:
+                logger.error(f"Ошибка при отправке уведомления об истечении подписки пользователю {tg_id}: {e}")
+
+            for cluster_id in CLUSTERS:
+                await delete_key_from_cluster(cluster_id, email, client_id)
+                # await xui.client.delete_depleted(-1)
+                logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
+
             await delete_key(client_id)
+            logger.info(f"Ключ для клиента с ID {client_id} удален из базы данных.")
+
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
