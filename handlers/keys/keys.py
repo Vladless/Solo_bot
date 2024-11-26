@@ -228,8 +228,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
 
             least_loaded_cluster_id = await get_least_loaded_cluster()
 
-            tasks = []
-            tasks.append(
+            await asyncio.gather(
                 update_key_on_cluster(
                     tg_id,
                     client_id,
@@ -238,8 +237,6 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                     least_loaded_cluster_id,
                 )
             )
-
-            await asyncio.gather(*tasks)
 
             await store_key(
                 tg_id,
@@ -250,18 +247,10 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
                 server_id=least_loaded_cluster_id,
                 session=session,
             )
-            response_message = f"Ваша подписка {email} обновлена!"
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            await callback_query.message.answer(
-                response_message,
-                reply_markup=builder.as_markup(),
-            )
+            await process_callback_view_key(callback_query, session)
         else:
-            await callback_query.message.answer(
-                "<b>Ключ не найден в базе данных.</b>",
-            )
+            await callback_query.message.answer("<b>Ключ не найден в базе данных.</b>")
     except Exception as e:
         await handle_error(tg_id, callback_query, f"Ошибка при обновлении подписки: {e}")
 
