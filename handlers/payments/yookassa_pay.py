@@ -105,7 +105,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             "amount": {"value": str(amount), "currency": "RUB"},
             "confirmation": {
                 "type": "redirect",
-                "return_url": "https://pocomacho.ru/",
+                "return_url": "https://pocomacho.ru/success.html",
             },
             "capture": True,
             "description": "Пополнение баланса",
@@ -189,7 +189,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                     "amount": {"value": str(amount), "currency": "RUB"},
                     "confirmation": {
                         "type": "redirect",
-                        "return_url": "https://pocomacho.ru/",
+                        "return_url": "https://pocomacho.ru/success.html",
                     },
                     "capture": True,
                     "description": "Пополнение баланса",
