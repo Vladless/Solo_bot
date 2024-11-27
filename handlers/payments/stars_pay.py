@@ -104,7 +104,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
 
     try:
-        await callback_query.message.delete()
 
         builder = InlineKeyboardBuilder()
         builder.row(
