@@ -259,7 +259,7 @@ async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
     builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
     try:
         subprocess.run(
-            ["systemctl", "restart", "bot.service"],
+            ["sudo", "systemctl", "restart", "bot.service"],
             check=True,
             capture_output=True,
             text=True,
