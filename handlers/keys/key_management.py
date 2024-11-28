@@ -53,6 +53,7 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
     trial_status = await get_trial(callback_query.message.chat.id, session)
     if trial_status == 1:
+        # Если триал есть, бот предлагает подключить новое устройство
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="✅ Да, подключить новое устройство", callback_data="confirm_create_new_key")
@@ -65,8 +66,7 @@ async def select_server(callback_query: CallbackQuery, state: FSMContext, sessio
         )
         await state.update_data(creating_new_key=True)
     else:
-        await callback_query.message.answer(KEY_TRIAL)
-        await state.set_state(Form.waiting_for_key_name)
+        await handle_key_creation(callback_query.message.chat.id, state, session, callback_query)
 
 
 @router.callback_query(F.data == "confirm_create_new_key")
