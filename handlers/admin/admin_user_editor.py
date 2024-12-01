@@ -8,8 +8,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CLUSTERS, TOTAL_GB
-from database import get_client_id_by_email, restore_trial, update_key_expiry
+from config import TOTAL_GB
+from database import get_client_id_by_email, restore_trial, update_key_expiry, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
@@ -205,6 +205,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext, se
 
 
 async def get_key_details(email, session):
+    # Получаем данные ключа из базы данных
     record = await session.fetchrow(
         """
         SELECT k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
@@ -218,14 +219,16 @@ async def get_key_details(email, session):
     if not record:
         return None
 
-    # Определение сервера
-    server_name = "Неизвестный сервер"
-    for cluster in CLUSTERS.values():
-        if record['server_id'] in cluster:
-            server_name = cluster[record['server_id']].get("name", "Неизвестный сервер")
+    # Получаем список серверов из базы данных
+    servers = await get_servers_from_db()
+
+    # Ищем название кластера по server_id
+    cluster_name = "Неизвестный кластер"
+    for cluster_name, cluster_servers in servers.items():
+        if any(server['inbound_id'] == record['server_id'] for server in cluster_servers):
+            cluster_name = cluster_name  # Это название кластера
             break
 
-    # Расчет времени до истечения
     expiry_date = datetime.utcfromtimestamp(record['expiry_time'] / 1000)
     current_date = datetime.utcnow()
     time_left = expiry_date - current_date
@@ -242,7 +245,7 @@ async def get_key_details(email, session):
         'key': record['key'],
         'expiry_date': expiry_date.strftime("%d %B %Y года"),
         'days_left_message': days_left_message,
-        'server_name': server_name,
+        'server_name': cluster_name,  # Теперь имя кластера
         'balance': record['balance'],
         'tg_id': record['tg_id'],
     }
@@ -389,20 +392,23 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
             await state.clear()
             return
 
+        clusters = await get_servers_from_db()
+
         async def update_key_on_all_servers():
             tasks = []
-            for cluster_id in CLUSTERS:
-                tasks.append(
-                    asyncio.create_task(
-                        renew_key_in_cluster(
-                            cluster_id,
-                            email,
-                            client_id,
-                            expiry_time,
-                            total_gb=TOTAL_GB,
+            for cluster_name, cluster_servers in clusters.items():
+                for server in cluster_servers: 
+                    tasks.append(
+                        asyncio.create_task(
+                            renew_key_in_cluster(
+                                cluster_name, 
+                                email,
+                                client_id,
+                                expiry_time,
+                                total_gb=TOTAL_GB,
+                            )
                         )
                     )
-                )
             await asyncio.gather(*tasks)
 
         await update_key_on_all_servers()
@@ -456,16 +462,20 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     client_id = callback_query.data.split("|")[1]
     record = await session.fetchrow("SELECT email FROM keys WHERE client_id = $1", client_id)
+    
     if record:
         email = record["email"]
         response_message = "✅ Ключ успешно удален."
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
 
+        clusters = await get_servers_from_db()
+
         async def delete_key_from_servers(email, client_id):
             tasks = []
-            for cluster_id in CLUSTERS:
-                tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
+            for cluster_name, cluster_servers in clusters.items():
+                for server in cluster_servers:
+                    tasks.append(delete_key_from_cluster(cluster_name, email, client_id))
             await asyncio.gather(*tasks)
 
         await delete_key_from_servers(email, client_id)
@@ -477,6 +487,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
+
 
 
 @router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())
