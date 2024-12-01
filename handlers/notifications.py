@@ -34,9 +34,8 @@ async def notify_expiring_keys(bot: Bot):
 
         logger.info("Начало обработки уведомлений.")
 
-        # TODO
-        # await notify_inactive_trial_users(bot, conn)
-        # await asyncio.sleep(1)
+        await notify_inactive_trial_users(bot, conn)
+        await asyncio.sleep(1)
         await check_online_users()
         await asyncio.sleep(1)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
@@ -229,9 +228,8 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user.get('username', 'Пользователь')
 
         try:
-            # Проверяем, можно ли отправить уведомление
             can_notify = await check_notification_time(
-                tg_id, 'inactive_trial', hours=24, session=conn  # Уведомление не чаще, чем раз в 24 часа
+                tg_id, 'inactive_trial', hours=24, session=conn
             )
 
             if can_notify and not await is_bot_blocked(bot, tg_id):
@@ -252,13 +250,12 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
 
-                # Добавляем запись о notification
                 await add_notification(tg_id, 'inactive_trial', session=conn)
 
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}")
 
-        await asyncio.sleep(1)  # Небольшая задержка между отправками
+        await asyncio.sleep(1)
 
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):

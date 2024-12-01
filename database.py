@@ -1133,38 +1133,27 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
     Raises:
         Exception: В случае ошибки при проверке времени уведомления
     """
+    conn = None
     try:
-        # Если сессия не передана, создаем новое подключение
-        if session is None:
-            conn = await asyncpg.connect(DATABASE_URL)
-        else:
-            conn = session
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
 
-        result = await conn.fetchrow(
+        result = await conn.fetchval(
             """
             SELECT 
                 CASE 
-                    WHEN last_notification_time IS NULL THEN TRUE
-                    WHEN NOW() - last_notification_time > INTERVAL '$1 hours' THEN TRUE
+                    WHEN MAX(last_notification_time) IS NULL THEN TRUE
+                    WHEN NOW() - MAX(last_notification_time) > ($1 * INTERVAL '1 hour') THEN TRUE
                     ELSE FALSE 
-                END as can_notify
+                END AS can_notify
             FROM notifications 
             WHERE tg_id = $2 AND notification_type = $3
             """,
-            hours,  # Убираем преобразование в строку
+            hours,
             tg_id,
             notification_type,
         )
 
-        # Если сессия не была передана, закрываем подключение
-        if session is None and conn:
-            await conn.close()
-
-        # Если записи нет, значит уведомление можно отправить
-        if result is None:
-            return True
-
-        can_notify = result['can_notify']
+        can_notify = result if result is not None else True
 
         logger.info(
             f"Проверка уведомления типа {notification_type} для пользователя {tg_id}: {'можно отправить' if can_notify else 'слишком рано'}"
@@ -1174,4 +1163,8 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
 
     except Exception as e:
         logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
-        return True  # По умолчанию разрешаем отправку уведомления
+        return False 
+
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
