@@ -5,7 +5,8 @@ from typing import Optional
 import asyncpg
 
 from bot import bot
-from config import CLUSTERS, DATABASE_URL
+from config import DATABASE_URL
+from database import get_servers_from_db
 from logger import logger
 
 
@@ -42,12 +43,13 @@ async def get_least_loaded_cluster() -> str:
     Returns:
         str: Идентификатор наименее загруженного кластера.
     """
-    cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in CLUSTERS.keys()}
+    servers = await get_servers_from_db()
+
+    cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in servers.keys()}
 
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
             keys = await conn.fetch("SELECT server_id FROM keys")
-
             for key in keys:
                 cluster_id = key["server_id"]
                 if cluster_id in cluster_loads:
