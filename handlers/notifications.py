@@ -6,12 +6,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, CLUSTERS, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
 from database import (
     add_notification,
     check_notification_time,
     delete_key,
     get_balance,
+    get_servers_from_db,
     update_balance,
     update_key_expiry,
 )
@@ -228,9 +229,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user.get('username', 'Пользователь')
 
         try:
-            can_notify = await check_notification_time(
-                tg_id, 'inactive_trial', hours=24, session=conn
-            )
+            can_notify = await check_notification_time(tg_id, 'inactive_trial', hours=24, session=conn)
 
             if can_notify and not await is_bot_blocked(bot, tg_id):
                 builder = InlineKeyboardBuilder()
@@ -296,7 +295,9 @@ async def process_key(record, bot, conn):
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
 
-            for cluster_id in CLUSTERS:
+            servers = await get_servers_from_db()
+
+            for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
 
@@ -324,9 +325,10 @@ async def process_key(record, bot, conn):
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления об истечении подписки пользователю {tg_id}: {e}")
 
-            for cluster_id in CLUSTERS:
+            servers = await get_servers_from_db()
+
+            for cluster_id in servers:
                 await delete_key_from_cluster(cluster_id, email, client_id)
-                # await xui.client.delete_depleted(-1)
                 logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
 
             await delete_key(client_id)
@@ -337,14 +339,16 @@ async def process_key(record, bot, conn):
 
 
 async def check_online_users():
-    for cluster_id, cluster in CLUSTERS.items():
-        for server_id, server in cluster.items():
-            xui = AsyncApi(server["API_URL"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+    servers = await get_servers_from_db()
+
+    for cluster_id, cluster in servers.items():
+        for server_id, server in enumerate(cluster):
+            xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
             await xui.login()
             try:
                 online_users = len(await xui.client.online())
                 logger.info(
-                    f"Сервер '{server['name']}' доступен, текущее количество активных пользователей: {online_users}."
+                    f"Сервер '{server['server_name']}' доступен, текущее количество активных пользователей: {online_users}."
                 )
             except Exception as e:
                 logger.error(f"Не удалось проверить пользователей на сервере {server_id}: {e}")

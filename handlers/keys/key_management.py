@@ -29,7 +29,7 @@ from database import (
     use_trial,
 )
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import KEY, KEY_TRIAL, NULL_BALANCE, key_message_success
+from handlers.texts import KEY, NULL_BALANCE, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
@@ -53,7 +53,6 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
     trial_status = await get_trial(callback_query.message.chat.id, session)
     if trial_status == 1:
-        # Если триал есть, бот предлагает подключить новое устройство
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="✅ Да, подключить новое устройство", callback_data="confirm_create_new_key")

@@ -8,17 +8,8 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    CLUSTERS,
-    CONNECT_ANDROID,
-    CONNECT_IOS,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
-    PUBLIC_LINK,
-    RENEWAL_PLANS,
-    TOTAL_GB,
-)
-from database import delete_key, get_balance, store_key, update_balance, update_key_expiry
+from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, RENEWAL_PLANS, TOTAL_GB
+from database import delete_key, get_balance, get_servers_from_db, store_key, update_balance, update_key_expiry
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
@@ -362,10 +353,12 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
                 reply_markup=keyboard,
             )
 
+            servers = await get_servers_from_db()
+
             async def delete_key_from_servers():
                 try:
                     tasks = []
-                    for cluster_id, cluster in CLUSTERS.items():
+                    for cluster_id, cluster in servers.items():
                         tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
 
                     await asyncio.gather(*tasks)
@@ -438,9 +431,11 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
 
             await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
 
+            servers = await get_servers_from_db()
+
             async def renew_key_on_servers():
                 tasks = []
-                for cluster_id in CLUSTERS:
+                for cluster_id in servers:
                     task = asyncio.create_task(
                         renew_key_in_cluster(
                             cluster_id,
