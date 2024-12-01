@@ -118,6 +118,20 @@ async def init_db():
         """
     )
 
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS servers (
+            id SERIAL PRIMARY KEY,
+            cluster_name TEXT NOT NULL,
+            server_name TEXT NOT NULL,
+            api_url TEXT NOT NULL,
+            subscription_url TEXT NOT NULL,
+            inbound_id TEXT NOT NULL,
+            UNIQUE(cluster_name, server_name) -- Уникальность по названию кластера и сервера
+        )
+        """
+    )
+
     await conn.close()
 
 
@@ -1163,8 +1177,40 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
 
     except Exception as e:
         logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
-        return False 
+        return False
 
     finally:
         if conn is not None and session is None:
             await conn.close()
+
+
+async def get_servers_from_db():
+    conn = await asyncpg.connect(DATABASE_URL)
+
+    # Запрос к базе данных для получения всех серверов
+    result = await conn.fetch(
+        """
+        SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
+        FROM servers
+        """
+    )
+
+    await conn.close()
+
+    # Преобразуем результат в удобный формат
+    servers = {}
+    for row in result:
+        cluster_name = row['cluster_name']
+        if cluster_name not in servers:
+            servers[cluster_name] = []
+
+        servers[cluster_name].append(
+            {
+                'server_name': row['server_name'],
+                'api_url': row['api_url'],
+                'subscription_url': row['subscription_url'],
+                'inbound_id': row['inbound_id'],
+            }
+        )
+
+    return servers

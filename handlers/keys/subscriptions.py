@@ -5,7 +5,8 @@ import aiohttp
 from aiohttp import web
 import asyncpg
 
-from config import CLUSTERS, DATABASE_URL, TRANSITION_DATE_STR
+from config import DATABASE_URL, TRANSITION_DATE_STR
+from database import get_servers_from_db
 from logger import logger
 
 
@@ -81,8 +82,6 @@ async def handle_old_subscription(request):
         created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
         logger.info(f"Время создания клиента в формате datetime (UTC): {created_at_datetime}")
 
-        logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
-
         if created_at_ms >= transition_timestamp_ms_adjusted:
             logger.info(f"Клиент с email {email} является новым.")
             return web.Response(
@@ -90,10 +89,12 @@ async def handle_old_subscription(request):
                 status=400,
             )
 
+        servers = await get_servers_from_db()
+
         urls = []
-        for cluster in CLUSTERS.values():
-            for server in cluster.values():
-                server_subscription_url = f"{server['SUBSCRIPTION']}/{email}"
+        for cluster_name, cluster_servers in servers.items():
+            for server in cluster_servers:
+                server_subscription_url = f"{server['subscription_url']}/{email}"
                 urls.append(server_subscription_url)
 
         combined_subscriptions = await combine_unique_lines(urls, email, "")
@@ -149,10 +150,12 @@ async def handle_new_subscription(request):
     finally:
         await conn.close()
 
+    servers = await get_servers_from_db()
+
     urls = []
-    for cluster in CLUSTERS.values():
-        for server in cluster.values():
-            server_subscription_url = f"{server['SUBSCRIPTION']}/{email}"
+    for cluster_name, cluster_servers in servers.items():
+        for server in cluster_servers:
+            server_subscription_url = f"{server['subscription_url']}/{email}"
             urls.append(server_subscription_url)
 
     query_string = request.query_string
