@@ -25,11 +25,11 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     profile_message = profile_message_send(username, chat_id, balance, key_count)
 
     if key_count == 0:
-        profile_message += "\n🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i>"
+        profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
+
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
-    builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
     builder.row(
         InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
         InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
@@ -44,7 +44,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
         InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
         InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
     )
-    builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+    builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
     if admin:
         builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="start"))
