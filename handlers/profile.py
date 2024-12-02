@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_URL, RENEWAL_PLANS
+from config import RENEWAL_PLANS, NEWS_MESSAGE
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
@@ -26,10 +26,10 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
 
     if key_count == 0:
         profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
-
+    else:
+        profile_message += f"\n<pre>🔧 <i>{NEWS_MESSAGE}</i></pre>"
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📢 Наш канал", url=CHANNEL_URL))
     builder.row(
         InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
         InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
