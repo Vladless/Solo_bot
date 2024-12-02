@@ -17,7 +17,7 @@ async def create_trial_key(tg_id: int, session: Any):
     email = generate_random_email()
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
     instructions = INSTRUCTIONS
-    result = {"key": public_link, "instructions": instructions}
+    result = {"key": public_link, "instructions": instructions, "email": email}
     current_time = datetime.utcnow()
     expiry_time = current_time + timedelta(days=TRIAL_TIME)
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
