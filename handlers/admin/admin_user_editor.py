@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import TOTAL_GB
-from database import get_client_id_by_email, restore_trial, update_key_expiry, get_servers_from_db
+from database import get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
@@ -397,11 +397,11 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         async def update_key_on_all_servers():
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
-                for server in cluster_servers: 
+                for server in cluster_servers:
                     tasks.append(
                         asyncio.create_task(
                             renew_key_in_cluster(
-                                cluster_name, 
+                                cluster_name,
                                 email,
                                 client_id,
                                 expiry_time,
@@ -462,7 +462,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     client_id = callback_query.data.split("|")[1]
     record = await session.fetchrow("SELECT email FROM keys WHERE client_id = $1", client_id)
-    
+
     if record:
         email = record["email"]
         response_message = "✅ Ключ успешно удален."
@@ -487,7 +487,6 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
-
 
 
 @router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())

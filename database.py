@@ -1187,7 +1187,6 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
 async def get_servers_from_db():
     conn = await asyncpg.connect(DATABASE_URL)
 
-    # Запрос к базе данных для получения всех серверов
     result = await conn.fetch(
         """
         SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
@@ -1197,7 +1196,6 @@ async def get_servers_from_db():
 
     await conn.close()
 
-    # Преобразуем результат в удобный формат
     servers = {}
     for row in result:
         cluster_name = row['cluster_name']

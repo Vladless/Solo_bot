@@ -37,6 +37,7 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📊 Статистика пользователей", callback_data="user_stats"))
     builder.row(InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="🖥️ Управление серверами", callback_data="servers_editor"))
     builder.row(InlineKeyboardButton(text="🎟️ Управление купонами", callback_data="coupons_editor"))
     builder.row(InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls"))
     builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
