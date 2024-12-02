@@ -268,7 +268,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
         f"🔑 Ключ: <code>{key_details['key']}</code>\n"
         f"⏰ Дата истечения: <b>{key_details['expiry_date']}</b>\n"
         f"💰 Баланс пользователя: <b>{key_details['balance']}</b>\n"
-        f"🌐 Сервер: <b>{key_details['server_name']}</b>"
+        f"🌐 Кластер: <b>{key_details['server_name']}</b>"
     )
 
     builder = InlineKeyboardBuilder()
