@@ -80,6 +80,8 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
             f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 
+        email = trial_key_info["email"]
+
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
         builder.row(
@@ -96,6 +98,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
                 url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
             ),
         )
+        builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"))
         builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
         await callback_query.message.answer(key_message, reply_markup=builder.as_markup())
