@@ -1,20 +1,30 @@
 import asyncpg
 
-from config import CLUSTERS, DATABASE_URL  # Импортируем конфиг с серверами
+from config import DATABASE_URL
 from logger import logger
+
+try:
+    from config import CLUSTERS
+except ImportError:
+    CLUSTERS = None
+    logger.warning("Переменная CLUSTERS не найдена в конфигурации. Добавьте сервера через админ-панель!")
 
 
 async def sync_servers_with_db():
     """
     Синхронизирует сервера из конфигурации CLUSTERS с базой данных.
+    Если CLUSTERS не найден, синхронизация не будет выполнена.
     """
+    if CLUSTERS is None:
+        logger.info("Конфигурация CLUSTERS не найдена. Синхронизация не будет выполнена.")
+        return
+
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         logger.info("Подключение к базе данных для синхронизации серверов успешно.")
 
         for cluster_name, servers in CLUSTERS.items():
             for server_key, server_info in servers.items():
-                # Проверяем, существует ли сервер в базе данных
                 exists = await conn.fetchval(
                     """
                     SELECT 1 FROM servers
@@ -24,7 +34,6 @@ async def sync_servers_with_db():
                     server_info["name"],
                 )
 
-                # Если сервера нет, добавляем его
                 if not exists:
                     await conn.execute(
                         """
@@ -44,4 +53,5 @@ async def sync_servers_with_db():
     except Exception as e:
         logger.error(f"Ошибка при синхронизации серверов: {e}")
     finally:
-        await conn.close()
+        if 'conn' in locals():
+            await conn.close()
