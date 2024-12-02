@@ -298,19 +298,19 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
             )
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.)',
+                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.) 5% скидка',
                     callback_data=f"renew_plan|3|{client_id}",
                 )
             )
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.)',
+                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.) 10% скидка',
                     callback_data=f"renew_plan|6|{client_id}",
                 )
             )
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.)',
+                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.) (20% 🔥)',
                     callback_data=f"renew_plan|12|{client_id}",
                 )
             )
