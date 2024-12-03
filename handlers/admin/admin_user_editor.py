@@ -223,7 +223,7 @@ async def get_key_details(email, session):
     cluster_name = "Неизвестный кластер"
     for cluster_name, cluster_servers in servers.items():
         if any(server['inbound_id'] == record['server_id'] for server in cluster_servers):
-            cluster_name = cluster_name 
+            cluster_name = cluster_name
             break
 
     expiry_date = datetime.utcfromtimestamp(record['expiry_time'] / 1000)
@@ -242,7 +242,7 @@ async def get_key_details(email, session):
         'key': record['key'],
         'expiry_date': expiry_date.strftime("%d %B %Y года"),
         'days_left_message': days_left_message,
-        'server_name': cluster_name, 
+        'server_name': cluster_name,
         'balance': record['balance'],
         'tg_id': record['tg_id'],
     }

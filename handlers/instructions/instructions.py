@@ -5,7 +5,7 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CONNECT_WINDOWS, SUPPORT_CHAT_URL, CONNECT_IOS
+from config import CONNECT_IOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 
 router = Router()
