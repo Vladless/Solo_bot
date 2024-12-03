@@ -4,9 +4,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
+from typing import Any
 
 from config import DATABASE_URL
-from database import get_servers_from_db
+from database import get_servers_from_db, check_unique_server_name
 from filters.admin import IsAdminFilter
 
 router = Router()
@@ -106,6 +107,11 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
         await message.answer("❌ Имя сервера не может быть пустым. Попробуйте снова.")
         return
 
+    server_unique = await check_unique_server_name(server_name)
+    if not server_unique:
+        await message.answer("❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.")
+        return
+
     user_data = await state.get_data()
     cluster_name = user_data.get('cluster_name')
     await state.update_data(server_name=server_name)
@@ -122,6 +128,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
         reply_markup=builder.as_markup(),
     )
     await state.set_state(UserEditorState.waiting_for_api_url)
+
 
 
 @router.message(UserEditorState.waiting_for_api_url, IsAdminFilter())
