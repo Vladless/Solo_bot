@@ -45,7 +45,7 @@ async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
 
 @router.message(UserEditorState.waiting_for_username, IsAdminFilter())
 async def handle_username_input(message: types.Message, state: FSMContext, session: Any):
-    username = message.text.strip()
+    username = message.text.strip().lstrip("@")
     user_record = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
 
     if not user_record:
@@ -205,7 +205,6 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext, se
 
 
 async def get_key_details(email, session):
-    # Получаем данные ключа из базы данных
     record = await session.fetchrow(
         """
         SELECT k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
@@ -219,14 +218,12 @@ async def get_key_details(email, session):
     if not record:
         return None
 
-    # Получаем список серверов из базы данных
     servers = await get_servers_from_db()
 
-    # Ищем название кластера по server_id
     cluster_name = "Неизвестный кластер"
     for cluster_name, cluster_servers in servers.items():
         if any(server['inbound_id'] == record['server_id'] for server in cluster_servers):
-            cluster_name = cluster_name  # Это название кластера
+            cluster_name = cluster_name 
             break
 
     expiry_date = datetime.utcfromtimestamp(record['expiry_time'] / 1000)
@@ -245,7 +242,7 @@ async def get_key_details(email, session):
         'key': record['key'],
         'expiry_date': expiry_date.strftime("%d %B %Y года"),
         'days_left_message': days_left_message,
-        'server_name': cluster_name,  # Теперь имя кластера
+        'server_name': cluster_name, 
         'balance': record['balance'],
         'tg_id': record['tg_id'],
     }
@@ -451,7 +448,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
             callback_data=f"confirm_delete_admin|{client_id}",
         )
     )
-    builder.row(types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="view_keys"))
+    builder.row(types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="user_editor"))
     await callback_query.message.answer(
         "<b>❓ Вы уверены, что хотите удалить ключ?</b>",
         reply_markup=builder.as_markup(),
