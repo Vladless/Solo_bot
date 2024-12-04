@@ -4,10 +4,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
-from typing import Any
 
 from config import DATABASE_URL
-from database import get_servers_from_db, check_unique_server_name
+from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 
 router = Router()
@@ -130,7 +129,6 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
     await state.set_state(UserEditorState.waiting_for_api_url)
 
 
-
 @router.message(UserEditorState.waiting_for_api_url, IsAdminFilter())
 async def handle_api_url_input(message: types.Message, state: FSMContext):
     api_url = message.text.strip()
@@ -151,6 +149,8 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
             parse_mode="HTML",
         )
         return
+
+    api_url = api_url.rstrip('/')
 
     user_data = await state.get_data()
     cluster_name = user_data.get('cluster_name')
@@ -192,6 +192,8 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
             parse_mode="HTML",
         )
         return
+
+    subscription_url = subscription_url.rstrip('/')
 
     user_data = await state.get_data()
     cluster_name = user_data.get('cluster_name')
