@@ -134,18 +134,17 @@ async def init_db():
 
     await conn.close()
 
+
 async def check_unique_server_name(server_name: str) -> bool:
     """
     Проверяет уникальность имени сервера.
-    
+
     :param server_name: Имя сервера.
     :return: True, если имя сервера уникально, False, если уже существует.
     """
     conn = await asyncpg.connect(DATABASE_URL)
 
-    result = await conn.fetchrow(
-        "SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name
-    )
+    result = await conn.fetchrow("SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name)
 
     await conn.close()
 
