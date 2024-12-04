@@ -90,6 +90,10 @@ async def handle_key_creation(
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=TRIAL_TIME)
         logger.info(f"Assigned 1-day trial to user {tg_id}.")
+        
+        await session.execute(
+            "UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id
+        )
         await create_key(tg_id, expiry_time, state, session, message_or_query)
     else:
         builder = InlineKeyboardBuilder()
@@ -116,6 +120,7 @@ async def handle_key_creation(
         )
         await state.update_data(tg_id=tg_id)
         await state.set_state(Form.waiting_for_server_selection)
+
 
 
 @router.callback_query(F.data.startswith("select_plan_"))
