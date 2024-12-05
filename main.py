@@ -7,6 +7,7 @@ from aiohttp import web
 from backup import backup_database
 from bot import bot, dp, router
 from config import (
+    BACKUP_TIME,
     CRYPTO_BOT_ENABLE,
     DEV_MODE,
     FREEKASSA_ENABLE,
@@ -18,7 +19,6 @@ from config import (
     WEBHOOK_PATH,
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
-    BACKUP_TIME,
 )
 from database import init_db
 from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription

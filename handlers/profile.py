@@ -22,7 +22,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     if balance is None:
         balance = 0
 
-    profile_message = profile_message_send(username, chat_id, balance, key_count)
+    profile_message = profile_message_send(username, chat_id, int(balance), key_count)
 
     if key_count == 0:
         profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
