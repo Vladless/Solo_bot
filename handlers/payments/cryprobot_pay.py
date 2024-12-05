@@ -153,7 +153,6 @@ async def process_enter_custom_amount(callback_query: types.CallbackQuery, state
     await state.set_state(ReplenishBalanceState.entering_custom_amount_crypto)
 
 
-
 @router.message(ReplenishBalanceState.entering_custom_amount_crypto)
 async def process_custom_amount_input(message: types.Message, state: FSMContext):
     if message.text.isdigit():
