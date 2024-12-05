@@ -13,7 +13,7 @@ class DeleteMessageMiddleware(BaseMiddleware):
     ) -> Any:
         if isinstance(event, (Message, CallbackQuery)):
             if isinstance(event, Message):
-                if not event.text == "/start":
+                if not event.text.startswith("/start"):
                     try:
                         await event.bot.delete_message(event.chat.id, event.message_id - 1)
                     except Exception:
