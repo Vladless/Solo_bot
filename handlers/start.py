@@ -39,12 +39,12 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     if trial_status == 0:
         builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
     builder.row(
-        InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
+        InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
+        InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL),
     )
-    builder.row(
-        InlineKeyboardButton(text="📢 Официальный канал", url=CHANNEL_URL),
-    )
+
     if admin:
         builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
     builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))
