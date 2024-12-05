@@ -261,8 +261,6 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
 
     builder = InlineKeyboardBuilder()
 
-    builder.row(InlineKeyboardButton(text="💾 Создать бэкап кластера", callback_data=f"backup_cluster|{cluster_name}"))
-
     for server in cluster_servers:
         builder.row(
             InlineKeyboardButton(
@@ -271,11 +269,56 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
         )
 
     builder.row(InlineKeyboardButton(text="➕ Добавить сервер", callback_data=f"add_server|{cluster_name}"))
+
+    builder.row(
+        InlineKeyboardButton(text="🌐 Доступность серверов", callback_data=f"server_availability|{cluster_name}")
+    )
+
+    builder.row(InlineKeyboardButton(text="💾 Создать бэкап кластера", callback_data=f"backup_cluster|{cluster_name}"))
+
     builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
 
     await callback_query.message.answer(
         f"🔧 Управление серверами для кластера {cluster_name}", reply_markup=builder.as_markup()
     )
+
+
+@router.callback_query(F.data.startswith("server_availability|"), IsAdminFilter())
+async def handle_check_server_availability(callback_query: types.CallbackQuery):
+    cluster_name = callback_query.data.split("|")[1]
+
+    servers = await get_servers_from_db()
+    cluster_servers = servers.get(cluster_name, [])
+
+    if not cluster_servers:
+        await callback_query.answer(f"Кластер '{cluster_name}' не содержит серверов.")
+        return
+
+    in_progress_message = await callback_query.message.answer(
+        f"🖥️ Проверка доступности серверов для кластера {cluster_name}.\n\n"
+        "Это может занять до 1 минуты, пожалуйста, подождите..."
+    )
+
+    availability_message = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
+
+    for server in cluster_servers:
+        xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+        try:
+            await xui.login()
+
+            online_users = len(await xui.client.online())
+            availability_message += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
+
+        except Exception as e:
+            availability_message += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"))
+
+    await in_progress_message.edit_text(availability_message, reply_markup=builder.as_markup())
+
+    await callback_query.answer()
 
 
 @router.callback_query(F.data.startswith("manage_server|"), IsAdminFilter())
