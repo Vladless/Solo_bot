@@ -1,10 +1,16 @@
+from datetime import timedelta
 import logging
+import os
 import sys
 
 from loguru import logger
 
-logger.remove()
+log_folder = "logs"
 
+if not os.path.exists(log_folder):
+    os.makedirs(log_folder)
+
+logger.remove()
 
 level_mapping = {
     50: "CRITICAL",
@@ -27,7 +33,6 @@ logging.basicConfig(handlers=[InterceptHandler()], level=0)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# Настройка вывода в консоль
 logger.add(
     sys.stderr,
     level="INFO",
@@ -35,13 +40,13 @@ logger.add(
     colorize=True,
 )
 
-# Настройка записи в файл
+log_file_path = os.path.join(log_folder, "logging.log")
 logger.add(
-    "logging.log",
+    log_file_path,
     level="DEBUG",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message}",
-    rotation="60 minute",
-    retention=24,
+    rotation=timedelta(minutes=60),
+    retention=timedelta(days=3),
 )
 
 logger = logger
