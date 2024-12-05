@@ -18,6 +18,7 @@ from config import (
     WEBHOOK_PATH,
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
+    BACKUP_TIME,
 )
 from database import init_db
 from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
@@ -39,7 +40,7 @@ async def periodic_notifications():
 async def periodic_database_backup():
     while True:
         await backup_database()
-        await asyncio.sleep(21600)
+        await asyncio.sleep(BACKUP_TIME)
 
 
 async def on_startup(app):
