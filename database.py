@@ -685,16 +685,20 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         conn = await asyncpg.connect(DATABASE_URL)
         logger.info(f"Начало обработки реферальной системы для пользователя {tg_id}")
 
-        # Максимальное количество уровней рефералов
         MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
 
-        # Текущий уровень для отслеживания
+        visited_tg_ids = set()
+
         current_tg_id = tg_id
         referral_chain = []
 
-        # Собираем цепочку рефералов
         for level in range(1, MAX_REFERRAL_LEVELS + 1):
-            # Получаем информацию о рефере текущего уровня
+            if current_tg_id in visited_tg_ids:
+                logger.warning(f"Обнаружен цикл в реферальной цепочке для пользователя {current_tg_id}. Прекращение.")
+                break
+
+            visited_tg_ids.add(current_tg_id)
+
             referral = await conn.fetchrow(
                 """
                 SELECT referrer_tg_id 
@@ -704,30 +708,25 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
                 current_tg_id,
             )
 
-            # Если реферер не найден, прекращаем поиск
             if not referral:
                 break
 
             referrer_tg_id = referral['referrer_tg_id']
             referral_chain.append({'tg_id': referrer_tg_id, 'level': level})
 
-            # Переходим к следующему уровню
             current_tg_id = referrer_tg_id
 
-        # Начисляем бонусы по цепочке рефералов
         for referral in referral_chain:
             referrer_tg_id = referral['tg_id']
             level = referral['level']
 
-            # Расчет бонуса для текущего уровня
             bonus_percent = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
             bonus = amount * bonus_percent
-            bonus = max(bonus, 0)  # Гарантируем неотрицательный бонус
+            bonus = max(bonus, 0)
 
             if bonus > 0:
                 logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}")
 
-                # Обновляем баланс реферера
                 await update_balance(referrer_tg_id, bonus)
 
     except Exception as e:
