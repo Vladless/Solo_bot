@@ -62,4 +62,9 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await callback_query.message.answer(instruction_message, reply_markup=builder.as_markup())
+    await callback_query.message.answer(
+        instruction_message,
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
