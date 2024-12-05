@@ -43,7 +43,7 @@ bot_old_2.py
 backup_pg.sh
 docker-compose.yml
 config copy.py
-handlers/texts.py
+routers/handlers/texts.py
 
 # Miscellaneous
 .DS_Store

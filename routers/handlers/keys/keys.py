@@ -10,13 +10,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, RENEWAL_PLANS, TOTAL_GB
 from database import delete_key, get_balance, get_servers_from_db, store_key, update_balance, update_key_expiry
-from handlers.keys.key_utils import (
+from routers.handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
     renew_key_in_cluster,
     update_key_on_cluster,
 )
-from handlers.texts import (
+from routers.handlers import (
     INSUFFICIENT_FUNDS_MSG,
     KEY_NOT_FOUND_MSG,
     NO_KEYS,
@@ -24,12 +24,12 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from handlers.utils import get_least_loaded_cluster, handle_error
+from routers.handlers.common.utils import get_least_loaded_cluster, handle_error
 from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
-router = Router()
+router = Router(name=__name__)
 
 
 @router.callback_query(F.data == "view_keys")

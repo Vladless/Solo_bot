@@ -21,12 +21,12 @@ from config import (
     TRIAL_TIME,
 )
 from database import get_balance, get_trial, store_key, update_balance
-from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import KEY, NULL_BALANCE, key_message_success
-from handlers.utils import generate_random_email, get_least_loaded_cluster
+from routers.handlers.keys.key_utils import create_key_on_cluster
+from routers.handlers import KEY, NULL_BALANCE, key_message_success
+from routers.handlers.common.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
-router = Router()
+router = Router(name=__name__)
 
 
 class Form(StatesGroup):

@@ -9,7 +9,7 @@ from config import DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 
-router = Router()
+router = Router(name=__name__)
 
 
 class UserEditorState(StatesGroup):

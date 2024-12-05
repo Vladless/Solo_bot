@@ -20,12 +20,12 @@ from config import (
     YOOKASSA_ENABLE,
 )
 from database import init_db
-from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
-from handlers.notifications import notify_expiring_keys
-from handlers.payments.cryprobot_pay import cryptobot_webhook
-from handlers.payments.freekassa_pay import freekassa_webhook
-from handlers.payments.robokassa_pay import robokassa_webhook
-from handlers.payments.yookassa_pay import yookassa_webhook
+from routers.handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
+from routers.handlers.common.notifications import notify_expiring_keys
+from routers.handlers.payments.cryprobot_pay import cryptobot_webhook
+from routers.handlers.payments.freekassa_pay import freekassa_webhook
+from routers.handlers.payments.robokassa_pay import robokassa_webhook
+from routers.handlers.payments.yookassa_pay import yookassa_webhook
 from logger import logger
 from servers import sync_servers_with_db
 

@@ -15,7 +15,7 @@ class AdminCouponsState(StatesGroup):
     waiting_for_coupon_data = State()
 
 
-router = Router()
+router = Router(name=__name__)
 
 
 @router.callback_query(F.data == "coupons_editor", IsAdminFilter())

@@ -15,7 +15,7 @@ from bot import bot
 from filters.admin import IsAdminFilter
 from logger import logger
 
-router = Router()
+router = Router(name=__name__)
 
 
 class UserEditorState(StatesGroup):

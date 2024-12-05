@@ -16,11 +16,11 @@ from database import (
     update_balance,
     update_key_expiry,
 )
-from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
-from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
+from routers.handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
+from routers.handlers import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
-router = Router()
+router = Router(name=__name__)
 
 
 async def notify_expiring_keys(bot: Bot):

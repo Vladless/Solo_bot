@@ -10,11 +10,11 @@ from aiohttp import web
 
 from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
-from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from routers.handlers.payments.utils import send_payment_success_notification
+from routers.handlers import PAYMENT_OPTIONS
 from logger import logger
 
-router = Router()
+router = Router(name=__name__)
 
 if CRYPTO_BOT_ENABLE:
     crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)

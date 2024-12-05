@@ -14,7 +14,7 @@ class CouponActivationState(StatesGroup):
     waiting_for_coupon_code = State()
 
 
-router = Router()
+router = Router(name=__name__)
 
 
 @router.callback_query(F.data == "activate_coupon")

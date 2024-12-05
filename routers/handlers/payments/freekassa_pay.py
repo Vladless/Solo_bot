@@ -14,10 +14,10 @@ import requests
 
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import add_payment, update_balance
-from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from routers.handlers.payments.utils import send_payment_success_notification
+from routers.handlers import PAYMENT_OPTIONS
 
-router = Router()
+router = Router(name=__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 

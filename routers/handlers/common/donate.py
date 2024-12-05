@@ -14,7 +14,7 @@ class DonateState(StatesGroup):
     waiting_for_donate_payment = State()
 
 
-router = Router()
+router = Router(name=__name__)
 
 
 @router.callback_query(F.data == "donate")

@@ -8,8 +8,8 @@ from py3xui import AsyncApi
 from client import add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
 from database import get_servers_from_db, store_key, use_trial
-from handlers.texts import INSTRUCTIONS
-from handlers.utils import generate_random_email, get_least_loaded_cluster
+from routers.handlers import INSTRUCTIONS
+from routers.handlers.common.utils import generate_random_email, get_least_loaded_cluster
 
 
 async def create_trial_key(tg_id: int, session: Any):

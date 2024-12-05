@@ -11,11 +11,11 @@ from robokassa import HashAlgorithm, Robokassa
 
 from config import ROBOKASSA_ENABLE, ROBOKASSA_LOGIN, ROBOKASSA_PASSWORD1, ROBOKASSA_PASSWORD2, ROBOKASSA_TEST_MODE
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
-from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from routers.handlers.payments.utils import send_payment_success_notification
+from routers.handlers import PAYMENT_OPTIONS
 from logger import logger
 
-router = Router()
+router = Router(name=__name__)
 
 
 class ReplenishBalanceState(StatesGroup):
