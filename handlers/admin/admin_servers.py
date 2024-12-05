@@ -1,11 +1,13 @@
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
+from py3xui import AsyncApi
 
-from config import DATABASE_URL
+from backup import create_backup_and_send_to_admins
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 
@@ -259,6 +261,8 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
 
     builder = InlineKeyboardBuilder()
 
+    builder.row(InlineKeyboardButton(text="💾 Создать бэкап кластера", callback_data=f"backup_cluster|{cluster_name}"))
+
     for server in cluster_servers:
         builder.row(
             InlineKeyboardButton(
@@ -361,3 +365,30 @@ async def handle_add_server(callback_query: types.CallbackQuery, state: FSMConte
     )
 
     await state.set_state(UserEditorState.waiting_for_server_name)
+
+
+@router.callback_query(F.data.startswith("backup_cluster|"), IsAdminFilter())
+async def handle_backup_cluster(callback_query: types.CallbackQuery):
+    cluster_name = callback_query.data.split("|")[1]
+
+    servers = await get_servers_from_db()
+    cluster_servers = servers.get(cluster_name, [])
+
+    for server in cluster_servers:
+        xui = AsyncApi(
+            server["api_url"],
+            username=ADMIN_USERNAME,
+            password=ADMIN_PASSWORD,
+        )
+        await create_backup_and_send_to_admins(xui)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+
+    await callback_query.message.answer(
+        f"<b>Бэкап для кластера {cluster_name} был успешно создан и отправлен администраторам!</b>\n\n"
+        f"🔔 <i>Бэкапы отправлены в боты панелей.</i>",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
+    await callback_query.answer()
