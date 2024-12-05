@@ -204,7 +204,14 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
-    await callback_query.message.answer(text="Пожалуйста, введите сумму пополнения в рублях (например, 150):")
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_robokassa"))
+
+    await callback_query.message.answer(
+        "Пожалуйста, введите сумму пополнения.",
+        reply_markup=builder.as_markup(),
+    )
+
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
 
 

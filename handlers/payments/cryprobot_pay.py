@@ -141,8 +141,17 @@ async def process_crypto_payment(payload):
 
 @router.callback_query(F.data == "enter_custom_amount_crypto")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-    await callback_query.message.answer(text="Введите сумму пополнения:")
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_cryptobot"))
+
+    await callback_query.message.answer(
+        "Пожалуйста, введите сумму пополнения.",
+        reply_markup=builder.as_markup(),
+    )
+
     await state.set_state(ReplenishBalanceState.entering_custom_amount_crypto)
+
 
 
 @router.message(ReplenishBalanceState.entering_custom_amount_crypto)
