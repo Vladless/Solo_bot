@@ -22,7 +22,7 @@ from config import (
 )
 from database import get_balance, get_trial, store_key, update_balance
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import KEY, NULL_BALANCE, key_message_success
+from handlers.texts import DISCOUNTS, KEY, NULL_BALANCE, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
@@ -90,22 +90,21 @@ async def handle_key_creation(
     if trial_status == 0:
         expiry_time = current_time + timedelta(days=TRIAL_TIME)
         logger.info(f"Assigned 1-day trial to user {tg_id}.")
-        
-        await session.execute(
-            "UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id
-        )
+
+        await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
         await create_key(tg_id, expiry_time, state, session, message_or_query)
     else:
         builder = InlineKeyboardBuilder()
 
-        for plan_id, price in RENEWAL_PRICES.items():
+        for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
             discount_text = ""
-            if plan_id == "3":
-                discount_text = " (5% скидка)"
-            elif plan_id == "6":
-                discount_text = " (10% скидка)"
-            elif plan_id == "12":
-                discount_text = " (20% 🔥)"
+
+            if plan_id in DISCOUNTS:
+                discount_percentage = DISCOUNTS[plan_id]
+                discount_text = f" ({discount_percentage}% скидка)"
+
+                if index == len(RENEWAL_PRICES) - 1:
+                    discount_text = f" ({discount_percentage}% 🔥)"
 
             builder.row(
                 InlineKeyboardButton(
@@ -120,7 +119,6 @@ async def handle_key_creation(
         )
         await state.update_data(tg_id=tg_id)
         await state.set_state(Form.waiting_for_server_selection)
-
 
 
 @router.callback_query(F.data.startswith("select_plan_"))

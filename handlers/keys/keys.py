@@ -17,6 +17,7 @@ from handlers.keys.key_utils import (
     update_key_on_cluster,
 )
 from handlers.texts import (
+    DISCOUNTS,
     INSUFFICIENT_FUNDS_MSG,
     KEY_NOT_FOUND_MSG,
     NO_KEYS,
@@ -290,31 +291,34 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
             expiry_time = record["expiry_time"]
 
             builder = InlineKeyboardBuilder()
+
             builder.row(
                 InlineKeyboardButton(
                     text=f'📅 1 месяц ({RENEWAL_PLANS["1"]["price"]} руб.)',
                     callback_data=f"renew_plan|1|{client_id}",
                 )
             )
+
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.) 5% скидка',
+                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.) {DISCOUNTS["3"]}% скидка',
                     callback_data=f"renew_plan|3|{client_id}",
                 )
             )
+
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.) 10% скидка',
+                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.) {DISCOUNTS["6"]}% скидка',
                     callback_data=f"renew_plan|6|{client_id}",
                 )
             )
+
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.) (20% 🔥)',
+                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.) ({DISCOUNTS["12"]}% 🔥)',
                     callback_data=f"renew_plan|12|{client_id}",
                 )
             )
-
             back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys")
             builder.row(back_button)
 
