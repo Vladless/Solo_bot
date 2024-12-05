@@ -2,137 +2,27 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
-
 from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 
-async def init_db():
+async def init_db(file_path: str = 'assets/schema.sql'):
+    with open(file_path, 'r') as file:
+        sql_content = file.read()
+
+    # Split the file content into individual SQL statements and connect to the database
+    statements = [stmt.strip() for stmt in sql_content.split(';') if stmt.strip()]
     conn = await asyncpg.connect(DATABASE_URL)
-    # Таблица для хранения основной информации о пользователях из Telegram
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            tg_id BIGINT PRIMARY KEY NOT NULL,
-            username TEXT,
-            first_name TEXT,
-            last_name TEXT,
-            language_code TEXT,
-            is_bot BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
 
-    # Таблица для хранения информации о пользователях
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS connections (
-            tg_id BIGINT PRIMARY KEY NOT NULL,
-            balance REAL NOT NULL DEFAULT 0.0,
-            trial INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
-
-    # Таблица для хранения информации о платежах
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS payments (
-            id SERIAL PRIMARY KEY,
-            tg_id BIGINT NOT NULL,
-            amount REAL NOT NULL,
-            payment_system TEXT NOT NULL,
-            status TEXT DEFAULT 'success',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (tg_id) REFERENCES users(tg_id)
-        )
-        """
-    )
-
-    # Таблица для хранения ключей
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS keys (
-            tg_id BIGINT NOT NULL,
-            client_id TEXT NOT NULL,
-            email TEXT NOT NULL,
-            created_at BIGINT NOT NULL,
-            expiry_time BIGINT NOT NULL,
-            key TEXT NOT NULL,
-            server_id TEXT NOT NULL DEFAULT 'cluster1',
-            notified BOOLEAN NOT NULL DEFAULT FALSE,
-            notified_24h BOOLEAN NOT NULL DEFAULT FALSE,
-            PRIMARY KEY (tg_id, client_id)
-        )
-        """
-    )
-
-    # Таблица для хранения рефералов
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS referrals (
-            referred_tg_id BIGINT PRIMARY KEY NOT NULL,
-            referrer_tg_id BIGINT NOT NULL,
-            reward_issued BOOLEAN DEFAULT FALSE
-        )
-        """
-    )
-
-    # Таблица для хранения купонов
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS coupons (
-            id SERIAL PRIMARY KEY,
-            code TEXT UNIQUE NOT NULL,
-            amount INTEGER NOT NULL,
-            usage_limit INTEGER NOT NULL DEFAULT 1,  
-            usage_count INTEGER NOT NULL DEFAULT 0,  
-            is_used BOOLEAN NOT NULL DEFAULT FALSE  
-        )
-        """
-    )
-
-    # Таблица для отслеживания использований купонов пользователями
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS coupon_usages (
-            coupon_id INTEGER NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
-            user_id BIGINT NOT NULL,
-            used_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            PRIMARY KEY (coupon_id, user_id)
-        )
-        """
-    )
-
-    # Таблица для отслеживания отправленных уведомлений
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notifications (
-            tg_id BIGINT NOT NULL,
-            last_notification_time TIMESTAMP NOT NULL DEFAULT NOW(),
-            notification_type TEXT NOT NULL,
-            PRIMARY KEY (tg_id, notification_type)
-        )
-        """
-    )
-
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS servers (
-            id SERIAL PRIMARY KEY,
-            cluster_name TEXT NOT NULL,
-            server_name TEXT NOT NULL,
-            api_url TEXT NOT NULL,
-            subscription_url TEXT NOT NULL,
-            inbound_id TEXT NOT NULL,
-            UNIQUE(cluster_name, server_name) -- Уникальность по названию кластера и сервера
-        )
-        """
-    )
-
-    await conn.close()
+    try:
+        for statement in statements:
+            await conn.execute(statement)
+    except Exception as e:
+        logger.error(f'Error while executing SQL statement: {e}')
+    finally:
+        logger.info('Tables created successfully')
+        await conn.close()
 
 
 async def check_unique_server_name(server_name: str) -> bool:
@@ -1026,12 +916,12 @@ async def get_tg_id_by_client_id(client_id: str):
 
 
 async def upsert_user(
-    tg_id: int,
-    username: str = None,
-    first_name: str = None,
-    last_name: str = None,
-    language_code: str = None,
-    is_bot: bool = False,
+        tg_id: int,
+        username: str = None,
+        first_name: str = None,
+        last_name: str = None,
+        language_code: str = None,
+        is_bot: bool = False,
 ):
     """
     Обновляет или вставляет информацию о пользователе в базу данных.
