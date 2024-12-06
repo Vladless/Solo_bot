@@ -34,3 +34,4 @@ flake8
 black
 isort
 pylint
+ping3

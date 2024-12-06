@@ -28,7 +28,7 @@ from handlers.payments.freekassa_pay import freekassa_webhook
 from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
 from logger import logger
-from servers import sync_servers_with_db
+from servers import check_servers, sync_servers_with_db
 
 
 async def periodic_notifications():
@@ -48,6 +48,7 @@ async def on_startup(app):
     await init_db()
     asyncio.create_task(periodic_notifications())
     asyncio.create_task(periodic_database_backup())
+    asyncio.create_task(check_servers())
 
 
 async def on_shutdown(app):

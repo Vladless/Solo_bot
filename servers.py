@@ -1,6 +1,13 @@
-import asyncpg
+import asyncio
+from datetime import datetime, timedelta
+import re
 
-from config import DATABASE_URL
+import asyncpg
+from ping3 import ping
+
+from bot import bot
+from config import ADMIN_ID, DATABASE_URL
+from database import get_servers_from_db
 from logger import logger
 
 try:
@@ -55,3 +62,100 @@ async def sync_servers_with_db():
     finally:
         if 'conn' in locals():
             await conn.close()
+
+
+last_ping_times = {}
+last_notification_times = {}
+
+
+async def ping_server(server_ip: str) -> bool:
+    """
+    Функция пинга сервера.
+    Возвращает True, если сервер доступен, иначе False.
+    """
+    try:
+        logger.debug(f"Пингуем сервер {server_ip}...")
+        response = ping(server_ip, timeout=3)
+        if response is False:
+            logger.warning(f"Сервер {server_ip} не отвечает.")
+            return False
+        logger.info(f"Сервер {server_ip} доступен. Время отклика: {response} мс.")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при пинге сервера {server_ip}: {e}")
+        return False
+
+
+async def notify_admin(server_name: str):
+    """
+    Отправляет уведомление всем администраторам о недоступности сервера.
+    Отправка уведомлений раз в 3 минуты.
+    """
+    try:
+        current_time = datetime.now()
+
+        last_notification_time = last_notification_times.get(server_name)
+        if last_notification_time and current_time - last_notification_time < timedelta(minutes=3):
+            logger.info(f"Не отправляем уведомление для сервера {server_name}, так как прошло менее 3 минут.")
+            return
+
+        logger.info(f"Отправка уведомлений администратору о недоступности сервера {server_name}...")
+        for admin_id in ADMIN_ID:
+            await bot.send_message(
+                admin_id, f"❌ Сервер '{server_name}' не отвечает более 3 минут. Требуется внимание!", parse_mode="HTML"
+            )
+            logger.info(f"Уведомление отправлено администратору с ID {admin_id} о сервере {server_name}.")
+
+        last_notification_times[server_name] = current_time
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления администраторам: {e}")
+
+
+async def check_servers():
+    """
+    Периодическая проверка серверов с учетом извлечения хоста из `api_url`.
+    """
+    while True:
+        servers = await get_servers_from_db()
+        current_time = datetime.now()
+
+        logger.info(f"Начинаю проверку серверов: {current_time}")
+
+        for cluster_name, cluster_servers in servers.items():
+            logger.debug(f"Проверка кластеров: {cluster_name}")
+            for server in cluster_servers:
+                original_api_url = server["api_url"]
+                server_name = server["server_name"]
+
+                server_host = extract_host(original_api_url)
+                logger.debug(f"Проверка доступности сервера '{server_name}' с хостом {server_host}")
+
+                is_online = await ping_server(server_host)
+
+                if is_online:
+                    last_ping_times[server_name] = current_time
+                    logger.info(f"Сервер {server_name} доступен. Время последнего пинга обновлено.")
+                else:
+                    last_ping_time = last_ping_times.get(server_name)
+                    if last_ping_time and current_time - last_ping_time > timedelta(minutes=3):
+                        logger.warning(f"Сервер {server_name} не отвечает более 3 минут. Отправляю уведомление.")
+                        await notify_admin(server_name)
+                    elif not last_ping_time:
+                        last_ping_times[server_name] = current_time
+                        logger.info(f"Сервер {server_name} не отвечал ранее, но теперь зарегистрирован.")
+
+        logger.info("Завершена проверка всех серверов.")
+        await asyncio.sleep(30)
+
+
+def extract_host(api_url: str) -> str:
+    """
+    Извлекает только хост из `api_url` (без путей, портов и параметров).
+    """
+    match = re.match(r"(https?://)?([^:/]+)", api_url)
+    if match:
+        host = match.group(2)
+        logger.debug(f"Извлечён хост: {host} из URL: {api_url}")
+        return host
+    logger.error(f"Не удалось извлечь хост из URL: {api_url}")
+    return api_url
