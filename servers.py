@@ -2,6 +2,8 @@ import asyncio
 from datetime import datetime, timedelta
 import re
 
+from aiogram.types import InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from ping3 import ping
 
@@ -79,7 +81,6 @@ async def ping_server(server_ip: str) -> bool:
         if response is False:
             logger.warning(f"Сервер {server_ip} не отвечает.")
             return False
-        logger.info(f"Сервер {server_ip} доступен. Время отклика: {response} мс.")
         return True
     except Exception as e:
         logger.error(f"Ошибка при пинге сервера {server_ip}: {e}")
@@ -89,20 +90,31 @@ async def ping_server(server_ip: str) -> bool:
 async def notify_admin(server_name: str):
     """
     Отправляет уведомление всем администраторам о недоступности сервера.
-    Отправка уведомлений раз в 3 минуты.
+    Уведомления отправляются не чаще чем раз в 3 минуты.
     """
     try:
         current_time = datetime.now()
-
         last_notification_time = last_notification_times.get(server_name)
+
         if last_notification_time and current_time - last_notification_time < timedelta(minutes=3):
             logger.info(f"Не отправляем уведомление для сервера {server_name}, так как прошло менее 3 минут.")
             return
 
         logger.info(f"Отправка уведомлений администратору о недоступности сервера {server_name}...")
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="Управление сервером", callback_data=f"manage_server|{server_name}"))
+
         for admin_id in ADMIN_ID:
             await bot.send_message(
-                admin_id, f"❌ Сервер '{server_name}' не отвечает более 3 минут. Требуется внимание!", parse_mode="HTML"
+                admin_id,
+                (
+                    f"❌ <b>Сервер '{server_name}'</b> не отвечает более 3 минут.\n\n"
+                    "Проверьте соединение к серверу, подключение к панели или удалите его из таблицы серверов в боте, "
+                    "чтобы не выдать подписку к неработающему серверу."
+                ),
+                parse_mode="HTML",
+                reply_markup=builder.as_markup(),
             )
             logger.info(f"Уведомление отправлено администратору с ID {admin_id} о сервере {server_name}.")
 
@@ -134,7 +146,6 @@ async def check_servers():
 
                 if is_online:
                     last_ping_times[server_name] = current_time
-                    logger.info(f"Сервер {server_name} доступен. Время последнего пинга обновлено.")
                 else:
                     last_ping_time = last_ping_times.get(server_name)
                     if last_ping_time and current_time - last_ping_time > timedelta(minutes=3):
