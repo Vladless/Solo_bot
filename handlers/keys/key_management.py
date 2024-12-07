@@ -67,14 +67,6 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
 
-    balance = await get_balance(tg_id)
-    if balance < RENEWAL_PLANS["1"]["price"]:
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-        await callback_query.message.answer(NULL_BALANCE, reply_markup=builder.as_markup())
-        await state.clear()
-        return
-
     logger.info(f"Balance for user {tg_id} is sufficient. Proceeding with key creation.")
 
     await handle_key_creation(tg_id, state, session, callback_query)
@@ -136,6 +128,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, state: FSMContext, s
     balance = await get_balance(tg_id)
     if balance < plan_price:
         builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
         builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
         await callback_query.message.answer(
             "💳 Недостаточно средств для создания подписки. Пополните баланс в личном кабинете.",
