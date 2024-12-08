@@ -2,6 +2,7 @@ __all__ = ('router',)
 
 from aiogram import Router
 
+from .admin import router as admin_router
 from .coupons import router as coupons_router
 from .donate import router as donate_router
 from .instructions import router as instructions_router
@@ -25,4 +26,5 @@ router.include_routers(
     payments_router,
     keys_router,
     instructions_router,
+    admin_router,
 )
