@@ -4,6 +4,7 @@ from aiogram import Router
 
 from .coupons import router as coupons_router
 from .donate import router as donate_router
+from .keys import router as keys_router
 from .notifications import router as notifications_router
 from .pay import router as pay_router
 from .payments import router as payments_router
@@ -21,4 +22,5 @@ router.include_routers(
     notifications_router,
 
     payments_router,
+    keys_router,
 )
