@@ -15,14 +15,13 @@ from config import (
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
     PUBLIC_LINK,
-    RENEWAL_PLANS,
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
     TRIAL_TIME,
 )
-from database import get_balance, get_trial, store_key, update_balance
+from utils.database import get_balance, get_trial, store_key, update_balance
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import DISCOUNTS, KEY, NULL_BALANCE, key_message_success
+from handlers.texts import DISCOUNTS, KEY, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 

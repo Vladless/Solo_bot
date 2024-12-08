@@ -7,7 +7,7 @@ import asyncpg
 from py3xui import AsyncApi
 
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
-from database import (
+from utils.database import (
     add_notification,
     check_notification_time,
     delete_key,
