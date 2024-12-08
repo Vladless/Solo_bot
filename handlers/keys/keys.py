@@ -25,7 +25,7 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from handlers.utils import get_least_loaded_cluster, handle_error
+from utils.utils import get_least_loaded_cluster, handle_error
 from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
