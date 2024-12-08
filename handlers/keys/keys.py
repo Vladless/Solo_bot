@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, RENEWAL_PLANS, TOTAL_GB
 from utils.database import delete_key, get_balance, get_servers_from_db, store_key, update_balance, update_key_expiry
-from handlers.keys.key_utils import (
+from utils.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
     renew_key_in_cluster,

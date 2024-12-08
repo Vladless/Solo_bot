@@ -16,7 +16,7 @@ from utils.database import (
     update_balance,
     update_key_expiry,
 )
-from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
+from utils.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
