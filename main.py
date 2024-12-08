@@ -21,7 +21,7 @@ from config import (
     YOOKASSA_ENABLE,
 )
 from utils.database import init_db
-from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
+from utils.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
