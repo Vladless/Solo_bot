@@ -5,7 +5,8 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 
 from backup import backup_database
-from bot import bot, dp, router
+from bot import bot, dp
+from handlers import router
 from config import (
     BACKUP_TIME,
     CRYPTO_BOT_ENABLE,
