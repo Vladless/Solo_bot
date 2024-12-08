@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR
-from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+from utils.database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
