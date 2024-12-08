@@ -6,7 +6,7 @@ import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
-from database import get_servers_from_db
+from utils.database import get_servers_from_db
 from logger import logger
 
 

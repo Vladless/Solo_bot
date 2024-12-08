@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import update_balance
+from utils.database import update_balance
 
 
 class CouponActivationState(StatesGroup):
