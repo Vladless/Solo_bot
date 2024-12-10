@@ -7,7 +7,7 @@ import asyncpg
 from py3xui import AsyncApi
 
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
-from database import (
+from utils.database import (
     add_notification,
     check_notification_time,
     delete_key,
@@ -16,7 +16,7 @@ from database import (
     update_balance,
     update_key_expiry,
 )
-from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
+from utils.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
