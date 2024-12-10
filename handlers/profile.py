@@ -68,7 +68,11 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await callback_query.message.answer(
+    # Путь к изображению
+    image_path = os.path.join("img", "tariffs.jpg")  # Убедитесь, что этот путь правильный
+
+    # Формируем текст с тарифами
+    tariffs_message = (
         "<b>🚀 Доступные тарифы VPN:</b>\n\n"
         + "\n".join(
             [
@@ -77,9 +81,25 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
                 f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
                 for months in sorted(RENEWAL_PLANS.keys(), key=int)
             ]
-        ),
-        reply_markup=builder.as_markup(),
+        )
     )
+
+    # Проверяем наличие файла изображения
+    if os.path.isfile(image_path):
+        # Если изображение существует, отправляем его
+        with open(image_path, "rb") as image_file:
+            await callback_query.message.answer_photo(
+                photo=BufferedInputFile(image_file.read(), filename="tariffs.jpg"),
+                caption=tariffs_message,
+                reply_markup=builder.as_markup(),
+            )
+    else:
+        # Если изображения нет, просто отправляем текст
+        await callback_query.message.answer(
+            text=tariffs_message,
+            reply_markup=builder.as_markup(),
+        )
+
 
 
 @router.callback_query(F.data == "invite")
