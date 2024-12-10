@@ -6,9 +6,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
 
-from utils.backup import create_backup_and_send_to_admins
+from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from utils.database import check_unique_server_name, get_servers_from_db
+from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 
 router = Router()

@@ -10,8 +10,8 @@ from aiohttp import web
 from yookassa import Configuration, Payment
 
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from utils.database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
-from utils.payments.utils import send_payment_success_notification
+from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 

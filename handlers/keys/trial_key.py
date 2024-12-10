@@ -5,11 +5,11 @@ import uuid
 
 from py3xui import AsyncApi
 
-from utils.client import add_client
+from client import add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
-from utils.database import get_servers_from_db, store_key, use_trial
+from database import get_servers_from_db, store_key, use_trial
 from handlers.texts import INSTRUCTIONS
-from utils.utils import generate_random_email, get_least_loaded_cluster
+from handlers.utils import generate_random_email, get_least_loaded_cluster
 
 
 async def create_trial_key(tg_id: int, session: Any):

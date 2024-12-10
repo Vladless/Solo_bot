@@ -9,10 +9,10 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import TOTAL_GB
-from utils.database import get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
+from database import get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
 from filters.admin import IsAdminFilter
-from utils.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster
-from utils.utils import sanitize_key_name
+from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster
+from handlers.utils import sanitize_key_name
 from logger import logger
 
 router = Router()
