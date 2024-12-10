@@ -6,7 +6,7 @@ from aiohttp import web
 import asyncpg
 
 from config import DATABASE_URL, TRANSITION_DATE_STR
-from utils.database import get_servers_from_db
+from database import get_servers_from_db
 from logger import logger
 
 

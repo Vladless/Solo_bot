@@ -6,7 +6,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import NEWS_MESSAGE, RENEWAL_PLANS
-from utils.database import get_balance, get_key_count, get_referral_stats
+from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
 router = Router()

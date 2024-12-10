@@ -3,7 +3,8 @@ import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-from utils.backup import backup_database
+
+from backup import backup_database
 from bot import bot, dp
 from handlers import router
 from config import (
@@ -20,15 +21,15 @@ from config import (
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
 )
-from utils.database import init_db
-from utils.keys.subscriptions import handle_new_subscription, handle_old_subscription
+from database import init_db
+from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
 from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
 from logger import logger
-from utils.servers import check_servers, sync_servers_with_db
+from servers import check_servers, sync_servers_with_db
 
 
 async def periodic_notifications():

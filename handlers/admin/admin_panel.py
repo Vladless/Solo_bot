@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from utils.backup import backup_database
+from backup import backup_database
 from bot import bot
 from filters.admin import IsAdminFilter
 from logger import logger
