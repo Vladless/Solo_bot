@@ -11,6 +11,7 @@ from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, 
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
+from keyboards.start_kb import build_start_kb
 
 router = Router()
 
@@ -32,34 +33,26 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
         connection_exists = await check_connection_exists(message.chat.id)
         if not connection_exists:
             await add_connection(tg_id=message.chat.id, session=session)
+
+    # Get data
     trial_status = await get_trial(message.chat.id, session)
     image_path = os.path.join("img", "pic.jpg")
 
-    builder = InlineKeyboardBuilder()
-    if trial_status == 0:
-        builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    # Build start keyboard
+    kb = build_start_kb(trial_status, admin)
 
-    builder.row(
-        InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
-        InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL),
-    )
-
-    if admin:
-        builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
-    builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))
-
+    # Answer message
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_from_buffer:
             await message.answer_photo(
                 photo=BufferedInputFile(image_from_buffer.read(), filename="pic.jpg"),
                 caption=WELCOME_TEXT,
-                reply_markup=builder.as_markup(),
+                reply_markup=kb,
             )
     else:
         await message.answer(
             text=WELCOME_TEXT,
-            reply_markup=builder.as_markup(),
+            reply_markup=kb,
         )
 
 
