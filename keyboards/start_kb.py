@@ -106,3 +106,37 @@ def build_connect_kb(trial_key_info: dict) -> InlineKeyboardMarkup:
     )
 
     return builder.as_markup()
+
+
+def build_about_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💰 Поддержать проект",
+            callback_data="donate"
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📞 Техническая поддержка",
+            url=SUPPORT_CHAT_URL,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📢 Официальный канал",
+            url=CHANNEL_URL,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="start",
+        )
+    )
+
+    return builder.as_markup()

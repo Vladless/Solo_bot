@@ -4,14 +4,12 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
-from config import CHANNEL_URL, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
-from keyboards.start_kb import build_start_kb, build_connect_kb
+from keyboards.start_kb import build_start_kb, build_connect_kb, build_about_kb
 
 router = Router()
 
@@ -87,14 +85,8 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback_query: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
-    builder.row(
-        InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
+    # Answer message
+    await callback_query.message.answer(
+        text=get_about_vpn("3.2.21-Release"),
+        reply_markup=build_about_kb(),
     )
-    builder.row(
-        InlineKeyboardButton(text="📢 Официальный канал", url=CHANNEL_URL),
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
-
-    await callback_query.message.answer(get_about_vpn("3.2.21-Release"), reply_markup=builder.as_markup())
