@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
-from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 
+from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -915,12 +915,12 @@ async def get_tg_id_by_client_id(client_id: str):
 
 
 async def upsert_user(
-        tg_id: int,
-        username: str = None,
-        first_name: str = None,
-        last_name: str = None,
-        language_code: str = None,
-        is_bot: bool = False,
+    tg_id: int,
+    username: str = None,
+    first_name: str = None,
+    last_name: str = None,
+    language_code: str = None,
+    is_bot: bool = False,
 ):
     """
     Обновляет или вставляет информацию о пользователе в базу данных.

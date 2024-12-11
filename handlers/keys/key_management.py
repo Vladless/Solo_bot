@@ -19,11 +19,11 @@ from config import (
     SUPPORT_CHAT_URL,
     TRIAL_TIME,
 )
+from handlers.texts import DISCOUNTS, KEY, key_message_success
+from logger import logger
 from utils.database import get_balance, get_trial, store_key, update_balance
 from utils.keys.key_utils import create_key_on_cluster
-from handlers.texts import DISCOUNTS, KEY, key_message_success
 from utils.utils import generate_random_email, get_least_loaded_cluster
-from logger import logger
 
 router = Router()
 

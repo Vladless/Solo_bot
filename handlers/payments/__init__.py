@@ -2,7 +2,8 @@ __all__ = ('router',)
 
 from aiogram import Router
 
-from config import ROBOKASSA_ENABLE, STARS_ENABLE, CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, YOOKASSA_ENABLE
+from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE
+
 from .cryprobot_pay import router as cryprobot_router
 from .freekassa_pay import router as freekassa_router
 from .robokassa_pay import router as robokassa_router

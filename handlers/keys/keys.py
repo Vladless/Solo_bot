@@ -9,13 +9,6 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, PUBLIC_LINK, RENEWAL_PLANS, TOTAL_GB
-from utils.database import delete_key, get_balance, get_servers_from_db, store_key, update_balance, update_key_expiry
-from utils.keys.key_utils import (
-    delete_key_from_cluster,
-    delete_key_from_db,
-    renew_key_in_cluster,
-    update_key_on_cluster,
-)
 from handlers.texts import (
     DISCOUNTS,
     INSUFFICIENT_FUNDS_MSG,
@@ -25,8 +18,15 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from utils.utils import get_least_loaded_cluster, handle_error
 from logger import logger
+from utils.database import delete_key, get_balance, get_servers_from_db, store_key, update_balance, update_key_expiry
+from utils.keys.key_utils import (
+    delete_key_from_cluster,
+    delete_key_from_db,
+    renew_key_in_cluster,
+    update_key_on_cluster,
+)
+from utils.utils import get_least_loaded_cluster, handle_error
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 

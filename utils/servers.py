@@ -9,8 +9,8 @@ from ping3 import ping
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
-from utils.database import get_servers_from_db
 from logger import logger
+from utils.database import get_servers_from_db
 
 try:
     from config import CLUSTERS

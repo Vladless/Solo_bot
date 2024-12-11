@@ -6,8 +6,8 @@ import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
-from utils.database import get_servers_from_db
 from logger import logger
+from utils.database import get_servers_from_db
 
 
 def sanitize_key_name(key_name: str) -> str:

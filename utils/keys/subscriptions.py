@@ -6,8 +6,8 @@ from aiohttp import web
 import asyncpg
 
 from config import DATABASE_URL, TRANSITION_DATE_STR
-from utils.database import get_servers_from_db
 from logger import logger
+from utils.database import get_servers_from_db
 
 
 async def fetch_url_content(url, tg_id):
