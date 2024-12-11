@@ -69,8 +69,6 @@ async def freekassa_webhook(request):
     data = await request.json()
     logging.debug(f"Получен вебхук от FreeKassa: {data}")
 
-    logging.debug(f"Данные вебхука от FreeKassa: {data}")
-
     if data["status"] == "completed":
         user_id = data["metadata"]["user_id"]
         amount = float(data["amount"])
