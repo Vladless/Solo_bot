@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
+from keyboards.profile_kb import build_profile_kb
 
 router = Router()
 
@@ -18,9 +19,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     username = callback_query.from_user.full_name
     image_path = os.path.join("img", "pic.jpg")
     key_count = await get_key_count(chat_id)
-    balance = await get_balance(chat_id)
-    if balance is None:
-        balance = 0
+    balance = await get_balance(chat_id) or 0
 
     profile_message = profile_message_send(username, chat_id, int(balance), key_count)
 
@@ -29,37 +28,21 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     else:
         profile_message += f"\n<pre>🔧 <i>{NEWS_MESSAGE}</i></pre>"
 
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
-        InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="💳 Пополнить баланс",
-            callback_data="pay",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
-        InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
-    )
-    builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
-    if admin:
-        builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="start"))
+    # Build start keyboard
+    kb = build_profile_kb(admin)
 
+    # Answer message
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_file:
             await callback_query.message.answer_photo(
                 photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
                 caption=profile_message,
-                reply_markup=builder.as_markup(),
+                reply_markup=kb,
             )
     else:
         await callback_query.message.answer(
             text=profile_message,
-            reply_markup=builder.as_markup(),
+            reply_markup=kb,
         )
 
 
