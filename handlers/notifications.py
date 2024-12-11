@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from aiogram import Bot, Router, types
+from aiogram import Bot, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncpg
 from py3xui import AsyncApi
@@ -19,8 +19,6 @@ from database import (
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
-
-router = Router()
 
 
 async def notify_expiring_keys(bot: Bot):
