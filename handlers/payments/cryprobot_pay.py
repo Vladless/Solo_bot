@@ -11,7 +11,7 @@ from aiohttp import web
 from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from keyboards.payments.pay_common_kb import build_payment_kb
 from logger import logger
 
 router = Router()
@@ -28,42 +28,23 @@ class ReplenishBalanceState(StatesGroup):
 
 @router.callback_query(F.data == "pay_cryptobot")
 async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
-    builder = InlineKeyboardBuilder()
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                )
-            )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_crypto",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
+    # Check keys count
     key_count = await get_key_count(callback_query.message.chat.id)
     if key_count == 0:
         exists = await check_connection_exists(callback_query.message.chat.id)
         if not exists:
             await add_connection(tg_id=callback_query.message.chat.id, balance=0.0, trial=0, session=session)
+
+    # Build keyboard
+    kb = build_payment_kb('cryptobot')
+
+    # Answer message
     await callback_query.message.answer(
-        "Выберите сумму пополнения:",
-        reply_markup=builder.as_markup(),
+        text="Выберите сумму пополнения:",
+        reply_markup=kb,
     )
+
+    # Set state
     await state.set_state(ReplenishBalanceState.choosing_amount_crypto)
 
 
@@ -141,7 +122,6 @@ async def process_crypto_payment(payload):
 
 @router.callback_query(F.data == "enter_custom_amount_crypto")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_cryptobot"))
 
