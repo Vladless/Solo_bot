@@ -22,6 +22,22 @@ def build_donate_kb() -> InlineKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True)
 
 
+def build_donate_amount_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="Задонатить",
+        pay=True,
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data="donate",
+    )
+
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
+
+
 def build_donate_back_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
