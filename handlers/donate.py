@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR
+from keyboards.donate_kb import build_donate_kb, build_donate_back_kb
 from logger import logger
 
 
@@ -21,30 +22,37 @@ router = Router()
 async def process_donate(callback_query: types.CallbackQuery, state: FSMContext):
     await state.clear()
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести сумму доната",
-            callback_data="enter_custom_donate_amount",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-
-    await callback_query.message.answer(
-        text="🌟 Поддержите наш проект! 💪\n\n"
+    # Prepare text
+    text = (
+        "🌟 Поддержите наш проект! 💪\n\n"
         "💖 Каждый донат помогает развивать и улучшать сервис. "
-        "🤝 Мы ценим вашу поддержку и работаем над тем, чтобы сделать наш продукт еще лучше. 🚀💡",
-        reply_markup=builder.as_markup(),
+        "🤝 Мы ценим вашу поддержку и работаем над тем, чтобы сделать наш продукт еще лучше. 🚀💡"
+    )
+
+    # Build keyboard
+    kb = build_donate_kb()
+
+    # Answer message
+    await callback_query.message.answer(
+        text=text,
+        reply_markup=kb,
     )
 
 
 @router.callback_query(F.data == "enter_custom_donate_amount")
 async def process_enter_donate_amount(callback_query: types.CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
-    await callback_query.message.answer(f"💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup())
-    await state.set_state(DonateState.entering_donate_amount)
+    # Build keyboard
+    kb = build_donate_back_kb()
+
+    # Answer message
+    await callback_query.message.answer(
+        text="💸 Введите сумму доната в рублях:",
+        reply_markup=kb,
+    )
+    # Set state
+    await state.set_state(
+        DonateState.entering_donate_amount
+    )
 
 
 @router.message(DonateState.entering_donate_amount)

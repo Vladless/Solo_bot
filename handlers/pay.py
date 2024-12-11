@@ -16,7 +16,7 @@ async def handle_pay(callback_query: CallbackQuery):
         "• Моментальное зачисление средств 🚀"
     )
 
-    # Build start keyboard
+    # Build keyboard
     kb = build_pay_kb()
 
     # Answer message

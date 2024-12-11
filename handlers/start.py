@@ -36,7 +36,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     trial_status = await get_trial(message.chat.id, session)
     image_path = os.path.join("img", "pic.jpg")
 
-    # Build start keyboard
+    # Build keyboard
     kb = build_start_kb(trial_status, admin)
 
     # Answer message
@@ -73,7 +73,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
             f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 
-        # Build connect keyboard
+        # Build keyboard
         kb = build_connect_kb(trial_key_info)
 
         # Answer message

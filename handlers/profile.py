@@ -28,7 +28,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     else:
         profile_message += f"\n<pre>🔧 <i>{NEWS_MESSAGE}</i></pre>"
 
-    # Build profile keyboard
+    # Build keyboard
     kb = build_profile_kb(admin)
 
     # Answer message
@@ -64,7 +64,7 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
         )
     )
 
-    # Build back keyboard
+    # Build keyboard
     kb = build_profile_back_kb()
 
     # Проверяем наличие файла изображения
@@ -93,7 +93,7 @@ async def invite_handler(callback_query: types.CallbackQuery):
     invite_message = invite_message_send(referral_link, referral_stats)
     image_path = os.path.join("img", "pic_invite.jpg")
 
-    # Build back keyboard
+    # Build keyboard
     kb = build_profile_back_kb()
 
     if os.path.isfile(image_path):
