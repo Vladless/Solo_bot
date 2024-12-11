@@ -30,7 +30,7 @@ def build_payment_kb(callback: str) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_crypto",
+            callback_data=f"enter_custom_amount_{callback}",
         )
     )
 

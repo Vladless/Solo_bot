@@ -120,7 +120,7 @@ async def process_crypto_payment(payload):
         logger.warning(f"Получен неоплаченный инвойс: {payload}")
 
 
-@router.callback_query(F.data == "enter_custom_amount_crypto")
+@router.callback_query(F.data == "enter_custom_amount_cryptobot")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     # Build keyboard
     kb = build_back_kb("pay_cryptobot", "🔙 Назад")
