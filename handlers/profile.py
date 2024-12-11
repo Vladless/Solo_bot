@@ -27,7 +27,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     if key_count == 0:
         profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
     else:
-        profile_message += f"\n<pre>🔧 <i>{NEWS_MESSAGE}</i></pre>"
+        profile_message += f"\n<pre> <i>{NEWS_MESSAGE}</i></pre>"
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -68,10 +68,8 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    # Путь к изображению
-    image_path = os.path.join("img", "tariffs.jpg")  # Убедитесь, что этот путь правильный
+    image_path = os.path.join("img", "tariffs.jpg")  
 
-    # Формируем текст с тарифами
     tariffs_message = (
         "<b>🚀 Доступные тарифы VPN:</b>\n\n"
         + "\n".join(
@@ -84,9 +82,7 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
         )
     )
 
-    # Проверяем наличие файла изображения
     if os.path.isfile(image_path):
-        # Если изображение существует, отправляем его
         with open(image_path, "rb") as image_file:
             await callback_query.message.answer_photo(
                 photo=BufferedInputFile(image_file.read(), filename="tariffs.jpg"),
@@ -94,7 +90,6 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
                 reply_markup=builder.as_markup(),
             )
     else:
-        # Если изображения нет, просто отправляем текст
         await callback_query.message.answer(
             text=tariffs_message,
             reply_markup=builder.as_markup(),
