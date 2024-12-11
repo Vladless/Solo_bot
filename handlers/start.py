@@ -7,11 +7,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, SUPPORT_CHAT_URL
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
-from keyboards.start_kb import build_start_kb
+from keyboards.start_kb import build_start_kb, build_connect_kb
 
 router = Router()
 
@@ -60,6 +60,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
     user_id = callback_query.message.chat.id
 
+    # Get trial key info
     trial_key_info = await create_trial_key(user_id, session)
 
     if "error" in trial_key_info:
@@ -67,34 +68,21 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
     else:
         await use_trial(user_id, session)
 
-        key_message = (
+        # Prepare text
+        text = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
             f"<code>{trial_key_info['key']}</code>\n\n"
             f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
         )
 
-        email = trial_key_info["email"]
+        # Build connect keyboard
+        kb = build_connect_kb(trial_key_info)
 
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
-        builder.row(
-            InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
-            InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
+        # Answer message
+        await callback_query.message.answer(
+            text=text,
+            reply_markup=kb,
         )
-        builder.row(
-            InlineKeyboardButton(
-                text="🍏 Подключить на iOS",
-                url=f'{CONNECT_IOS}{trial_key_info["key"]}',
-            ),
-            InlineKeyboardButton(
-                text="🤖 Подключить на Android",
-                url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
-            ),
-        )
-        builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"))
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-
-        await callback_query.message.answer(key_message, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "about_vpn")

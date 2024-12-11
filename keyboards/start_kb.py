@@ -2,7 +2,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_URL, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, SUPPORT_CHAT_URL, DOWNLOAD_IOS, DOWNLOAD_ANDROID, CONNECT_IOS, CONNECT_ANDROID
 
 
 class StartCommandCallback(CallbackData, prefix='start_command'):
@@ -53,6 +53,55 @@ def build_start_kb(trial_status: int, is_admin: bool) -> InlineKeyboardMarkup:
         InlineKeyboardButton(
             text="🌐 О нашем VPN",
             callback_data="about_vpn",
+        )
+    )
+
+    return builder.as_markup()
+
+
+def build_connect_kb(trial_key_info: dict) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💬 Поддержка",
+            url=SUPPORT_CHAT_URL,
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🍏 Скачать для iOS",
+            url=DOWNLOAD_IOS,
+        ),
+        InlineKeyboardButton(
+            text="🤖 Скачать для Android",
+            url=DOWNLOAD_ANDROID,
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🍏 Подключить на iOS",
+            url=f'{CONNECT_IOS}{trial_key_info["key"]}',
+        ),
+        InlineKeyboardButton(
+            text="🤖 Подключить на Android",
+            url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💻 Windows/Linux",
+            callback_data=f'connect_pc|{trial_key_info['email']}',
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="👤 Личный кабинет",
+            callback_data="profile",
         )
     )
 
