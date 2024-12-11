@@ -58,3 +58,13 @@ def build_profile_kb(is_admin: bool) -> InlineKeyboardMarkup:
     )
 
     return builder.as_markup()
+
+
+def build_profile_back_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="👤 Личный кабинет",
+        callback_data="profile"
+    )
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
