@@ -4,18 +4,17 @@ import logging
 import time
 import uuid
 
+import requests
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-import requests
 
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import add_payment, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from keyboards.payments.pay_common_kb import build_payment_kb
+from keyboards.payments.pay_freekassa_kb import build_fk_invoice_kb, build_fk_pay_kb
 
 router = Router()
 logging.basicConfig(level=logging.DEBUG)
@@ -82,39 +81,16 @@ async def freekassa_webhook(request):
 
 @router.callback_query(lambda c: c.data == "pay_freekassa")
 async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'freekassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                )
-            )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_freekassa",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
+    # Build keyboard
+    kb = build_payment_kb("freekassa")
 
+    # Answer message
     await callback_query.message.answer(
         text="Выберите сумму пополнения через FreeKassa:",
-        reply_markup=builder.as_markup(),
+        reply_markup=kb,
     )
 
+    # Set state
     await state.set_state(ReplenishBalanceState.choosing_amount_freekassa)
 
 
@@ -133,16 +109,13 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     payment_url = await create_payment(callback_query.message.chat.id, amount, user_email, user_ip)
 
     if payment_url:
-        confirm_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=f"Оплатить {amount} рублей", url=payment_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
-            ]
-        )
+        # Build keyboard
+        kb = build_fk_invoice_kb(amount, payment_url)
 
+        # Answer message
         await callback_query.message.answer(
             f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
-            reply_markup=confirm_keyboard,
+            reply_markup=kb,
         )
     else:
         await callback_query.message.answer(
@@ -169,10 +142,13 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
         payment_url = await create_payment(message.chat.id, amount, user_email, user_ip)
 
         if payment_url:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton("Оплатить", url=payment_url)]])
+            # Build keyboard
+            kb = build_fk_pay_kb(payment_url)
+
+            # Answer message
             await message.answer(
-                f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
-                reply_markup=keyboard,
+                text=f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
+                reply_markup=kb,
             )
         else:
             await message.answer("Ошибка при создании платежа. Попробуйте позже.")
