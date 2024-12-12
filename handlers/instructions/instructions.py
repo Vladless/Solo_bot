@@ -2,34 +2,29 @@ import os
 from typing import Any
 
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import BufferedInputFile
 
-from config import CONNECT_IOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
+from keyboards.instructions.instructions_kb import build_instructions_kb, build_connect_pc_kb
 
 router = Router()
 
 
 @router.callback_query(F.data == "instructions")
 async def send_instructions(callback_query: types.CallbackQuery):
-    instructions_message = INSTRUCTIONS
     image_path = os.path.join("img", "instructions.jpg")
     if not os.path.isfile(image_path):
         await callback_query.message.answer("Файл изображения не найден.")
         return
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"),
-    )
+    # Build keyboard
+    kb = build_instructions_kb()
 
     with open(image_path, "rb") as image_from_buffer:
         await callback_query.message.answer_photo(
-            BufferedInputFile(image_from_buffer.read(), filename="instructions.jpg"),
-            caption=instructions_message,
-            reply_markup=builder.as_markup(),
+            photo=BufferedInputFile(image_from_buffer.read(), filename="instructions.jpg"),
+            caption=INSTRUCTIONS,
+            reply_markup=kb,
         )
 
 
@@ -56,15 +51,12 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     key_message = KEY_MESSAGE.format(key)
     instruction_message = f"{key_message}{INSTRUCTION_PC}"
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"))
-    builder.row(InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_IOS}{key}"))
-    builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    # Build keyboard
+    kb = build_connect_pc_kb(key)
 
     await callback_query.message.answer(
-        instruction_message,
-        reply_markup=builder.as_markup(),
+        text=instruction_message,
+        reply_markup=kb,
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
