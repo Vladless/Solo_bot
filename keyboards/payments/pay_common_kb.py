@@ -44,6 +44,22 @@ def build_payment_kb(callback: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def build_stars_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="Пополнить",
+        pay=True,
+    )
+    builder.button(
+        text="⬅️ Назад",
+        callback_data="pay",
+    )
+
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True)
+
+
 def build_invoice_kb(amount: int, payment_url: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 

@@ -183,7 +183,7 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
 
     # Answer message
     await callback_query.message.answer(
-        "Пожалуйста, введите сумму пополнения.",
+        text="Пожалуйста, введите сумму пополнения.",
         reply_markup=kb,
     )
 
