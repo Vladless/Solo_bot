@@ -31,3 +31,4 @@ py3xui
 sqlalchemy
 robokassa
 ping3
+ruff
