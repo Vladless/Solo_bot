@@ -4,15 +4,15 @@ import logging
 import time
 import uuid
 
+import requests
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-import requests
-
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
+
 from database import add_payment, update_balance
 from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
@@ -49,7 +49,9 @@ async def create_payment(user_id, amount, email, ip):
     params["signature"] = generate_signature(params, FREEKASSA_API_KEY)
 
     try:
-        response = requests.post("https://api.freekassa.com/v1/orders/create", json=params)
+        response = requests.post(
+            "https://api.freekassa.com/v1/orders/create", json=params
+        )
         response_data = response.json()
 
         logging.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
@@ -83,7 +85,9 @@ async def freekassa_webhook(request):
 
 
 @router.callback_query(lambda c: c.data == "pay_freekassa")
-async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_callback_pay_freekassa(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     builder = InlineKeyboardBuilder()
     for i in range(0, len(PAYMENT_OPTIONS), 2):
         if i + 1 < len(PAYMENT_OPTIONS):
@@ -121,7 +125,9 @@ async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, st
 
 
 @router.callback_query(F.data.startswith("freekassa_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     data = callback_query.data.split("|", 1)
     amount_str = data[1]
     try:
@@ -132,12 +138,18 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     user_email = f"{callback_query.message.chat.id}@solo.net"
     user_ip = callback_query.message.chat.id
-    payment_url = await create_payment(callback_query.message.chat.id, amount, user_email, user_ip)
+    payment_url = await create_payment(
+        callback_query.message.chat.id, amount, user_email, user_ip
+    )
 
     if payment_url:
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=f"Оплатить {amount} рублей", url=payment_url)],
+                [
+                    InlineKeyboardButton(
+                        text=f"Оплатить {amount} рублей", url=payment_url
+                    )
+                ],
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
             ]
         )
@@ -153,7 +165,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
 
 @router.callback_query(F.data == "enter_custom_amount_freekassa")
-async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_enter_custom_amount(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     await callback_query.message.answer(text="Введите сумму пополнения:")
     await state.set_state(ReplenishBalanceState.entering_custom_amount_freekassa)
 
@@ -163,7 +177,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount <= 0:
-            await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
+            await message.answer(
+                "Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:"
+            )
             return
 
         user_email = f"{message.chat.id}@solo.net"
@@ -171,7 +187,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
         payment_url = await create_payment(message.chat.id, amount, user_email, user_ip)
 
         if payment_url:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton("Оплатить", url=payment_url)]])
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton("Оплатить", url=payment_url)]]
+            )
             await message.answer(
                 f"Вы выбрали оплату на {amount} рублей. Перейдите по ссылке для завершения оплаты:",
                 reply_markup=keyboard,

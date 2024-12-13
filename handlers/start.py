@@ -4,11 +4,29 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import (
+    BufferedInputFile,
+    CallbackQuery,
+    InlineKeyboardButton,
+    Message,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import (
+    CHANNEL_URL,
+    CONNECT_ANDROID,
+    CONNECT_IOS,
+    DOWNLOAD_ANDROID,
+    DOWNLOAD_IOS,
+    SUPPORT_CHAT_URL,
+)
 
-from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
-from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
+from database import (
+    add_connection,
+    add_referral,
+    check_connection_exists,
+    get_trial,
+    use_trial,
+)
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
 
@@ -16,7 +34,9 @@ router = Router()
 
 
 @router.callback_query(F.data == "start")
-async def handle_start_callback_query(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
+async def handle_start_callback_query(
+    callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool
+):
     await start_command(callback_query.message, state, session, admin)
 
 
@@ -37,7 +57,9 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
     builder = InlineKeyboardBuilder()
     if trial_status == 0:
-        builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn"))
+        builder.row(
+            InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn")
+        )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     builder.row(
@@ -46,7 +68,9 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     )
 
     if admin:
-        builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
+        builder.row(
+            InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+        )
     builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))
 
     if os.path.isfile(image_path):
@@ -98,16 +122,26 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
                 url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
             ),
         )
-        builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"))
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        builder.row(
+            InlineKeyboardButton(
+                text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
+        )
 
-        await callback_query.message.answer(key_message, reply_markup=builder.as_markup())
+        await callback_query.message.answer(
+            key_message, reply_markup=builder.as_markup()
+        )
 
 
 @router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+    builder.row(
+        InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+    )
     builder.row(
         InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
     )
@@ -116,4 +150,6 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
 
-    await callback_query.message.answer(get_about_vpn("3.2.21-Release"), reply_markup=builder.as_markup())
+    await callback_query.message.answer(
+        get_about_vpn("3.2.21-Release"), reply_markup=builder.as_markup()
+    )
