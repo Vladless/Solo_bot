@@ -915,12 +915,12 @@ async def get_tg_id_by_client_id(client_id: str):
 
 
 async def upsert_user(
-        tg_id: int,
-        username: str = None,
-        first_name: str = None,
-        last_name: str = None,
-        language_code: str = None,
-        is_bot: bool = False,
+    tg_id: int,
+    username: str = None,
+    first_name: str = None,
+    last_name: str = None,
+    language_code: str = None,
+    is_bot: bool = False,
 ):
     """
     Обновляет или вставляет информацию о пользователе в базу данных.
@@ -1117,3 +1117,12 @@ async def get_servers_from_db():
         )
 
     return servers
+
+
+async def delete_user_data(session: Any, tg_id: int):
+    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
+    await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM keys WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
