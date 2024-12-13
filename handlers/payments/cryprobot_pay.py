@@ -87,38 +87,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         logger.error(f"Ошибка при создании платежа: {e}")
 
 
-async def cryptobot_webhook(request):
-    try:
-        data = await request.json()
-        logger.info(f"Получены данные вебхука: {data}")
-        if data.get("update_type") == "invoice_paid":
-            await process_crypto_payment(data["payload"])
-            return web.Response(status=200)
-        else:
-            logger.warning(f"Неподдерживаемый тип обновления: {data.get('update_type')}")
-            return web.Response(status=400)
-    except Exception as e:
-        logger.error(f"Ошибка обработки вебхука: {e}")
-        return web.Response(status=500)
-
-
-async def process_crypto_payment(payload):
-    if payload["status"] == "paid":
-        custom_payload = payload["payload"]
-        user_id_str, amount_str = custom_payload.split(":")
-        try:
-            user_id = int(user_id_str)
-            amount = int(amount_str)
-            await add_payment(int(user_id), float(amount), "cryptobot")
-            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
-            await update_balance(user_id, amount)
-            await send_payment_success_notification(user_id, amount)
-        except ValueError as e:
-            logger.error(f"Ошибка конвертации user_id или amount: {e}")
-    else:
-        logger.warning(f"Получен неоплаченный инвойс: {payload}")
-
-
 @router.callback_query(F.data == "enter_custom_amount_cryptobot")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
     # Build keyboard
@@ -164,3 +132,35 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             logger.error(f"Ошибка при создании платежа: {e}")
     else:
         await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")
+
+
+async def cryptobot_webhook(request):
+    try:
+        data = await request.json()
+        logger.info(f"Получены данные вебхука: {data}")
+        if data.get("update_type") == "invoice_paid":
+            await process_crypto_payment(data["payload"])
+            return web.Response(status=200)
+        else:
+            logger.warning(f"Неподдерживаемый тип обновления: {data.get('update_type')}")
+            return web.Response(status=400)
+    except Exception as e:
+        logger.error(f"Ошибка обработки вебхука: {e}")
+        return web.Response(status=500)
+
+
+async def process_crypto_payment(payload):
+    if payload["status"] == "paid":
+        custom_payload = payload["payload"]
+        user_id_str, amount_str = custom_payload.split(":")
+        try:
+            user_id = int(user_id_str)
+            amount = int(amount_str)
+            await add_payment(int(user_id), float(amount), "cryptobot")
+            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            await update_balance(user_id, amount)
+            await send_payment_success_notification(user_id, amount)
+        except ValueError as e:
+            logger.error(f"Ошибка конвертации user_id или amount: {e}")
+    else:
+        logger.warning(f"Получен неоплаченный инвойс: {payload}")

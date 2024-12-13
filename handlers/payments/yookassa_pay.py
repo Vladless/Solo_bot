@@ -1,5 +1,5 @@
-from typing import Any
 import uuid
+from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -147,28 +147,8 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await callback_query.message.answer("Ошибка при создании платежа.")
 
 
-async def yookassa_webhook(request):
-    event = await request.json()
-    logger.debug(f"Webhook event received: {event}")
-    if event["event"] == "payment.succeeded":
-        user_id_str = event["object"]["metadata"]["user_id"]
-        amount_str = event["object"]["amount"]["value"]
-        try:
-            user_id = int(user_id_str)
-            amount = float(amount_str)
-            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
-            await add_payment(int(user_id), float(amount), "yookassa")
-            await update_balance(user_id, amount)
-            await send_payment_success_notification(user_id, amount)
-        except ValueError as e:
-            logger.error(f"Ошибка конвертации user_id или amount: {e}")
-            return web.Response(status=400)
-    return web.Response(status=200)
-
-
 @router.callback_query(F.data == "enter_custom_amount_yookassa")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_yookassa"))
 
@@ -246,3 +226,22 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             await message.answer("Произошла ошибка при создании платежа.")
     else:
         await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")
+
+
+async def yookassa_webhook(request):
+    event = await request.json()
+    logger.debug(f"Webhook event received: {event}")
+    if event["event"] == "payment.succeeded":
+        user_id_str = event["object"]["metadata"]["user_id"]
+        amount_str = event["object"]["amount"]["value"]
+        try:
+            user_id = int(user_id_str)
+            amount = float(amount_str)
+            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            await add_payment(int(user_id), float(amount), "yookassa")
+            await update_balance(user_id, amount)
+            await send_payment_success_notification(user_id, amount)
+        except ValueError as e:
+            logger.error(f"Ошибка конвертации user_id или amount: {e}")
+            return web.Response(status=400)
+    return web.Response(status=200)

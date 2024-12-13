@@ -34,19 +34,6 @@ if ROBOKASSA_ENABLE:
     logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
 
 
-def generate_payment_link(amount, inv_id, description, tg_id):
-    """Генерация ссылки на оплату."""
-    logger.debug(f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}")
-    payment_link = robokassa._payment.link.generate_by_script(
-        out_sum=amount,
-        inv_id=inv_id,
-        description="пополнение баланса",
-        id=f"{tg_id}",
-    )
-    logger.info(f"Generated payment link: {payment_link}")
-    return payment_link
-
-
 @router.callback_query(F.data == "pay_robokassa")
 async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
@@ -114,6 +101,54 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     logger.info(f"Payment link sent to user {callback_query.message.chat.id}.")
 
 
+@router.callback_query(F.data == "enter_custom_amount_robokassa")
+async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+    tg_id = callback_query.message.chat.id
+    logger.info(f"User {tg_id} chose to enter a custom amount.")
+
+    # Build keyboard
+    kb = build_back_kb("pay_robokassa")
+
+    # Answer message
+    await callback_query.message.answer(
+        text="Пожалуйста, введите сумму пополнения.",
+        reply_markup=kb,
+    )
+
+    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
+
+
+@router.message(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
+async def handle_custom_amount_input(message: types.Message, state: FSMContext):
+    tg_id = message.chat.id
+    logger.info(f"User {tg_id} entered custom amount: {message.text}")
+    inv_id = 0
+
+    try:
+        amount = int(message.text)
+        if amount <= 0:
+            raise ValueError("Сумма должна быть положительным числом.")
+
+        await state.update_data(amount=amount)
+
+        payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
+
+        logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
+
+        # Build keyboard
+        kb = build_pay_url_kb(payment_url)
+
+        # Answer message
+        await message.answer(
+            text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
+            reply_markup=kb,
+        )
+        await state.clear()
+    except ValueError as e:
+        logger.error(f"Некорректная сумма от пользователя {tg_id}: {e}")
+        await message.answer(text="Введите корректную сумму в рублях (целое положительное число).")
+
+
 async def robokassa_webhook(request):
     """Обработка webhook-уведомлений от Robokassa с учетом shp_id."""
     try:
@@ -173,49 +208,14 @@ def check_payment_signature(params):
     return signature_value.upper() == expected_signature.upper()
 
 
-@router.callback_query(F.data == "enter_custom_amount_robokassa")
-async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.message.chat.id
-    logger.info(f"User {tg_id} chose to enter a custom amount.")
-
-    # Build keyboard
-    kb = build_back_kb("pay_robokassa")
-
-    # Answer message
-    await callback_query.message.answer(
-        text="Пожалуйста, введите сумму пополнения.",
-        reply_markup=kb,
+def generate_payment_link(amount, inv_id, description, tg_id):
+    """Генерация ссылки на оплату."""
+    logger.debug(f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}")
+    payment_link = robokassa._payment.link.generate_by_script(
+        out_sum=amount,
+        inv_id=inv_id,
+        description="пополнение баланса",
+        id=f"{tg_id}",
     )
-
-    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
-
-
-@router.message(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
-async def handle_custom_amount_input(message: types.Message, state: FSMContext):
-    tg_id = message.chat.id
-    logger.info(f"User {tg_id} entered custom amount: {message.text}")
-    inv_id = 0
-
-    try:
-        amount = int(message.text)
-        if amount <= 0:
-            raise ValueError("Сумма должна быть положительным числом.")
-
-        await state.update_data(amount=amount)
-
-        payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
-
-        logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
-
-        # Build keyboard
-        kb = build_pay_url_kb(payment_url)
-
-        # Answer message
-        await message.answer(
-            text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
-            reply_markup=kb,
-        )
-        await state.clear()
-    except ValueError as e:
-        logger.error(f"Некорректная сумма от пользователя {tg_id}: {e}")
-        await message.answer(text="Введите корректную сумму в рублях (целое положительное число).")
+    logger.info(f"Generated payment link: {payment_link}")
+    return payment_link

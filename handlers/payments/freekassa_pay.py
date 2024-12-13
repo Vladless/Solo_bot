@@ -25,59 +25,6 @@ class ReplenishBalanceState(StatesGroup):
     entering_custom_amount_freekassa = State()
 
 
-def generate_signature(params, api_key):
-    sorted_params = {k: params[k] for k in sorted(params)}
-    sign_string = "|".join(str(value) for value in sorted_params.values())
-    return hmac.new(api_key.encode(), sign_string.encode(), hashlib.sha256).hexdigest()
-
-
-async def create_payment(user_id, amount, email, ip):
-    payment_id = str(uuid.uuid4())
-    nonce = int(time.time() * 1000)
-    params = {
-        "shopId": FREEKASSA_SHOP_ID,
-        "amount": amount,
-        "currency": "RUB",
-        "paymentId": payment_id,
-        "email": email,
-        "ip": ip,
-        "i": 6,
-        "nonce": nonce,
-    }
-    params["signature"] = generate_signature(params, FREEKASSA_API_KEY)
-
-    try:
-        response = requests.post("https://api.freekassa.com/v1/orders/create", json=params)
-        response_data = response.json()
-
-        logging.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
-
-        if response_data.get("type") == "success":
-            return response_data["location"]
-        else:
-            logging.error(f"Ошибка создания платежа: {response_data}")
-            return None
-
-    except Exception as e:
-        logging.error(f"Ошибка запроса к FreeKassa: {e}")
-        return None
-
-
-async def freekassa_webhook(request):
-    data = await request.json()
-    logging.debug(f"Получен вебхук от FreeKassa: {data}")
-
-    if data["status"] == "completed":
-        user_id = data["metadata"]["user_id"]
-        amount = float(data["amount"])
-        await add_payment(int(user_id), float(amount), "freekassa")
-
-        await update_balance(user_id, amount)
-        await send_payment_success_notification(user_id, amount)
-
-    return web.Response(status=200)
-
-
 @router.callback_query(lambda c: c.data == "pay_freekassa")
 async def process_callback_pay_freekassa(callback_query: types.CallbackQuery, state: FSMContext):
     # Build keyboard
@@ -154,3 +101,56 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
 
     else:
         await message.answer("Пожалуйста, введите корректную сумму.")
+
+
+async def create_payment(user_id, amount, email, ip):
+    payment_id = str(uuid.uuid4())
+    nonce = int(time.time() * 1000)
+    params = {
+        "shopId": FREEKASSA_SHOP_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "paymentId": payment_id,
+        "email": email,
+        "ip": ip,
+        "i": 6,
+        "nonce": nonce,
+    }
+    params["signature"] = generate_signature(params, FREEKASSA_API_KEY)
+
+    try:
+        response = requests.post("https://api.freekassa.com/v1/orders/create", json=params)
+        response_data = response.json()
+
+        logging.debug(f"Ответ от FreeKassa при создании платежа: {response_data}")
+
+        if response_data.get("type") == "success":
+            return response_data["location"]
+        else:
+            logging.error(f"Ошибка создания платежа: {response_data}")
+            return None
+
+    except Exception as e:
+        logging.error(f"Ошибка запроса к FreeKassa: {e}")
+        return None
+
+
+async def freekassa_webhook(request):
+    data = await request.json()
+    logging.debug(f"Получен вебхук от FreeKassa: {data}")
+
+    if data["status"] == "completed":
+        user_id = data["metadata"]["user_id"]
+        amount = float(data["amount"])
+        await add_payment(int(user_id), float(amount), "freekassa")
+
+        await update_balance(user_id, amount)
+        await send_payment_success_notification(user_id, amount)
+
+    return web.Response(status=200)
+
+
+def generate_signature(params, api_key):
+    sorted_params = {k: params[k] for k in sorted(params)}
+    sign_string = "|".join(str(value) for value in sorted_params.values())
+    return hmac.new(api_key.encode(), sign_string.encode(), hashlib.sha256).hexdigest()
