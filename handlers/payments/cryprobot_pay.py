@@ -47,7 +47,7 @@ async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, st
     await state.set_state(ReplenishBalanceState.choosing_amount_crypto)
 
 
-@router.callback_query(F.data.startswith("crypto_amount|"))
+@router.callback_query(F.data.startswith("cryptobot_amount|"))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split("|", 1)
 
