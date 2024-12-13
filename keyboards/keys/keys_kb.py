@@ -31,7 +31,6 @@ def build_view_no_keys_kb() -> InlineKeyboardMarkup:
         text="➕ Создать подписку",
         callback_data="create_key",
     )
-
     builder.button(
         text="👤 Личный кабинет",
         callback_data="profile",
@@ -54,7 +53,6 @@ def build_view_key_kb(key: str, key_name: str) -> InlineKeyboardMarkup:
             url=DOWNLOAD_ANDROID,
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="🍏 Подключить на iOS",
@@ -65,14 +63,12 @@ def build_view_key_kb(key: str, key_name: str) -> InlineKeyboardMarkup:
             url=f"{CONNECT_ANDROID}{key}",
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💻 Windows/Linux",
             callback_data=f"connect_pc|{key_name}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="⏳ Продлить",
@@ -111,7 +107,6 @@ def build_key_creation_kb(public_link: str, email: str) -> InlineKeyboardMarkup:
             url=SUPPORT_CHAT_URL,
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="🍏 Скачать для iOS",
@@ -122,7 +117,6 @@ def build_key_creation_kb(public_link: str, email: str) -> InlineKeyboardMarkup:
             url=DOWNLOAD_ANDROID,
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="🍏 Подключить на iOS",
@@ -133,14 +127,12 @@ def build_key_creation_kb(public_link: str, email: str) -> InlineKeyboardMarkup:
             url=f"{CONNECT_ANDROID}{public_link}",
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💻 Windows/Linux",
             callback_data=f"connect_pc|{email}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="👤 Личный кабинет",
@@ -158,10 +150,9 @@ def build_key_delete_kb(client_id: str) -> InlineKeyboardMarkup:
         text="✅ Да, удалить",
         callback_data=f"confirm_delete|{client_id}",
     )
-
     builder.button(
         text="❌ Нет, отменить",
-        callback_data="view_keys"
+        callback_data="view_keys",
     )
 
     builder.adjust(1)
@@ -177,28 +168,24 @@ def build_renewal_plans_kb(client_id: str) -> InlineKeyboardMarkup:
             callback_data=f"renew_plan|1|{client_id}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.) {DISCOUNTS["3"]}% скидка',
             callback_data=f"renew_plan|3|{client_id}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.) {DISCOUNTS["6"]}% скидка',
             callback_data=f"renew_plan|6|{client_id}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.) ({DISCOUNTS["12"]}% 🔥)',
             callback_data=f"renew_plan|12|{client_id}",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text='🔙 Назад',
@@ -214,12 +201,11 @@ def build_new_key_kb() -> InlineKeyboardMarkup:
 
     builder.button(
         text="✅ Да, подключить новое устройство",
-        callback_data="confirm_create_new_key"
+        callback_data="confirm_create_new_key",
     )
-
     builder.button(
         text="👤 Личный кабинет",
-        callback_data="profile"
+        callback_data="profile",
     )
 
     builder.adjust(1)
@@ -260,7 +246,6 @@ def build_top_up_kb() -> InlineKeyboardMarkup:
         text="💳 Пополнить баланс",
         callback_data="pay",
     )
-
     builder.button(
         text="👤 Личный кабинет",
         callback_data="profile",

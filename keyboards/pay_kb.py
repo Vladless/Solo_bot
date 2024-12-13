@@ -33,9 +33,18 @@ def build_pay_kb() -> InlineKeyboardMarkup:
             callback_data="pay_robokassa",
         )
 
-    builder.button(text="🎟️ Активировать купон", callback_data="activate_coupon")
-    builder.button(text="💰 Поддержать проект", callback_data="donate")
-    builder.button(text="👤 Личный кабинет", callback_data="profile")
+    builder.button(
+        text="🎟️ Активировать купон",
+        callback_data="activate_coupon",
+    )
+    builder.button(
+        text="💰 Поддержать проект",
+        callback_data="donate",
+    )
+    builder.button(
+        text="👤 Личный кабинет",
+        callback_data="profile",
+    )
 
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)

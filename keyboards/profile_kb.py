@@ -15,14 +15,12 @@ def build_profile_kb(is_admin: bool) -> InlineKeyboardMarkup:
             callback_data="view_keys",
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💳 Пополнить баланс",
             callback_data="pay",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="👥 Пригласить друзей",
@@ -33,7 +31,6 @@ def build_profile_kb(is_admin: bool) -> InlineKeyboardMarkup:
             callback_data="instructions",
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💡 Тарифы",
@@ -62,9 +59,11 @@ def build_profile_kb(is_admin: bool) -> InlineKeyboardMarkup:
 
 def build_profile_back_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
     builder.button(
         text="👤 Личный кабинет",
-        callback_data="profile"
+        callback_data="profile",
     )
+
     builder.adjust(1)
     return builder.as_markup(resize_keyboard=True)

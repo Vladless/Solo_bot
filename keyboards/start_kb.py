@@ -28,7 +28,6 @@ def build_start_kb(trial_status: int, is_admin: bool) -> InlineKeyboardMarkup:
             callback_data="profile",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="📞 Поддержка",
@@ -68,7 +67,6 @@ def build_connect_kb(trial_key_info: dict) -> InlineKeyboardMarkup:
             url=SUPPORT_CHAT_URL,
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="🍏 Скачать для iOS",
@@ -79,7 +77,6 @@ def build_connect_kb(trial_key_info: dict) -> InlineKeyboardMarkup:
             url=DOWNLOAD_ANDROID,
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="🍏 Подключить на iOS",
@@ -90,14 +87,12 @@ def build_connect_kb(trial_key_info: dict) -> InlineKeyboardMarkup:
             url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
         ),
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💻 Windows/Linux",
             callback_data=f'connect_pc|{trial_key_info['email']}',
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="👤 Личный кабинет",
@@ -114,24 +109,21 @@ def build_about_kb() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="💰 Поддержать проект",
-            callback_data="donate"
+            callback_data="donate",
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="📞 Техническая поддержка",
             url=SUPPORT_CHAT_URL,
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="📢 Официальный канал",
             url=CHANNEL_URL,
         )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="⬅️ Назад",

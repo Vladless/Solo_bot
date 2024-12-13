@@ -24,19 +24,19 @@ def build_connect_pc_kb(key: str):
 
     builder.button(
         text="💻 Подключить Windows",
-        url=f"{CONNECT_WINDOWS}{key}"
+        url=f"{CONNECT_WINDOWS}{key}",
     )
     builder.button(
         text="💻 Подключить MacOS",
-        url=f"{CONNECT_IOS}{key}"
+        url=f"{CONNECT_IOS}{key}",
     )
     builder.button(
         text="🆘 Поддержка",
-        url=f"{SUPPORT_CHAT_URL}"
+        url=f"{SUPPORT_CHAT_URL}",
     )
     builder.button(
         text="👤 Личный кабинет",
-        callback_data="profile"
+        callback_data="profile",
     )
 
     builder.adjust(1)
