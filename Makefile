@@ -1,5 +1,6 @@
 formatting:
-	@echo "Running black..." && black .
-	@echo "Running isort..." && isort .
-	@echo "Running flake8..." && flake8 --config .flake8
-	# @echo "Running pylint..." && pylint .
+	@echo "Running Ruff..." && ruff check . --fix
+	@echo "Running Ruff format..." && ruff format .
+
+lint:
+	@echo "Running Ruff checks..." && ruff check .

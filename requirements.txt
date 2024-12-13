@@ -30,8 +30,4 @@ aiocryptopay
 py3xui
 sqlalchemy
 robokassa
-flake8
-black
-isort
-pylint
 ping3

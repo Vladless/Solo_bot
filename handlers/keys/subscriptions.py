@@ -2,10 +2,10 @@ import base64
 from datetime import datetime
 
 import aiohttp
-from aiohttp import web
 import asyncpg
-
+from aiohttp import web
 from config import DATABASE_URL, TRANSITION_DATE_STR
+
 from database import get_servers_from_db
 from logger import logger
 
@@ -20,7 +20,9 @@ async def fetch_url_content(url, tg_id):
                     logger.info(f"Успешно получен контент с {url} для tg_id: {tg_id}")
                     return base64.b64decode(content).decode("utf-8").split("\n")
                 else:
-                    logger.error(f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}")
+                    logger.error(
+                        f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}"
+                    )
                     return []
     except Exception as e:
         logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
@@ -29,7 +31,9 @@ async def fetch_url_content(url, tg_id):
 
 async def combine_unique_lines(urls, tg_id, query_string):
     all_lines = []
-    logger.info(f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}")
+    logger.info(
+        f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}"
+    )
 
     urls_with_query = [f"{url}?{query_string}" for url in urls]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
@@ -39,7 +43,9 @@ async def combine_unique_lines(urls, tg_id, query_string):
         all_lines.extend(lines)
 
     all_lines = list(set(filter(None, all_lines)))
-    logger.info(f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}")
+    logger.info(
+        f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}"
+    )
 
     return all_lines
 
@@ -50,7 +56,9 @@ transition_timestamp_ms = int(transition_date.timestamp() * 1000)
 
 transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
 
-logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
+logger.info(
+    f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}"
+)
 
 
 async def handle_old_subscription(request):
@@ -67,7 +75,9 @@ async def handle_old_subscription(request):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        key_info = await conn.fetchrow("SELECT created_at FROM keys WHERE email = $1", email)
+        key_info = await conn.fetchrow(
+            "SELECT created_at FROM keys WHERE email = $1", email
+        )
 
         if not key_info:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -80,7 +90,9 @@ async def handle_old_subscription(request):
         logger.info(f"Значение created_at для клиента с email {email}: {created_at_ms}")
 
         created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
-        logger.info(f"Время создания клиента в формате datetime (UTC): {created_at_datetime}")
+        logger.info(
+            f"Время создания клиента в формате datetime (UTC): {created_at_datetime}"
+        )
 
         if created_at_ms >= transition_timestamp_ms_adjusted:
             logger.info(f"Клиент с email {email} является новым.")
@@ -99,7 +111,9 @@ async def handle_old_subscription(request):
 
         combined_subscriptions = await combine_unique_lines(urls, email, "")
 
-        base64_encoded = base64.b64encode("\n".join(combined_subscriptions).encode("utf-8")).decode("utf-8")
+        base64_encoded = base64.b64encode(
+            "\n".join(combined_subscriptions).encode("utf-8")
+        ).decode("utf-8")
 
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
@@ -130,7 +144,9 @@ async def handle_new_subscription(request):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        client_data = await conn.fetchrow("SELECT tg_id FROM keys WHERE email = $1", email)
+        client_data = await conn.fetchrow(
+            "SELECT tg_id FROM keys WHERE email = $1", email
+        )
 
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -163,7 +179,9 @@ async def handle_new_subscription(request):
 
     combined_subscriptions = await combine_unique_lines(urls, tg_id, query_string)
 
-    base64_encoded = base64.b64encode("\n".join(combined_subscriptions).encode("utf-8")).decode("utf-8")
+    base64_encoded = base64.b64encode(
+        "\n".join(combined_subscriptions).encode("utf-8")
+    ).decode("utf-8")
 
     headers = {
         "Content-Type": "text/plain; charset=utf-8",

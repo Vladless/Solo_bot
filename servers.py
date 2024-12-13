@@ -1,14 +1,14 @@
 import asyncio
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
 
+import asyncpg
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncpg
+from config import ADMIN_ID, DATABASE_URL
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
 from database import get_servers_from_db
 from logger import logger
 
@@ -16,7 +16,9 @@ try:
     from config import CLUSTERS
 except ImportError:
     CLUSTERS = None
-    logger.warning("Переменная CLUSTERS не найдена в конфигурации. Добавьте сервера через админ-панель!")
+    logger.warning(
+        "Переменная CLUSTERS не найдена в конфигурации. Добавьте сервера через админ-панель!"
+    )
 
 
 async def sync_servers_with_db():
@@ -25,7 +27,9 @@ async def sync_servers_with_db():
     Если CLUSTERS не найден, синхронизация не будет выполнена.
     """
     if CLUSTERS is None:
-        logger.info("Конфигурация CLUSTERS не найдена. Синхронизация не будет выполнена.")
+        logger.info(
+            "Конфигурация CLUSTERS не найдена. Синхронизация не будет выполнена."
+        )
         return
 
     try:
@@ -55,14 +59,18 @@ async def sync_servers_with_db():
                         server_info["SUBSCRIPTION"],
                         server_info["INBOUND_ID"],
                     )
-                    logger.info(f"Сервер {server_info['name']} из кластера {cluster_name} добавлен в базу данных.")
+                    logger.info(
+                        f"Сервер {server_info['name']} из кластера {cluster_name} добавлен в базу данных."
+                    )
                 else:
-                    logger.info(f"Сервер {server_info['name']} из кластера {cluster_name} уже существует.")
+                    logger.info(
+                        f"Сервер {server_info['name']} из кластера {cluster_name} уже существует."
+                    )
 
     except Exception as e:
         logger.error(f"Ошибка при синхронизации серверов: {e}")
     finally:
-        if 'conn' in locals():
+        if "conn" in locals():
             await conn.close()
 
 
@@ -96,14 +104,24 @@ async def notify_admin(server_name: str):
         current_time = datetime.now()
         last_notification_time = last_notification_times.get(server_name)
 
-        if last_notification_time and current_time - last_notification_time < timedelta(minutes=3):
-            logger.info(f"Не отправляем уведомление для сервера {server_name}, так как прошло менее 3 минут.")
+        if last_notification_time and current_time - last_notification_time < timedelta(
+            minutes=3
+        ):
+            logger.info(
+                f"Не отправляем уведомление для сервера {server_name}, так как прошло менее 3 минут."
+            )
             return
 
-        logger.info(f"Отправка уведомлений администратору о недоступности сервера {server_name}...")
+        logger.info(
+            f"Отправка уведомлений администратору о недоступности сервера {server_name}..."
+        )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="Управление сервером", callback_data=f"manage_server|{server_name}"))
+        builder.row(
+            InlineKeyboardButton(
+                text="Управление сервером", callback_data=f"manage_server|{server_name}"
+            )
+        )
 
         for admin_id in ADMIN_ID:
             await bot.send_message(
@@ -116,7 +134,9 @@ async def notify_admin(server_name: str):
                 parse_mode="HTML",
                 reply_markup=builder.as_markup(),
             )
-            logger.info(f"Уведомление отправлено администратору с ID {admin_id} о сервере {server_name}.")
+            logger.info(
+                f"Уведомление отправлено администратору с ID {admin_id} о сервере {server_name}."
+            )
 
         last_notification_times[server_name] = current_time
     except Exception as e:
@@ -140,7 +160,9 @@ async def check_servers():
                 server_name = server["server_name"]
 
                 server_host = extract_host(original_api_url)
-                logger.debug(f"Проверка доступности сервера '{server_name}' с хостом {server_host}")
+                logger.debug(
+                    f"Проверка доступности сервера '{server_name}' с хостом {server_host}"
+                )
 
                 is_online = await ping_server(server_host)
 
@@ -148,12 +170,18 @@ async def check_servers():
                     last_ping_times[server_name] = current_time
                 else:
                     last_ping_time = last_ping_times.get(server_name)
-                    if last_ping_time and current_time - last_ping_time > timedelta(minutes=3):
-                        logger.warning(f"Сервер {server_name} не отвечает более 3 минут. Отправляю уведомление.")
+                    if last_ping_time and current_time - last_ping_time > timedelta(
+                        minutes=3
+                    ):
+                        logger.warning(
+                            f"Сервер {server_name} не отвечает более 3 минут. Отправляю уведомление."
+                        )
                         await notify_admin(server_name)
                     elif not last_ping_time:
                         last_ping_times[server_name] = current_time
-                        logger.info(f"Сервер {server_name} не отвечал ранее, но теперь зарегистрирован.")
+                        logger.info(
+                            f"Сервер {server_name} не отвечал ранее, но теперь зарегистрирован."
+                        )
 
         logger.info("Завершена проверка всех серверов.")
         await asyncio.sleep(30)

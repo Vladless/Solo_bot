@@ -4,8 +4,8 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import CONNECT_IOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
+
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 
 router = Router()
@@ -49,7 +49,9 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     )
 
     if not record:
-        await callback_query.message.answer("❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍")
+        await callback_query.message.answer(
+            "❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍"
+        )
         return
 
     key = record["key"]
@@ -57,8 +59,14 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     instruction_message = f"{key_message}{INSTRUCTION_PC}"
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"))
-    builder.row(InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_IOS}{key}"))
+    builder.row(
+        InlineKeyboardButton(
+            text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_IOS}{key}")
+    )
     builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
