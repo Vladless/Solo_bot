@@ -1,12 +1,20 @@
 import asyncio
 from datetime import datetime, timedelta
 
+import asyncpg
 from aiogram import Bot, Router, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import asyncpg
+from config import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    DATABASE_URL,
+    DEV_MODE,
+    RENEWAL_PLANS,
+    TOTAL_GB,
+    TRIAL_TIME,
+)
 from py3xui import AsyncApi
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, DEV_MODE, RENEWAL_PLANS, TOTAL_GB, TRIAL_TIME
 from database import (
     add_notification,
     check_notification_time,
@@ -30,8 +38,12 @@ async def notify_expiring_keys(bot: Bot):
         logger.info("Подключение к базе данных успешно.")
 
         current_time = int(datetime.utcnow().timestamp() * 1000)
-        threshold_time_10h = int((datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000)
-        threshold_time_24h = int((datetime.utcnow() + timedelta(days=1)).timestamp() * 1000)
+        threshold_time_10h = int(
+            (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000
+        )
+        threshold_time_24h = int(
+            (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000
+        )
 
         logger.info("Начало обработки уведомлений.")
 
@@ -60,10 +72,14 @@ async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id, bot.id)
         blocked = member.status == "left"
-        logger.info(f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}")
+        logger.info(
+            f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}"
+        )
         return blocked
     except Exception as e:
-        logger.warning(f"Не удалось проверить статус бота для пользователя {chat_id}: {e}")
+        logger.warning(
+            f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
+        )
         return False
 
 
@@ -110,7 +126,9 @@ async def notify_10h_keys(
         if not await is_bot_blocked(bot, tg_id) and not DEV_MODE:
             try:
                 keyboard = InlineKeyboardBuilder()
-                keyboard.button(text="🔄 Продлить VPN", callback_data=f'renew_key|{email}')
+                keyboard.button(
+                    text="🔄 Продлить VPN", callback_data=f"renew_key|{email}"
+                )
                 keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
                 keyboard.button(text="👤 Личный кабинет", callback_data="profile")
                 keyboard.adjust(1)
@@ -118,7 +136,9 @@ async def notify_10h_keys(
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
             except Exception as e:
-                logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+                logger.error(
+                    f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
+                )
                 continue
 
             await conn.execute(
@@ -177,7 +197,7 @@ async def notify_24h_keys(
                 builder.row(
                     types.InlineKeyboardButton(
                         text="🔄 Продлить VPN",
-                        callback_data=f'renew_key|{email}',
+                        callback_data=f"renew_key|{email}",
                     )
                 )
                 builder.row(
@@ -196,14 +216,18 @@ async def notify_24h_keys(
                 await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
                 logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
             except Exception as e:
-                logger.error(f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}")
+                logger.error(
+                    f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}"
+                )
                 continue
 
             await conn.execute(
                 "UPDATE keys SET notified_24h = TRUE WHERE client_id = $1",
                 record["client_id"],
             )
-            logger.info(f"Обновлено поле notified_24h для клиента {record['client_id']}.")
+            logger.info(
+                f"Обновлено поле notified_24h для клиента {record['client_id']}."
+            )
 
         await asyncio.sleep(1)
 
@@ -225,18 +249,27 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
 
     for user in inactive_trial_users:
-        tg_id = user['tg_id']
-        username = user.get('username', 'Пользователь')
+        tg_id = user["tg_id"]
+        username = user.get("username", "Пользователь")
 
         try:
-            can_notify = await check_notification_time(tg_id, 'inactive_trial', hours=24, session=conn)
+            can_notify = await check_notification_time(
+                tg_id, "inactive_trial", hours=24, session=conn
+            )
 
             if can_notify and not await is_bot_blocked(bot, tg_id):
                 builder = InlineKeyboardBuilder()
                 builder.row(
-                    types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key")
+                    types.InlineKeyboardButton(
+                        text="🚀 Активировать пробный период",
+                        callback_data="create_key",
+                    )
                 )
-                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                builder.row(
+                    types.InlineKeyboardButton(
+                        text="👤 Личный кабинет", callback_data="profile"
+                    )
+                )
                 keyboard = builder.as_markup()
 
                 message = (
@@ -249,10 +282,12 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
                 logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
 
-                await add_notification(tg_id, 'inactive_trial', session=conn)
+                await add_notification(tg_id, "inactive_trial", session=conn)
 
         except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}")
+            logger.error(
+                f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}"
+            )
 
         await asyncio.sleep(1)
 
@@ -286,20 +321,32 @@ async def process_key(record, bot, conn):
         f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}"
     )
     keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="👤 Личный кабинет", callback_data="profile"
+                )
+            ]
+        ]
     )
 
     try:
         if balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-            new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
+            new_expiry_time = int(
+                (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
+            )
             await update_key_expiry(client_id, new_expiry_time)
 
             servers = await get_servers_from_db()
 
             for cluster_id in servers:
-                await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
-                logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
+                await renew_key_in_cluster(
+                    cluster_id, email, client_id, new_expiry_time, TOTAL_GB
+                )
+                logger.info(
+                    f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
+                )
 
             await conn.execute(
                 """
@@ -309,10 +356,14 @@ async def process_key(record, bot, conn):
                 """,
                 client_id,
             )
-            logger.info(f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}.")
+            logger.info(
+                f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}."
+            )
             try:
                 await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
-                logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+                logger.info(
+                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
+                )
             except Exception as e:
                 logger.error(f"Ошибка при отправке уведомления клиенту {tg_id}: {e}")
 
@@ -320,10 +371,16 @@ async def process_key(record, bot, conn):
             message_expired = "Ваша подписка истекла и была удалена. Получите новую через личный кабинет"
 
             try:
-                await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
-                logger.info(f"Уведомление об истечении подписки и удалении ключа отправлено пользователю {tg_id}.")
+                await bot.send_message(
+                    tg_id, text=message_expired, reply_markup=keyboard
+                )
+                logger.info(
+                    f"Уведомление об истечении подписки и удалении ключа отправлено пользователю {tg_id}."
+                )
             except Exception as e:
-                logger.error(f"Ошибка при отправке уведомления об истечении подписки пользователю {tg_id}: {e}")
+                logger.error(
+                    f"Ошибка при отправке уведомления об истечении подписки пользователю {tg_id}: {e}"
+                )
 
             servers = await get_servers_from_db()
 
@@ -343,7 +400,9 @@ async def check_online_users():
 
     for cluster_id, cluster in servers.items():
         for server_id, server in enumerate(cluster):
-            xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+            xui = AsyncApi(
+                server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD
+            )
             await xui.login()
             try:
                 online_users = len(await xui.client.online())
@@ -351,4 +410,6 @@ async def check_online_users():
                     f"Сервер '{server['server_name']}' доступен, текущее количество активных пользователей: {online_users}."
                 )
             except Exception as e:
-                logger.error(f"Не удалось проверить пользователей на сервере {server_id}: {e}")
+                logger.error(
+                    f"Не удалось проверить пользователей на сервере {server_id}: {e}"
+                )

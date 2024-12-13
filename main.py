@@ -3,10 +3,6 @@ import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-
-from backup import backup_database
-from bot import bot, dp
-from handlers import router
 from config import (
     BACKUP_TIME,
     CRYPTO_BOT_ENABLE,
@@ -21,7 +17,11 @@ from config import (
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
 )
+
+from backup import backup_database
+from bot import bot, dp
 from database import init_db
+from handlers import router
 from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
@@ -108,7 +108,9 @@ async def main():
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_site(site)))
+            loop.add_signal_handler(
+                sig, lambda: asyncio.create_task(shutdown_site(site))
+            )
 
         try:
             await asyncio.Event().wait()
