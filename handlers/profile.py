@@ -68,18 +68,15 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    image_path = os.path.join("img", "tariffs.jpg")  
+    image_path = os.path.join("img", "tariffs.jpg")
 
-    tariffs_message = (
-        "<b>🚀 Доступные тарифы VPN:</b>\n\n"
-        + "\n".join(
-            [
-                f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
-                f"{RENEWAL_PLANS[months]['price']} "
-                f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
-                for months in sorted(RENEWAL_PLANS.keys(), key=int)
-            ]
-        )
+    tariffs_message = "<b>🚀 Доступные тарифы VPN:</b>\n\n" + "\n".join(
+        [
+            f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
+            f"{RENEWAL_PLANS[months]['price']} "
+            f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
+            for months in sorted(RENEWAL_PLANS.keys(), key=int)
+        ]
     )
 
     if os.path.isfile(image_path):
@@ -94,7 +91,6 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
             text=tariffs_message,
             reply_markup=builder.as_markup(),
         )
-
 
 
 @router.callback_query(F.data == "invite")

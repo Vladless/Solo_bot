@@ -5,11 +5,11 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import TOTAL_GB
-from database import get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
+from database import get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry, delete_user_data
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_cluster, delete_key_from_db, renew_key_in_cluster
 from handlers.utils import sanitize_key_name
@@ -86,7 +86,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
             callback_data=f"restore_trial_{tg_id}",
         )
     )
-
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     user_info = (
@@ -499,20 +499,9 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
     for (email,) in key_records:
         builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
 
-    builder.row(
-        InlineKeyboardButton(
-            text="📝 Изменить баланс",
-            callback_data=f"change_balance_{tg_id}",
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Восстановить пробник",
-            callback_data=f"restore_trial_{tg_id}",
-        )
-    )
-
+    builder.row(InlineKeyboardButton(text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     user_info = (
@@ -523,5 +512,56 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
         f"👥 Количество рефералов: <b>{referral_count}</b>\n"
         f"🔑 Ключи (для редактирования нажмите на ключ):"
     )
+
     await callback_query.message.answer(user_info, reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.displaying_user_info)
+
+
+@router.callback_query(F.data.startswith("confirm_delete_user_"), IsAdminFilter())
+async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+    tg_id = int(callback_query.data.split("_")[3])
+
+    confirmation_markup = InlineKeyboardMarkup(
+        row_width=2,
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"delete_user_{tg_id}")],
+            [InlineKeyboardButton(text="❌ Отменить", callback_data="user_editor")],
+        ],
+    )
+
+    await callback_query.message.answer(
+        f"Вы уверены, что хотите удалить пользователя с ID {tg_id}?", reply_markup=confirmation_markup
+    )
+
+
+@router.callback_query(F.data.startswith("delete_user_"), IsAdminFilter())
+async def delete_user(callback_query: types.CallbackQuery, session: Any):
+    tg_id = int(callback_query.data.split("_")[2])
+
+    key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)
+
+    async def delete_keys_from_servers():
+        try:
+            tasks = []
+            for email, client_id in key_records:
+                servers = await get_servers_from_db()
+                for cluster_id, cluster in servers.items():
+                    tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            logger.error(f"Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
+
+    await delete_keys_from_servers()
+
+    try:
+        await delete_user_data(session, tg_id)
+
+        back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+
+        await callback_query.message.answer(f"🗑️ Пользователь с ID {tg_id} был удален.", reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
+        await callback_query.message.answer(
+            f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
+        )

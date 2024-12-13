@@ -22,7 +22,6 @@ router.include_routers(
     donate_router,
     coupons_router,
     notifications_router,
-
     payments_router,
     keys_router,
     instructions_router,
