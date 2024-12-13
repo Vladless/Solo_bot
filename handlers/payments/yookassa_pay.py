@@ -120,7 +120,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
                         "description": "Пополнение баланса",
                         "quantity": "1.00",
                         "amount": {"value": str(amount), "currency": "RUB"},
-                        "vat_code": 6,
+                        "vat_code": 1,
                     }
                 ],
             },
@@ -215,7 +215,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                                     "value": str(amount),
                                     "currency": "RUB",
                                 },
-                                "vat_code": 6,
+                                "vat_code": 1,
                             }
                         ],
                     },
