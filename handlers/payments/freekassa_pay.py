@@ -13,7 +13,7 @@ from aiohttp import web
 from config import FREEKASSA_API_KEY, FREEKASSA_SHOP_ID
 from database import add_payment, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb, build_pay_url_kb
+from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb
 
 router = Router()
 logging.basicConfig(level=logging.DEBUG)
@@ -89,7 +89,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
 
         if payment_url:
             # Build keyboard
-            kb = build_pay_url_kb(payment_url)
+            kb = build_invoice_kb(amount, payment_url)
 
             # Answer message
             await message.answer(

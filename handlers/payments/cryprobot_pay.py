@@ -10,7 +10,7 @@ from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
 from keyboards.common_kb import build_back_kb
-from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb, build_pay_url_kb
+from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb
 from logger import logger
 
 router = Router()
@@ -122,7 +122,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
 
             if hasattr(invoice, "bot_invoice_url"):
                 # Build keyboard
-                kb = build_pay_url_kb(invoice.bot_invoice_url)
+                kb = build_invoice_kb(amount, invoice.bot_invoice_url)
                 # Answer message
                 await message.answer(
                     text=f"Вы выбрали пополнение на {amount} рублей.",
