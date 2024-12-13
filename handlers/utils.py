@@ -1,11 +1,10 @@
 import random
 import re
-from typing import Optional
 
 import asyncpg
+from config import DATABASE_URL
 
 from bot import bot
-from config import DATABASE_URL
 from database import get_servers_from_db
 from logger import logger
 
@@ -68,7 +67,9 @@ async def get_least_loaded_cluster() -> str:
     return least_loaded_cluster
 
 
-async def handle_error(tg_id: int, callback_query: Optional[object] = None, message: str = "") -> None:
+async def handle_error(
+    tg_id: int, callback_query: object | None = None, message: str = ""
+) -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
 
@@ -80,7 +81,9 @@ async def handle_error(tg_id: int, callback_query: Optional[object] = None, mess
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
-                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
+                await bot.delete_message(
+                    chat_id=tg_id, message_id=callback_query.message.message_id
+                )
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 

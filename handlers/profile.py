@@ -4,8 +4,8 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import NEWS_MESSAGE, RENEWAL_PLANS
+
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
@@ -13,7 +13,9 @@ router = Router()
 
 
 @router.callback_query(F.data == "profile")
-async def process_callback_view_profile(callback_query: types.CallbackQuery, state: FSMContext, admin: bool):
+async def process_callback_view_profile(
+    callback_query: types.CallbackQuery, state: FSMContext, admin: bool
+):
     chat_id = callback_query.message.chat.id
     username = callback_query.from_user.full_name
     image_path = os.path.join("img", "pic.jpg")
@@ -46,7 +48,9 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     )
     builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
     if admin:
-        builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
+        builder.row(
+            InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+        )
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="start"))
 
     if os.path.isfile(image_path):
