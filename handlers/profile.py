@@ -26,7 +26,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
     if key_count == 0:
         profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
     else:
-        profile_message += f"\n<pre>🔧 <i>{NEWS_MESSAGE}</i></pre>"
+        profile_message += f"\n<pre> <i>{NEWS_MESSAGE}</i></pre>"
 
     # Build keyboard
     kb = build_profile_kb(admin)
@@ -50,7 +50,7 @@ async def process_callback_view_profile(callback_query: types.CallbackQuery, sta
 async def view_tariffs_handler(callback_query: types.CallbackQuery):
     # Путь к изображению
     image_path = os.path.join("img", "tariffs.jpg")  # Убедитесь, что этот путь правильный
-
+    
     # Формируем текст с тарифами
     tariffs_message = (
         "<b>🚀 Доступные тарифы VPN:</b>\n\n"
@@ -69,7 +69,6 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
 
     # Проверяем наличие файла изображения
     if os.path.isfile(image_path):
-        # Если изображение существует, отправляем его
         with open(image_path, "rb") as image_file:
             await callback_query.message.answer_photo(
                 photo=BufferedInputFile(image_file.read(), filename="tariffs.jpg"),
@@ -77,7 +76,6 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
                 reply_markup=kb,
             )
     else:
-        # Если изображения нет, просто отправляем текст
         await callback_query.message.answer(
             text=tariffs_message,
             reply_markup=kb,
