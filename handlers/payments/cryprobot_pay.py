@@ -4,14 +4,13 @@ from aiocryptopay import AioCryptoPay, Networks
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
 from config import CRYPTO_BOT_ENABLE, CRYPTO_BOT_TOKEN, RUB_TO_USDT
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from keyboards.common_kb import build_back_kb
+from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb
 from logger import logger
 
 router = Router()
@@ -28,46 +27,27 @@ class ReplenishBalanceState(StatesGroup):
 
 @router.callback_query(F.data == "pay_cryptobot")
 async def process_callback_pay_cryptobot(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
-    builder = InlineKeyboardBuilder()
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'crypto_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                )
-            )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_crypto",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
+    # Check keys count
     key_count = await get_key_count(callback_query.message.chat.id)
     if key_count == 0:
         exists = await check_connection_exists(callback_query.message.chat.id)
         if not exists:
             await add_connection(tg_id=callback_query.message.chat.id, balance=0.0, trial=0, session=session)
+
+    # Build keyboard
+    kb = build_payment_kb("cryptobot")
+
+    # Answer message
     await callback_query.message.answer(
-        "Выберите сумму пополнения:",
-        reply_markup=builder.as_markup(),
+        text="Выберите сумму пополнения:",
+        reply_markup=kb,
     )
+
+    # Set state
     await state.set_state(ReplenishBalanceState.choosing_amount_crypto)
 
 
-@router.callback_query(F.data.startswith("crypto_amount|"))
+@router.callback_query(F.data.startswith("cryptobot_amount|"))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     data = callback_query.data.split("|", 1)
 
@@ -88,23 +68,70 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     try:
         invoice = await crypto.create_invoice(
             asset="USDT",
-            amount=str(int(amount // RUB_TO_USDT)),
-            description=f"Пополнения баланса на {amount} руб",
+            amount=int(amount // RUB_TO_USDT),
+            description=f"Пополнение баланса на {amount} руб",
             payload=f"{callback_query.message.chat.id}:{int(amount)}",
         )
 
         if hasattr(invoice, "bot_invoice_url"):
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url))
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
+            # Build keyboard
+            kb = build_invoice_kb(amount, invoice.bot_invoice_url)
+            # Answer message
             await callback_query.message.answer(
                 text=f"Вы выбрали пополнение на {amount} рублей.",
-                reply_markup=builder.as_markup(),
+                reply_markup=kb,
             )
         else:
             await callback_query.message.answer("Ошибка при создании платежа.")
     except Exception as e:
         logger.error(f"Ошибка при создании платежа: {e}")
+
+
+@router.callback_query(F.data == "enter_custom_amount_cryptobot")
+async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
+    # Build keyboard
+    kb = build_back_kb("pay_cryptobot", "🔙 Назад")
+
+    # Answer message
+    await callback_query.message.answer(
+        "Пожалуйста, введите сумму пополнения.",
+        reply_markup=kb,
+    )
+
+    # Set state
+    await state.set_state(ReplenishBalanceState.entering_custom_amount_crypto)
+
+
+@router.message(ReplenishBalanceState.entering_custom_amount_crypto)
+async def process_custom_amount_input(message: types.Message, state: FSMContext):
+    if message.text.isdigit():
+        amount = int(message.text)
+        if amount // RUB_TO_USDT <= 0:
+            await message.answer(f"Сумма должна быть больше {RUB_TO_USDT}. Пожалуйста, введите сумму еще раз:")
+            return
+
+        await state.update_data(amount=amount)
+        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_crypto)
+        try:
+            invoice = await crypto.create_invoice(
+                asset="USDT",
+                amount=int(amount // RUB_TO_USDT),
+                description=f"Пополнение баланса на {amount} руб",
+                payload=f"{message.chat.id}:{amount}",
+            )
+
+            if hasattr(invoice, "bot_invoice_url"):
+                # Build keyboard
+                kb = build_invoice_kb(amount, invoice.bot_invoice_url)
+                # Answer message
+                await message.answer(
+                    text=f"Вы выбрали пополнение на {amount} рублей.",
+                    reply_markup=kb,
+                )
+        except Exception as e:
+            logger.error(f"Ошибка при создании платежа: {e}")
+    else:
+        await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")
 
 
 async def cryptobot_webhook(request):
@@ -137,51 +164,3 @@ async def process_crypto_payment(payload):
             logger.error(f"Ошибка конвертации user_id или amount: {e}")
     else:
         logger.warning(f"Получен неоплаченный инвойс: {payload}")
-
-
-@router.callback_query(F.data == "enter_custom_amount_crypto")
-async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_cryptobot"))
-
-    await callback_query.message.answer(
-        "Пожалуйста, введите сумму пополнения.",
-        reply_markup=builder.as_markup(),
-    )
-
-    await state.set_state(ReplenishBalanceState.entering_custom_amount_crypto)
-
-
-@router.message(ReplenishBalanceState.entering_custom_amount_crypto)
-async def process_custom_amount_input(message: types.Message, state: FSMContext):
-    if message.text.isdigit():
-        amount = int(message.text)
-        if amount // RUB_TO_USDT <= 0:
-            await message.answer(f"Сумма должна быть больше {RUB_TO_USDT}. Пожалуйста, введите сумму еще раз:")
-            return
-
-        await state.update_data(amount=amount)
-        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_crypto)
-        try:
-            invoice = await crypto.create_invoice(
-                asset="USDT",
-                amount=str(int(amount // RUB_TO_USDT)),
-                description=f"Пополнения баланса на {amount} руб",
-                payload=f"{message.chat.id}:{amount}",
-            )
-
-            if hasattr(invoice, "bot_invoice_url"):
-                builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="Пополнить", url=invoice.bot_invoice_url))
-                builder.row(
-                    InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"),
-                )
-                await message.answer(
-                    text=f"Вы выбрали пополнение на {amount} рублей.",
-                    reply_markup=builder.as_markup(),
-                )
-        except Exception as e:
-            logger.error(f"Ошибка при создании платежа: {e}")
-    else:
-        await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")

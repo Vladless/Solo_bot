@@ -3,13 +3,13 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import LabeledPrice, PreCheckoutQuery
 
 from config import RUB_TO_XTR
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from keyboards.common_kb import build_back_kb
+from keyboards.payments.pay_common_kb import build_payment_kb, build_stars_kb
 from logger import logger
 
 router = Router()
@@ -25,51 +25,30 @@ class ReplenishBalanceState(StatesGroup):
 async def process_callback_pay_stars(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
+    # todo
+    # builder = InlineKeyboardBuilder()
+    # builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
 
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'stars_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'stars_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'stars_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                )
-            )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_stars",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
-
+    # Check keys count
     key_count = await get_key_count(tg_id)
-
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0, session=session)
+            logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
+
+    # Build keyboard
+    kb = build_payment_kb("stars")
 
     try:
         await callback_query.message.delete()
     except Exception as e:
         logger.error(f"Не удалось удалить сообщение: {e}")
 
+    # Answer message
     await callback_query.message.answer(
         text="Выберите сумму пополнения:",
-        reply_markup=builder.as_markup(),
+        reply_markup=kb,
     )
 
     await state.set_state(ReplenishBalanceState.choosing_amount_stars)
@@ -104,15 +83,10 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
 
     try:
+        # Build keyboard
+        kb = build_stars_kb()
 
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="Пополнить", pay=True),
-        )
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"),
-        )
-
+        # Answer message
         await callback_query.message.answer_invoice(
             title=f"Вы выбрали пополнение на {amount} рублей.",
             description=f"Вы выбрали пополнение на {amount} рублей.",
@@ -120,7 +94,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             provider_token="",
             payload=f"{amount}_stars",
             currency="XTR",
-            reply_markup=builder.as_markup(),
+            reply_markup=kb,
         )
     except Exception as e:
         logger.error(f"Ошибка при создании платежа: {e}")
@@ -129,13 +103,12 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
 @router.callback_query(F.data == "enter_custom_amount_stars")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_stars"))
+    # Build keyboard
+    kb = build_back_kb("pay_stars")
 
     await callback_query.message.answer(
-        "Пожалуйста, введите сумму пополнения.",
-        reply_markup=builder.as_markup(),
+        text="Пожалуйста, введите сумму пополнения.",
+        reply_markup=kb,
     )
 
     await state.set_state(ReplenishBalanceState.entering_custom_amount_stars)
@@ -152,13 +125,10 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
         await state.update_data(amount=amount)
         await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
         try:
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="Пополнить", pay=True),
-            )
-            builder.row(
-                InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"),
-            )
+            # Build keyboard
+            kb = build_stars_kb()
+
+            # Answer message
             await message.answer_invoice(
                 title=f"Вы выбрали пополнение на {amount} рублей.",
                 description=f"Вы выбрали пополнение на {amount} рублей.",
@@ -166,7 +136,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                 provider_token="",
                 payload=f"{amount}_stars",
                 currency="XTR",
-                reply_markup=builder.as_markup(),
+                reply_markup=kb,
             )
         except Exception as e:
             logger.error(f"Ошибка при создании платежа: {e}")
@@ -182,7 +152,7 @@ async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
 
 @router.message(F.successful_payment)
 async def on_successful_payment(
-    message: types.Message,
+        message: types.Message,
 ):
     try:
         user_id = int(message.chat.id)

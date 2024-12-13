@@ -7,7 +7,6 @@ from .coupons import router as coupons_router
 from .donate import router as donate_router
 from .instructions import router as instructions_router
 from .keys import router as keys_router
-from .notifications import router as notifications_router
 from .pay import router as pay_router
 from .payments import router as payments_router
 from .profile import router as profile_router
@@ -21,7 +20,6 @@ router.include_routers(
     pay_router,
     donate_router,
     coupons_router,
-    notifications_router,
 
     payments_router,
     keys_router,

@@ -1,18 +1,17 @@
-from typing import Any
 import uuid
+from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from yookassa import Configuration, Payment
 
 from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import PAYMENT_OPTIONS
+from keyboards.common_kb import build_back_kb
+from keyboards.payments.pay_common_kb import build_payment_kb, build_invoice_kb
 from logger import logger
 
 router = Router()
@@ -34,47 +33,23 @@ class ReplenishBalanceState(StatesGroup):
 async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
-    builder = InlineKeyboardBuilder()
-
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'yookassa_{PAYMENT_OPTIONS[i]["callback_data"]}',
-                )
-            )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_yookassa",
-        )
-    )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
-
+    # Check keys count
     key_count = await get_key_count(tg_id)
-
     if key_count == 0:
         exists = await check_connection_exists(tg_id)
         if not exists:
             await add_connection(tg_id, balance=0.0, trial=0, session=session)
 
+    # Build keyboard
+    kb = build_payment_kb("yookassa")
+
+    # Answer message
     await callback_query.message.answer(
         text="Выберите сумму пополнения:",
-        reply_markup=builder.as_markup(),
+        reply_markup=kb,
     )
 
+    # Set state
     await state.set_state(ReplenishBalanceState.choosing_amount_yookassa)
 
 
@@ -132,51 +107,30 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     if payment["status"] == "pending":
         payment_url = payment["confirmation"]["confirmation_url"]
 
-        confirm_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Пополнить", url=payment_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
-            ]
-        )
+        # Build keyboard
+        kb = build_invoice_kb(amount, payment_url)
 
+        # Answer message
         await callback_query.message.answer(
             text=f"Вы выбрали пополнение на {amount} рублей.",
-            reply_markup=confirm_keyboard,
+            reply_markup=kb,
         )
     else:
         await callback_query.message.answer("Ошибка при создании платежа.")
 
 
-async def yookassa_webhook(request):
-    event = await request.json()
-    logger.debug(f"Webhook event received: {event}")
-    if event["event"] == "payment.succeeded":
-        user_id_str = event["object"]["metadata"]["user_id"]
-        amount_str = event["object"]["amount"]["value"]
-        try:
-            user_id = int(user_id_str)
-            amount = float(amount_str)
-            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
-            await add_payment(int(user_id), float(amount), "yookassa")
-            await update_balance(user_id, amount)
-            await send_payment_success_notification(user_id, amount)
-        except ValueError as e:
-            logger.error(f"Ошибка конвертации user_id или amount: {e}")
-            return web.Response(status=400)
-    return web.Response(status=200)
-
-
 @router.callback_query(F.data == "enter_custom_amount_yookassa")
 async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
+    # Build keyboard
+    kb = build_back_kb("pay_yookassa")
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_yookassa"))
-
+    # Answer message
     await callback_query.message.answer(
         "Пожалуйста, введите сумму пополнения.",
-        reply_markup=builder.as_markup(),
+        reply_markup=kb,
     )
 
+    # Set state
     await state.set_state(ReplenishBalanceState.entering_custom_amount_yookassa)
 
 
@@ -185,7 +139,9 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount <= 0:
-            await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
+            await message.answer(
+                text="Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:"
+            )
             return
 
         await state.update_data(amount=amount)
@@ -227,16 +183,13 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             if payment["status"] == "pending":
                 payment_url = payment["confirmation"]["confirmation_url"]
 
-                confirm_keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Пополнить", url=payment_url)],
-                        [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay")],
-                    ]
-                )
+                # Build keyboard
+                kb = build_invoice_kb(amount, payment_url)
 
+                # Answer message
                 await message.answer(
                     text=f"Вы выбрали пополнение на {amount} рублей.",
-                    reply_markup=confirm_keyboard,
+                    reply_markup=kb,
                 )
             else:
                 await message.answer("Ошибка при создании платежа.")
@@ -246,3 +199,22 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
             await message.answer("Произошла ошибка при создании платежа.")
     else:
         await message.answer("Некорректная сумма. Пожалуйста, введите сумму еще раз:")
+
+
+async def yookassa_webhook(request):
+    event = await request.json()
+    logger.debug(f"Webhook event received: {event}")
+    if event["event"] == "payment.succeeded":
+        user_id_str = event["object"]["metadata"]["user_id"]
+        amount_str = event["object"]["amount"]["value"]
+        try:
+            user_id = int(user_id_str)
+            amount = float(amount_str)
+            logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
+            await add_payment(int(user_id), float(amount), "yookassa")
+            await update_balance(user_id, amount)
+            await send_payment_success_notification(user_id, amount)
+        except ValueError as e:
+            logger.error(f"Ошибка конвертации user_id или amount: {e}")
+            return web.Response(status=400)
+    return web.Response(status=200)

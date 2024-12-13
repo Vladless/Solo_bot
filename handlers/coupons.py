@@ -4,10 +4,9 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import update_balance
+from keyboards.profile_kb import build_profile_back_kb
 
 
 class CouponActivationState(StatesGroup):
@@ -19,14 +18,22 @@ router = Router()
 
 @router.callback_query(F.data == "activate_coupon")
 async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-
-    await callback_query.message.answer(
+    # Prepare text
+    text = (
         "<b>🎫 Введите код купона:</b>\n\n"
-        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
-        reply_markup=builder.as_markup(),
+        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑"
     )
+
+    # Build keyboard
+    kb = build_profile_back_kb()
+
+    # Answer message
+    await callback_query.message.answer(
+        text=text,
+        reply_markup=kb,
+    )
+
+    # Set state
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
 
 
@@ -35,10 +42,17 @@ async def process_coupon_code(message: types.Message, state: FSMContext, session
     coupon_code = message.text.strip()
     activation_result = await activate_coupon(message.chat.id, coupon_code, session)
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    # Build keyboard
+    kb = build_profile_back_kb()
 
-    await message.answer(activation_result, reply_markup=builder.as_markup(), parse_mode="HTML")
+    # Answer message
+    await message.answer(
+        text=activation_result,
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+    # Clear the state
     await state.clear()
 
 

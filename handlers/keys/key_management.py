@@ -1,29 +1,23 @@
 import asyncio
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Union
-import uuid
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import CallbackQuery, Message
 
 from config import (
-    CONNECT_ANDROID,
-    CONNECT_IOS,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
     PUBLIC_LINK,
-    RENEWAL_PLANS,
     RENEWAL_PRICES,
-    SUPPORT_CHAT_URL,
     TRIAL_TIME,
 )
 from database import get_balance, get_trial, store_key, update_balance
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import DISCOUNTS, KEY, NULL_BALANCE, key_message_success
+from handlers.texts import KEY, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
+from keyboards.keys.keys_kb import build_top_up_kb, build_new_key_kb, build_plan_selected_kb, build_key_creation_kb
 from logger import logger
 
 router = Router()
@@ -46,16 +40,16 @@ async def process_callback_create_key(callback_query: CallbackQuery, state: FSMC
 async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
     trial_status = await get_trial(callback_query.message.chat.id, session)
     if trial_status == 1:
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="✅ Да, подключить новое устройство", callback_data="confirm_create_new_key")
-        )
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        # Build keyboard
+        kb = build_new_key_kb()
 
+        # Answer message
         await callback_query.message.answer(
             text=KEY,
-            reply_markup=builder.as_markup(),
+            reply_markup=kb,
         )
+
+        # Update state data
         await state.update_data(creating_new_key=True)
     else:
         await handle_key_creation(callback_query.message.chat.id, state, session, callback_query)
@@ -73,7 +67,7 @@ async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContex
 
 
 async def handle_key_creation(
-    tg_id: int, state: FSMContext, session: Any, message_or_query: Union[Message, CallbackQuery]
+        tg_id: int, state: FSMContext, session: Any, message_or_query: Union[Message, CallbackQuery]
 ):
     """Создание ключа с учётом выбора тарифного плана."""
     current_time = datetime.utcnow()
@@ -86,29 +80,14 @@ async def handle_key_creation(
         await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
         await create_key(tg_id, expiry_time, state, session, message_or_query)
     else:
-        builder = InlineKeyboardBuilder()
-
-        for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
-            discount_text = ""
-
-            if plan_id in DISCOUNTS:
-                discount_percentage = DISCOUNTS[plan_id]
-                discount_text = f" ({discount_percentage}% скидка)"
-
-                if index == len(RENEWAL_PRICES) - 1:
-                    discount_text = f" ({discount_percentage}% 🔥)"
-
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"📅 {plan_id} мес. - {price}₽{discount_text}", callback_data=f"select_plan_{plan_id}"
-                )
-            )
-
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        # Build keyboard
+        kb = build_plan_selected_kb()
 
         await message_or_query.message.answer(
-            "💳 Выберите тарифный план для создания нового ключа:", reply_markup=builder.as_markup()
+            text="💳 Выберите тарифный план для создания нового ключа:",
+            reply_markup=kb
         )
+
         await state.update_data(tg_id=tg_id)
         await state.set_state(Form.waiting_for_server_selection)
 
@@ -120,20 +99,24 @@ async def select_tariff_plan(callback_query: CallbackQuery, state: FSMContext, s
     plan_price = RENEWAL_PRICES.get(plan_id)
 
     if plan_price is None:
-        await callback_query.message.answer("🚫 Неверный тарифный план.")
+        await callback_query.message.answer(
+            text="🚫 Неверный тарифный план."
+        )
         return
 
     duration_days = int(plan_id) * 30
 
     balance = await get_balance(tg_id)
     if balance < plan_price:
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        # Build keyboard
+        kb = build_top_up_kb()
+
+        # Answer message
         await callback_query.message.answer(
-            "💳 Недостаточно средств для создания подписки. Пополните баланс в личном кабинете.",
-            reply_markup=builder.as_markup(),
+            text="💳 Недостаточно средств для создания подписки. Пополните баланс в личном кабинете.",
+            reply_markup=kb,
         )
+
         await state.clear()
         return
 
@@ -145,7 +128,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, state: FSMContext, s
 
 
 async def create_key(
-    tg_id: int, expiry_time: datetime, state: FSMContext, session: Any, message_or_query: Union[Message, CallbackQuery]
+        tg_id: int, expiry_time: datetime, state: FSMContext, session: Any,
+        message_or_query: Union[Message, CallbackQuery]
 ):
     """Создаёт ключ с заданным сроком действия."""
     while True:
@@ -187,26 +171,26 @@ async def create_key(
         await store_key(tg_id, client_id, email, expiry_timestamp, public_link, least_loaded_cluster, session)
 
     except Exception as e:
+        # Answer message
+        await message_or_query.message.answer(
+            text="❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова."
+        )
+
         logger.error(f"Error while creating the key for user {tg_id} on cluster: {e}")
-        await message_or_query.message.answer("❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова.")
         return
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
-    builder.row(
-        InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
-        InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{public_link}"),
-        InlineKeyboardButton(text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{public_link}"),
-    )
-    builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    # Build keyboard
+    kb = build_key_creation_kb(public_link, email)
 
     remaining_time = expiry_time - datetime.utcnow()
     days = remaining_time.days
     key_message = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
 
-    await message_or_query.message.answer(key_message, reply_markup=builder.as_markup())
+    # Answer message
+    await message_or_query.message.answer(
+        text=key_message,
+        reply_markup=kb
+    )
+
+    # Clear state
     await state.clear()
