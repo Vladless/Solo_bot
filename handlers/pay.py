@@ -7,6 +7,7 @@ from config import (
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     YOOKASSA_ENABLE,
+    YOOMONEY_ENABLE
 )
 
 router = Router()
@@ -21,6 +22,13 @@ async def handle_pay(callback_query: CallbackQuery):
             InlineKeyboardButton(
                 text="💳 ЮКасса: быстрый перевод",
                 callback_data="pay_yookassa",
+            )
+        )
+    if YOOMONEY_ENABLE:
+        builder.row(
+            InlineKeyboardButton(
+                text="💳 ЮМани: оплата по карте",
+                callback_data="pay_yoomoney",
             )
         )
     if FREEKASSA_ENABLE:
