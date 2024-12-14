@@ -171,7 +171,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
             callback_data=f"change_balance_{tg_id}",
         )
     )
-
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
     builder.row(
         InlineKeyboardButton(
             text="🔄 Восстановить пробник",
