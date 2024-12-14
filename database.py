@@ -1199,7 +1199,13 @@ async def get_servers_from_db():
 
 
 async def delete_user_data(session: Any, tg_id: int):
-    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
+    
+    try:
+        await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
+    except Exception as e:
+        logger.warning(
+            f"У Вас версия без подарков для {tg_id}: {e}"
+        )
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
