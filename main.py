@@ -16,6 +16,7 @@ from config import (
     WEBHOOK_PATH,
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
+    YOOMONEY_ENABLE,
 )
 
 from backup import backup_database
@@ -28,6 +29,7 @@ from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
 from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
+from handlers.payments.yoomoney_pay import yoomoney_webhook
 from logger import logger
 from servers import check_servers, sync_servers_with_db
 
@@ -85,6 +87,8 @@ async def main():
         app.on_shutdown.append(on_shutdown)
         if YOOKASSA_ENABLE:
             app.router.add_post("/yookassa/webhook", yookassa_webhook)
+        if YOOMONEY_ENABLE:
+            app.router.add_post("/yoomoney/webhook", yoomoney_webhook)
         if FREEKASSA_ENABLE:
             app.router.add_post("/freekassa/webhook", freekassa_webhook)
         if CRYPTO_BOT_ENABLE:
