@@ -10,7 +10,7 @@ from database import get_servers_from_db
 from logger import logger
 import urllib.parse
 
-from config import PROJECT_NAME, NEWS_MESSAGE
+from config import PROJECT_NAME, SUB_MESSAGE
 
 
 async def fetch_url_content(url, tg_id):
@@ -122,7 +122,7 @@ async def handle_old_subscription(request):
             "\n".join(combined_subscriptions).encode("utf-8")
         ).decode("utf-8")
 
-        encoded_project_name = urllib.parse.quote(f"{PROJECT_NAME}\n{NEWS_MESSAGE}")
+        encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
@@ -154,9 +154,8 @@ async def handle_new_subscription(request):
     try:
 
         client_data = await conn.fetchrow(
-            "SELECT tg_id FROM keys WHERE email = $1", email
+            "SELECT tg_id, server_id FROM keys WHERE email = $1", email
         )
-
 
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -195,7 +194,8 @@ async def handle_new_subscription(request):
         "\n".join(combined_subscriptions).encode("utf-8")
     ).decode("utf-8")
 
-    encoded_project_name = urllib.parse.quote(f"{PROJECT_NAME}\n{NEWS_MESSAGE}")
+    encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
+
     headers = {
         "Content-Type": "text/plain; charset=utf-8",
         "Content-Disposition": "inline",
