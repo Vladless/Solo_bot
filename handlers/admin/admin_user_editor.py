@@ -14,6 +14,7 @@ from database import (
     get_servers_from_db,
     restore_trial,
     update_key_expiry,
+    delete_user_data
 )
 
 from filters.admin import IsAdminFilter
