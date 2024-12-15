@@ -3,9 +3,6 @@ import signal
 
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-
-from backup import backup_database
-from bot import bot, dp, router
 from config import (
     BACKUP_TIME,
     CRYPTO_BOT_ENABLE,
@@ -19,14 +16,20 @@ from config import (
     WEBHOOK_PATH,
     WEBHOOK_URL,
     YOOKASSA_ENABLE,
+    YOOMONEY_ENABLE,
 )
+
+from backup import backup_database
+from bot import bot, dp
 from database import init_db
+from handlers import router
 from handlers.keys.subscriptions import handle_new_subscription, handle_old_subscription
 from handlers.notifications import notify_expiring_keys
 from handlers.payments.cryprobot_pay import cryptobot_webhook
 from handlers.payments.freekassa_pay import freekassa_webhook
 from handlers.payments.robokassa_pay import robokassa_webhook
 from handlers.payments.yookassa_pay import yookassa_webhook
+from handlers.payments.yoomoney_pay import yoomoney_webhook
 from logger import logger
 from servers import check_servers, sync_servers_with_db
 
@@ -84,6 +87,8 @@ async def main():
         app.on_shutdown.append(on_shutdown)
         if YOOKASSA_ENABLE:
             app.router.add_post("/yookassa/webhook", yookassa_webhook)
+        if YOOMONEY_ENABLE:
+            app.router.add_post("/yoomoney/webhook", yoomoney_webhook)
         if FREEKASSA_ENABLE:
             app.router.add_post("/freekassa/webhook", freekassa_webhook)
         if CRYPTO_BOT_ENABLE:
@@ -107,7 +112,9 @@ async def main():
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_site(site)))
+            loop.add_signal_handler(
+                sig, lambda: asyncio.create_task(shutdown_site(site))
+            )
 
         try:
             await asyncio.Event().wait()

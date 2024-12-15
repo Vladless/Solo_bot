@@ -5,9 +5,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import RUB_TO_XTR
-from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+
+from database import (
+    add_connection,
+    add_payment,
+    check_connection_exists,
+    get_key_count,
+    update_balance,
+)
 from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
@@ -22,11 +28,17 @@ class ReplenishBalanceState(StatesGroup):
 
 
 @router.callback_query(F.data == "pay_stars")
-async def process_callback_pay_stars(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+async def process_callback_pay_stars(
+    callback_query: types.CallbackQuery, state: FSMContext, session: Any
+):
     tg_id = callback_query.message.chat.id
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
+    builder.row(
+        InlineKeyboardButton(
+            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
+        )
+    )
 
     for i in range(0, len(PAYMENT_OPTIONS), 2):
         if i + 1 < len(PAYMENT_OPTIONS):
@@ -76,7 +88,9 @@ async def process_callback_pay_stars(callback_query: types.CallbackQuery, state:
 
 
 @router.callback_query(F.data.startswith("stars_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
@@ -104,7 +118,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
 
     try:
-
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="Пополнить", pay=True),
@@ -128,8 +141,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
 
 @router.callback_query(F.data == "enter_custom_amount_stars")
-async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
+async def process_enter_custom_amount(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_stars"))
 
@@ -146,11 +160,15 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount // RUB_TO_XTR <= 0:
-            await message.answer(f"Сумма должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:")
+            await message.answer(
+                f"Сумма должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:"
+            )
             return
 
         await state.update_data(amount=amount)
-        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_stars)
+        await state.set_state(
+            ReplenishBalanceState.waiting_for_payment_confirmation_stars
+        )
         try:
             builder = InlineKeyboardBuilder()
             builder.row(

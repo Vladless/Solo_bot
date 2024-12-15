@@ -1,5 +1,5 @@
-from typing import Any
 import uuid
+from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -7,10 +7,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
+from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
 from yookassa import Configuration, Payment
 
-from config import YOOKASSA_ENABLE, YOOKASSA_SECRET_KEY, YOOKASSA_SHOP_ID
-from database import add_connection, add_payment, check_connection_exists, get_key_count, update_balance
+from database import (
+    add_connection,
+    add_payment,
+    check_connection_exists,
+    get_key_count,
+    update_balance,
+)
 from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
@@ -31,7 +37,9 @@ class ReplenishBalanceState(StatesGroup):
 
 
 @router.callback_query(F.data == "pay_yookassa")
-async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+async def process_callback_pay_yookassa(
+    callback_query: types.CallbackQuery, state: FSMContext, session: Any
+):
     tg_id = callback_query.message.chat.id
 
     builder = InlineKeyboardBuilder()
@@ -79,7 +87,9 @@ async def process_callback_pay_yookassa(callback_query: types.CallbackQuery, sta
 
 
 @router.callback_query(F.data.startswith("yookassa_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     data = callback_query.data.split("|", 1)
 
     if len(data) != 2:
@@ -92,7 +102,9 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_yookassa)
+    await state.set_state(
+        ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
+    )
 
     # state_data = await state.get_data()
     customer_name = callback_query.from_user.full_name
@@ -120,7 +132,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
                         "description": "Пополнение баланса",
                         "quantity": "1.00",
                         "amount": {"value": str(amount), "currency": "RUB"},
-                        "vat_code": 6,
+                        "vat_code": 1,
                     }
                 ],
             },
@@ -167,8 +179,9 @@ async def yookassa_webhook(request):
 
 
 @router.callback_query(F.data == "enter_custom_amount_yookassa")
-async def process_enter_custom_amount(callback_query: types.CallbackQuery, state: FSMContext):
-
+async def process_enter_custom_amount(
+    callback_query: types.CallbackQuery, state: FSMContext
+):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_yookassa"))
 
@@ -185,11 +198,15 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
     if message.text.isdigit():
         amount = int(message.text)
         if amount <= 0:
-            await message.answer("Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:")
+            await message.answer(
+                "Сумма должна быть больше нуля. Пожалуйста, введите сумму еще раз:"
+            )
             return
 
         await state.update_data(amount=amount)
-        await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_yookassa)
+        await state.set_state(
+            ReplenishBalanceState.waiting_for_payment_confirmation_yookassa
+        )
 
         try:
             payment = Payment.create(
@@ -215,7 +232,7 @@ async def process_custom_amount_input(message: types.Message, state: FSMContext)
                                     "value": str(amount),
                                     "currency": "RUB",
                                 },
-                                "vat_code": 6,
+                                "vat_code": 1,
                             }
                         ],
                     },
