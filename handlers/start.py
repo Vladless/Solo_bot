@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_URL, CHANNEL_EXISTS, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
+from config import CHANNEL_URL, CHANNEL_EXISTS, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL,DONATS_ENABLE
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
@@ -112,7 +112,8 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+    if DONATS_ENABLE:
+        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
     builder.row(
         InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
     )
