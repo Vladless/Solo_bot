@@ -577,6 +577,11 @@ async def get_all_users(conn):
 
 async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
     try:
+        # Если айди приглашенного совпадает с айди пригласившего
+        if referred_tg_id == referrer_tg_id:
+            logger.warning(f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку.")
+            return
+
         # Вставка записи о реферале в базу данных
         await session.execute(
             """
