@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE, DONATS_ENABLE, YOOMONEY_ENABLE
+from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE, DONATIONS_ENABLE, YOOMONEY_ENABLE
 
 
 router = Router()
@@ -57,7 +57,7 @@ async def handle_pay(callback_query: CallbackQuery):
         )
 
     builder.row(InlineKeyboardButton(text="🎟️ Активировать купон", callback_data="activate_coupon"))
-    if DONATS_ENABLE:
+    if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
 
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
