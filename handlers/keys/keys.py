@@ -7,6 +7,7 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -16,7 +17,6 @@ from config import (
     RENEWAL_PLANS,
     TOTAL_GB,
 )
-
 from database import (
     delete_key,
     get_balance,

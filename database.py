@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
-from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 
+from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -11,7 +11,6 @@ async def init_db(file_path: str = "assets/schema.sql"):
     with open(file_path) as file:
         sql_content = file.read()
 
-    # Split the file content into individual SQL statements and connect to the database
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
     conn = await asyncpg.connect(DATABASE_URL)
 
@@ -92,7 +91,6 @@ async def get_all_coupons(session: Any):
         Exception: В случае ошибки при получении данных из базы
     """
     try:
-        # Выполняем запрос на получение всех купонов из базы данных
         coupons = await session.fetch(
             """
             SELECT code, amount, usage_limit, usage_count
@@ -100,12 +98,10 @@ async def get_all_coupons(session: Any):
         """
         )
 
-        # Логируем успешное получение списка купонов
         logger.info(f"Успешно получено {len(coupons)} купонов из базы данных")
 
         return coupons
     except Exception as e:
-        # Подробное логирование ошибки при получении купонов
         logger.error(f"Критическая ошибка при получении списка купонов: {e}")
         logger.exception("Трассировка стека ошибки получения купонов")
         return []
@@ -129,7 +125,6 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
         result = await delete_coupon_from_db('SALE50', session)
     """
     try:
-        # Проверяем существование купона в базе данных
         coupon_record = await session.fetchrow(
             """
             SELECT id FROM coupons WHERE code = $1
@@ -137,12 +132,10 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
             coupon_code,
         )
 
-        # Если купон не найден, возвращаем False
         if not coupon_record:
             logger.info(f"Купон {coupon_code} не найден в базе данных")
             return False
 
-        # Удаляем купон из базы данных
         await session.execute(
             """
             DELETE FROM coupons WHERE code = $1
@@ -150,12 +143,10 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
             coupon_code,
         )
 
-        # Логируем успешное удаление купона
         logger.info(f"Купон {coupon_code} успешно удален из базы данных")
         return True
 
     except Exception as e:
-        # Логируем ошибку на русском с подробным описанием
         logger.error(f"Произошла ошибка при удалении купона {coupon_code}: {e}")
         return False
 
@@ -577,12 +568,11 @@ async def get_all_users(conn):
 
 async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
     try:
-        # Если айди приглашенного совпадает с айди пригласившего
+
         if referred_tg_id == referrer_tg_id:
             logger.warning(f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку.")
             return
 
-        # Вставка записи о реферале в базу данных
         await session.execute(
             """
             INSERT INTO referrals (referred_tg_id, referrer_tg_id)
@@ -619,7 +609,6 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         logger.info(f"Начало обработки реферальной системы для пользователя {tg_id}")
 
         MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
-
         visited_tg_ids = set()
 
         current_tg_id = tg_id
@@ -644,11 +633,16 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             )
 
             if not referral:
+                logger.info(f"Цепочка рефералов завершена на уровне {level}.")
                 break
 
             referrer_tg_id = referral["referrer_tg_id"]
-            referral_chain.append({"tg_id": referrer_tg_id, "level": level})
 
+            if referrer_tg_id in visited_tg_ids:
+                logger.warning(f"Реферер {referrer_tg_id} уже обработан. Пропуск.")
+                break
+
+            referral_chain.append({"tg_id": referrer_tg_id, "level": level})
             current_tg_id = referrer_tg_id
 
         for referral in referral_chain:
@@ -656,14 +650,16 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             level = referral["level"]
 
             bonus_percent = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
-            bonus = amount * bonus_percent
-            bonus = max(bonus, 0)
+            if bonus_percent <= 0:
+                logger.warning(f"Процент бонуса для уровня {level} равен 0. Пропуск.")
+                continue
+
+            bonus = round(amount * bonus_percent, 2)
 
             if bonus > 0:
                 logger.info(
-                    f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}"
+                    f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}."
                 )
-
                 await update_balance(referrer_tg_id, bonus)
 
     except Exception as e:
@@ -676,22 +672,6 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
 
 async def get_referral_stats(referrer_tg_id: int):
-    """
-    Получение подробной статистики рефералов для указанного пользователя.
-
-    Args:
-        referrer_tg_id (int): Telegram ID пользователя, для которого запрашивается статистика рефералов.
-
-    Returns:
-        dict: Словарь с детальной статистикой рефералов, содержащий:
-            - total_referrals (int): Общее количество рефералов
-            - active_referrals (int): Количество активных рефералов (с начисленным бонусом)
-            - referrals_by_level (dict): Количество рефералов по каждому уровню
-            - total_referral_bonus (float): Общая сумма бонусов от рефералов
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или выполнении запроса
-    """
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -699,25 +679,22 @@ async def get_referral_stats(referrer_tg_id: int):
             f"Установлено подключение к базе данных для получения статистики рефералов пользователя {referrer_tg_id}"
         )
 
-        # Общее количество рефералов
         total_referrals = await conn.fetchval(
             """
             SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1
-        """,
+            """,
             referrer_tg_id,
         )
         logger.debug(f"Получено общее количество рефералов: {total_referrals}")
 
-        # Активные рефералы
         active_referrals = await conn.fetchval(
             """
             SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1 AND reward_issued = TRUE
-        """,
+            """,
             referrer_tg_id,
         )
         logger.debug(f"Получено количество активных рефералов: {active_referrals}")
 
-        # Рефералы по уровням
         referrals_by_level_records = await conn.fetch(
             """
             WITH RECURSIVE referral_levels AS (
@@ -739,11 +716,10 @@ async def get_referral_stats(referrer_tg_id: int):
             JOIN referrals r ON rl.referred_tg_id = r.referred_tg_id
             GROUP BY level
             ORDER BY level
-        """,
+            """,
             referrer_tg_id,
         )
 
-        # Преобразование результатов в словарь
         referrals_by_level = {
             record["level"]: {
                 "total": record["level_count"],
@@ -753,17 +729,37 @@ async def get_referral_stats(referrer_tg_id: int):
         }
         logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
 
-        # Общая сумма бонусов от рефералов
         total_referral_bonus = await conn.fetchval(
             """
-            SELECT COALESCE(SUM(amount), 0) 
-            FROM payments 
-            WHERE tg_id IN (
-                SELECT referred_tg_id 
+            WITH RECURSIVE referral_levels AS (
+                SELECT 
+                    referred_tg_id, 
+                    referrer_tg_id, 
+                    1 AS level
                 FROM referrals 
                 WHERE referrer_tg_id = $1
-            ) AND status = 'success'
-        """,
+                
+                UNION
+                
+                SELECT 
+                    r.referred_tg_id, 
+                    r.referrer_tg_id, 
+                    rl.level + 1
+                FROM referrals r
+                JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
+                WHERE rl.level < 5
+            )
+            SELECT 
+                SUM(p.amount * CASE 
+                    WHEN rl.level = 1 THEN 0.25
+                    WHEN rl.level = 2 THEN 0.10
+                    WHEN rl.level = 3 THEN 0.05
+                    ELSE 0
+                END) AS total_bonus
+            FROM referral_levels rl
+            JOIN payments p ON rl.referred_tg_id = p.tg_id
+            WHERE p.status = 'success'
+            """,
             referrer_tg_id,
         )
         logger.debug(
@@ -786,6 +782,7 @@ async def get_referral_stats(referrer_tg_id: int):
         if conn:
             await conn.close()
             logger.info("Закрытие подключения к базе данных")
+
 
 
 async def update_key_expiry(client_id: str, new_expiry_time: int):
@@ -1204,7 +1201,7 @@ async def get_servers_from_db():
 
 
 async def delete_user_data(session: Any, tg_id: int):
-    
+
     try:
         await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
     except Exception as e:
@@ -1216,3 +1213,56 @@ async def delete_user_data(session: Any, tg_id: int):
     await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM keys WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
+
+
+async def store_gift_link(
+    gift_id: str, sender_tg_id: int, selected_months: int, expiry_time: datetime, gift_link: str, session: Any = None
+):
+    """
+    Добавляет информацию о подарке в базу данных.
+
+    Args:
+        gift_id (str): Уникальный идентификатор подарка
+        sender_tg_id (int): Идентификатор пользователя, который отправил подарок
+        selected_months (int): Количество месяцев подписки
+        expiry_time (datetime): Время окончания подписки
+        gift_link (str): Ссылка для активации подарка
+        session (Any): Сессия базы данных для выполнения запроса
+
+    Returns:
+        bool: True, если информация о подарке успешно добавлена, иначе False
+
+    Raises:
+        Exception: В случае ошибки при сохранении информации о подарке
+    """
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
+
+        result = await conn.execute(
+            """
+            INSERT INTO gifts (gift_id, sender_tg_id, recipient_tg_id, selected_months, expiry_time, gift_link, created_at, is_used)
+            VALUES ($1, $2, NULL, $3, $4, $5, $6, FALSE)
+            """,
+            gift_id,
+            sender_tg_id,
+            selected_months,
+            expiry_time,
+            gift_link,
+            datetime.utcnow(),
+        )
+
+        if result:
+            logger.info(f"Подарок с ID {gift_id} успешно добавлен в базу данных.")
+            return True
+        else:
+            logger.error(f"Не удалось добавить подарок с ID {gift_id} в базу данных.")
+            return False
+    except Exception as e:
+
+        logger.error(f"Ошибка при сохранении подарка с ID {gift_id} в базе данных: {e}")
+        return False
+
+    finally:
+        if conn is not None and session is None:
+            await conn.close()

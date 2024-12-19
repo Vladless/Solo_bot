@@ -4,13 +4,10 @@ from datetime import datetime
 import aiohttp
 import asyncpg
 from aiohttp import web
-from config import DATABASE_URL, TRANSITION_DATE_STR
 
+from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, TRANSITION_DATE_STR
 from database import get_servers_from_db
 from logger import logger
-import urllib.parse
-
-from config import PROJECT_NAME, SUB_MESSAGE
 
 
 async def fetch_url_content(url, tg_id):
@@ -78,11 +75,9 @@ async def handle_old_subscription(request):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-
         key_info = await conn.fetchrow(
-            "SELECT created_at FROM keys WHERE email = $1", email
+            "SELECT created_at, server_id FROM keys WHERE email = $1", email
         )
-
 
         if not key_info:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -92,7 +87,14 @@ async def handle_old_subscription(request):
             )
 
         created_at_ms = key_info["created_at"]
-        cluster_name = key_info["cluster_name"]
+        cluster_name = key_info.get("server_id")
+        if not cluster_name:
+            logger.warning(f"У клиента с email {email} отсутствует cluster_name.")
+            return web.Response(
+                text="❌ Устаревшие данные. Обратитесь в поддержку.",
+                status=400,
+            )
+
         logger.info(f"Значение created_at для клиента с email {email}: {created_at_ms}, кластер: {cluster_name}")
 
         created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
@@ -127,7 +129,9 @@ async def handle_old_subscription(request):
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "7",
-            "profile-title": encoded_project_name,
+            "profile-title": "base64:" + base64.b64encode(
+                encoded_project_name.encode("utf-8")
+            ).decode("utf-8"),
         }
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
@@ -135,6 +139,7 @@ async def handle_old_subscription(request):
 
     finally:
         await conn.close()
+
 
 
 async def handle_new_subscription(request):
@@ -200,7 +205,9 @@ async def handle_new_subscription(request):
         "Content-Type": "text/plain; charset=utf-8",
         "Content-Disposition": "inline",
         "profile-update-interval": "7",
-        "profile-title": encoded_project_name,
+        "profile-title": "base64:" + base64.b64encode(
+            encoded_project_name.encode("utf-8")
+        ).decode("utf-8"),
     }
 
     logger.info(f"Возвращаем объединенные подписки для email: {email}")

@@ -1,10 +1,10 @@
 import asyncio
 
 import asyncpg
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, LIMIT_IP, TOTAL_GB
 from database import get_servers_from_db
 from logger import logger
 
@@ -46,7 +46,7 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     client_id,
                     email,
                     tg_id,
-                    limit_ip=1,
+                    limit_ip=LIMIT_IP,
                     total_gb=TOTAL_GB,
                     expiry_time=expiry_timestamp,
                     enable=True,
@@ -184,7 +184,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     client_id,
                     email,
                     tg_id,
-                    limit_ip=1,
+                    limit_ip=LIMIT_IP,
                     total_gb=TOTAL_GB,
                     expiry_time=expiry_time,
                     enable=True,

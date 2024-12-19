@@ -2,9 +2,15 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-
-from config import CRYPTO_BOT_ENABLE, FREEKASSA_ENABLE, ROBOKASSA_ENABLE, STARS_ENABLE, YOOKASSA_ENABLE, DONATIONS_ENABLE, YOOMONEY_ENABLE
-
+from config import (
+    CRYPTO_BOT_ENABLE,
+    DONATIONS_ENABLE,
+    FREEKASSA_ENABLE,
+    ROBOKASSA_ENABLE,
+    STARS_ENABLE,
+    YOOKASSA_ENABLE,
+    YOOMONEY_ENABLE,
+)
 
 router = Router()
 
