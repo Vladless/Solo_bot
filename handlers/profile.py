@@ -4,8 +4,8 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import NEWS_MESSAGE, RENEWAL_PLANS
 
+from config import NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_referral_stats
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
@@ -42,11 +42,15 @@ async def process_callback_view_profile(
             callback_data="pay",
         )
     )
+    builder.row()
     builder.row(
-        InlineKeyboardButton(text="👥 Пригласить друзей", callback_data="invite"),
+        InlineKeyboardButton(text="👥 Пригласить", callback_data="invite"),
+        InlineKeyboardButton(text="🎁 Подарить", callback_data="gifts"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"),
         InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
     )
-    builder.row(InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"))
     if admin:
         builder.row(
             InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")

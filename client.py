@@ -1,5 +1,6 @@
 import py3xui
 
+from config import LIMIT_IP
 from logger import logger
 
 
@@ -72,7 +73,7 @@ async def extend_client_key(
         client.sub_id = email
         client.total_gb = total_gb
         client.enable = True
-        client.limit_ip = 1
+        client.limit_ip = LIMIT_IP
         client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)

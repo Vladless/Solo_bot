@@ -21,6 +21,7 @@ router.include_routers(
     pay_router,
     donate_router,
     coupons_router,
+
     notifications_router,
     payments_router,
     keys_router,

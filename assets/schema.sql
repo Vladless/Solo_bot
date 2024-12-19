@@ -83,5 +83,20 @@ CREATE TABLE IF NOT EXISTS servers
     api_url          TEXT NOT NULL,
     subscription_url TEXT NOT NULL,
     inbound_id       TEXT NOT NULL,
-    UNIQUE (cluster_name, server_name) -- Уникальность по названию кластера и сервера
+    UNIQUE (cluster_name, server_name) 
+);
+
+
+CREATE TABLE IF NOT EXISTS gifts
+(
+    gift_id        TEXT PRIMARY KEY NOT NULL,      
+    sender_tg_id   BIGINT NOT NULL,            
+    selected_months INTEGER NOT NULL,          
+    expiry_time    TIMESTAMP WITH TIME ZONE NOT NULL,   
+    gift_link      TEXT NOT NULL,                
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, 
+    is_used        BOOLEAN NOT NULL DEFAULT FALSE,  
+    recipient_tg_id BIGINT,                            
+    CONSTRAINT fk_sender FOREIGN KEY (sender_tg_id) REFERENCES users (tg_id),  
+    CONSTRAINT fk_recipient FOREIGN KEY (recipient_tg_id) REFERENCES users (tg_id)
 );
