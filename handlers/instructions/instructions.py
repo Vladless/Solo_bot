@@ -5,7 +5,7 @@ from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CONNECT_IOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
+from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from handlers.texts import INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE
 
 router = Router()
@@ -65,7 +65,7 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
         )
     )
     builder.row(
-        InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_IOS}{key}")
+        InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_MACOS}{key}")
     )
     builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
