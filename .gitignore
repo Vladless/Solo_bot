@@ -54,3 +54,5 @@ scripts
 models.py
 Dockerfile
 .csv
+
+setup.py

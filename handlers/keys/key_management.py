@@ -21,7 +21,7 @@ from config import (
 )
 from database import get_balance, get_trial, store_key, update_balance
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import DISCOUNTS, KEY, key_message_success
+from handlers.texts import DISCOUNTS, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
@@ -36,31 +36,6 @@ class Form(StatesGroup):
 
 
 @router.callback_query(F.data == "create_key")
-async def process_callback_create_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    server_id = "все сервера"
-    await state.update_data(selected_server_id=server_id)
-    await select_server(callback_query, state, session)
-
-
-async def select_server(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    trial_status = await get_trial(callback_query.message.chat.id, session)
-    if trial_status == 1:
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="✅ Да, подключить новое устройство", callback_data="confirm_create_new_key")
-        )
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-
-        await callback_query.message.answer(
-            text=KEY,
-            reply_markup=builder.as_markup(),
-        )
-        await state.update_data(creating_new_key=True)
-    else:
-        await handle_key_creation(callback_query.message.chat.id, state, session, callback_query)
-
-
-@router.callback_query(F.data == "confirm_create_new_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 

@@ -13,11 +13,19 @@ router = Router()
 
 
 @router.callback_query(F.data == "profile")
+@router.message(F.text == "/profile")
 async def process_callback_view_profile(
-    callback_query: types.CallbackQuery, state: FSMContext, admin: bool
+    callback_query_or_message: types.Message | types.CallbackQuery, state: FSMContext, admin: bool
 ):
-    chat_id = callback_query.message.chat.id
-    username = callback_query.from_user.full_name
+    if isinstance(callback_query_or_message, types.CallbackQuery):
+        chat_id = callback_query_or_message.message.chat.id
+        username = callback_query_or_message.from_user.full_name
+        is_callback = True
+    elif isinstance(callback_query_or_message, types.Message):
+        chat_id = callback_query_or_message.chat.id
+        username = callback_query_or_message.from_user.full_name
+        is_callback = False
+
     image_path = os.path.join("img", "pic.jpg")
     key_count = await get_key_count(chat_id)
     balance = await get_balance(chat_id)
@@ -59,16 +67,30 @@ async def process_callback_view_profile(
 
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_file:
-            await callback_query.message.answer_photo(
-                photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
-                caption=profile_message,
+            if is_callback:
+                await callback_query_or_message.message.answer_photo(
+                    photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                    caption=profile_message,
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                await callback_query_or_message.answer_photo(
+                    photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                    caption=profile_message,
+                    reply_markup=builder.as_markup(),
+                )
+    else:
+        if is_callback:
+            await callback_query_or_message.message.answer(
+                text=profile_message,
                 reply_markup=builder.as_markup(),
             )
-    else:
-        await callback_query.message.answer(
-            text=profile_message,
-            reply_markup=builder.as_markup(),
-        )
+        else:
+            await callback_query_or_message.answer(
+                text=profile_message,
+                reply_markup=builder.as_markup(),
+            )
+
 
 
 @router.callback_query(F.data == "view_tariffs")
