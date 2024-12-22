@@ -12,11 +12,16 @@ router = Router()
 
 
 @router.callback_query(F.data == "instructions")
-async def send_instructions(callback_query: types.CallbackQuery):
+@router.message(F.text == "/instructions")
+async def send_instructions(callback_query_or_message: types.CallbackQuery | types.Message):
     instructions_message = INSTRUCTIONS
     image_path = os.path.join("img", "instructions.jpg")
+
     if not os.path.isfile(image_path):
-        await callback_query.message.answer("Файл изображения не найден.")
+        if isinstance(callback_query_or_message, types.CallbackQuery):
+            await callback_query_or_message.message.answer("Файл изображения не найден.")
+        else:
+            await callback_query_or_message.answer("Файл изображения не найден.")
         return
 
     builder = InlineKeyboardBuilder()
@@ -25,12 +30,18 @@ async def send_instructions(callback_query: types.CallbackQuery):
         InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"),
     )
 
+    if isinstance(callback_query_or_message, types.CallbackQuery):
+        send_photo = callback_query_or_message.message.answer_photo
+    else:
+        send_photo = callback_query_or_message.answer_photo
+
     with open(image_path, "rb") as image_from_buffer:
-        await callback_query.message.answer_photo(
+        await send_photo(
             BufferedInputFile(image_from_buffer.read(), filename="instructions.jpg"),
             caption=instructions_message,
             reply_markup=builder.as_markup(),
         )
+
 
 
 @router.callback_query(F.data.startswith("connect_pc|"))

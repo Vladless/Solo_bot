@@ -3,6 +3,9 @@
 /* BEGIN: Cython Metadata
 {
     "distutils": {
+        "extra_compile_args": [
+            "-O2"
+        ],
         "name": "handlers.payments.stars_pay",
         "sources": [
             "handlers/payments/stars_pay.py"
