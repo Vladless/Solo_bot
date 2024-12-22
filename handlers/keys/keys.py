@@ -35,7 +35,6 @@ from handlers.texts import (
     DISCOUNTS,
     INSUFFICIENT_FUNDS_MSG,
     KEY_NOT_FOUND_MSG,
-    NO_KEYS,
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
     key_message,
@@ -49,84 +48,106 @@ router = Router()
 
 
 @router.callback_query(F.data == "view_keys")
-async def process_callback_view_keys(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.message.chat.id
+@router.message(F.text == "/subs")
+async def process_callback_or_message_view_keys(
+    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
+):
+    if isinstance(callback_query_or_message, types.CallbackQuery):
+        chat_id = callback_query_or_message.message.chat.id
+        send_message = callback_query_or_message.message.answer
+        send_photo = callback_query_or_message.message.answer_photo
+    else:
+        chat_id = callback_query_or_message.chat.id
+        send_message = callback_query_or_message.answer
+        send_photo = callback_query_or_message.answer_photo
+
     try:
         records = await session.fetch(
             """
             SELECT email, client_id FROM keys WHERE tg_id = $1
-        """,
-            tg_id,
+            """,
+            chat_id,
         )
 
         if records:
-            builder = InlineKeyboardBuilder()
-            for record in records:
-                key_name = record["email"]
-                builder.row(
-                    InlineKeyboardButton(
-                        text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
-                    )
-                )
-
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
-
-            inline_keyboard = builder.as_markup()
-            response_message = (
-                "<b>🔑 Список ваших устройств</b>\n\n"
-                "<i>👇 Выберите устройство для управления подпиской:</i>"
-            )
-
-            image_path = os.path.join("img", "pic_keys.jpg")
-            if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
-                    await callback_query.message.answer_photo(
-                        photo=BufferedInputFile(
-                            image_file.read(), filename="pic_keys.jpg"
-                        ),
-                        caption=response_message,
-                        reply_markup=inline_keyboard,
-                    )
-            else:
-                await callback_query.message.answer(
-                    text=response_message,
-                    reply_markup=inline_keyboard,
-                )
-
+            inline_keyboard, response_message = build_keys_response(records)
         else:
-            response_message = NO_KEYS
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(
-                    text="➕ Создать подписку", callback_data="create_key"
-                )
-            )
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
+            inline_keyboard, response_message = build_no_keys_response()
 
-            keyboard = builder.as_markup()
-
-            image_path = os.path.join("img", "pic_keys.jpg")
-
-            if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
-                    await callback_query.message.answer_photo(
-                        photo=BufferedInputFile(
-                            image_file.read(), filename="pic_keys.jpg"
-                        ),
-                        caption=response_message,
-                        reply_markup=keyboard,
-                    )
-            else:
-                await callback_query.message.answer(
-                    text=response_message,
-                    reply_markup=keyboard,
-                )
+        image_path = os.path.join("img", "pic_keys.jpg")
+        await send_with_optional_image(
+            send_message, send_photo, image_path, response_message, inline_keyboard
+        )
     except Exception as e:
-        await handle_error(tg_id, callback_query, f"Ошибка при получении ключей: {e}")
+        error_message = f"Ошибка при получении ключей: {e}"
+        await send_message(text=error_message)
+
+
+def build_keys_response(records):
+    """
+    Формирует сообщение и клавиатуру, если у пользователя есть устройства.
+    """
+    builder = InlineKeyboardBuilder()
+    for record in records:
+        key_name = record["email"]
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
+    )
+
+    inline_keyboard = builder.as_markup()
+    response_message = (
+        "<b>🔑 Список ваших устройств</b>\n\n"
+        "<i>👇 Выберите устройство для управления подпиской:</i>"
+    )
+    return inline_keyboard, response_message
+
+
+def build_no_keys_response():
+    """
+    Формирует сообщение и клавиатуру, если у пользователя нет устройств.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Создать подписку", callback_data="create_key"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
+    )
+
+    inline_keyboard = builder.as_markup()
+    response_message = (
+        "<b>❌ У вас пока нет активных устройств</b>\n\n"
+        "<i>Нажмите кнопку ниже, чтобы создать устройство:</i>"
+    )
+    return inline_keyboard, response_message
+
+
+async def send_with_optional_image(send_message, send_photo, image_path, text, keyboard):
+    """
+    Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
+    """
+    if os.path.isfile(image_path):
+        with open(image_path, "rb") as image_file:
+            await send_photo(
+                photo=BufferedInputFile(image_file.read(), filename=os.path.basename(image_path)),
+                caption=text,
+                reply_markup=keyboard,
+            )
+    else:
+        await send_message(
+            text=text,
+            reply_markup=keyboard,
+        )
+
+
 
 
 @router.callback_query(F.data.startswith("view_key|"))
