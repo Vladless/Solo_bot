@@ -181,7 +181,7 @@ async def create_key(
         InlineKeyboardButton(text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{public_link}"),
         InlineKeyboardButton(text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{public_link}"),
     )
-    builder.row(InlineKeyboardButton(text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"))
+    builder.row(InlineKeyboardButton(text="💻 Windows/Linux/MacOS", callback_data=f"connect_pc|{email}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     remaining_time = expiry_time - datetime.utcnow()
