@@ -81,6 +81,9 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
         total_payments_week = await session.fetchval(
             "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
         )
+        total_payments_month = await session.fetchval(
+            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+        )
         total_payments_all_time = await session.fetchval(
             "SELECT COALESCE(SUM(amount), 0) FROM payments"
         )
@@ -103,6 +106,7 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             f"💰 Финансовая статистика:\n"
             f"   📅 За день: <b>{total_payments_today} ₽</b>\n"
             f"   📆 За неделю: <b>{total_payments_week} ₽</b>\n"
+            f"   📆 За месяц: <b>{total_payments_month} ₽</b>\n"
             f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n"
         )
 
