@@ -55,7 +55,8 @@ async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
 async def handle_username_input(
     message: types.Message, state: FSMContext, session: Any
 ):
-    username = message.text.strip().lstrip("@")
+    # Extract the username from a message text by removing leading '@' and the Telegram URL prefix
+    username = message.text.strip().lstrip('@').replace('https://t.me/', '')
     user_record = await session.fetchrow(
         "SELECT tg_id FROM users WHERE username = $1", username
     )
@@ -338,7 +339,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
             callback_data=f"delete_key_admin|{email}",
         )
     )
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     await callback_query.message.answer(
         response_message, reply_markup=builder.as_markup()
