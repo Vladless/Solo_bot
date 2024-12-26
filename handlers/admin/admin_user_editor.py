@@ -339,7 +339,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
             callback_data=f"delete_key_admin|{email}",
         )
     )
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     await callback_query.message.answer(
         response_message, reply_markup=builder.as_markup()
