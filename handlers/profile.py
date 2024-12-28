@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_referral_stats
+from handlers.buttons.profile import ADD_SUB, GIFTS, INSTRUCTIONS, INVITE, MAIN_MENU, MY_SUBS, PAYMENT, TARRIFS
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
 router = Router()
@@ -41,29 +42,29 @@ async def process_callback_view_profile(
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="➕ Устройство", callback_data="create_key"),
-        InlineKeyboardButton(text="📱 Мои устройства", callback_data="view_keys"),
+        InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"),
+        InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"),
     )
     builder.row(
         InlineKeyboardButton(
-            text="💳 Пополнить баланс",
+            text=PAYMENT,
             callback_data="pay",
         )
     )
     builder.row()
     builder.row(
-        InlineKeyboardButton(text="👥 Пригласить", callback_data="invite"),
-        InlineKeyboardButton(text="🎁 Подарить", callback_data="gifts"),
+        InlineKeyboardButton(text=INVITE, callback_data="invite"),
+        InlineKeyboardButton(text=GIFTS, callback_data="gifts"),
     )
     builder.row(
-        InlineKeyboardButton(text="💡 Тарифы", callback_data="view_tariffs"),
-        InlineKeyboardButton(text="📘 Инструкции", callback_data="instructions"),
+        InlineKeyboardButton(text=TARRIFS, callback_data="view_tariffs"),
+        InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
     )
     if admin:
         builder.row(
             InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
         )
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="start"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_file:

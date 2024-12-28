@@ -594,14 +594,11 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
     Обработка многоуровневой реферальной системы при обновлении баланса пользователя.
 
     Метод анализирует цепочку рефералов для указанного пользователя и начисляет
-    бонусы рефереерам на разных уровнях согласно настроенным процентам.
+    бонусы реферерам на разных уровнях согласно настроенным процентам.
 
     Args:
         tg_id (int): Идентификатор Telegram пользователя, пополнившего баланс
         amount (float): Сумма пополнения баланса
-
-    Raises:
-        Exception: В случае ошибки при работе с базой данных
     """
     conn = None
     try:
@@ -609,8 +606,11 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         logger.info(f"Начало обработки реферальной системы для пользователя {tg_id}")
 
         MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
-        visited_tg_ids = set()
+        if MAX_REFERRAL_LEVELS == 0:
+            logger.warning("Реферальные бонусы отключены.")
+            return
 
+        visited_tg_ids = set()
         current_tg_id = tg_id
         referral_chain = []
 
@@ -695,8 +695,10 @@ async def get_referral_stats(referrer_tg_id: int):
         )
         logger.debug(f"Получено количество активных рефералов: {active_referrals}")
 
+        MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
+
         referrals_by_level_records = await conn.fetch(
-            """
+            f"""
             WITH RECURSIVE referral_levels AS (
                 SELECT referred_tg_id, referrer_tg_id, 1 AS level
                 FROM referrals 
@@ -707,7 +709,7 @@ async def get_referral_stats(referrer_tg_id: int):
                 SELECT r.referred_tg_id, r.referrer_tg_id, rl.level + 1
                 FROM referrals r
                 JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
-                WHERE rl.level < 5
+                WHERE rl.level < {MAX_REFERRAL_LEVELS}
             )
             SELECT level, 
                    COUNT(*) AS level_count, 
@@ -730,7 +732,7 @@ async def get_referral_stats(referrer_tg_id: int):
         logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
 
         total_referral_bonus = await conn.fetchval(
-            """
+            f"""
             WITH RECURSIVE referral_levels AS (
                 SELECT 
                     referred_tg_id, 
@@ -747,13 +749,11 @@ async def get_referral_stats(referrer_tg_id: int):
                     rl.level + 1
                 FROM referrals r
                 JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
-                WHERE rl.level < 5
+                WHERE rl.level < {MAX_REFERRAL_LEVELS}
             )
             SELECT 
                 SUM(p.amount * CASE 
-                    WHEN rl.level = 1 THEN 0.25
-                    WHEN rl.level = 2 THEN 0.10
-                    WHEN rl.level = 3 THEN 0.05
+                    {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
                     ELSE 0
                 END) AS total_bonus
             FROM referral_levels rl
@@ -762,6 +762,8 @@ async def get_referral_stats(referrer_tg_id: int):
             """,
             referrer_tg_id,
         )
+
+        total_referral_bonus = total_referral_bonus or 0
         logger.debug(
             f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}"
         )
@@ -782,7 +784,6 @@ async def get_referral_stats(referrer_tg_id: int):
         if conn:
             await conn.close()
             logger.info("Закрытие подключения к базе данных")
-
 
 
 async def update_key_expiry(client_id: str, new_expiry_time: int):
