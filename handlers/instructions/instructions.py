@@ -107,7 +107,8 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
     await callback_query.message.answer(
         text=CONNECT_TV_TEXT,
         reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
 
