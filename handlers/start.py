@@ -216,7 +216,10 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
         )
         builder.row(
             InlineKeyboardButton(
-                text="💻 Windows/Linux", callback_data=f"connect_pc|{email}"
+                text="💻 Компьютеры", callback_data=f"connect_pc|{email}"
+            ),
+            InlineKeyboardButton(
+                text="📺 Андроид TV", callback_data=f"connect_tv|{email}"
             )
         )
         builder.row(
