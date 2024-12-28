@@ -208,7 +208,10 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
             builder.row(
                 InlineKeyboardButton(
-                    text="💻 Windows/Linux", callback_data=f"connect_pc|{key_name}"
+                    text="💻 Компьютеры", callback_data=f"connect_pc|{key_name}"
+                ),
+                InlineKeyboardButton(
+                    text="📺 Андроид TV", callback_data=f"connect_tv|{key_name}"
                 )
             )
 

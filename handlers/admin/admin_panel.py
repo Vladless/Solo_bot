@@ -34,6 +34,8 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
+    BOT_VERSION = "3.2.3-beta"  # Укажите текущую версию бота
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -59,13 +61,36 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
         InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
     )
     builder.row(
+        InlineKeyboardButton(
+            text="🤖 Управление Ботом", callback_data="bot_management"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
+    )
+    await message.answer(
+        f"🤖 Панель администратора\n\nВерсия бота: <b>{BOT_VERSION}</b>",
+        reply_markup=builder.as_markup(),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "bot_management")
+async def handle_bot_management(callback_query: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.row(
         InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
     )
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-    await message.answer("🤖 Панель администратора", reply_markup=builder.as_markup())
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")
+    )
+    await callback_query.message.answer(
+        "🤖 Управление ботом",
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.callback_query(F.data == "user_stats", IsAdminFilter())
@@ -163,7 +188,7 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
             )
             return
 
-        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"  # Заголовки CSV
+        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
         for user in users:
             csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
 
