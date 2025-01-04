@@ -17,15 +17,15 @@ async def create_trial_key(tg_id: int, session: Any):
     try:
         # Проверка статуса триала
         trial_status = await session.fetchval(
-            'SELECT trial FROM connections WHERE tg_id = $1',
+            "SELECT trial FROM connections WHERE tg_id = $1",
             tg_id
         )
 
         if trial_status == 1:
-            return {'error': 'Вы уже использовали пробную версию.'}
+            return {"error": "Вы уже использовали пробную версию."}
 
     except Exception as e:
-        logger.error(f"Ошибка при при проверке триала: {e}")
+        logger.error(f"Ошибка при проверке триала: {e}")
 
     client_id = str(uuid.uuid4())
     email = generate_random_email()
