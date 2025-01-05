@@ -413,3 +413,29 @@ async def check_online_users():
                 logger.error(
                     f"Не удалось проверить пользователей на сервере {server_id}: {e}"
                 )
+
+
+async def update_all_keys():
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        keys = await conn.fetch("SELECT tg_id, client_id, email, expiry_time, server_id FROM keys")
+        
+        for key in keys:
+            tg_id = key['tg_id']
+            client_id = key['client_id']
+            email = key['email']
+            expiry_time = key['expiry_time']
+            cluster_id = key['server_id']
+            
+            try:
+                await update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id)
+                await store_key(tg_id, client_id, email, expiry_time, key['key'], cluster_id, conn)
+                logger.info(f"Ключ {client_id} успешно обновлен и сохранен")
+            except Exception as e:
+                logger.error(f"Ошибка при обновлении и сохранении ключа {client_id}: {e}")
+        
+        logger.info("Все ключи успешно обновлены и сохранены")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении всех ключей: {e}")
+    finally:
+        await conn.close()
