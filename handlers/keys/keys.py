@@ -191,6 +191,13 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
             builder = InlineKeyboardBuilder()
 
             builder.row(
+                    InlineKeyboardButton(
+                        text="🔄 Обновить подписку",
+                        callback_data=f"update_subscription|{key_name}",
+                    )
+                )
+
+            builder.row(
                 InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
                 InlineKeyboardButton(
                     text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID
@@ -222,15 +229,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 InlineKeyboardButton(
                     text="❌ Удалить", callback_data=f"delete_key|{key_name}"
                 ),
-            )
-
-            if not key.startswith(PUBLIC_LINK):
-                builder.row(
-                    InlineKeyboardButton(
-                        text="🔄 Обновить подписку",
-                        callback_data=f"update_subscription|{key_name}",
-                    )
-                )
+            )                
 
             builder.row(
                 InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
