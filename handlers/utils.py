@@ -19,10 +19,10 @@ async def get_usd_rate():
                     data = await response.text()
                     usd = float(json.loads(data)['Valute']['USD']['Value'])
                 else:
-                    usd = 100  # Default value if request fails
+                    usd = float(100)  # Default value if request fails
     except Exception as e:
         logger.exception(f"Error fetching USD rate: {e}")
-        usd = 100  # Default value if an exception occurs
+        usd = float(100)  # Default value if an exception occurs
     return usd
 
 
