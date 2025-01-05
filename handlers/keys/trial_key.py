@@ -3,16 +3,30 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
+from handlers.texts import INSTRUCTIONS
 from py3xui import AsyncApi
 
 from client import add_client
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
 from database import get_servers_from_db, store_key, use_trial
-from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
+from logger import logger
 
 
 async def create_trial_key(tg_id: int, session: Any):
+    try:
+        # Проверка статуса триала
+        trial_status = await session.fetchval(
+            "SELECT trial FROM connections WHERE tg_id = $1",
+            tg_id
+        )
+
+        if trial_status == 1:
+            return {"error": "Вы уже использовали пробную версию."}
+
+    except Exception as e:
+        logger.error(f"Ошибка при проверке триала: {e}")
+
     client_id = str(uuid.uuid4())
     email = generate_random_email()
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
@@ -23,14 +37,12 @@ async def create_trial_key(tg_id: int, session: Any):
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     clusters = await get_servers_from_db()
-
     least_loaded_cluster = await get_least_loaded_cluster()
 
     if least_loaded_cluster not in clusters:
         raise ValueError(f"Кластер {least_loaded_cluster} не найден в базе данных.")
 
     servers_in_cluster = clusters[least_loaded_cluster]
-
     tasks = []
 
     for server_info in servers_in_cluster:
@@ -64,5 +76,7 @@ async def create_trial_key(tg_id: int, session: Any):
         server_id=least_loaded_cluster,
         session=session,
     )
+
     await use_trial(tg_id, session)
+
     return result
