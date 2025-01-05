@@ -115,6 +115,7 @@ async def handle_username_input(
         )
     )
     builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
     builder.row(
         InlineKeyboardButton(
             text="✉️ Отправить сообщение",
@@ -202,6 +203,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
         )
     )
     builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
     builder.row(
         InlineKeyboardButton(
             text="🔄 Восстановить пробник",
@@ -647,6 +649,13 @@ async def handle_user_info(
     builder.row(InlineKeyboardButton(text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"))
     builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
+    builder.row(
+        InlineKeyboardButton(
+            text="✉️ Отправить сообщение",
+            callback_data=f"send_message_{tg_id}"
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     user_info = (
