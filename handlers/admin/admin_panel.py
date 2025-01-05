@@ -58,7 +58,7 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
         )
     )
     builder.row(
-        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
+        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to")
     )
     builder.row(
         InlineKeyboardButton(
@@ -261,13 +261,39 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
         )
 
 
-@router.callback_query(F.data == "send_to_alls", IsAdminFilter())
+@router.callback_query(F.data == "send_to", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all"))
+    builder.row(InlineKeyboardButton(text="📢 Отправить с подпиской", callback_data="send_to_subscribed"))
+    builder.row(InlineKeyboardButton(text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
     await callback_query.message.answer(
-        "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам 📢🌐:",
+        "✍️ Выберите группу пользователей и введите текст сообщения для рассылки:",
         reply_markup=builder.as_markup(),
+    )
+
+@router.callback_query(F.data == "send_to_all", IsAdminFilter())
+async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
+    await state.update_data(send_to="all")
+    await callback_query.message.answer(
+        "✍️ Введите текст сообщения для рассылки всем пользователям:"
+    )
+    await state.set_state(UserEditorState.waiting_for_message)
+
+@router.callback_query(F.data == "send_to_subscribed", IsAdminFilter())
+async def handle_send_to_subscribed(callback_query: CallbackQuery, state: FSMContext):
+    await state.update_data(send_to="subscribed")
+    await callback_query.message.answer(
+        "✍️ Введите текст сообщения для рассылки пользователям с активной подпиской:"
+    )
+    await state.set_state(UserEditorState.waiting_for_message)
+
+@router.callback_query(F.data == "send_to_unsubscribed", IsAdminFilter())
+async def handle_send_to_unsubscribed(callback_query: CallbackQuery, state: FSMContext):
+    await state.update_data(send_to="unsubscribed")
+    await callback_query.message.answer(
+        "✍️ Введите текст сообщения для рассылки пользователям без активной подписки:"
     )
     await state.set_state(UserEditorState.waiting_for_message)
 
@@ -279,7 +305,26 @@ async def process_message_to_all(
     text_message = message.text
 
     try:
-        tg_ids = await session.fetch("SELECT tg_id FROM connections")
+        state_data = await state.get_data()
+        send_to = state_data.get('send_to', 'all')
+
+        if send_to == 'all':
+            tg_ids = await session.fetch("SELECT DISTINCT c.tg_id FROM connections c")
+        elif send_to == 'subscribed':
+            tg_ids = await session.fetch("""
+                SELECT DISTINCT c.tg_id 
+                FROM connections c
+                JOIN keys k ON c.tg_id = k.tg_id
+                WHERE k.expiry_time > CURRENT_TIMESTAMP
+            """)
+        elif send_to == 'unsubscribed':
+            tg_ids = await session.fetch("""
+                SELECT c.tg_id 
+                FROM connections c
+                LEFT JOIN keys k ON c.tg_id = k.tg_id
+                GROUP BY c.tg_id
+                HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= CURRENT_TIMESTAMP
+            """)
 
         total_users = len(tg_ids)
         success_count = 0
