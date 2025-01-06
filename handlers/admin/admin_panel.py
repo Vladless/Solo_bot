@@ -309,22 +309,22 @@ async def process_message_to_all(
         send_to = state_data.get('send_to', 'all')
 
         if send_to == 'all':
-            tg_ids = await session.fetch("SELECT DISTINCT c.tg_id FROM connections c")
+            tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections")
         elif send_to == 'subscribed':
             tg_ids = await session.fetch("""
                 SELECT DISTINCT c.tg_id 
                 FROM connections c
                 JOIN keys k ON c.tg_id = k.tg_id
-                WHERE k.expiry_time > CURRENT_TIMESTAMP
-            """)
+                WHERE k.expiry_time > $1
+            """, int(datetime.utcnow().timestamp() * 1000))
         elif send_to == 'unsubscribed':
             tg_ids = await session.fetch("""
                 SELECT c.tg_id 
                 FROM connections c
                 LEFT JOIN keys k ON c.tg_id = k.tg_id
                 GROUP BY c.tg_id
-                HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= CURRENT_TIMESTAMP
-            """)
+                HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
+            """, int(datetime.utcnow().timestamp() * 1000))
 
         total_users = len(tg_ids)
         success_count = 0
