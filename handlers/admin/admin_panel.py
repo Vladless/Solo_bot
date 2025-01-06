@@ -34,7 +34,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "3.2.4-beta"  # Укажите текущую версию бота
+    BOT_VERSION = "3.2.5-beta"  # Укажите текущую версию бота
 
     builder = InlineKeyboardBuilder()
     builder.row(
