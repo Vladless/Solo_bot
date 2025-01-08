@@ -56,7 +56,6 @@ async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
 async def handle_username_input(
     message: types.Message, state: FSMContext, session: Any
 ):
-    # Extract the username from a message text by removing leading '@' and the Telegram URL prefix
     username = message.text.strip().lstrip('@').replace('https://t.me/', '')
     user_record = await session.fetchrow(
         "SELECT tg_id FROM users WHERE username = $1", username

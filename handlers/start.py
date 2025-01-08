@@ -23,6 +23,14 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
+from handlers.buttons.add_subscribe import (
+    DOWNLOAD_ANDROID_BUTTON,
+    DOWNLOAD_IOS_BUTTON,
+    IMPORT_ANDROID,
+    IMPORT_IOS,
+    PC_BUTTON,
+    TV_BUTTON,
+)
 from handlers.keys.key_management import create_key
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
@@ -201,25 +209,25 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
         builder.row(
-            InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
-            InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
+            InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+            InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
         )
         builder.row(
             InlineKeyboardButton(
-                text="🍏 Подключить на iOS",
+                text=IMPORT_IOS,
                 url=f'{CONNECT_IOS}{trial_key_info["key"]}',
             ),
             InlineKeyboardButton(
-                text="🤖 Подключить на Android",
+                text=IMPORT_ANDROID,
                 url=f'{CONNECT_ANDROID}{trial_key_info["key"]}',
             ),
         )
         builder.row(
             InlineKeyboardButton(
-                text="💻 Компьютеры", callback_data=f"connect_pc|{email}"
+                text=PC_BUTTON, callback_data=f"connect_pc|{email}"
             ),
             InlineKeyboardButton(
-                text="📺 Андроид TV", callback_data=f"connect_tv|{email}"
+                text=TV_BUTTON, callback_data=f"connect_tv|{email}"
             )
         )
         builder.row(

@@ -32,3 +32,4 @@ sqlalchemy
 robokassa
 ping3
 ruff
+pytz

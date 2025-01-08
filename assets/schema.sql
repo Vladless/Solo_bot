@@ -100,3 +100,15 @@ CREATE TABLE IF NOT EXISTS gifts
     CONSTRAINT fk_sender FOREIGN KEY (sender_tg_id) REFERENCES users (tg_id),  
     CONSTRAINT fk_recipient FOREIGN KEY (recipient_tg_id) REFERENCES users (tg_id)
 );
+
+CREATE TABLE IF NOT EXISTS temporary_data (
+    tg_id BIGINT PRIMARY KEY NOT NULL,
+    state TEXT NOT NULL,
+    data JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS blocked_users (
+    tg_id BIGINT PRIMARY KEY,
+    blocked_at TIMESTAMP DEFAULT NOW()
+);

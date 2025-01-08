@@ -1,6 +1,6 @@
+import json
 import random
 import re
-import json
 
 import aiohttp
 import asyncpg

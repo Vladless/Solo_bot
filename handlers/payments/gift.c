@@ -10076,7 +10076,7 @@ static PyObject *__pyx_gb_8handlers_8payments_4gift_22generator6(__pyx_Coroutine
  *                         logger.info(f": {data.get('message', '   .')}")
  *                         return False             # <<<<<<<<<<<<<<
  *                 elif response.status in [502, 404]:
- *                     logger.info(f" .")
+ *                     logger.info(" .")
  */
                           __Pyx_XDECREF(__pyx_r);
                           __pyx_r = NULL; __Pyx_ReturnWithStopIteration(Py_False);
@@ -10096,7 +10096,7 @@ static PyObject *__pyx_gb_8handlers_8payments_4gift_22generator6(__pyx_Coroutine
  *                         logger.info(f": {data.get('message', '   .')}")
  *                         return False
  *                 elif response.status in [502, 404]:             # <<<<<<<<<<<<<<
- *                     logger.info(f" .")
+ *                     logger.info(" .")
  *                     return True
  */
                       __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_response, __pyx_n_s_status); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 260, __pyx_L27_error)
@@ -10117,7 +10117,7 @@ static PyObject *__pyx_gb_8handlers_8payments_4gift_22generator6(__pyx_Coroutine
                         /* "handlers/payments/gift.py":261
  *                         return False
  *                 elif response.status in [502, 404]:
- *                     logger.info(f" .")             # <<<<<<<<<<<<<<
+ *                     logger.info(" .")             # <<<<<<<<<<<<<<
  *                     return True
  *                 else:
  */
@@ -10152,7 +10152,7 @@ static PyObject *__pyx_gb_8handlers_8payments_4gift_22generator6(__pyx_Coroutine
 
                         /* "handlers/payments/gift.py":262
  *                 elif response.status in [502, 404]:
- *                     logger.info(f" .")
+ *                     logger.info(" .")
  *                     return True             # <<<<<<<<<<<<<<
  *                 else:
  *                     logger.info(f" : {response.status}")
@@ -10165,7 +10165,7 @@ static PyObject *__pyx_gb_8handlers_8payments_4gift_22generator6(__pyx_Coroutine
  *                         logger.info(f": {data.get('message', '   .')}")
  *                         return False
  *                 elif response.status in [502, 404]:             # <<<<<<<<<<<<<<
- *                     logger.info(f" .")
+ *                     logger.info(" .")
  *                     return True
  */
                       }
@@ -14036,7 +14036,7 @@ if (!__Pyx_RefNanny) {
  * from aiogram import F, Router, types
  * from aiogram.fsm.context import FSMContext             # <<<<<<<<<<<<<<
  * from aiogram.utils.keyboard import InlineKeyboardBuilder
- * from handlers.buttons.gifts import GIFT, BACK, PROFILE, MY_GIFTS, GIFTS_ABOUT
+ * 
  */
   __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 10, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
@@ -14056,8 +14056,8 @@ if (!__Pyx_RefNanny) {
  * from aiogram import F, Router, types
  * from aiogram.fsm.context import FSMContext
  * from aiogram.utils.keyboard import InlineKeyboardBuilder             # <<<<<<<<<<<<<<
- * from handlers.buttons.gifts import GIFT, BACK, PROFILE, MY_GIFTS, GIFTS_ABOUT
  * 
+ * from config import CLIENT_CODE, RENEWAL_PRICES
  */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
@@ -14073,149 +14073,149 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/gift.py":12
- * from aiogram.fsm.context import FSMContext
+  /* "handlers/payments/gift.py":13
  * from aiogram.utils.keyboard import InlineKeyboardBuilder
- * from handlers.buttons.gifts import GIFT, BACK, PROFILE, MY_GIFTS, GIFTS_ABOUT             # <<<<<<<<<<<<<<
  * 
- * from config import CLIENT_CODE, RENEWAL_PRICES
+ * from config import CLIENT_CODE, RENEWAL_PRICES             # <<<<<<<<<<<<<<
+ * from database import get_balance, store_gift_link, update_balance
+ * from handlers.buttons.gifts import BACK, GIFT, GIFTS_ABOUT, MY_GIFTS, PROFILE
  */
-  __pyx_t_3 = PyList_New(5); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __pyx_t_3 = PyList_New(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_INCREF(__pyx_n_s_GIFT);
-  __Pyx_GIVEREF(__pyx_n_s_GIFT);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_GIFT)) __PYX_ERR(0, 12, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_BACK);
-  __Pyx_GIVEREF(__pyx_n_s_BACK);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_BACK)) __PYX_ERR(0, 12, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_PROFILE);
-  __Pyx_GIVEREF(__pyx_n_s_PROFILE);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 2, __pyx_n_s_PROFILE)) __PYX_ERR(0, 12, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_MY_GIFTS);
-  __Pyx_GIVEREF(__pyx_n_s_MY_GIFTS);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 3, __pyx_n_s_MY_GIFTS)) __PYX_ERR(0, 12, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_GIFTS_ABOUT);
-  __Pyx_GIVEREF(__pyx_n_s_GIFTS_ABOUT);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 4, __pyx_n_s_GIFTS_ABOUT)) __PYX_ERR(0, 12, __pyx_L1_error);
-  __pyx_t_2 = __Pyx_Import(__pyx_n_s_handlers_buttons_gifts, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __Pyx_INCREF(__pyx_n_s_CLIENT_CODE);
+  __Pyx_GIVEREF(__pyx_n_s_CLIENT_CODE);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_CLIENT_CODE)) __PYX_ERR(0, 13, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_RENEWAL_PRICES);
+  __Pyx_GIVEREF(__pyx_n_s_RENEWAL_PRICES);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_RENEWAL_PRICES)) __PYX_ERR(0, 13, __pyx_L1_error);
+  __pyx_t_2 = __Pyx_Import(__pyx_n_s_config, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_GIFT); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_CLIENT_CODE); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_GIFT, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_CLIENT_CODE, __pyx_t_3) < 0) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_BACK); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_RENEWAL_PRICES); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_BACK, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_PROFILE, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_MY_GIFTS); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_MY_GIFTS, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_GIFTS_ABOUT); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_GIFTS_ABOUT, __pyx_t_3) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_RENEWAL_PRICES, __pyx_t_3) < 0) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "handlers/payments/gift.py":14
- * from handlers.buttons.gifts import GIFT, BACK, PROFILE, MY_GIFTS, GIFTS_ABOUT
  * 
- * from config import CLIENT_CODE, RENEWAL_PRICES             # <<<<<<<<<<<<<<
- * from database import get_balance, store_gift_link, update_balance
- * from handlers.texts import get_gift_link, GIFTS_TEXT_TEMPLATE
+ * from config import CLIENT_CODE, RENEWAL_PRICES
+ * from database import get_balance, store_gift_link, update_balance             # <<<<<<<<<<<<<<
+ * from handlers.buttons.gifts import BACK, GIFT, GIFTS_ABOUT, MY_GIFTS, PROFILE
+ * from handlers.texts import GIFTS_TEXT_TEMPLATE, get_gift_link
  */
-  __pyx_t_2 = PyList_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_t_2 = PyList_New(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_INCREF(__pyx_n_s_CLIENT_CODE);
-  __Pyx_GIVEREF(__pyx_n_s_CLIENT_CODE);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_CLIENT_CODE)) __PYX_ERR(0, 14, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_RENEWAL_PRICES);
-  __Pyx_GIVEREF(__pyx_n_s_RENEWAL_PRICES);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 1, __pyx_n_s_RENEWAL_PRICES)) __PYX_ERR(0, 14, __pyx_L1_error);
-  __pyx_t_3 = __Pyx_Import(__pyx_n_s_config, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __Pyx_INCREF(__pyx_n_s_get_balance);
+  __Pyx_GIVEREF(__pyx_n_s_get_balance);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_get_balance)) __PYX_ERR(0, 14, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_store_gift_link);
+  __Pyx_GIVEREF(__pyx_n_s_store_gift_link);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 1, __pyx_n_s_store_gift_link)) __PYX_ERR(0, 14, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_update_balance);
+  __Pyx_GIVEREF(__pyx_n_s_update_balance);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 2, __pyx_n_s_update_balance)) __PYX_ERR(0, 14, __pyx_L1_error);
+  __pyx_t_3 = __Pyx_Import(__pyx_n_s_database, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_CLIENT_CODE); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_CLIENT_CODE, __pyx_t_2) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_balance, __pyx_t_2) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_RENEWAL_PRICES); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_store_gift_link); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_RENEWAL_PRICES, __pyx_t_2) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_store_gift_link, __pyx_t_2) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_update_balance, __pyx_t_2) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "handlers/payments/gift.py":15
- * 
  * from config import CLIENT_CODE, RENEWAL_PRICES
- * from database import get_balance, store_gift_link, update_balance             # <<<<<<<<<<<<<<
- * from handlers.texts import get_gift_link, GIFTS_TEXT_TEMPLATE
+ * from database import get_balance, store_gift_link, update_balance
+ * from handlers.buttons.gifts import BACK, GIFT, GIFTS_ABOUT, MY_GIFTS, PROFILE             # <<<<<<<<<<<<<<
+ * from handlers.texts import GIFTS_TEXT_TEMPLATE, get_gift_link
  * from logger import logger
  */
-  __pyx_t_3 = PyList_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __pyx_t_3 = PyList_New(5); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_INCREF(__pyx_n_s_get_balance);
-  __Pyx_GIVEREF(__pyx_n_s_get_balance);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_get_balance)) __PYX_ERR(0, 15, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_store_gift_link);
-  __Pyx_GIVEREF(__pyx_n_s_store_gift_link);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_store_gift_link)) __PYX_ERR(0, 15, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_update_balance);
-  __Pyx_GIVEREF(__pyx_n_s_update_balance);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 2, __pyx_n_s_update_balance)) __PYX_ERR(0, 15, __pyx_L1_error);
-  __pyx_t_2 = __Pyx_Import(__pyx_n_s_database, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_INCREF(__pyx_n_s_BACK);
+  __Pyx_GIVEREF(__pyx_n_s_BACK);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_BACK)) __PYX_ERR(0, 15, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_GIFT);
+  __Pyx_GIVEREF(__pyx_n_s_GIFT);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 1, __pyx_n_s_GIFT)) __PYX_ERR(0, 15, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_GIFTS_ABOUT);
+  __Pyx_GIVEREF(__pyx_n_s_GIFTS_ABOUT);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 2, __pyx_n_s_GIFTS_ABOUT)) __PYX_ERR(0, 15, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_MY_GIFTS);
+  __Pyx_GIVEREF(__pyx_n_s_MY_GIFTS);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 3, __pyx_n_s_MY_GIFTS)) __PYX_ERR(0, 15, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_PROFILE);
+  __Pyx_GIVEREF(__pyx_n_s_PROFILE);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 4, __pyx_n_s_PROFILE)) __PYX_ERR(0, 15, __pyx_L1_error);
+  __pyx_t_2 = __Pyx_Import(__pyx_n_s_handlers_buttons_gifts, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_BACK); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_balance, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_BACK, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_store_gift_link); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_GIFT); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_store_gift_link, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_GIFT, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_GIFTS_ABOUT); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_update_balance, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_GIFTS_ABOUT, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_MY_GIFTS); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_MY_GIFTS, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_PROFILE, __pyx_t_3) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "handlers/payments/gift.py":16
- * from config import CLIENT_CODE, RENEWAL_PRICES
  * from database import get_balance, store_gift_link, update_balance
- * from handlers.texts import get_gift_link, GIFTS_TEXT_TEMPLATE             # <<<<<<<<<<<<<<
+ * from handlers.buttons.gifts import BACK, GIFT, GIFTS_ABOUT, MY_GIFTS, PROFILE
+ * from handlers.texts import GIFTS_TEXT_TEMPLATE, get_gift_link             # <<<<<<<<<<<<<<
  * from logger import logger
  * 
  */
   __pyx_t_2 = PyList_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
-  __Pyx_INCREF(__pyx_n_s_get_gift_link);
-  __Pyx_GIVEREF(__pyx_n_s_get_gift_link);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_get_gift_link)) __PYX_ERR(0, 16, __pyx_L1_error);
   __Pyx_INCREF(__pyx_n_s_GIFTS_TEXT_TEMPLATE);
   __Pyx_GIVEREF(__pyx_n_s_GIFTS_TEXT_TEMPLATE);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 1, __pyx_n_s_GIFTS_TEXT_TEMPLATE)) __PYX_ERR(0, 16, __pyx_L1_error);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_GIFTS_TEXT_TEMPLATE)) __PYX_ERR(0, 16, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_n_s_get_gift_link);
+  __Pyx_GIVEREF(__pyx_n_s_get_gift_link);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 1, __pyx_n_s_get_gift_link)) __PYX_ERR(0, 16, __pyx_L1_error);
   __pyx_t_3 = __Pyx_Import(__pyx_n_s_handlers_texts, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_get_gift_link); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 16, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_gift_link, __pyx_t_2) < 0) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_GIFTS_TEXT_TEMPLATE); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_GIFTS_TEXT_TEMPLATE, __pyx_t_2) < 0) __PYX_ERR(0, 16, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_get_gift_link); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 16, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_get_gift_link, __pyx_t_2) < 0) __PYX_ERR(0, 16, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
   /* "handlers/payments/gift.py":17
- * from database import get_balance, store_gift_link, update_balance
- * from handlers.texts import get_gift_link, GIFTS_TEXT_TEMPLATE
+ * from handlers.buttons.gifts import BACK, GIFT, GIFTS_ABOUT, MY_GIFTS, PROFILE
+ * from handlers.texts import GIFTS_TEXT_TEMPLATE, get_gift_link
  * from logger import logger             # <<<<<<<<<<<<<<
  * 
  * router = Router()
