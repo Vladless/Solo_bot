@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL
+from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from database import get_servers_from_db
 from logger import logger
 
@@ -184,7 +184,7 @@ async def check_servers():
                         )
 
         logger.info("Завершена проверка всех серверов.")
-        await asyncio.sleep(30)
+        await asyncio.sleep(PING_TIME)
 
 
 def extract_host(api_url: str) -> str:

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import Any
 
@@ -5,6 +6,45 @@ import asyncpg
 
 from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
+
+
+async def save_temporary_data(session, tg_id: int, state: str, data: dict):
+    """Сохраняет временные данные пользователя."""
+    await session.execute(
+        """
+        INSERT INTO temporary_data (tg_id, state, data, updated_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (tg_id)
+        DO UPDATE SET state = $2, data = $3, updated_at = $4
+        """,
+        tg_id, state, json.dumps(data), datetime.utcnow()
+    )
+
+async def get_temporary_data(session, tg_id: int) -> dict | None:
+    """Извлекает временные данные пользователя."""
+    result = await session.fetchrow(
+        "SELECT state, data FROM temporary_data WHERE tg_id = $1",
+        tg_id
+    )
+    if result:
+        return {
+            "state": result["state"],
+            "data": json.loads(result["data"])
+        }
+    return None
+
+async def clear_temporary_data(session, tg_id: int):
+    await session.execute(
+        "DELETE FROM temporary_data WHERE tg_id = $1",
+        tg_id
+    )
+
+async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
+    await conn.execute(
+        "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
+        tg_id
+    )
+
 
 
 async def init_db(file_path: str = "assets/schema.sql"):

@@ -3,19 +3,19 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
-from handlers.texts import INSTRUCTIONS
+import pytz
 from py3xui import AsyncApi
 
 from client import add_client
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, TOTAL_GB, TRIAL_TIME
 from database import get_servers_from_db, store_key, use_trial
+from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
 
 
 async def create_trial_key(tg_id: int, session: Any):
     try:
-        # Проверка статуса триала
         trial_status = await session.fetchval(
             "SELECT trial FROM connections WHERE tg_id = $1",
             tg_id
@@ -32,7 +32,9 @@ async def create_trial_key(tg_id: int, session: Any):
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
     instructions = INSTRUCTIONS
     result = {"key": public_link, "instructions": instructions, "email": email}
-    current_time = datetime.utcnow()
+
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    current_time = datetime.now(moscow_tz)
     expiry_time = current_time + timedelta(days=TRIAL_TIME)
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
@@ -56,7 +58,7 @@ async def create_trial_key(tg_id: int, session: Any):
                 client_id,
                 email,
                 tg_id,
-                limit_ip=1,
+                limit_ip=LIMIT_IP,
                 total_gb=TOTAL_GB,
                 expiry_time=expiry_timestamp,
                 enable=True,

@@ -1,13 +1,14 @@
 import os
 
+import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import NEWS_MESSAGE, RENEWAL_PLANS
-from database import get_balance, get_key_count, get_referral_stats
-from handlers.buttons.profile import ADD_SUB, GIFTS, INSTRUCTIONS, INVITE, MAIN_MENU, MY_SUBS, PAYMENT, TARRIFS
+from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
+from database import get_balance, get_key_count, get_referral_stats, get_trial
+from handlers.buttons.profile import ADD_SUB, GIFTS, INSTRUCTIONS, INVITE, MAIN_MENU, MY_SUBS, PAYMENT
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
 router = Router()
@@ -33,64 +34,75 @@ async def process_callback_view_profile(
     if balance is None:
         balance = 0
 
-    profile_message = profile_message_send(username, chat_id, int(balance), key_count)
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        trial_status = await get_trial(chat_id, conn)
 
-    if key_count == 0:
-        profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
-    else:
-        profile_message += f"\n<pre> <i>{NEWS_MESSAGE}</i></pre>"
+        profile_message = profile_message_send(username, chat_id, int(balance), key_count)
 
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"),
-        InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"),
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=PAYMENT,
-            callback_data="pay",
-        )
-    )
-    builder.row()
-    builder.row(
-        InlineKeyboardButton(text=INVITE, callback_data="invite"),
-        InlineKeyboardButton(text=GIFTS, callback_data="gifts"),
-    )
-    builder.row(
-        InlineKeyboardButton(text=TARRIFS, callback_data="view_tariffs"),
-        InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
-    )
-    if admin:
+        if key_count == 0:
+            profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
+        else:
+            profile_message += f"\n<pre> <i>{NEWS_MESSAGE}</i></pre>"
+
+        builder = InlineKeyboardBuilder()
+
+
+        if trial_status == 0 or key_count == 0:
+            builder.row(
+                InlineKeyboardButton(text=ADD_SUB, callback_data="create_key")
+            )
+        else:
+            builder.row(
+                InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys")
+            )
+
         builder.row(
-            InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+            InlineKeyboardButton(
+                text=PAYMENT,
+                callback_data="pay",
+            )
         )
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
+        builder.row(
+            InlineKeyboardButton(text=INVITE, callback_data="invite"),
+            InlineKeyboardButton(text=GIFTS, callback_data="gifts"),
+        )
+        builder.row(
+            InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
+        )
+        if admin:
+            builder.row(
+                InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
+            )
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
-    if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_file:
+        if os.path.isfile(image_path):
+            with open(image_path, "rb") as image_file:
+                if is_callback:
+                    await callback_query_or_message.message.answer_photo(
+                        photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                        caption=profile_message,
+                        reply_markup=builder.as_markup(),
+                    )
+                else:
+                    await callback_query_or_message.answer_photo(
+                        photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                        caption=profile_message,
+                        reply_markup=builder.as_markup(),
+                    )
+        else:
             if is_callback:
-                await callback_query_or_message.message.answer_photo(
-                    photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
-                    caption=profile_message,
+                await callback_query_or_message.message.answer(
+                    text=profile_message,
                     reply_markup=builder.as_markup(),
                 )
             else:
-                await callback_query_or_message.answer_photo(
-                    photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
-                    caption=profile_message,
+                await callback_query_or_message.answer(
+                    text=profile_message,
                     reply_markup=builder.as_markup(),
                 )
-    else:
-        if is_callback:
-            await callback_query_or_message.message.answer(
-                text=profile_message,
-                reply_markup=builder.as_markup(),
-            )
-        else:
-            await callback_query_or_message.answer(
-                text=profile_message,
-                reply_markup=builder.as_markup(),
-            )
+    finally:
+        await conn.close()
 
 
 

@@ -5,7 +5,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import (
     CRYPTO_BOT_ENABLE,
     DONATIONS_ENABLE,
-    FREEKASSA_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     YOOKASSA_ENABLE,
@@ -31,13 +30,6 @@ async def handle_pay(callback_query: CallbackQuery):
             InlineKeyboardButton(
                 text="💳 ЮМани: оплата по карте",
                 callback_data="pay_yoomoney",
-            )
-        )
-    if FREEKASSA_ENABLE:
-        builder.row(
-            InlineKeyboardButton(
-                text="🌐 FreeKassa: множество способов",
-                callback_data="pay_freekassa",
             )
         )
     if CRYPTO_BOT_ENABLE:

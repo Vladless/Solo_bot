@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_MACOS, CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
 from handlers.texts import CONNECT_TV_TEXT, INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE, SUBSCRIPTION_DETAILS_TEXT
+from logger import logger
 
 router = Router()
 
@@ -117,7 +118,7 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
     key_name = callback_query.data.split("|")[1]
     tg_id = callback_query.from_user.id
 
-    print(f"tg_id: {tg_id}, key_name: {key_name}")  # Отладочный вывод
+    logger.info(f"tg_id: {tg_id}, key_name: {key_name}")
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -131,7 +132,7 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
             key_name,
         )
 
-        print(f"Query result: {record}")  # Отладочный вывод результата
+        logger.info(f"Query result: {record}")
     finally:
         await conn.close()
 

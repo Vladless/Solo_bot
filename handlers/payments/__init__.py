@@ -4,7 +4,6 @@ from aiogram import Router
 
 from config import (
     CRYPTO_BOT_ENABLE,
-    FREEKASSA_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     YOOKASSA_ENABLE,

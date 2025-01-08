@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 import asyncpg
 from aiogram import Bot, Router, types
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
@@ -16,6 +17,7 @@ from config import (
     TRIAL_TIME,
 )
 from database import (
+    add_blocked_user,
     add_notification,
     check_notification_time,
     delete_key,
@@ -93,13 +95,14 @@ async def notify_10h_keys(
         """
         SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
         WHERE expiry_time <= $1 AND expiry_time > $2 AND notified = FALSE
-    """,
+        """,
         threshold_time_10h,
         current_time,
     )
 
     logger.info(f"Найдено {len(records)} ключей для уведомления за 10 часов.")
-    for record in records:
+
+    async def process_record(record):
         tg_id = record["tg_id"]
         email = record["email"]
         expiry_time = record["expiry_time"]
@@ -123,7 +126,54 @@ async def notify_10h_keys(
             price=RENEWAL_PLANS["1"]["price"],
         )
 
-        if not await is_bot_blocked(bot, tg_id) and not DEV_MODE:
+        balance = await get_balance(tg_id)
+
+        if balance >= RENEWAL_PLANS["1"]["price"]:
+            try:
+                await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+                new_expiry_time = int(
+                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
+                )
+                await update_key_expiry(record["client_id"], new_expiry_time)
+
+                servers = await get_servers_from_db()
+
+                for cluster_id in servers:
+                    await renew_key_in_cluster(
+                        cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB
+                    )
+                    logger.info(
+                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
+                    )
+
+                await conn.execute(
+                    """
+                    UPDATE keys
+                    SET notified = FALSE, notified_24h = FALSE
+                    WHERE client_id = $1
+                    """,
+                    record["client_id"],
+                )
+
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            types.InlineKeyboardButton(
+                                text="👤 Личный кабинет", callback_data="profile"
+                            )
+                        ]
+                    ]
+                )
+                await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+                logger.info(
+                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
+                )
+            except TelegramForbiddenError:
+                logger.warning(f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users.")
+                await add_blocked_user(tg_id, conn)
+            except Exception as e:
+                logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
+        else:
             try:
                 keyboard = InlineKeyboardBuilder()
                 keyboard.button(
@@ -132,22 +182,26 @@ async def notify_10h_keys(
                 keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
                 keyboard.button(text="👤 Личный кабинет", callback_data="profile")
                 keyboard.adjust(1)
-                keyboard = keyboard.as_markup()
-                await bot.send_message(tg_id, message, reply_markup=keyboard)
+
+                await bot.send_message(tg_id, message, reply_markup=keyboard.as_markup())
                 logger.info(f"Уведомление отправлено пользователю {tg_id}.")
+
+                await conn.execute(
+                    "UPDATE keys SET notified = TRUE WHERE client_id = $1",
+                    record["client_id"],
+                )
+                logger.info(
+                    f"Обновлено поле notified для клиента {record['client_id']}.")
+            except TelegramForbiddenError:
+                logger.warning(f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users.")
+                await add_blocked_user(tg_id, conn)
             except Exception as e:
-                logger.error(
+                logger.debug(
                     f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
                 )
-                continue
 
-            await conn.execute(
-                "UPDATE keys SET notified = TRUE WHERE client_id = $1",
-                record["client_id"],
-            )
-            logger.info(f"Обновлено поле notified для клиента {record['client_id']}.")
-
-        await asyncio.sleep(1)
+    await asyncio.gather(*(process_record(record) for record in records))
+    logger.info("Обработка всех уведомлений за 10 часов завершена.")
 
 
 async def notify_24h_keys(
@@ -162,13 +216,14 @@ async def notify_24h_keys(
         """
         SELECT tg_id, email, expiry_time, client_id, server_id FROM keys 
         WHERE expiry_time <= $1 AND expiry_time > $2 AND notified_24h = FALSE
-    """,
+        """,
         threshold_time_24h,
         current_time,
     )
 
     logger.info(f"Найдено {len(records_24h)} ключей для уведомления за 24 часа.")
-    for record in records_24h:
+
+    async def process_record(record):
         tg_id = record["tg_id"]
         email = record["email"]
         expiry_time = record["expiry_time"]
@@ -191,7 +246,55 @@ async def notify_24h_keys(
             expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        if not await is_bot_blocked(bot, tg_id) and not DEV_MODE:
+        balance = await get_balance(tg_id)
+
+        if balance >= RENEWAL_PLANS["1"]["price"]:
+            try:
+                await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+                new_expiry_time = int(
+                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
+                )
+                await update_key_expiry(record["client_id"], new_expiry_time)
+
+                servers = await get_servers_from_db()
+
+                for cluster_id in servers:
+                    await renew_key_in_cluster(
+                        cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB
+                    )
+                    logger.info(
+                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
+                    )
+
+                await conn.execute(
+                    """
+                    UPDATE keys
+                    SET notified_24h = FALSE, notified = FALSE
+                    WHERE client_id = $1
+                    """,
+                    record["client_id"],
+                )
+
+                keyboard = InlineKeyboardBuilder()
+                keyboard.row(
+                    types.InlineKeyboardButton(
+                        text="👤 Личный кабинет", callback_data="profile"
+                    )
+                )
+                await bot.send_message(
+                    tg_id,
+                    text=KEY_RENEWED,
+                    reply_markup=keyboard.as_markup(),
+                )
+                logger.info(
+                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
+                )
+            except TelegramForbiddenError:
+                logger.warning(f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users.")
+                await add_blocked_user(tg_id, conn)
+            except Exception as e:
+                logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
+        else:
             try:
                 builder = InlineKeyboardBuilder()
                 builder.row(
@@ -214,22 +317,27 @@ async def notify_24h_keys(
                 )
                 keyboard = builder.as_markup()
                 await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
-                logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
+                logger.info(
+                    f"Уведомление за 24 часа отправлено пользователю {tg_id}."
+                )
+            except TelegramForbiddenError:
+                logger.warning(f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users.")
+                await add_blocked_user(tg_id, conn)
             except Exception as e:
                 logger.error(
                     f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}"
                 )
-                continue
 
-            await conn.execute(
-                "UPDATE keys SET notified_24h = TRUE WHERE client_id = $1",
-                record["client_id"],
-            )
-            logger.info(
-                f"Обновлено поле notified_24h для клиента {record['client_id']}."
-            )
+        await conn.execute(
+            "UPDATE keys SET notified_24h = TRUE WHERE client_id = $1",
+            record["client_id"],
+        )
+        logger.info(
+            f"Обновлено поле notified_24h для клиента {record['client_id']}."
+        )
 
-        await asyncio.sleep(1)
+    await asyncio.gather(*(process_record(record) for record in records_24h))
+    logger.info("Обработка всех уведомлений за 24 часа завершена.")
 
 
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
@@ -257,7 +365,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 tg_id, "inactive_trial", hours=24, session=conn
             )
 
-            if can_notify and not await is_bot_blocked(bot, tg_id):
+            if can_notify:
                 builder = InlineKeyboardBuilder()
                 builder.row(
                     types.InlineKeyboardButton(
@@ -279,32 +387,45 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                     "💡 Нажми на кнопку ниже, чтобы активировать пробный доступ."
                 )
 
-                await bot.send_message(tg_id, message, reply_markup=keyboard)
-                logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
+                try:
+                    await bot.send_message(tg_id, message, reply_markup=keyboard)
+                    logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
+                    await add_notification(tg_id, "inactive_trial", session=conn)
 
-                await add_notification(tg_id, "inactive_trial", session=conn)
+                except TelegramForbiddenError:
+                    logger.warning(f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
+                    await add_blocked_user(tg_id, conn)
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 
         except Exception as e:
-            logger.error(
-                f"Ошибка при отправке уведомления неактивному пользователю {tg_id}: {e}"
-            )
+            logger.error(f"Ошибка при обработке пользователя {tg_id}: {e}")
 
         await asyncio.sleep(1)
 
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
-    logger.info("Проверка истекших ключей...")
+    logger.info("Проверка подписок, срок действия которых скоро истекает...")
+
+    threshold_time = int((datetime.utcnow() + timedelta(minutes=45)).timestamp() * 1000)
+
     expiring_keys = await conn.fetch(
         """
         SELECT tg_id, client_id, expiry_time, email FROM keys 
-        WHERE expiry_time <= $1
+        WHERE expiry_time <= $1 AND expiry_time > $2
         """,
+        threshold_time,
         current_time,
     )
-    logger.info(f"current_time {current_time}")
-    logger.info(f"Найдено {len(expiring_keys)} истекающих ключей.")
 
-    await asyncio.gather(*[process_key(record, bot, conn) for record in expiring_keys])
+    logger.info(f"Найдено {len(expiring_keys)} подписок, срок действия которых скоро истекает.")
+
+    for record in expiring_keys:
+        try:
+            await process_key(record, bot, conn)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке подписки {record['client_id']}: {e}")
+
 
 
 async def process_key(record, bot, conn):
@@ -318,8 +439,11 @@ async def process_key(record, bot, conn):
     time_left = expiry_date - current_date
 
     logger.info(
-        f"Время истечения ключа: {expiry_time} (дата: {expiry_date}), Текущее время: {current_date}, Оставшееся время: {time_left}"
+        f"Время истечения ключа: {expiry_time} (UTC: {expiry_date}), "
+        f"Текущее время (UTC): {current_date}, "
+        f"Оставшееся время: {time_left}"
     )
+
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -395,6 +519,7 @@ async def process_key(record, bot, conn):
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
 
+
 async def check_online_users():
     servers = await get_servers_from_db()
 
@@ -413,29 +538,3 @@ async def check_online_users():
                 logger.error(
                     f"Не удалось проверить пользователей на сервере {server_id}: {e}"
                 )
-
-
-async def update_all_keys():
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        keys = await conn.fetch("SELECT tg_id, client_id, email, expiry_time, server_id FROM keys")
-        
-        for key in keys:
-            tg_id = key['tg_id']
-            client_id = key['client_id']
-            email = key['email']
-            expiry_time = key['expiry_time']
-            cluster_id = key['server_id']
-            
-            try:
-                await update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id)
-                await store_key(tg_id, client_id, email, expiry_time, key['key'], cluster_id, conn)
-                logger.info(f"Ключ {client_id} успешно обновлен и сохранен")
-            except Exception as e:
-                logger.error(f"Ошибка при обновлении и сохранении ключа {client_id}: {e}")
-        
-        logger.info("Все ключи успешно обновлены и сохранены")
-    except Exception as e:
-        logger.error(f"Ошибка при обновлении всех ключей: {e}")
-    finally:
-        await conn.close()

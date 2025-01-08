@@ -25,6 +25,14 @@ from database import (
     update_balance,
     update_key_expiry,
 )
+from handlers.buttons.add_subscribe import (
+    DOWNLOAD_ANDROID_BUTTON,
+    DOWNLOAD_IOS_BUTTON,
+    IMPORT_ANDROID,
+    IMPORT_IOS,
+    PC_BUTTON,
+    TV_BUTTON,
+)
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
@@ -69,10 +77,7 @@ async def process_callback_or_message_view_keys(
             chat_id,
         )
 
-        if records:
-            inline_keyboard, response_message = build_keys_response(records)
-        else:
-            inline_keyboard, response_message = build_no_keys_response()
+        inline_keyboard, response_message = build_keys_response(records)
 
         image_path = os.path.join("img", "pic_keys.jpg")
         await send_with_optional_image(
@@ -85,47 +90,33 @@ async def process_callback_or_message_view_keys(
 
 def build_keys_response(records):
     """
-    Формирует сообщение и клавиатуру, если у пользователя есть устройства.
+    Формирует сообщение и клавиатуру для устройств.
     """
     builder = InlineKeyboardBuilder()
-    for record in records:
-        key_name = record["email"]
-        builder.row(
-            InlineKeyboardButton(
-                text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
+
+    if records:
+        for record in records:
+            key_name = record["email"]
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
+                )
             )
-        )
 
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
-
-    inline_keyboard = builder.as_markup()
-    response_message = (
-        "<b>🔑 Список ваших устройств</b>\n\n"
-        "<i>👇 Выберите устройство для управления подпиской:</i>"
-    )
-    return inline_keyboard, response_message
-
-
-def build_no_keys_response():
-    """
-    Формирует сообщение и клавиатуру, если у пользователя нет устройств.
-    """
-    builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="➕ Создать подписку", callback_data="create_key"
+            text="➕ Добавить подписку", callback_data="create_key"
         )
     )
+
     builder.row(
         InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
     )
 
     inline_keyboard = builder.as_markup()
     response_message = (
-        "<b>❌ У вас пока нет активных устройств</b>\n\n"
-        "<i>Нажмите кнопку ниже, чтобы создать устройство:</i>"
+        "<b>🔑 Список ваших подписок</b>\n\n"
+        "<i>👇 Выберите подписку для управления или добавьте новую (например, для подключения нового устройства):</i>"
     )
     return inline_keyboard, response_message
 
@@ -198,27 +189,27 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 )
 
             builder.row(
-                InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
+                InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
                 InlineKeyboardButton(
-                    text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID
+                    text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID
                 ),
             )
 
             builder.row(
                 InlineKeyboardButton(
-                    text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{key}"
+                    text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"
                 ),
                 InlineKeyboardButton(
-                    text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{key}"
+                    text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"
                 ),
             )
 
             builder.row(
                 InlineKeyboardButton(
-                    text="💻 Компьютеры", callback_data=f"connect_pc|{key_name}"
+                    text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"
                 ),
                 InlineKeyboardButton(
-                    text="📺 Андроид TV", callback_data=f"connect_tv|{key_name}"
+                    text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"
                 )
             )
 
@@ -229,7 +220,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 InlineKeyboardButton(
                     text="❌ Удалить", callback_data=f"delete_key|{key_name}"
                 ),
-            )                
+            )
 
             builder.row(
                 InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")

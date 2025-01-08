@@ -3,6 +3,7 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any
 
+import asyncpg
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -12,6 +13,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
 from bot import bot
+from config import DATABASE_URL
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -34,7 +36,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "3.2.5-beta"  # Укажите текущую версию бота
+    BOT_VERSION = "4.0.0-preAlpha"  # Укажите текущую версию бота
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -85,12 +87,16 @@ async def handle_bot_management(callback_query: types.CallbackQuery):
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
     builder.row(
+        InlineKeyboardButton(text="🚫 Баны", callback_data="ban_user")
+    )
+    builder.row(
         InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")
     )
     await callback_query.message.answer(
         "🤖 Управление ботом",
         reply_markup=builder.as_markup(),
     )
+
 
 
 @router.callback_query(F.data == "user_stats", IsAdminFilter())
@@ -434,3 +440,94 @@ async def user_editor_menu(callback_query: CallbackQuery):
     await callback_query.message.answer(
         "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
     )
+
+
+@router.callback_query(F.data == "ban_user")
+async def handle_ban_user(callback_query: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📄 Выгрузить в CSV", callback_data="export_to_csv")
+    )
+    builder.row(
+        InlineKeyboardButton(text="🗑️ Удалить из БД", callback_data="delete_banned_users")
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
+    )
+    await callback_query.message.answer(
+        "🚫 Заблокировавшие бота\n\n"
+        "Здесь можно просматривать и удалять пользователей, которые забанили вашего бота!",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "export_to_csv")
+async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        banned_users = await conn.fetch("SELECT tg_id, blocked_at FROM blocked_users")
+
+        import csv
+        import io
+        csv_output = io.StringIO()
+        writer = csv.writer(csv_output)
+        writer.writerow(["tg_id", "blocked_at"])
+        for user in banned_users:
+            writer.writerow([user["tg_id"], user["blocked_at"]])
+
+        csv_output.seek(0)
+
+        document = BufferedInputFile(
+            file=csv_output.getvalue().encode("utf-8"),
+            filename="banned_users.csv"
+        )
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
+        )
+
+        await callback_query.message.answer_document(
+            document=document,
+            caption="📄 Список заблокировавших бота пользователей",
+            reply_markup=builder.as_markup(),
+        )
+    except Exception as e:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
+        )
+        await callback_query.message.answer(
+            text=f"Ошибка при выгрузке CSV: {e}",
+            reply_markup=builder.as_markup(),
+        )
+    finally:
+        await conn.close()
+
+
+@router.callback_query(F.data == "delete_banned_users")
+async def delete_banned_users(callback_query: types.CallbackQuery):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        deleted_count = await conn.execute("DELETE FROM blocked_users")
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
+        )
+
+        await callback_query.message.answer(
+            text=f"🗑️ Удалено {deleted_count} записей о заблокировавших пользователях.",
+            reply_markup=builder.as_markup(),
+        )
+    except Exception as e:
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
+        )
+        await callback_query.message.answer(
+            text=f"Ошибка при удалении записей: {e}",
+            reply_markup=builder.as_markup(),
+        )
+    finally:
+        await conn.close()

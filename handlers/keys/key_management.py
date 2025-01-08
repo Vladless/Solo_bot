@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -18,9 +19,19 @@ from config import (
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
     TRIAL_TIME,
+    USE_NEW_PAYMENT_FLOW,
 )
-from database import get_balance, get_trial, store_key, update_balance
+from database import get_balance, get_trial, save_temporary_data, store_key, update_balance
+from handlers.buttons.add_subscribe import (
+    DOWNLOAD_ANDROID_BUTTON,
+    DOWNLOAD_IOS_BUTTON,
+    IMPORT_ANDROID,
+    IMPORT_IOS,
+    PC_BUTTON,
+    TV_BUTTON,
+)
 from handlers.keys.key_utils import create_key_on_cluster
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import DISCOUNTS, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
@@ -88,7 +99,7 @@ async def handle_key_creation(
 
 
 @router.callback_query(F.data.startswith("select_plan_"))
-async def select_tariff_plan(callback_query: CallbackQuery, state: FSMContext, session: Any):
+async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     plan_id = callback_query.data.split("_")[-1]
     plan_price = RENEWAL_PRICES.get(plan_id)
@@ -98,28 +109,46 @@ async def select_tariff_plan(callback_query: CallbackQuery, state: FSMContext, s
         return
 
     duration_days = int(plan_id) * 30
-
     balance = await get_balance(tg_id)
+
+    await save_temporary_data(
+        session,
+        tg_id,
+        "waiting_for_payment",
+        {
+            "plan_id": plan_id,
+            "plan_price": plan_price,
+            "duration_days": duration_days,
+            "required_amount": max(0, plan_price - balance),
+        }
+    )
+
     if balance < plan_price:
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-        await callback_query.message.answer(
-            "💳 Недостаточно средств для создания подписки. Пополните баланс в личном кабинете.",
-            reply_markup=builder.as_markup(),
-        )
-        await state.clear()
+        required_amount = plan_price - balance
+
+        if USE_NEW_PAYMENT_FLOW:
+            await process_custom_amount_input(callback_query, session)
+        else:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+            await callback_query.message.answer(
+                f"💳 Недостаточно средств. Для продолжения необходимо пополнить баланс на {required_amount}₽.",
+                reply_markup=builder.as_markup(),
+            )
         return
 
     await update_balance(tg_id, -plan_price)
-
     expiry_time = datetime.utcnow() + timedelta(days=duration_days)
-
-    await create_key(tg_id, expiry_time, state, session, callback_query)
-
+    await create_key(tg_id, expiry_time, None, session, callback_query)
 
 async def create_key(
-    tg_id: int, expiry_time: datetime, state: FSMContext, session: Any, message_or_query: Message | CallbackQuery
+    tg_id: int,
+    expiry_time: datetime,
+    state: FSMContext | None,
+    session: Any,
+    message_or_query: Message | CallbackQuery | None = None,
 ):
     """Создаёт ключ с заданным сроком действия."""
     while True:
@@ -169,19 +198,27 @@ async def create_key(
             await message_or_query.message.answer(
                 "❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова."
             )
+        else:
+            await bot.send_message(
+                chat_id=tg_id,
+                text="❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова."
+            )
         return
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
     builder.row(
-        InlineKeyboardButton(text="🍏 Скачать для iOS", url=DOWNLOAD_IOS),
-        InlineKeyboardButton(text="🤖 Скачать для Android", url=DOWNLOAD_ANDROID),
+        InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+        InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
     )
     builder.row(
-        InlineKeyboardButton(text="🍏 Подключить на iOS", url=f"{CONNECT_IOS}{public_link}"),
-        InlineKeyboardButton(text="🤖 Подключить на Android", url=f"{CONNECT_ANDROID}{public_link}"),
+        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
+        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
     )
-    builder.row(InlineKeyboardButton(text="💻 Windows/Linux/MacOS", callback_data=f"connect_pc|{email}"))
+    builder.row(
+        InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+        InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+        )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     remaining_time = expiry_time - datetime.utcnow()
@@ -192,5 +229,8 @@ async def create_key(
         await message_or_query.answer(key_message, reply_markup=builder.as_markup())
     elif isinstance(message_or_query, CallbackQuery):
         await message_or_query.message.answer(key_message, reply_markup=builder.as_markup())
+    else:
+        await bot.send_message(chat_id=tg_id, text=key_message, reply_markup=builder.as_markup())
 
-    await state.clear()
+    if state:
+        await state.clear()
