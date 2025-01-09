@@ -14,9 +14,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from backup import backup_database
 from bot import bot
 from config import DATABASE_URL
+from database import delete_user_data
 from filters.admin import IsAdminFilter
 from logger import logger
-from database import delete_user_data
 
 router = Router()
 
@@ -37,7 +37,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "4.0.0-preAlpha"  # Укажите текущую версию бота
+    BOT_VERSION = "4.0.0-preAlpha(9)" 
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -274,6 +274,7 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     builder.row(InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all"))
     builder.row(InlineKeyboardButton(text="📢 Отправить с подпиской", callback_data="send_to_subscribed"))
     builder.row(InlineKeyboardButton(text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"))
+    builder.row(InlineKeyboardButton(text="📢 Рассылка по кластеру", callback_data="send_to_cluster"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
     await callback_query.message.answer(
         "✍️ Выберите группу пользователей и введите текст сообщения для рассылки:",
@@ -301,6 +302,35 @@ async def handle_send_to_unsubscribed(callback_query: CallbackQuery, state: FSMC
     await state.update_data(send_to="unsubscribed")
     await callback_query.message.answer(
         "✍️ Введите текст сообщения для рассылки пользователям без активной подписки:"
+    )
+    await state.set_state(UserEditorState.waiting_for_message)
+
+@router.callback_query(F.data == "send_to_cluster", IsAdminFilter())
+async def handle_send_to_cluster(callback_query: CallbackQuery, state: FSMContext, session: Any):
+    clusters = await session.fetch("SELECT DISTINCT cluster_name FROM servers")
+
+    builder = InlineKeyboardBuilder()
+    for cluster in clusters:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🌐 {cluster['cluster_name']}",
+                callback_data=f"send_cluster|{cluster['cluster_name']}"
+            )
+        )
+
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="send_to"))
+    await callback_query.message.answer(
+        "✍️ Выберите кластер для рассылки сообщений:",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("send_cluster|"), IsAdminFilter())
+async def handle_send_cluster(callback_query: CallbackQuery, state: FSMContext):
+    cluster_name = callback_query.data.split("|")[1]
+    await state.update_data(send_to="cluster", cluster_name=cluster_name)
+    await callback_query.message.answer(
+        f"✍️ Введите текст сообщения для рассылки пользователям кластера <b>{cluster_name}</b>:"
     )
     await state.set_state(UserEditorState.waiting_for_message)
 
@@ -332,6 +362,15 @@ async def process_message_to_all(
                 GROUP BY c.tg_id
                 HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
             """, int(datetime.utcnow().timestamp() * 1000))
+        elif send_to == 'cluster':
+            cluster_name = state_data.get('cluster_name')
+            tg_ids = await session.fetch("""
+                SELECT DISTINCT c.tg_id
+                FROM connections c
+                JOIN keys k ON c.tg_id = k.tg_id
+                JOIN servers s ON k.server_id = s.cluster_name
+                WHERE s.cluster_name = $1
+            """, cluster_name)
 
         total_users = len(tg_ids)
         success_count = 0

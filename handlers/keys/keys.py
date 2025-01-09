@@ -13,6 +13,7 @@ from config import (
     CONNECT_IOS,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
+    ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
     PUBLIC_LINK,
     RENEWAL_PLANS,
     TOTAL_GB,
@@ -166,13 +167,18 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
             if time_left.total_seconds() <= 0:
                 days_left_message = (
-                    "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0"
+                    "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
                 )
-            elif time_left.days > 0:
-                days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
             else:
-                hours_left = time_left.seconds // 3600
-                days_left_message = f"Осталось часов: <b>{hours_left}</b>"
+                total_seconds = int(time_left.total_seconds())
+                days = total_seconds // 86400
+                hours = (total_seconds % 86400) // 3600
+                minutes = (total_seconds % 3600) // 60
+
+                days_left_message = (
+                    f"<b>🕒 Статус подписки:</b>\n"
+                    f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+                )
 
             formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
             response_message = key_message(
@@ -181,10 +187,11 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
             builder = InlineKeyboardBuilder()
 
-            builder.row(
+            if not key.startswith(PUBLIC_LINK) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+                builder.row(
                     InlineKeyboardButton(
                         text="🔄 Обновить подписку",
-                        callback_data=f"update_subscription|{key_name}",
+                        callback_data=f"update_subscription|{key_name}"
                     )
                 )
 
