@@ -78,3 +78,13 @@ def build_restart_kb() -> InlineKeyboardMarkup:
         callback_data="admin"
     )
     return builder.as_markup()
+
+
+def build_admin_back_kb(action: str) -> InlineKeyboardMarkup:
+    return build_admin_singleton_kb("🔙 Назад", action)
+
+
+def build_admin_singleton_kb(text: str, action: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=text, callback_data=AdminPanelCallback(action=action).pack())
+    return builder.as_markup()
