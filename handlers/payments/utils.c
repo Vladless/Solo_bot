@@ -1492,7 +1492,7 @@ static const char *__pyx_f[] = {
 /*--- Type declarations ---*/
 struct __pyx_obj_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification;
 
-/* "handlers/payments/utils.py":14
+/* "handlers/payments/utils.py":15
  * 
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):             # <<<<<<<<<<<<<<
@@ -2029,6 +2029,14 @@ static PyObject *__Pyx_PyDict_GetItem(PyObject *d, PyObject* key);
 #define __Pyx_PyObject_Dict_GetItem(obj, name)  PyObject_GetItem(obj, name)
 #endif
 
+/* GetException.proto */
+#if CYTHON_FAST_THREAD_STATE
+#define __Pyx_GetException(type, value, tb)  __Pyx__GetException(__pyx_tstate, type, value, tb)
+static int __Pyx__GetException(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb);
+#else
+static int __Pyx_GetException(PyObject **type, PyObject **value, PyObject **tb);
+#endif
+
 /* PyObjectFormatSimple.proto */
 #if CYTHON_COMPILING_IN_PYPY
     #define __Pyx_PyObject_FormatSimple(s, f) (\
@@ -2054,14 +2062,6 @@ static PyObject *__Pyx_PyDict_GetItem(PyObject *d, PyObject* key);
 /* JoinPyUnicode.proto */
 static PyObject* __Pyx_PyUnicode_Join(PyObject* value_tuple, Py_ssize_t value_count, Py_ssize_t result_ulength,
                                       Py_UCS4 max_char);
-
-/* GetException.proto */
-#if CYTHON_FAST_THREAD_STATE
-#define __Pyx_GetException(type, value, tb)  __Pyx__GetException(__pyx_tstate, type, value, tb)
-static int __Pyx__GetException(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb);
-#else
-static int __Pyx_GetException(PyObject **type, PyObject **value, PyObject **tb);
-#endif
 
 /* pep479.proto */
 static void __Pyx_Generator_Replace_StopIteration(int in_async_gen);
@@ -2306,14 +2306,11 @@ int __pyx_module_is_main_handlers__payments__utils = 0;
 /* #### Code section: string_decls ### */
 static const char __pyx_k_e[] = "e";
 static const char __pyx_k__2[] = ".";
-static const char __pyx_k__3[] = "\320\222\320\260\321\210 \320\261\320\260\320\273\320\260\320\275\321\201 \321\203\321\201\320\277\320\265\321\210\320\275\320\276 \320\277\320\276\320\277\320\276\320\273\320\275\320\265\320\275 \320\275\320\260 ";
-static const char __pyx_k__4[] = " \321\200\321\203\320\261\320\273\320\265\320\271. \320\241\320\277\320\260\321\201\320\270\320\261\320\276 \320\267\320\260 \320\276\320\277\320\273\320\260\321\202\321\203!\n\n\360\237\222\263 \320\235\320\265\320\264\320\276\321\201\321\202\320\260\321\202\320\276\321\207\320\275\320\276 \321\201\321\200\320\265\320\264\321\201\321\202\320\262 \320\275\320\260 \320\261\320\260\320\273\320\260\320\275\321\201\320\265 \320\264\320\273\321\217 \321\201\320\276\320\267\320\264\320\260\320\275\320\270\321\217 \320\277\320\276\320\264\320\277\320\270\321\201\320\272\320\270. \320\237\320\276\320\277\320\276\320\273\320\275\320\270\321\202\320\265 \320\261\320\260\320\273\320\260\320\275\321\201 \320\265\321\211\321\221 \321\200\320\260\320\267.";
-static const char __pyx_k__5[] = " \321\200\321\203\320\261\320\273\320\265\320\271. \320\241\320\277\320\260\321\201\320\270\320\261\320\276 \320\267\320\260 \320\276\320\277\320\273\320\260\321\202\321\203!";
-static const char __pyx_k__6[] = "\320\236\321\210\320\270\320\261\320\272\320\260 \320\277\321\200\320\270 \320\276\321\202\320\277\321\200\320\260\320\262\320\272\320\265 \321\203\320\262\320\265\320\264\320\276\320\274\320\273\320\265\320\275\320\270\321\217 \320\277\320\276\320\273\321\214\320\267\320\276\320\262\320\260\321\202\320\265\320\273\321\216 ";
-static const char __pyx_k__7[] = ": ";
-static const char __pyx_k__8[] = "*";
+static const char __pyx_k__3[] = "\320\236\321\210\320\270\320\261\320\272\320\260 \320\277\321\200\320\270 \320\276\321\202\320\277\321\200\320\260\320\262\320\272\320\265 \321\203\320\262\320\265\320\264\320\276\320\274\320\273\320\265\320\275\320\270\321\217 \320\277\320\276\320\273\321\214\320\267\320\276\320\262\320\260\321\202\320\265\320\273\321\216 ";
+static const char __pyx_k__4[] = ": ";
+static const char __pyx_k__5[] = "*";
+static const char __pyx_k__7[] = "?";
 static const char __pyx_k_gc[] = "gc";
-static const char __pyx_k__10[] = "?";
 static const char __pyx_k_bot[] = "bot";
 static const char __pyx_k_int[] = "int";
 static const char __pyx_k_row[] = "row";
@@ -2336,6 +2333,7 @@ static const char __pyx_k_throw[] = "throw";
 static const char __pyx_k_amount[] = "amount";
 static const char __pyx_k_config[] = "config";
 static const char __pyx_k_enable[] = "enable";
+static const char __pyx_k_format[] = "format";
 static const char __pyx_k_import[] = "__import__";
 static const char __pyx_k_logger[] = "logger";
 static const char __pyx_k_utcnow[] = "utcnow";
@@ -2369,6 +2367,7 @@ static const char __pyx_k_send_message[] = "send_message";
 static const char __pyx_k_aiogram_types[] = "aiogram.types";
 static const char __pyx_k_callback_data[] = "callback_data";
 static const char __pyx_k_duration_days[] = "duration_days";
+static const char __pyx_k_handlers_texts[] = "handlers.texts";
 static const char __pyx_k_update_balance[] = "update_balance";
 static const char __pyx_k_asyncio_coroutines[] = "asyncio.coroutines";
 static const char __pyx_k_cline_in_traceback[] = "cline_in_traceback";
@@ -2379,6 +2378,7 @@ static const char __pyx_k_USE_NEW_PAYMENT_FLOW[] = "USE_NEW_PAYMENT_FLOW";
 static const char __pyx_k_clear_temporary_data[] = "clear_temporary_data";
 static const char __pyx_k_InlineKeyboardBuilder[] = "InlineKeyboardBuilder";
 static const char __pyx_k_aiogram_utils_keyboard[] = "aiogram.utils.keyboard";
+static const char __pyx_k_PAYMENT_SUCCESS_MESSAGE[] = "PAYMENT_SUCCESS_MESSAGE";
 static const char __pyx_k_handlers_payments_utils[] = "handlers.payments.utils";
 static const char __pyx_k_handlers_payments_utils_py[] = "handlers/payments/utils.py";
 static const char __pyx_k_handlers_keys_key_management[] = "handlers.keys.key_management";
@@ -2422,17 +2422,15 @@ typedef struct {
   PyObject *__pyx_n_s_DATABASE_URL;
   PyObject *__pyx_n_s_InlineKeyboardBuilder;
   PyObject *__pyx_n_s_InlineKeyboardButton;
+  PyObject *__pyx_n_s_PAYMENT_SUCCESS_MESSAGE;
   PyObject *__pyx_n_s_PROFILE;
   PyObject *__pyx_n_s_RENEW_KEY;
   PyObject *__pyx_n_s_USE_NEW_PAYMENT_FLOW;
-  PyObject *__pyx_n_s__10;
   PyObject *__pyx_kp_u__2;
   PyObject *__pyx_kp_u__3;
   PyObject *__pyx_kp_u__4;
-  PyObject *__pyx_kp_u__5;
-  PyObject *__pyx_kp_u__6;
-  PyObject *__pyx_kp_u__7;
-  PyObject *__pyx_n_s__8;
+  PyObject *__pyx_n_s__5;
+  PyObject *__pyx_n_s__7;
   PyObject *__pyx_n_s_aiogram_types;
   PyObject *__pyx_n_s_aiogram_utils_keyboard;
   PyObject *__pyx_n_s_amount;
@@ -2466,6 +2464,7 @@ typedef struct {
   PyObject *__pyx_n_s_error;
   PyObject *__pyx_n_s_expiry_time;
   PyObject *__pyx_n_s_float;
+  PyObject *__pyx_n_s_format;
   PyObject *__pyx_kp_u_gc;
   PyObject *__pyx_n_s_get_balance;
   PyObject *__pyx_n_s_get_temporary_data;
@@ -2473,6 +2472,7 @@ typedef struct {
   PyObject *__pyx_n_s_handlers_keys_key_management;
   PyObject *__pyx_n_s_handlers_payments_utils;
   PyObject *__pyx_kp_s_handlers_payments_utils_py;
+  PyObject *__pyx_n_s_handlers_texts;
   PyObject *__pyx_n_s_import;
   PyObject *__pyx_n_s_initializing;
   PyObject *__pyx_n_s_int;
@@ -2502,7 +2502,7 @@ typedef struct {
   PyObject *__pyx_n_u_view_keys;
   PyObject *__pyx_n_u_waiting_for_payment;
   PyObject *__pyx_codeobj_;
-  PyObject *__pyx_tuple__9;
+  PyObject *__pyx_tuple__6;
 } __pyx_mstate;
 
 #if CYTHON_USE_MODULE_STATE
@@ -2551,17 +2551,15 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_s_DATABASE_URL);
   Py_CLEAR(clear_module_state->__pyx_n_s_InlineKeyboardBuilder);
   Py_CLEAR(clear_module_state->__pyx_n_s_InlineKeyboardButton);
+  Py_CLEAR(clear_module_state->__pyx_n_s_PAYMENT_SUCCESS_MESSAGE);
   Py_CLEAR(clear_module_state->__pyx_n_s_PROFILE);
   Py_CLEAR(clear_module_state->__pyx_n_s_RENEW_KEY);
   Py_CLEAR(clear_module_state->__pyx_n_s_USE_NEW_PAYMENT_FLOW);
-  Py_CLEAR(clear_module_state->__pyx_n_s__10);
   Py_CLEAR(clear_module_state->__pyx_kp_u__2);
   Py_CLEAR(clear_module_state->__pyx_kp_u__3);
   Py_CLEAR(clear_module_state->__pyx_kp_u__4);
-  Py_CLEAR(clear_module_state->__pyx_kp_u__5);
-  Py_CLEAR(clear_module_state->__pyx_kp_u__6);
-  Py_CLEAR(clear_module_state->__pyx_kp_u__7);
-  Py_CLEAR(clear_module_state->__pyx_n_s__8);
+  Py_CLEAR(clear_module_state->__pyx_n_s__5);
+  Py_CLEAR(clear_module_state->__pyx_n_s__7);
   Py_CLEAR(clear_module_state->__pyx_n_s_aiogram_types);
   Py_CLEAR(clear_module_state->__pyx_n_s_aiogram_utils_keyboard);
   Py_CLEAR(clear_module_state->__pyx_n_s_amount);
@@ -2595,6 +2593,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_s_error);
   Py_CLEAR(clear_module_state->__pyx_n_s_expiry_time);
   Py_CLEAR(clear_module_state->__pyx_n_s_float);
+  Py_CLEAR(clear_module_state->__pyx_n_s_format);
   Py_CLEAR(clear_module_state->__pyx_kp_u_gc);
   Py_CLEAR(clear_module_state->__pyx_n_s_get_balance);
   Py_CLEAR(clear_module_state->__pyx_n_s_get_temporary_data);
@@ -2602,6 +2601,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_s_handlers_keys_key_management);
   Py_CLEAR(clear_module_state->__pyx_n_s_handlers_payments_utils);
   Py_CLEAR(clear_module_state->__pyx_kp_s_handlers_payments_utils_py);
+  Py_CLEAR(clear_module_state->__pyx_n_s_handlers_texts);
   Py_CLEAR(clear_module_state->__pyx_n_s_import);
   Py_CLEAR(clear_module_state->__pyx_n_s_initializing);
   Py_CLEAR(clear_module_state->__pyx_n_s_int);
@@ -2631,7 +2631,7 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_u_view_keys);
   Py_CLEAR(clear_module_state->__pyx_n_u_waiting_for_payment);
   Py_CLEAR(clear_module_state->__pyx_codeobj_);
-  Py_CLEAR(clear_module_state->__pyx_tuple__9);
+  Py_CLEAR(clear_module_state->__pyx_tuple__6);
   return 0;
 }
 #endif
@@ -2658,17 +2658,15 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_s_DATABASE_URL);
   Py_VISIT(traverse_module_state->__pyx_n_s_InlineKeyboardBuilder);
   Py_VISIT(traverse_module_state->__pyx_n_s_InlineKeyboardButton);
+  Py_VISIT(traverse_module_state->__pyx_n_s_PAYMENT_SUCCESS_MESSAGE);
   Py_VISIT(traverse_module_state->__pyx_n_s_PROFILE);
   Py_VISIT(traverse_module_state->__pyx_n_s_RENEW_KEY);
   Py_VISIT(traverse_module_state->__pyx_n_s_USE_NEW_PAYMENT_FLOW);
-  Py_VISIT(traverse_module_state->__pyx_n_s__10);
   Py_VISIT(traverse_module_state->__pyx_kp_u__2);
   Py_VISIT(traverse_module_state->__pyx_kp_u__3);
   Py_VISIT(traverse_module_state->__pyx_kp_u__4);
-  Py_VISIT(traverse_module_state->__pyx_kp_u__5);
-  Py_VISIT(traverse_module_state->__pyx_kp_u__6);
-  Py_VISIT(traverse_module_state->__pyx_kp_u__7);
-  Py_VISIT(traverse_module_state->__pyx_n_s__8);
+  Py_VISIT(traverse_module_state->__pyx_n_s__5);
+  Py_VISIT(traverse_module_state->__pyx_n_s__7);
   Py_VISIT(traverse_module_state->__pyx_n_s_aiogram_types);
   Py_VISIT(traverse_module_state->__pyx_n_s_aiogram_utils_keyboard);
   Py_VISIT(traverse_module_state->__pyx_n_s_amount);
@@ -2702,6 +2700,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_s_error);
   Py_VISIT(traverse_module_state->__pyx_n_s_expiry_time);
   Py_VISIT(traverse_module_state->__pyx_n_s_float);
+  Py_VISIT(traverse_module_state->__pyx_n_s_format);
   Py_VISIT(traverse_module_state->__pyx_kp_u_gc);
   Py_VISIT(traverse_module_state->__pyx_n_s_get_balance);
   Py_VISIT(traverse_module_state->__pyx_n_s_get_temporary_data);
@@ -2709,6 +2708,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_s_handlers_keys_key_management);
   Py_VISIT(traverse_module_state->__pyx_n_s_handlers_payments_utils);
   Py_VISIT(traverse_module_state->__pyx_kp_s_handlers_payments_utils_py);
+  Py_VISIT(traverse_module_state->__pyx_n_s_handlers_texts);
   Py_VISIT(traverse_module_state->__pyx_n_s_import);
   Py_VISIT(traverse_module_state->__pyx_n_s_initializing);
   Py_VISIT(traverse_module_state->__pyx_n_s_int);
@@ -2738,7 +2738,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_u_view_keys);
   Py_VISIT(traverse_module_state->__pyx_n_u_waiting_for_payment);
   Py_VISIT(traverse_module_state->__pyx_codeobj_);
-  Py_VISIT(traverse_module_state->__pyx_tuple__9);
+  Py_VISIT(traverse_module_state->__pyx_tuple__6);
   return 0;
 }
 #endif
@@ -2775,17 +2775,15 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_s_DATABASE_URL __pyx_mstate_global->__pyx_n_s_DATABASE_URL
 #define __pyx_n_s_InlineKeyboardBuilder __pyx_mstate_global->__pyx_n_s_InlineKeyboardBuilder
 #define __pyx_n_s_InlineKeyboardButton __pyx_mstate_global->__pyx_n_s_InlineKeyboardButton
+#define __pyx_n_s_PAYMENT_SUCCESS_MESSAGE __pyx_mstate_global->__pyx_n_s_PAYMENT_SUCCESS_MESSAGE
 #define __pyx_n_s_PROFILE __pyx_mstate_global->__pyx_n_s_PROFILE
 #define __pyx_n_s_RENEW_KEY __pyx_mstate_global->__pyx_n_s_RENEW_KEY
 #define __pyx_n_s_USE_NEW_PAYMENT_FLOW __pyx_mstate_global->__pyx_n_s_USE_NEW_PAYMENT_FLOW
-#define __pyx_n_s__10 __pyx_mstate_global->__pyx_n_s__10
 #define __pyx_kp_u__2 __pyx_mstate_global->__pyx_kp_u__2
 #define __pyx_kp_u__3 __pyx_mstate_global->__pyx_kp_u__3
 #define __pyx_kp_u__4 __pyx_mstate_global->__pyx_kp_u__4
-#define __pyx_kp_u__5 __pyx_mstate_global->__pyx_kp_u__5
-#define __pyx_kp_u__6 __pyx_mstate_global->__pyx_kp_u__6
-#define __pyx_kp_u__7 __pyx_mstate_global->__pyx_kp_u__7
-#define __pyx_n_s__8 __pyx_mstate_global->__pyx_n_s__8
+#define __pyx_n_s__5 __pyx_mstate_global->__pyx_n_s__5
+#define __pyx_n_s__7 __pyx_mstate_global->__pyx_n_s__7
 #define __pyx_n_s_aiogram_types __pyx_mstate_global->__pyx_n_s_aiogram_types
 #define __pyx_n_s_aiogram_utils_keyboard __pyx_mstate_global->__pyx_n_s_aiogram_utils_keyboard
 #define __pyx_n_s_amount __pyx_mstate_global->__pyx_n_s_amount
@@ -2819,6 +2817,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_s_error __pyx_mstate_global->__pyx_n_s_error
 #define __pyx_n_s_expiry_time __pyx_mstate_global->__pyx_n_s_expiry_time
 #define __pyx_n_s_float __pyx_mstate_global->__pyx_n_s_float
+#define __pyx_n_s_format __pyx_mstate_global->__pyx_n_s_format
 #define __pyx_kp_u_gc __pyx_mstate_global->__pyx_kp_u_gc
 #define __pyx_n_s_get_balance __pyx_mstate_global->__pyx_n_s_get_balance
 #define __pyx_n_s_get_temporary_data __pyx_mstate_global->__pyx_n_s_get_temporary_data
@@ -2826,6 +2825,7 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_s_handlers_keys_key_management __pyx_mstate_global->__pyx_n_s_handlers_keys_key_management
 #define __pyx_n_s_handlers_payments_utils __pyx_mstate_global->__pyx_n_s_handlers_payments_utils
 #define __pyx_kp_s_handlers_payments_utils_py __pyx_mstate_global->__pyx_kp_s_handlers_payments_utils_py
+#define __pyx_n_s_handlers_texts __pyx_mstate_global->__pyx_n_s_handlers_texts
 #define __pyx_n_s_import __pyx_mstate_global->__pyx_n_s_import
 #define __pyx_n_s_initializing __pyx_mstate_global->__pyx_n_s_initializing
 #define __pyx_n_s_int __pyx_mstate_global->__pyx_n_s_int
@@ -2855,11 +2855,11 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_u_view_keys __pyx_mstate_global->__pyx_n_u_view_keys
 #define __pyx_n_u_waiting_for_payment __pyx_mstate_global->__pyx_n_u_waiting_for_payment
 #define __pyx_codeobj_ __pyx_mstate_global->__pyx_codeobj_
-#define __pyx_tuple__9 __pyx_mstate_global->__pyx_tuple__9
+#define __pyx_tuple__6 __pyx_mstate_global->__pyx_tuple__6
 /* #### Code section: module_code ### */
 static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/utils.py":14
+/* "handlers/payments/utils.py":15
  * 
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):             # <<<<<<<<<<<<<<
@@ -2923,7 +2923,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 14, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 15, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
         CYTHON_FALLTHROUGH;
         case  1:
@@ -2931,14 +2931,14 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[1]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 14, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 15, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("send_payment_success_notification", 1, 2, 2, 1); __PYX_ERR(0, 14, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("send_payment_success_notification", 1, 2, 2, 1); __PYX_ERR(0, 15, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "send_payment_success_notification") < 0)) __PYX_ERR(0, 14, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "send_payment_success_notification") < 0)) __PYX_ERR(0, 15, __pyx_L3_error)
       }
     } else if (unlikely(__pyx_nargs != 2)) {
       goto __pyx_L5_argtuple_error;
@@ -2947,11 +2947,11 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
       values[1] = __Pyx_Arg_FASTCALL(__pyx_args, 1);
     }
     __pyx_v_user_id = ((PyObject*)values[0]);
-    __pyx_v_amount = __pyx_PyFloat_AsDouble(values[1]); if (unlikely((__pyx_v_amount == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 14, __pyx_L3_error)
+    __pyx_v_amount = __pyx_PyFloat_AsDouble(values[1]); if (unlikely((__pyx_v_amount == (double)-1) && PyErr_Occurred())) __PYX_ERR(0, 15, __pyx_L3_error)
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("send_payment_success_notification", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 14, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("send_payment_success_notification", 1, 2, 2, __pyx_nargs); __PYX_ERR(0, 15, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -2965,7 +2965,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_user_id), (&PyInt_Type), 0, "user_id", 1))) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_user_id), (&PyInt_Type), 0, "user_id", 1))) __PYX_ERR(0, 15, __pyx_L1_error)
   __pyx_r = __pyx_pf_8handlers_8payments_5utils_send_payment_success_notification(__pyx_self, __pyx_v_user_id, __pyx_v_amount);
 
   /* function exit code */
@@ -2995,7 +2995,7 @@ static PyObject *__pyx_pf_8handlers_8payments_5utils_send_payment_success_notifi
   if (unlikely(!__pyx_cur_scope)) {
     __pyx_cur_scope = ((struct __pyx_obj_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification *)Py_None);
     __Pyx_INCREF(Py_None);
-    __PYX_ERR(0, 14, __pyx_L1_error)
+    __PYX_ERR(0, 15, __pyx_L1_error)
   } else {
     __Pyx_GOTREF((PyObject *)__pyx_cur_scope);
   }
@@ -3004,7 +3004,7 @@ static PyObject *__pyx_pf_8handlers_8payments_5utils_send_payment_success_notifi
   __Pyx_GIVEREF(__pyx_cur_scope->__pyx_v_user_id);
   __pyx_cur_scope->__pyx_v_amount = __pyx_v_amount;
   {
-    __pyx_CoroutineObject *gen = __Pyx_Coroutine_New((__pyx_coroutine_body_t) __pyx_gb_8handlers_8payments_5utils_2generator, __pyx_codeobj_, (PyObject *) __pyx_cur_scope, __pyx_n_s_send_payment_success_notificatio, __pyx_n_s_send_payment_success_notificatio, __pyx_n_s_handlers_payments_utils); if (unlikely(!gen)) __PYX_ERR(0, 14, __pyx_L1_error)
+    __pyx_CoroutineObject *gen = __Pyx_Coroutine_New((__pyx_coroutine_body_t) __pyx_gb_8handlers_8payments_5utils_2generator, __pyx_codeobj_, (PyObject *) __pyx_cur_scope, __pyx_n_s_send_payment_success_notificatio, __pyx_n_s_send_payment_success_notificatio, __pyx_n_s_handlers_payments_utils); if (unlikely(!gen)) __PYX_ERR(0, 15, __pyx_L1_error)
     __Pyx_DECREF(__pyx_cur_scope);
     __Pyx_RefNannyFinishContext();
     return (PyObject *) gen;
@@ -3036,18 +3036,18 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
   int __pyx_t_10;
   int __pyx_t_11;
   PyObject *__pyx_t_12 = NULL;
-  Py_ssize_t __pyx_t_13;
-  Py_UCS4 __pyx_t_14;
-  int __pyx_t_15;
-  int __pyx_t_16;
-  char const *__pyx_t_17;
+  int __pyx_t_13;
+  int __pyx_t_14;
+  char const *__pyx_t_15;
+  PyObject *__pyx_t_16 = NULL;
+  PyObject *__pyx_t_17 = NULL;
   PyObject *__pyx_t_18 = NULL;
   PyObject *__pyx_t_19 = NULL;
   PyObject *__pyx_t_20 = NULL;
   PyObject *__pyx_t_21 = NULL;
   PyObject *__pyx_t_22 = NULL;
-  PyObject *__pyx_t_23 = NULL;
-  PyObject *__pyx_t_24 = NULL;
+  Py_ssize_t __pyx_t_23;
+  Py_UCS4 __pyx_t_24;
   PyObject *__pyx_t_25 = NULL;
   char const *__pyx_t_26;
   int __pyx_lineno = 0;
@@ -3074,9 +3074,9 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
     return NULL;
   }
   __pyx_L3_first_run:;
-  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 15, __pyx_L1_error)
 
-  /* "handlers/payments/utils.py":15
+  /* "handlers/payments/utils.py":16
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):
  *     try:             # <<<<<<<<<<<<<<
@@ -3090,14 +3090,14 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
     __Pyx_XGOTREF(__pyx_t_3);
     /*try:*/ {
 
-      /* "handlers/payments/utils.py":16
+      /* "handlers/payments/utils.py":17
  * async def send_payment_success_notification(user_id: int, amount: float):
  *     try:
  *         builder = InlineKeyboardBuilder()             # <<<<<<<<<<<<<<
  *         builder.row(
  *             InlineKeyboardButton(text=PROFILE, callback_data="profile")
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_InlineKeyboardBuilder); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 16, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_InlineKeyboardBuilder); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 17, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_5);
       __pyx_t_6 = NULL;
       __pyx_t_7 = 0;
@@ -3117,7 +3117,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
         __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
         __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 16, __pyx_L4_error)
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 17, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       }
@@ -3125,33 +3125,33 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
       __pyx_cur_scope->__pyx_v_builder = __pyx_t_4;
       __pyx_t_4 = 0;
 
-      /* "handlers/payments/utils.py":17
+      /* "handlers/payments/utils.py":18
  *     try:
  *         builder = InlineKeyboardBuilder()
  *         builder.row(             # <<<<<<<<<<<<<<
  *             InlineKeyboardButton(text=PROFILE, callback_data="profile")
  *         )
  */
-      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 17, __pyx_L4_error)
+      __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 18, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_5);
 
-      /* "handlers/payments/utils.py":18
+      /* "handlers/payments/utils.py":19
  *         builder = InlineKeyboardBuilder()
  *         builder.row(
  *             InlineKeyboardButton(text=PROFILE, callback_data="profile")             # <<<<<<<<<<<<<<
  *         )
  * 
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 18, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 19, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 18, __pyx_L4_error)
+      __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 19, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
-      __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 18, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 19, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_9);
-      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_text, __pyx_t_9) < 0) __PYX_ERR(0, 18, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_text, __pyx_t_9) < 0) __PYX_ERR(0, 19, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_callback_data, __pyx_n_u_profile) < 0) __PYX_ERR(0, 18, __pyx_L4_error)
-      __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_8); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 18, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_callback_data, __pyx_n_u_profile) < 0) __PYX_ERR(0, 19, __pyx_L4_error)
+      __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_8); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 19, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_9);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
       __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
@@ -3174,41 +3174,41 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
         __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
         __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 17, __pyx_L4_error)
+        if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 18, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
       }
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-      /* "handlers/payments/utils.py":21
+      /* "handlers/payments/utils.py":22
  *         )
  * 
  *         if USE_NEW_PAYMENT_FLOW:             # <<<<<<<<<<<<<<
  *             from handlers.keys.key_management import create_key
  *             conn = await asyncpg.connect(DATABASE_URL)
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_USE_NEW_PAYMENT_FLOW); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 21, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_USE_NEW_PAYMENT_FLOW); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 22, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_4);
-      __pyx_t_10 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_10 < 0))) __PYX_ERR(0, 21, __pyx_L4_error)
+      __pyx_t_10 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_10 < 0))) __PYX_ERR(0, 22, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
       if (__pyx_t_10) {
 
-        /* "handlers/payments/utils.py":22
+        /* "handlers/payments/utils.py":23
  * 
  *         if USE_NEW_PAYMENT_FLOW:
  *             from handlers.keys.key_management import create_key             # <<<<<<<<<<<<<<
  *             conn = await asyncpg.connect(DATABASE_URL)
  *             try:
  */
-        __pyx_t_4 = PyList_New(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 22, __pyx_L4_error)
+        __pyx_t_4 = PyList_New(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 23, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
         __Pyx_INCREF(__pyx_n_s_create_key);
         __Pyx_GIVEREF(__pyx_n_s_create_key);
-        if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 0, __pyx_n_s_create_key)) __PYX_ERR(0, 22, __pyx_L4_error);
-        __pyx_t_5 = __Pyx_Import(__pyx_n_s_handlers_keys_key_management, __pyx_t_4, 0); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 22, __pyx_L4_error)
+        if (__Pyx_PyList_SET_ITEM(__pyx_t_4, 0, __pyx_n_s_create_key)) __PYX_ERR(0, 23, __pyx_L4_error);
+        __pyx_t_5 = __Pyx_Import(__pyx_n_s_handlers_keys_key_management, __pyx_t_4, 0); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 23, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_5);
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        __pyx_t_4 = __Pyx_ImportFrom(__pyx_t_5, __pyx_n_s_create_key); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 22, __pyx_L4_error)
+        __pyx_t_4 = __Pyx_ImportFrom(__pyx_t_5, __pyx_n_s_create_key); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 23, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
         __Pyx_INCREF(__pyx_t_4);
         __Pyx_GIVEREF(__pyx_t_4);
@@ -3216,19 +3216,19 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-        /* "handlers/payments/utils.py":23
+        /* "handlers/payments/utils.py":24
  *         if USE_NEW_PAYMENT_FLOW:
  *             from handlers.keys.key_management import create_key
  *             conn = await asyncpg.connect(DATABASE_URL)             # <<<<<<<<<<<<<<
  *             try:
  *                 temp_data = await get_temporary_data(conn, user_id)
  */
-        __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_asyncpg); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 23, __pyx_L4_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_asyncpg); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 24, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
-        __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_connect); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 23, __pyx_L4_error)
+        __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_4, __pyx_n_s_connect); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 24, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_9);
         __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-        __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_DATABASE_URL); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 23, __pyx_L4_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_DATABASE_URL); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 24, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_4);
         __pyx_t_8 = NULL;
         __pyx_t_7 = 0;
@@ -3249,7 +3249,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
           __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-          if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 23, __pyx_L4_error)
+          if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 24, __pyx_L4_error)
           __Pyx_GOTREF(__pyx_t_5);
           __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
         }
@@ -3279,18 +3279,18 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
           __pyx_cur_scope->__pyx_t_2 = 0;
           __Pyx_XGOTREF(__pyx_t_3);
-          if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 23, __pyx_L4_error)
+          if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 24, __pyx_L4_error)
           __pyx_t_5 = __pyx_sent_value; __Pyx_INCREF(__pyx_t_5);
         } else {
           __pyx_t_5 = NULL;
-          if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 23, __pyx_L4_error)
+          if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 24, __pyx_L4_error)
           __Pyx_GOTREF(__pyx_t_5);
         }
         __Pyx_GIVEREF(__pyx_t_5);
         __pyx_cur_scope->__pyx_v_conn = __pyx_t_5;
         __pyx_t_5 = 0;
 
-        /* "handlers/payments/utils.py":24
+        /* "handlers/payments/utils.py":25
  *             from handlers.keys.key_management import create_key
  *             conn = await asyncpg.connect(DATABASE_URL)
  *             try:             # <<<<<<<<<<<<<<
@@ -3299,14 +3299,14 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  */
         /*try:*/ {
 
-          /* "handlers/payments/utils.py":25
+          /* "handlers/payments/utils.py":26
  *             conn = await asyncpg.connect(DATABASE_URL)
  *             try:
  *                 temp_data = await get_temporary_data(conn, user_id)             # <<<<<<<<<<<<<<
  *                 if temp_data and temp_data["state"] == "waiting_for_payment":
  *                     plan_price = temp_data["data"]["plan_price"]
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_get_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 25, __pyx_L13_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_get_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 26, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_9);
           __pyx_t_4 = NULL;
           __pyx_t_7 = 0;
@@ -3326,7 +3326,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
             PyObject *__pyx_callargs[3] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_conn, __pyx_cur_scope->__pyx_v_user_id};
             __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
             __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 25, __pyx_L13_error)
+            if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 26, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
             __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
           }
@@ -3356,78 +3356,78 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
             __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
             __pyx_cur_scope->__pyx_t_2 = 0;
             __Pyx_XGOTREF(__pyx_t_3);
-            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 25, __pyx_L13_error)
+            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 26, __pyx_L13_error)
             __pyx_t_5 = __pyx_sent_value; __Pyx_INCREF(__pyx_t_5);
           } else {
             __pyx_t_5 = NULL;
-            if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 25, __pyx_L13_error)
+            if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 26, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
           }
           __Pyx_GIVEREF(__pyx_t_5);
           __pyx_cur_scope->__pyx_v_temp_data = __pyx_t_5;
           __pyx_t_5 = 0;
 
-          /* "handlers/payments/utils.py":26
+          /* "handlers/payments/utils.py":27
  *             try:
  *                 temp_data = await get_temporary_data(conn, user_id)
  *                 if temp_data and temp_data["state"] == "waiting_for_payment":             # <<<<<<<<<<<<<<
  *                     plan_price = temp_data["data"]["plan_price"]
  *                     duration_days = temp_data["data"]["duration_days"]
  */
-          __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_cur_scope->__pyx_v_temp_data); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 26, __pyx_L13_error)
+          __pyx_t_11 = __Pyx_PyObject_IsTrue(__pyx_cur_scope->__pyx_v_temp_data); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 27, __pyx_L13_error)
           if (__pyx_t_11) {
           } else {
             __pyx_t_10 = __pyx_t_11;
             goto __pyx_L17_bool_binop_done;
           }
-          __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_state); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 26, __pyx_L13_error)
+          __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_state); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 27, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_5);
-          __pyx_t_11 = (__Pyx_PyUnicode_Equals(__pyx_t_5, __pyx_n_u_waiting_for_payment, Py_EQ)); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 26, __pyx_L13_error)
+          __pyx_t_11 = (__Pyx_PyUnicode_Equals(__pyx_t_5, __pyx_n_u_waiting_for_payment, Py_EQ)); if (unlikely((__pyx_t_11 < 0))) __PYX_ERR(0, 27, __pyx_L13_error)
           __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
           __pyx_t_10 = __pyx_t_11;
           __pyx_L17_bool_binop_done:;
           if (__pyx_t_10) {
 
-            /* "handlers/payments/utils.py":27
+            /* "handlers/payments/utils.py":28
  *                 temp_data = await get_temporary_data(conn, user_id)
  *                 if temp_data and temp_data["state"] == "waiting_for_payment":
  *                     plan_price = temp_data["data"]["plan_price"]             # <<<<<<<<<<<<<<
  *                     duration_days = temp_data["data"]["duration_days"]
  * 
  */
-            __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_data); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 27, __pyx_L13_error)
+            __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_data); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 28, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
-            __pyx_t_9 = __Pyx_PyObject_Dict_GetItem(__pyx_t_5, __pyx_n_u_plan_price); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 27, __pyx_L13_error)
+            __pyx_t_9 = __Pyx_PyObject_Dict_GetItem(__pyx_t_5, __pyx_n_u_plan_price); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 28, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
             __Pyx_GIVEREF(__pyx_t_9);
             __pyx_cur_scope->__pyx_v_plan_price = __pyx_t_9;
             __pyx_t_9 = 0;
 
-            /* "handlers/payments/utils.py":28
+            /* "handlers/payments/utils.py":29
  *                 if temp_data and temp_data["state"] == "waiting_for_payment":
  *                     plan_price = temp_data["data"]["plan_price"]
  *                     duration_days = temp_data["data"]["duration_days"]             # <<<<<<<<<<<<<<
  * 
  *                     balance = await get_balance(user_id)
  */
-            __pyx_t_9 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 28, __pyx_L13_error)
+            __pyx_t_9 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_temp_data, __pyx_n_u_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 29, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
-            __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_t_9, __pyx_n_u_duration_days); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 28, __pyx_L13_error)
+            __pyx_t_5 = __Pyx_PyObject_Dict_GetItem(__pyx_t_9, __pyx_n_u_duration_days); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 29, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
             __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
             __Pyx_GIVEREF(__pyx_t_5);
             __pyx_cur_scope->__pyx_v_duration_days = __pyx_t_5;
             __pyx_t_5 = 0;
 
-            /* "handlers/payments/utils.py":30
+            /* "handlers/payments/utils.py":31
  *                     duration_days = temp_data["data"]["duration_days"]
  * 
  *                     balance = await get_balance(user_id)             # <<<<<<<<<<<<<<
  *                     if balance >= plan_price:
  *                         await update_balance(user_id, -plan_price)
  */
-            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 30, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 31, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
             __pyx_t_4 = NULL;
             __pyx_t_7 = 0;
@@ -3447,7 +3447,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               PyObject *__pyx_callargs[2] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_user_id};
               __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
               __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 30, __pyx_L13_error)
+              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 31, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
             }
@@ -3477,39 +3477,39 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
               __pyx_cur_scope->__pyx_t_2 = 0;
               __Pyx_XGOTREF(__pyx_t_3);
-              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 30, __pyx_L13_error)
+              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 31, __pyx_L13_error)
               __pyx_t_5 = __pyx_sent_value; __Pyx_INCREF(__pyx_t_5);
             } else {
               __pyx_t_5 = NULL;
-              if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 30, __pyx_L13_error)
+              if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_5) < 0) __PYX_ERR(0, 31, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_5);
             }
             __Pyx_GIVEREF(__pyx_t_5);
             __pyx_cur_scope->__pyx_v_balance = __pyx_t_5;
             __pyx_t_5 = 0;
 
-            /* "handlers/payments/utils.py":31
+            /* "handlers/payments/utils.py":32
  * 
  *                     balance = await get_balance(user_id)
  *                     if balance >= plan_price:             # <<<<<<<<<<<<<<
  *                         await update_balance(user_id, -plan_price)
  * 
  */
-            __pyx_t_5 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_balance, __pyx_cur_scope->__pyx_v_plan_price, Py_GE); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 31, __pyx_L13_error)
-            __pyx_t_10 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_10 < 0))) __PYX_ERR(0, 31, __pyx_L13_error)
+            __pyx_t_5 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_balance, __pyx_cur_scope->__pyx_v_plan_price, Py_GE); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 32, __pyx_L13_error)
+            __pyx_t_10 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_10 < 0))) __PYX_ERR(0, 32, __pyx_L13_error)
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
             if (__pyx_t_10) {
 
-              /* "handlers/payments/utils.py":32
+              /* "handlers/payments/utils.py":33
  *                     balance = await get_balance(user_id)
  *                     if balance >= plan_price:
  *                         await update_balance(user_id, -plan_price)             # <<<<<<<<<<<<<<
  * 
  *                         expiry_time = datetime.utcnow() + timedelta(days=duration_days)
  */
-              __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 32, __pyx_L13_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 33, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_9);
-              __pyx_t_4 = PyNumber_Negative(__pyx_cur_scope->__pyx_v_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 32, __pyx_L13_error)
+              __pyx_t_4 = PyNumber_Negative(__pyx_cur_scope->__pyx_v_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 33, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_4);
               __pyx_t_8 = NULL;
               __pyx_t_7 = 0;
@@ -3530,7 +3530,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
                 __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
                 __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 32, __pyx_L13_error)
+                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 33, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_5);
                 __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
               }
@@ -3560,25 +3560,25 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
                 __pyx_cur_scope->__pyx_t_2 = 0;
                 __Pyx_XGOTREF(__pyx_t_3);
-                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 32, __pyx_L13_error)
+                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 33, __pyx_L13_error)
               } else {
                 PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
                 if (exc_type) {
                   if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                  else __PYX_ERR(0, 32, __pyx_L13_error)
+                  else __PYX_ERR(0, 33, __pyx_L13_error)
                 }
               }
 
-              /* "handlers/payments/utils.py":34
+              /* "handlers/payments/utils.py":35
  *                         await update_balance(user_id, -plan_price)
  * 
  *                         expiry_time = datetime.utcnow() + timedelta(days=duration_days)             # <<<<<<<<<<<<<<
  *                         await create_key(user_id, expiry_time, None, conn, None)
  * 
  */
-              __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_datetime); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 34, __pyx_L13_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_datetime); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_9);
-              __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_utcnow); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 34, __pyx_L13_error)
+              __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_utcnow); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_4);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
               __pyx_t_9 = NULL;
@@ -3599,20 +3599,20 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 PyObject *__pyx_callargs[2] = {__pyx_t_9, NULL};
                 __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
                 __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
-                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 34, __pyx_L13_error)
+                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 35, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_5);
                 __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
               }
-              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_timedelta); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 34, __pyx_L13_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_timedelta); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_4);
-              __pyx_t_9 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 34, __pyx_L13_error)
+              __pyx_t_9 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_9);
-              if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_days, __pyx_cur_scope->__pyx_v_duration_days) < 0) __PYX_ERR(0, 34, __pyx_L13_error)
-              __pyx_t_8 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_9); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 34, __pyx_L13_error)
+              if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_days, __pyx_cur_scope->__pyx_v_duration_days) < 0) __PYX_ERR(0, 35, __pyx_L13_error)
+              __pyx_t_8 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_9); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_8);
               __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-              __pyx_t_9 = PyNumber_Add(__pyx_t_5, __pyx_t_8); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 34, __pyx_L13_error)
+              __pyx_t_9 = PyNumber_Add(__pyx_t_5, __pyx_t_8); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 35, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_9);
               __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
               __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
@@ -3620,7 +3620,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_cur_scope->__pyx_v_expiry_time = __pyx_t_9;
               __pyx_t_9 = 0;
 
-              /* "handlers/payments/utils.py":35
+              /* "handlers/payments/utils.py":36
  * 
  *                         expiry_time = datetime.utcnow() + timedelta(days=duration_days)
  *                         await create_key(user_id, expiry_time, None, conn, None)             # <<<<<<<<<<<<<<
@@ -3646,7 +3646,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 PyObject *__pyx_callargs[6] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_user_id, __pyx_cur_scope->__pyx_v_expiry_time, Py_None, __pyx_cur_scope->__pyx_v_conn, Py_None};
                 __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+1-__pyx_t_7, 5+__pyx_t_7);
                 __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-                if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 35, __pyx_L13_error)
+                if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 36, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_9);
                 __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
               }
@@ -3676,23 +3676,23 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
                 __pyx_cur_scope->__pyx_t_2 = 0;
                 __Pyx_XGOTREF(__pyx_t_3);
-                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 35, __pyx_L13_error)
+                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 36, __pyx_L13_error)
               } else {
                 PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
                 if (exc_type) {
                   if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                  else __PYX_ERR(0, 35, __pyx_L13_error)
+                  else __PYX_ERR(0, 36, __pyx_L13_error)
                 }
               }
 
-              /* "handlers/payments/utils.py":37
+              /* "handlers/payments/utils.py":38
  *                         await create_key(user_id, expiry_time, None, conn, None)
  * 
  *                         await clear_temporary_data(conn, user_id)             # <<<<<<<<<<<<<<
  *                         return
  * 
  */
-              __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 37, __pyx_L13_error)
+              __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 38, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_8);
               __pyx_t_5 = NULL;
               __pyx_t_7 = 0;
@@ -3712,7 +3712,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 PyObject *__pyx_callargs[3] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_conn, __pyx_cur_scope->__pyx_v_user_id};
                 __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
                 __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-                if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 37, __pyx_L13_error)
+                if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 38, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_9);
                 __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
               }
@@ -3742,16 +3742,16 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
                 __pyx_cur_scope->__pyx_t_2 = 0;
                 __Pyx_XGOTREF(__pyx_t_3);
-                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 37, __pyx_L13_error)
+                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 38, __pyx_L13_error)
               } else {
                 PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
                 if (exc_type) {
                   if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                  else __PYX_ERR(0, 37, __pyx_L13_error)
+                  else __PYX_ERR(0, 38, __pyx_L13_error)
                 }
               }
 
-              /* "handlers/payments/utils.py":38
+              /* "handlers/payments/utils.py":39
  * 
  *                         await clear_temporary_data(conn, user_id)
  *                         return             # <<<<<<<<<<<<<<
@@ -3762,7 +3762,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_r = NULL;
               goto __pyx_L12_return;
 
-              /* "handlers/payments/utils.py":31
+              /* "handlers/payments/utils.py":32
  * 
  *                     balance = await get_balance(user_id)
  *                     if balance >= plan_price:             # <<<<<<<<<<<<<<
@@ -3771,54 +3771,54 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  */
             }
 
-            /* "handlers/payments/utils.py":40
+            /* "handlers/payments/utils.py":41
  *                         return
  * 
  *                     builder.row(             # <<<<<<<<<<<<<<
  *                         InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                         InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
  */
-            __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 40, __pyx_L13_error)
+            __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 41, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_8);
 
-            /* "handlers/payments/utils.py":41
+            /* "handlers/payments/utils.py":42
  * 
  *                     builder.row(
  *                         InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),             # <<<<<<<<<<<<<<
  *                         InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
  *                     )
  */
-            __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 41, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 42, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
-            __pyx_t_4 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 41, __pyx_L13_error)
+            __pyx_t_4 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 42, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_4);
-            __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 41, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 42, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_6);
-            if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 41, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 42, __pyx_L13_error)
             __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-            if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 41, __pyx_L13_error)
-            __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_empty_tuple, __pyx_t_4); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 41, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 42, __pyx_L13_error)
+            __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_5, __pyx_empty_tuple, __pyx_t_4); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 42, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_6);
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
             __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-            /* "handlers/payments/utils.py":42
+            /* "handlers/payments/utils.py":43
  *                     builder.row(
  *                         InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                         InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),             # <<<<<<<<<<<<<<
  *                     )
  * 
  */
-            __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 42, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 43, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_4);
-            __pyx_t_5 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 42, __pyx_L13_error)
+            __pyx_t_5 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 43, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
-            __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 42, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 43, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_12);
-            if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_text, __pyx_t_12) < 0) __PYX_ERR(0, 42, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_text, __pyx_t_12) < 0) __PYX_ERR(0, 43, __pyx_L13_error)
             __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 42, __pyx_L13_error)
-            __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 42, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 43, __pyx_L13_error)
+            __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 43, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_12);
             __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
@@ -3842,81 +3842,69 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
               __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-              if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 40, __pyx_L13_error)
+              if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 41, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_9);
               __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
             }
             __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-            /* "handlers/payments/utils.py":45
+            /* "handlers/payments/utils.py":46
  *                     )
  * 
  *                     await bot.send_message(             # <<<<<<<<<<<<<<
  *                         chat_id=user_id,
- *                         text=f"     {amount} .   !\n\n       .    .",
+ *                         text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  */
-            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_bot); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 45, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_bot); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 46, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
-            __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_send_message); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 45, __pyx_L13_error)
+            __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_send_message); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 46, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_8);
             __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-            /* "handlers/payments/utils.py":46
+            /* "handlers/payments/utils.py":47
  * 
  *                     await bot.send_message(
  *                         chat_id=user_id,             # <<<<<<<<<<<<<<
- *                         text=f"     {amount} .   !\n\n       .    .",
+ *                         text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  *                         reply_markup=builder.as_markup(),
  */
-            __pyx_t_9 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 46, __pyx_L13_error)
+            __pyx_t_9 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 47, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
-            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_chat_id, __pyx_cur_scope->__pyx_v_user_id) < 0) __PYX_ERR(0, 46, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_chat_id, __pyx_cur_scope->__pyx_v_user_id) < 0) __PYX_ERR(0, 47, __pyx_L13_error)
 
-            /* "handlers/payments/utils.py":47
+            /* "handlers/payments/utils.py":48
  *                     await bot.send_message(
  *                         chat_id=user_id,
- *                         text=f"     {amount} .   !\n\n       .    .",             # <<<<<<<<<<<<<<
+ *                         text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),             # <<<<<<<<<<<<<<
  *                         reply_markup=builder.as_markup(),
  *                     )
  */
-            __pyx_t_12 = PyTuple_New(3); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 47, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_PAYMENT_SUCCESS_MESSAGE); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 48, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_12);
-            __pyx_t_13 = 0;
-            __pyx_t_14 = 127;
-            __Pyx_INCREF(__pyx_kp_u__3);
-            __pyx_t_14 = (65535 > __pyx_t_14) ? 65535 : __pyx_t_14;
-            __pyx_t_13 += 31;
-            __Pyx_GIVEREF(__pyx_kp_u__3);
-            PyTuple_SET_ITEM(__pyx_t_12, 0, __pyx_kp_u__3);
-            __pyx_t_6 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 47, __pyx_L13_error)
+            __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_format); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 48, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_6);
-            __pyx_t_5 = __Pyx_PyObject_FormatSimple(__pyx_t_6, __pyx_empty_unicode); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 47, __pyx_L13_error)
+            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+            __pyx_t_12 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 48, __pyx_L13_error)
+            __Pyx_GOTREF(__pyx_t_12);
+            __pyx_t_5 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 48, __pyx_L13_error)
+            __Pyx_GOTREF(__pyx_t_5);
+            if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_amount, __pyx_t_5) < 0) __PYX_ERR(0, 48, __pyx_L13_error)
+            __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+            __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 48, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
             __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-            __pyx_t_14 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_5) > __pyx_t_14) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_5) : __pyx_t_14;
-            __pyx_t_13 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_5);
-            __Pyx_GIVEREF(__pyx_t_5);
-            PyTuple_SET_ITEM(__pyx_t_12, 1, __pyx_t_5);
-            __pyx_t_5 = 0;
-            __Pyx_INCREF(__pyx_kp_u__4);
-            __pyx_t_14 = (1114111 > __pyx_t_14) ? 1114111 : __pyx_t_14;
-            __pyx_t_13 += 111;
-            __Pyx_GIVEREF(__pyx_kp_u__4);
-            PyTuple_SET_ITEM(__pyx_t_12, 2, __pyx_kp_u__4);
-            __pyx_t_5 = __Pyx_PyUnicode_Join(__pyx_t_12, 3, __pyx_t_13, __pyx_t_14); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 47, __pyx_L13_error)
-            __Pyx_GOTREF(__pyx_t_5);
             __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_text, __pyx_t_5) < 0) __PYX_ERR(0, 46, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_text, __pyx_t_5) < 0) __PYX_ERR(0, 47, __pyx_L13_error)
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-            /* "handlers/payments/utils.py":48
+            /* "handlers/payments/utils.py":49
  *                         chat_id=user_id,
- *                         text=f"     {amount} .   !\n\n       .    .",
+ *                         text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  *                         reply_markup=builder.as_markup(),             # <<<<<<<<<<<<<<
  *                     )
  * 
  */
-            __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 48, __pyx_L13_error)
+            __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 49, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_12);
             __pyx_t_6 = NULL;
             __pyx_t_7 = 0;
@@ -3936,21 +3924,21 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               PyObject *__pyx_callargs[2] = {__pyx_t_6, NULL};
               __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
               __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 48, __pyx_L13_error)
+              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 49, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
             }
-            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_reply_markup, __pyx_t_5) < 0) __PYX_ERR(0, 46, __pyx_L13_error)
+            if (PyDict_SetItem(__pyx_t_9, __pyx_n_s_reply_markup, __pyx_t_5) < 0) __PYX_ERR(0, 47, __pyx_L13_error)
             __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-            /* "handlers/payments/utils.py":45
+            /* "handlers/payments/utils.py":46
  *                     )
  * 
  *                     await bot.send_message(             # <<<<<<<<<<<<<<
  *                         chat_id=user_id,
- *                         text=f"     {amount} .   !\n\n       .    .",
+ *                         text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  */
-            __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_empty_tuple, __pyx_t_9); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 45, __pyx_L13_error)
+            __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_empty_tuple, __pyx_t_9); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 46, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_5);
             __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
             __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
@@ -3980,23 +3968,23 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
               __pyx_cur_scope->__pyx_t_2 = 0;
               __Pyx_XGOTREF(__pyx_t_3);
-              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 45, __pyx_L13_error)
+              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 46, __pyx_L13_error)
             } else {
               PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
               if (exc_type) {
                 if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                else __PYX_ERR(0, 45, __pyx_L13_error)
+                else __PYX_ERR(0, 46, __pyx_L13_error)
               }
             }
 
-            /* "handlers/payments/utils.py":51
+            /* "handlers/payments/utils.py":52
  *                     )
  * 
  *                     await clear_temporary_data(conn, user_id)             # <<<<<<<<<<<<<<
  *                     return
  *             finally:
  */
-            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 51, __pyx_L13_error)
+            __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 52, __pyx_L13_error)
             __Pyx_GOTREF(__pyx_t_9);
             __pyx_t_8 = NULL;
             __pyx_t_7 = 0;
@@ -4016,7 +4004,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               PyObject *__pyx_callargs[3] = {__pyx_t_8, __pyx_cur_scope->__pyx_v_conn, __pyx_cur_scope->__pyx_v_user_id};
               __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
               __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 51, __pyx_L13_error)
+              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 52, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
             }
@@ -4046,16 +4034,16 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
               __pyx_cur_scope->__pyx_t_2 = 0;
               __Pyx_XGOTREF(__pyx_t_3);
-              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 51, __pyx_L13_error)
+              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 52, __pyx_L13_error)
             } else {
               PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
               if (exc_type) {
                 if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                else __PYX_ERR(0, 51, __pyx_L13_error)
+                else __PYX_ERR(0, 52, __pyx_L13_error)
               }
             }
 
-            /* "handlers/payments/utils.py":52
+            /* "handlers/payments/utils.py":53
  * 
  *                     await clear_temporary_data(conn, user_id)
  *                     return             # <<<<<<<<<<<<<<
@@ -4066,7 +4054,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
             __pyx_r = NULL;
             goto __pyx_L12_return;
 
-            /* "handlers/payments/utils.py":26
+            /* "handlers/payments/utils.py":27
  *             try:
  *                 temp_data = await get_temporary_data(conn, user_id)
  *                 if temp_data and temp_data["state"] == "waiting_for_payment":             # <<<<<<<<<<<<<<
@@ -4076,7 +4064,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           }
         }
 
-        /* "handlers/payments/utils.py":54
+        /* "handlers/payments/utils.py":55
  *                     return
  *             finally:
  *                 await conn.close()             # <<<<<<<<<<<<<<
@@ -4085,7 +4073,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  */
         /*finally:*/ {
           /*normal exit:*/{
-            __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 54, __pyx_L4_error)
+            __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 55, __pyx_L4_error)
             __Pyx_GOTREF(__pyx_t_9);
             __pyx_t_8 = NULL;
             __pyx_t_7 = 0;
@@ -4105,7 +4093,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               PyObject *__pyx_callargs[2] = {__pyx_t_8, NULL};
               __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
               __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 54, __pyx_L4_error)
+              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 55, __pyx_L4_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
             }
@@ -4135,12 +4123,12 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
               __pyx_cur_scope->__pyx_t_2 = 0;
               __Pyx_XGOTREF(__pyx_t_3);
-              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 54, __pyx_L4_error)
+              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 55, __pyx_L4_error)
             } else {
               PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
               if (exc_type) {
                 if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                else __PYX_ERR(0, 54, __pyx_L4_error)
+                else __PYX_ERR(0, 55, __pyx_L4_error)
               }
             }
             goto __pyx_L14;
@@ -4148,24 +4136,24 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __pyx_L13_error:;
           /*exception exit:*/{
             __Pyx_PyThreadState_assign
-            __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0;
+            __pyx_t_16 = 0; __pyx_t_17 = 0; __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0;
             __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
             __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
             __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
             __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
             __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
             __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
-            if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_21, &__pyx_t_22, &__pyx_t_23);
-            if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_18, &__pyx_t_19, &__pyx_t_20) < 0)) __Pyx_ErrFetch(&__pyx_t_18, &__pyx_t_19, &__pyx_t_20);
+            if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_19, &__pyx_t_20, &__pyx_t_21);
+            if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_16, &__pyx_t_17, &__pyx_t_18) < 0)) __Pyx_ErrFetch(&__pyx_t_16, &__pyx_t_17, &__pyx_t_18);
+            __Pyx_XGOTREF(__pyx_t_16);
+            __Pyx_XGOTREF(__pyx_t_17);
             __Pyx_XGOTREF(__pyx_t_18);
             __Pyx_XGOTREF(__pyx_t_19);
             __Pyx_XGOTREF(__pyx_t_20);
             __Pyx_XGOTREF(__pyx_t_21);
-            __Pyx_XGOTREF(__pyx_t_22);
-            __Pyx_XGOTREF(__pyx_t_23);
-            __pyx_t_15 = __pyx_lineno; __pyx_t_16 = __pyx_clineno; __pyx_t_17 = __pyx_filename;
+            __pyx_t_13 = __pyx_lineno; __pyx_t_14 = __pyx_clineno; __pyx_t_15 = __pyx_filename;
             {
-              __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 54, __pyx_L28_error)
+              __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 55, __pyx_L28_error)
               __Pyx_GOTREF(__pyx_t_9);
               __pyx_t_8 = NULL;
               __pyx_t_7 = 0;
@@ -4185,7 +4173,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 PyObject *__pyx_callargs[2] = {__pyx_t_8, NULL};
                 __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
                 __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 54, __pyx_L28_error)
+                if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 55, __pyx_L28_error)
                 __Pyx_GOTREF(__pyx_t_5);
                 __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
               }
@@ -4199,21 +4187,21 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
                 __Pyx_XGIVEREF(__pyx_t_3);
                 __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
-                __pyx_cur_scope->__pyx_t_3 = __pyx_t_15;
-                __pyx_cur_scope->__pyx_t_4 = __pyx_t_16;
-                __pyx_cur_scope->__pyx_t_5 = __pyx_t_17;
+                __pyx_cur_scope->__pyx_t_3 = __pyx_t_13;
+                __pyx_cur_scope->__pyx_t_4 = __pyx_t_14;
+                __pyx_cur_scope->__pyx_t_5 = __pyx_t_15;
+                __Pyx_XGIVEREF(__pyx_t_16);
+                __pyx_cur_scope->__pyx_t_6 = __pyx_t_16;
+                __Pyx_XGIVEREF(__pyx_t_17);
+                __pyx_cur_scope->__pyx_t_7 = __pyx_t_17;
                 __Pyx_XGIVEREF(__pyx_t_18);
-                __pyx_cur_scope->__pyx_t_6 = __pyx_t_18;
+                __pyx_cur_scope->__pyx_t_8 = __pyx_t_18;
                 __Pyx_XGIVEREF(__pyx_t_19);
-                __pyx_cur_scope->__pyx_t_7 = __pyx_t_19;
+                __pyx_cur_scope->__pyx_t_9 = __pyx_t_19;
                 __Pyx_XGIVEREF(__pyx_t_20);
-                __pyx_cur_scope->__pyx_t_8 = __pyx_t_20;
+                __pyx_cur_scope->__pyx_t_10 = __pyx_t_20;
                 __Pyx_XGIVEREF(__pyx_t_21);
-                __pyx_cur_scope->__pyx_t_9 = __pyx_t_21;
-                __Pyx_XGIVEREF(__pyx_t_22);
-                __pyx_cur_scope->__pyx_t_10 = __pyx_t_22;
-                __Pyx_XGIVEREF(__pyx_t_23);
-                __pyx_cur_scope->__pyx_t_11 = __pyx_t_23;
+                __pyx_cur_scope->__pyx_t_11 = __pyx_t_21;
                 __Pyx_XGIVEREF(__pyx_r);
                 __Pyx_RefNannyFinishContext();
                 __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
@@ -4230,76 +4218,76 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
                 __pyx_cur_scope->__pyx_t_2 = 0;
                 __Pyx_XGOTREF(__pyx_t_3);
-                __pyx_t_15 = __pyx_cur_scope->__pyx_t_3;
-                __pyx_t_16 = __pyx_cur_scope->__pyx_t_4;
-                __pyx_t_17 = __pyx_cur_scope->__pyx_t_5;
-                __pyx_t_18 = __pyx_cur_scope->__pyx_t_6;
+                __pyx_t_13 = __pyx_cur_scope->__pyx_t_3;
+                __pyx_t_14 = __pyx_cur_scope->__pyx_t_4;
+                __pyx_t_15 = __pyx_cur_scope->__pyx_t_5;
+                __pyx_t_16 = __pyx_cur_scope->__pyx_t_6;
                 __pyx_cur_scope->__pyx_t_6 = 0;
-                __Pyx_XGOTREF(__pyx_t_18);
-                __pyx_t_19 = __pyx_cur_scope->__pyx_t_7;
+                __Pyx_XGOTREF(__pyx_t_16);
+                __pyx_t_17 = __pyx_cur_scope->__pyx_t_7;
                 __pyx_cur_scope->__pyx_t_7 = 0;
-                __Pyx_XGOTREF(__pyx_t_19);
-                __pyx_t_20 = __pyx_cur_scope->__pyx_t_8;
+                __Pyx_XGOTREF(__pyx_t_17);
+                __pyx_t_18 = __pyx_cur_scope->__pyx_t_8;
                 __pyx_cur_scope->__pyx_t_8 = 0;
-                __Pyx_XGOTREF(__pyx_t_20);
-                __pyx_t_21 = __pyx_cur_scope->__pyx_t_9;
+                __Pyx_XGOTREF(__pyx_t_18);
+                __pyx_t_19 = __pyx_cur_scope->__pyx_t_9;
                 __pyx_cur_scope->__pyx_t_9 = 0;
-                __Pyx_XGOTREF(__pyx_t_21);
-                __pyx_t_22 = __pyx_cur_scope->__pyx_t_10;
+                __Pyx_XGOTREF(__pyx_t_19);
+                __pyx_t_20 = __pyx_cur_scope->__pyx_t_10;
                 __pyx_cur_scope->__pyx_t_10 = 0;
-                __Pyx_XGOTREF(__pyx_t_22);
-                __pyx_t_23 = __pyx_cur_scope->__pyx_t_11;
+                __Pyx_XGOTREF(__pyx_t_20);
+                __pyx_t_21 = __pyx_cur_scope->__pyx_t_11;
                 __pyx_cur_scope->__pyx_t_11 = 0;
-                __Pyx_XGOTREF(__pyx_t_23);
-                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 54, __pyx_L28_error)
+                __Pyx_XGOTREF(__pyx_t_21);
+                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 55, __pyx_L28_error)
               } else {
                 PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
                 if (exc_type) {
                   if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                  else __PYX_ERR(0, 54, __pyx_L28_error)
+                  else __PYX_ERR(0, 55, __pyx_L28_error)
                 }
               }
             }
             if (PY_MAJOR_VERSION >= 3) {
+              __Pyx_XGIVEREF(__pyx_t_19);
+              __Pyx_XGIVEREF(__pyx_t_20);
               __Pyx_XGIVEREF(__pyx_t_21);
-              __Pyx_XGIVEREF(__pyx_t_22);
-              __Pyx_XGIVEREF(__pyx_t_23);
-              __Pyx_ExceptionReset(__pyx_t_21, __pyx_t_22, __pyx_t_23);
+              __Pyx_ExceptionReset(__pyx_t_19, __pyx_t_20, __pyx_t_21);
             }
+            __Pyx_XGIVEREF(__pyx_t_16);
+            __Pyx_XGIVEREF(__pyx_t_17);
             __Pyx_XGIVEREF(__pyx_t_18);
-            __Pyx_XGIVEREF(__pyx_t_19);
-            __Pyx_XGIVEREF(__pyx_t_20);
-            __Pyx_ErrRestore(__pyx_t_18, __pyx_t_19, __pyx_t_20);
-            __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0;
-            __pyx_lineno = __pyx_t_15; __pyx_clineno = __pyx_t_16; __pyx_filename = __pyx_t_17;
+            __Pyx_ErrRestore(__pyx_t_16, __pyx_t_17, __pyx_t_18);
+            __pyx_t_16 = 0; __pyx_t_17 = 0; __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0;
+            __pyx_lineno = __pyx_t_13; __pyx_clineno = __pyx_t_14; __pyx_filename = __pyx_t_15;
             goto __pyx_L4_error;
             __pyx_L28_error:;
             if (PY_MAJOR_VERSION >= 3) {
+              __Pyx_XGIVEREF(__pyx_t_19);
+              __Pyx_XGIVEREF(__pyx_t_20);
               __Pyx_XGIVEREF(__pyx_t_21);
-              __Pyx_XGIVEREF(__pyx_t_22);
-              __Pyx_XGIVEREF(__pyx_t_23);
-              __Pyx_ExceptionReset(__pyx_t_21, __pyx_t_22, __pyx_t_23);
+              __Pyx_ExceptionReset(__pyx_t_19, __pyx_t_20, __pyx_t_21);
             }
+            __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
+            __Pyx_XDECREF(__pyx_t_17); __pyx_t_17 = 0;
             __Pyx_XDECREF(__pyx_t_18); __pyx_t_18 = 0;
-            __Pyx_XDECREF(__pyx_t_19); __pyx_t_19 = 0;
-            __Pyx_XDECREF(__pyx_t_20); __pyx_t_20 = 0;
-            __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0;
+            __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0;
             goto __pyx_L4_error;
           }
           __pyx_L12_return: {
             __Pyx_PyThreadState_assign
-            __pyx_t_23 = 0; __pyx_t_22 = 0; __pyx_t_21 = 0; __pyx_t_20 = 0; __pyx_t_19 = 0; __pyx_t_18 = 0;
-            if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_20, &__pyx_t_19, &__pyx_t_18);
-            if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_23, &__pyx_t_22, &__pyx_t_21) < 0)) __Pyx_ErrFetch(&__pyx_t_23, &__pyx_t_22, &__pyx_t_21);
-            __Pyx_XGOTREF(__pyx_t_23);
-            __Pyx_XGOTREF(__pyx_t_22);
+            __pyx_t_21 = 0; __pyx_t_20 = 0; __pyx_t_19 = 0; __pyx_t_18 = 0; __pyx_t_17 = 0; __pyx_t_16 = 0;
+            if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_18, &__pyx_t_17, &__pyx_t_16);
+            if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_21, &__pyx_t_20, &__pyx_t_19) < 0)) __Pyx_ErrFetch(&__pyx_t_21, &__pyx_t_20, &__pyx_t_19);
             __Pyx_XGOTREF(__pyx_t_21);
             __Pyx_XGOTREF(__pyx_t_20);
             __Pyx_XGOTREF(__pyx_t_19);
             __Pyx_XGOTREF(__pyx_t_18);
-            __pyx_t_24 = __pyx_r;
+            __Pyx_XGOTREF(__pyx_t_17);
+            __Pyx_XGOTREF(__pyx_t_16);
+            __pyx_t_22 = __pyx_r;
             __pyx_r = 0;
-            __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 54, __pyx_L4_error)
+            __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 55, __pyx_L4_error)
             __Pyx_GOTREF(__pyx_t_9);
             __pyx_t_8 = NULL;
             __pyx_t_7 = 0;
@@ -4319,7 +4307,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               PyObject *__pyx_callargs[2] = {__pyx_t_8, NULL};
               __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
               __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 54, __pyx_L4_error)
+              if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 55, __pyx_L4_error)
               __Pyx_GOTREF(__pyx_t_5);
               __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
             }
@@ -4333,20 +4321,20 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
               __Pyx_XGIVEREF(__pyx_t_3);
               __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
+              __Pyx_XGIVEREF(__pyx_t_16);
+              __pyx_cur_scope->__pyx_t_6 = __pyx_t_16;
+              __Pyx_XGIVEREF(__pyx_t_17);
+              __pyx_cur_scope->__pyx_t_7 = __pyx_t_17;
               __Pyx_XGIVEREF(__pyx_t_18);
-              __pyx_cur_scope->__pyx_t_6 = __pyx_t_18;
+              __pyx_cur_scope->__pyx_t_8 = __pyx_t_18;
               __Pyx_XGIVEREF(__pyx_t_19);
-              __pyx_cur_scope->__pyx_t_7 = __pyx_t_19;
+              __pyx_cur_scope->__pyx_t_9 = __pyx_t_19;
               __Pyx_XGIVEREF(__pyx_t_20);
-              __pyx_cur_scope->__pyx_t_8 = __pyx_t_20;
+              __pyx_cur_scope->__pyx_t_10 = __pyx_t_20;
               __Pyx_XGIVEREF(__pyx_t_21);
-              __pyx_cur_scope->__pyx_t_9 = __pyx_t_21;
+              __pyx_cur_scope->__pyx_t_11 = __pyx_t_21;
               __Pyx_XGIVEREF(__pyx_t_22);
-              __pyx_cur_scope->__pyx_t_10 = __pyx_t_22;
-              __Pyx_XGIVEREF(__pyx_t_23);
-              __pyx_cur_scope->__pyx_t_11 = __pyx_t_23;
-              __Pyx_XGIVEREF(__pyx_t_24);
-              __pyx_cur_scope->__pyx_t_12 = __pyx_t_24;
+              __pyx_cur_scope->__pyx_t_12 = __pyx_t_22;
               __Pyx_XGIVEREF(__pyx_r);
               __Pyx_RefNannyFinishContext();
               __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
@@ -4363,54 +4351,54 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
               __pyx_cur_scope->__pyx_t_2 = 0;
               __Pyx_XGOTREF(__pyx_t_3);
-              __pyx_t_18 = __pyx_cur_scope->__pyx_t_6;
+              __pyx_t_16 = __pyx_cur_scope->__pyx_t_6;
               __pyx_cur_scope->__pyx_t_6 = 0;
-              __Pyx_XGOTREF(__pyx_t_18);
-              __pyx_t_19 = __pyx_cur_scope->__pyx_t_7;
+              __Pyx_XGOTREF(__pyx_t_16);
+              __pyx_t_17 = __pyx_cur_scope->__pyx_t_7;
               __pyx_cur_scope->__pyx_t_7 = 0;
-              __Pyx_XGOTREF(__pyx_t_19);
-              __pyx_t_20 = __pyx_cur_scope->__pyx_t_8;
+              __Pyx_XGOTREF(__pyx_t_17);
+              __pyx_t_18 = __pyx_cur_scope->__pyx_t_8;
               __pyx_cur_scope->__pyx_t_8 = 0;
-              __Pyx_XGOTREF(__pyx_t_20);
-              __pyx_t_21 = __pyx_cur_scope->__pyx_t_9;
+              __Pyx_XGOTREF(__pyx_t_18);
+              __pyx_t_19 = __pyx_cur_scope->__pyx_t_9;
               __pyx_cur_scope->__pyx_t_9 = 0;
-              __Pyx_XGOTREF(__pyx_t_21);
-              __pyx_t_22 = __pyx_cur_scope->__pyx_t_10;
+              __Pyx_XGOTREF(__pyx_t_19);
+              __pyx_t_20 = __pyx_cur_scope->__pyx_t_10;
               __pyx_cur_scope->__pyx_t_10 = 0;
-              __Pyx_XGOTREF(__pyx_t_22);
-              __pyx_t_23 = __pyx_cur_scope->__pyx_t_11;
+              __Pyx_XGOTREF(__pyx_t_20);
+              __pyx_t_21 = __pyx_cur_scope->__pyx_t_11;
               __pyx_cur_scope->__pyx_t_11 = 0;
-              __Pyx_XGOTREF(__pyx_t_23);
-              __pyx_t_24 = __pyx_cur_scope->__pyx_t_12;
+              __Pyx_XGOTREF(__pyx_t_21);
+              __pyx_t_22 = __pyx_cur_scope->__pyx_t_12;
               __pyx_cur_scope->__pyx_t_12 = 0;
-              __Pyx_XGOTREF(__pyx_t_24);
-              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 54, __pyx_L4_error)
+              __Pyx_XGOTREF(__pyx_t_22);
+              if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 55, __pyx_L4_error)
             } else {
               PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
               if (exc_type) {
                 if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                else __PYX_ERR(0, 54, __pyx_L4_error)
+                else __PYX_ERR(0, 55, __pyx_L4_error)
               }
             }
-            __pyx_r = __pyx_t_24;
-            __pyx_t_24 = 0;
+            __pyx_r = __pyx_t_22;
+            __pyx_t_22 = 0;
             if (PY_MAJOR_VERSION >= 3) {
-              __Pyx_XGIVEREF(__pyx_t_20);
-              __Pyx_XGIVEREF(__pyx_t_19);
               __Pyx_XGIVEREF(__pyx_t_18);
-              __Pyx_ExceptionReset(__pyx_t_20, __pyx_t_19, __pyx_t_18);
+              __Pyx_XGIVEREF(__pyx_t_17);
+              __Pyx_XGIVEREF(__pyx_t_16);
+              __Pyx_ExceptionReset(__pyx_t_18, __pyx_t_17, __pyx_t_16);
             }
-            __Pyx_XGIVEREF(__pyx_t_23);
-            __Pyx_XGIVEREF(__pyx_t_22);
             __Pyx_XGIVEREF(__pyx_t_21);
-            __Pyx_ErrRestore(__pyx_t_23, __pyx_t_22, __pyx_t_21);
-            __pyx_t_23 = 0; __pyx_t_22 = 0; __pyx_t_21 = 0; __pyx_t_20 = 0; __pyx_t_19 = 0; __pyx_t_18 = 0;
+            __Pyx_XGIVEREF(__pyx_t_20);
+            __Pyx_XGIVEREF(__pyx_t_19);
+            __Pyx_ErrRestore(__pyx_t_21, __pyx_t_20, __pyx_t_19);
+            __pyx_t_21 = 0; __pyx_t_20 = 0; __pyx_t_19 = 0; __pyx_t_18 = 0; __pyx_t_17 = 0; __pyx_t_16 = 0;
             goto __pyx_L8_try_return;
           }
           __pyx_L14:;
         }
 
-        /* "handlers/payments/utils.py":21
+        /* "handlers/payments/utils.py":22
  *         )
  * 
  *         if USE_NEW_PAYMENT_FLOW:             # <<<<<<<<<<<<<<
@@ -4419,33 +4407,33 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  */
       }
 
-      /* "handlers/payments/utils.py":56
+      /* "handlers/payments/utils.py":57
  *                 await conn.close()
  * 
  *         builder.row(             # <<<<<<<<<<<<<<
  *             InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys")
  *         )
  */
-      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 56, __pyx_L4_error)
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 57, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_9);
 
-      /* "handlers/payments/utils.py":57
+      /* "handlers/payments/utils.py":58
  * 
  *         builder.row(
  *             InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys")             # <<<<<<<<<<<<<<
  *         )
  *         builder.row(
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 57, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 58, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
-      __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 57, __pyx_L4_error)
+      __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 58, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_12);
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 57, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 58, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
-      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 57, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 58, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 57, __pyx_L4_error)
-      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 57, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 58, __pyx_L4_error)
+      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 58, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
       __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
@@ -4468,39 +4456,39 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
         __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 56, __pyx_L4_error)
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 57, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_5);
         __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
       }
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "handlers/payments/utils.py":59
+      /* "handlers/payments/utils.py":60
  *             InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys")
  *         )
  *         builder.row(             # <<<<<<<<<<<<<<
  *             InlineKeyboardButton(text=ADD_KEY, callback_data="create_key")
  *         )
  */
-      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 59, __pyx_L4_error)
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 60, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_9);
 
-      /* "handlers/payments/utils.py":60
+      /* "handlers/payments/utils.py":61
  *         )
  *         builder.row(
  *             InlineKeyboardButton(text=ADD_KEY, callback_data="create_key")             # <<<<<<<<<<<<<<
  *         )
  *         await bot.send_message(
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 60, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 61, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
-      __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 60, __pyx_L4_error)
+      __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 61, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_12);
-      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 60, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 61, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
-      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_8) < 0) __PYX_ERR(0, 60, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_8) < 0) __PYX_ERR(0, 61, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 60, __pyx_L4_error)
-      __pyx_t_8 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 60, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 61, __pyx_L4_error)
+      __pyx_t_8 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 61, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
       __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
@@ -4523,81 +4511,69 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
         __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 59, __pyx_L4_error)
+        if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 60, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_5);
         __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
       }
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "handlers/payments/utils.py":62
+      /* "handlers/payments/utils.py":63
  *             InlineKeyboardButton(text=ADD_KEY, callback_data="create_key")
  *         )
  *         await bot.send_message(             # <<<<<<<<<<<<<<
  *             chat_id=user_id,
- *             text=f"     {amount} .   !",
+ *             text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  */
-      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_bot); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 62, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_bot); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 63, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_5);
-      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_send_message); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 62, __pyx_L4_error)
+      __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_send_message); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 63, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_9);
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-      /* "handlers/payments/utils.py":63
+      /* "handlers/payments/utils.py":64
  *         )
  *         await bot.send_message(
  *             chat_id=user_id,             # <<<<<<<<<<<<<<
- *             text=f"     {amount} .   !",
+ *             text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  *             reply_markup=builder.as_markup(),
  */
-      __pyx_t_5 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 63, __pyx_L4_error)
+      __pyx_t_5 = __Pyx_PyDict_NewPresized(3); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_5);
-      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_chat_id, __pyx_cur_scope->__pyx_v_user_id) < 0) __PYX_ERR(0, 63, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_chat_id, __pyx_cur_scope->__pyx_v_user_id) < 0) __PYX_ERR(0, 64, __pyx_L4_error)
 
-      /* "handlers/payments/utils.py":64
+      /* "handlers/payments/utils.py":65
  *         await bot.send_message(
  *             chat_id=user_id,
- *             text=f"     {amount} .   !",             # <<<<<<<<<<<<<<
+ *             text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),             # <<<<<<<<<<<<<<
  *             reply_markup=builder.as_markup(),
  *         )
  */
-      __pyx_t_8 = PyTuple_New(3); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 64, __pyx_L4_error)
+      __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_PAYMENT_SUCCESS_MESSAGE); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 65, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
-      __pyx_t_13 = 0;
-      __pyx_t_14 = 127;
-      __Pyx_INCREF(__pyx_kp_u__3);
-      __pyx_t_14 = (65535 > __pyx_t_14) ? 65535 : __pyx_t_14;
-      __pyx_t_13 += 31;
-      __Pyx_GIVEREF(__pyx_kp_u__3);
-      PyTuple_SET_ITEM(__pyx_t_8, 0, __pyx_kp_u__3);
-      __pyx_t_12 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 64, __pyx_L4_error)
+      __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_8, __pyx_n_s_format); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 65, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_12);
-      __pyx_t_6 = __Pyx_PyObject_FormatSimple(__pyx_t_12, __pyx_empty_unicode); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L4_error)
+      __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
+      __pyx_t_8 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 65, __pyx_L4_error)
+      __Pyx_GOTREF(__pyx_t_8);
+      __pyx_t_6 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 65, __pyx_L4_error)
+      __Pyx_GOTREF(__pyx_t_6);
+      if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_amount, __pyx_t_6) < 0) __PYX_ERR(0, 65, __pyx_L4_error)
+      __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_12, __pyx_empty_tuple, __pyx_t_8); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 65, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-      __pyx_t_14 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_6) > __pyx_t_14) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_6) : __pyx_t_14;
-      __pyx_t_13 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_6);
-      __Pyx_GIVEREF(__pyx_t_6);
-      PyTuple_SET_ITEM(__pyx_t_8, 1, __pyx_t_6);
-      __pyx_t_6 = 0;
-      __Pyx_INCREF(__pyx_kp_u__5);
-      __pyx_t_14 = (65535 > __pyx_t_14) ? 65535 : __pyx_t_14;
-      __pyx_t_13 += 27;
-      __Pyx_GIVEREF(__pyx_kp_u__5);
-      PyTuple_SET_ITEM(__pyx_t_8, 2, __pyx_kp_u__5);
-      __pyx_t_6 = __Pyx_PyUnicode_Join(__pyx_t_8, 3, __pyx_t_13, __pyx_t_14); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L4_error)
-      __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
-      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 63, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 64, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-      /* "handlers/payments/utils.py":65
+      /* "handlers/payments/utils.py":66
  *             chat_id=user_id,
- *             text=f"     {amount} .   !",
+ *             text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  *             reply_markup=builder.as_markup(),             # <<<<<<<<<<<<<<
  *         )
  * 
  */
-      __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 65, __pyx_L4_error)
+      __pyx_t_8 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 66, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_8);
       __pyx_t_12 = NULL;
       __pyx_t_7 = 0;
@@ -4617,21 +4593,21 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         PyObject *__pyx_callargs[2] = {__pyx_t_12, NULL};
         __pyx_t_6 = __Pyx_PyObject_FastCall(__pyx_t_8, __pyx_callargs+1-__pyx_t_7, 0+__pyx_t_7);
         __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-        if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 65, __pyx_L4_error)
+        if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 66, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_6);
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
       }
-      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_reply_markup, __pyx_t_6) < 0) __PYX_ERR(0, 63, __pyx_L4_error)
+      if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_reply_markup, __pyx_t_6) < 0) __PYX_ERR(0, 64, __pyx_L4_error)
       __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-      /* "handlers/payments/utils.py":62
+      /* "handlers/payments/utils.py":63
  *             InlineKeyboardButton(text=ADD_KEY, callback_data="create_key")
  *         )
  *         await bot.send_message(             # <<<<<<<<<<<<<<
  *             chat_id=user_id,
- *             text=f"     {amount} .   !",
+ *             text=PAYMENT_SUCCESS_MESSAGE.format(amount=amount),
  */
-      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_9, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 62, __pyx_L4_error)
+      __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_9, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 63, __pyx_L4_error)
       __Pyx_GOTREF(__pyx_t_6);
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
       __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
@@ -4661,16 +4637,16 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
         __pyx_cur_scope->__pyx_t_2 = 0;
         __Pyx_XGOTREF(__pyx_t_3);
-        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 62, __pyx_L4_error)
+        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 63, __pyx_L4_error)
       } else {
         PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
         if (exc_type) {
           if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-          else __PYX_ERR(0, 62, __pyx_L4_error)
+          else __PYX_ERR(0, 63, __pyx_L4_error)
         }
       }
 
-      /* "handlers/payments/utils.py":15
+      /* "handlers/payments/utils.py":16
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):
  *     try:             # <<<<<<<<<<<<<<
@@ -4690,16 +4666,16 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
     __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
     __Pyx_XDECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-    /* "handlers/payments/utils.py":68
+    /* "handlers/payments/utils.py":69
  *         )
  * 
  *     except Exception as e:             # <<<<<<<<<<<<<<
  *         logger.error(f"     {user_id}: {e}")
  */
-    __pyx_t_16 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(&((PyTypeObject*)PyExc_Exception)[0])));
-    if (__pyx_t_16) {
+    __pyx_t_14 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(&((PyTypeObject*)PyExc_Exception)[0])));
+    if (__pyx_t_14) {
       __Pyx_AddTraceback("handlers.payments.utils.send_payment_success_notification", __pyx_clineno, __pyx_lineno, __pyx_filename);
-      if (__Pyx_GetException(&__pyx_t_6, &__pyx_t_5, &__pyx_t_9) < 0) __PYX_ERR(0, 68, __pyx_L6_except_error)
+      if (__Pyx_GetException(&__pyx_t_6, &__pyx_t_5, &__pyx_t_9) < 0) __PYX_ERR(0, 69, __pyx_L6_except_error)
       __Pyx_XGOTREF(__pyx_t_6);
       __Pyx_XGOTREF(__pyx_t_5);
       __Pyx_XGOTREF(__pyx_t_9);
@@ -4708,44 +4684,44 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
       __pyx_cur_scope->__pyx_v_e = __pyx_t_5;
       /*try:*/ {
 
-        /* "handlers/payments/utils.py":69
+        /* "handlers/payments/utils.py":70
  * 
  *     except Exception as e:
  *         logger.error(f"     {user_id}: {e}")             # <<<<<<<<<<<<<<
  */
-        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_logger); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_logger); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_12);
-        __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_error); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_error); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_4);
         __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-        __pyx_t_12 = PyTuple_New(4); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __pyx_t_12 = PyTuple_New(4); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_12);
-        __pyx_t_13 = 0;
-        __pyx_t_14 = 127;
-        __Pyx_INCREF(__pyx_kp_u__6);
-        __pyx_t_14 = (65535 > __pyx_t_14) ? 65535 : __pyx_t_14;
-        __pyx_t_13 += 45;
-        __Pyx_GIVEREF(__pyx_kp_u__6);
-        PyTuple_SET_ITEM(__pyx_t_12, 0, __pyx_kp_u__6);
-        __pyx_t_25 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_user_id, __pyx_empty_unicode); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __pyx_t_23 = 0;
+        __pyx_t_24 = 127;
+        __Pyx_INCREF(__pyx_kp_u__3);
+        __pyx_t_24 = (65535 > __pyx_t_24) ? 65535 : __pyx_t_24;
+        __pyx_t_23 += 45;
+        __Pyx_GIVEREF(__pyx_kp_u__3);
+        PyTuple_SET_ITEM(__pyx_t_12, 0, __pyx_kp_u__3);
+        __pyx_t_25 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_user_id, __pyx_empty_unicode); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_25);
-        __pyx_t_14 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) > __pyx_t_14) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) : __pyx_t_14;
-        __pyx_t_13 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_25);
+        __pyx_t_24 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) > __pyx_t_24) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) : __pyx_t_24;
+        __pyx_t_23 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_25);
         __Pyx_GIVEREF(__pyx_t_25);
         PyTuple_SET_ITEM(__pyx_t_12, 1, __pyx_t_25);
         __pyx_t_25 = 0;
-        __Pyx_INCREF(__pyx_kp_u__7);
-        __pyx_t_13 += 2;
-        __Pyx_GIVEREF(__pyx_kp_u__7);
-        PyTuple_SET_ITEM(__pyx_t_12, 2, __pyx_kp_u__7);
-        __pyx_t_25 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_e, __pyx_empty_unicode); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __Pyx_INCREF(__pyx_kp_u__4);
+        __pyx_t_23 += 2;
+        __Pyx_GIVEREF(__pyx_kp_u__4);
+        PyTuple_SET_ITEM(__pyx_t_12, 2, __pyx_kp_u__4);
+        __pyx_t_25 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_e, __pyx_empty_unicode); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_25);
-        __pyx_t_14 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) > __pyx_t_14) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) : __pyx_t_14;
-        __pyx_t_13 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_25);
+        __pyx_t_24 = (__Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) > __pyx_t_24) ? __Pyx_PyUnicode_MAX_CHAR_VALUE(__pyx_t_25) : __pyx_t_24;
+        __pyx_t_23 += __Pyx_PyUnicode_GET_LENGTH(__pyx_t_25);
         __Pyx_GIVEREF(__pyx_t_25);
         PyTuple_SET_ITEM(__pyx_t_12, 3, __pyx_t_25);
         __pyx_t_25 = 0;
-        __pyx_t_25 = __Pyx_PyUnicode_Join(__pyx_t_12, 4, __pyx_t_13, __pyx_t_14); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 69, __pyx_L37_error)
+        __pyx_t_25 = __Pyx_PyUnicode_Join(__pyx_t_12, 4, __pyx_t_23, __pyx_t_24); if (unlikely(!__pyx_t_25)) __PYX_ERR(0, 70, __pyx_L37_error)
         __Pyx_GOTREF(__pyx_t_25);
         __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
         __pyx_t_12 = NULL;
@@ -4767,14 +4743,14 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __pyx_t_8 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
           __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
           __Pyx_DECREF(__pyx_t_25); __pyx_t_25 = 0;
-          if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 69, __pyx_L37_error)
+          if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 70, __pyx_L37_error)
           __Pyx_GOTREF(__pyx_t_8);
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
         }
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
       }
 
-      /* "handlers/payments/utils.py":68
+      /* "handlers/payments/utils.py":69
  *         )
  * 
  *     except Exception as e:             # <<<<<<<<<<<<<<
@@ -4789,36 +4765,36 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __pyx_L37_error:;
         /*exception exit:*/{
           __Pyx_PyThreadState_assign
-          __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0;
+          __pyx_t_16 = 0; __pyx_t_17 = 0; __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0;
           __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
           __Pyx_XDECREF(__pyx_t_25); __pyx_t_25 = 0;
           __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
           __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
-          if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_21, &__pyx_t_22, &__pyx_t_23);
-          if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_18, &__pyx_t_19, &__pyx_t_20) < 0)) __Pyx_ErrFetch(&__pyx_t_18, &__pyx_t_19, &__pyx_t_20);
+          if (PY_MAJOR_VERSION >= 3) __Pyx_ExceptionSwap(&__pyx_t_19, &__pyx_t_20, &__pyx_t_21);
+          if ((PY_MAJOR_VERSION < 3) || unlikely(__Pyx_GetException(&__pyx_t_16, &__pyx_t_17, &__pyx_t_18) < 0)) __Pyx_ErrFetch(&__pyx_t_16, &__pyx_t_17, &__pyx_t_18);
+          __Pyx_XGOTREF(__pyx_t_16);
+          __Pyx_XGOTREF(__pyx_t_17);
           __Pyx_XGOTREF(__pyx_t_18);
           __Pyx_XGOTREF(__pyx_t_19);
           __Pyx_XGOTREF(__pyx_t_20);
           __Pyx_XGOTREF(__pyx_t_21);
-          __Pyx_XGOTREF(__pyx_t_22);
-          __Pyx_XGOTREF(__pyx_t_23);
-          __pyx_t_16 = __pyx_lineno; __pyx_t_15 = __pyx_clineno; __pyx_t_26 = __pyx_filename;
+          __pyx_t_14 = __pyx_lineno; __pyx_t_13 = __pyx_clineno; __pyx_t_26 = __pyx_filename;
           {
             __Pyx_GOTREF(__pyx_cur_scope->__pyx_v_e);
             __Pyx_DECREF(__pyx_cur_scope->__pyx_v_e); __pyx_cur_scope->__pyx_v_e = 0;
           }
           if (PY_MAJOR_VERSION >= 3) {
+            __Pyx_XGIVEREF(__pyx_t_19);
+            __Pyx_XGIVEREF(__pyx_t_20);
             __Pyx_XGIVEREF(__pyx_t_21);
-            __Pyx_XGIVEREF(__pyx_t_22);
-            __Pyx_XGIVEREF(__pyx_t_23);
-            __Pyx_ExceptionReset(__pyx_t_21, __pyx_t_22, __pyx_t_23);
+            __Pyx_ExceptionReset(__pyx_t_19, __pyx_t_20, __pyx_t_21);
           }
+          __Pyx_XGIVEREF(__pyx_t_16);
+          __Pyx_XGIVEREF(__pyx_t_17);
           __Pyx_XGIVEREF(__pyx_t_18);
-          __Pyx_XGIVEREF(__pyx_t_19);
-          __Pyx_XGIVEREF(__pyx_t_20);
-          __Pyx_ErrRestore(__pyx_t_18, __pyx_t_19, __pyx_t_20);
-          __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0;
-          __pyx_lineno = __pyx_t_16; __pyx_clineno = __pyx_t_15; __pyx_filename = __pyx_t_26;
+          __Pyx_ErrRestore(__pyx_t_16, __pyx_t_17, __pyx_t_18);
+          __pyx_t_16 = 0; __pyx_t_17 = 0; __pyx_t_18 = 0; __pyx_t_19 = 0; __pyx_t_20 = 0; __pyx_t_21 = 0;
+          __pyx_lineno = __pyx_t_14; __pyx_clineno = __pyx_t_13; __pyx_filename = __pyx_t_26;
           goto __pyx_L6_except_error;
         }
         __pyx_L38:;
@@ -4830,7 +4806,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
     }
     goto __pyx_L6_except_error;
 
-    /* "handlers/payments/utils.py":15
+    /* "handlers/payments/utils.py":16
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):
  *     try:             # <<<<<<<<<<<<<<
@@ -4858,7 +4834,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
   }
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/utils.py":14
+  /* "handlers/payments/utils.py":15
  * 
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):             # <<<<<<<<<<<<<<
@@ -5147,17 +5123,15 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_n_s_DATABASE_URL, __pyx_k_DATABASE_URL, sizeof(__pyx_k_DATABASE_URL), 0, 0, 1, 1},
     {&__pyx_n_s_InlineKeyboardBuilder, __pyx_k_InlineKeyboardBuilder, sizeof(__pyx_k_InlineKeyboardBuilder), 0, 0, 1, 1},
     {&__pyx_n_s_InlineKeyboardButton, __pyx_k_InlineKeyboardButton, sizeof(__pyx_k_InlineKeyboardButton), 0, 0, 1, 1},
+    {&__pyx_n_s_PAYMENT_SUCCESS_MESSAGE, __pyx_k_PAYMENT_SUCCESS_MESSAGE, sizeof(__pyx_k_PAYMENT_SUCCESS_MESSAGE), 0, 0, 1, 1},
     {&__pyx_n_s_PROFILE, __pyx_k_PROFILE, sizeof(__pyx_k_PROFILE), 0, 0, 1, 1},
     {&__pyx_n_s_RENEW_KEY, __pyx_k_RENEW_KEY, sizeof(__pyx_k_RENEW_KEY), 0, 0, 1, 1},
     {&__pyx_n_s_USE_NEW_PAYMENT_FLOW, __pyx_k_USE_NEW_PAYMENT_FLOW, sizeof(__pyx_k_USE_NEW_PAYMENT_FLOW), 0, 0, 1, 1},
-    {&__pyx_n_s__10, __pyx_k__10, sizeof(__pyx_k__10), 0, 0, 1, 1},
     {&__pyx_kp_u__2, __pyx_k__2, sizeof(__pyx_k__2), 0, 1, 0, 0},
     {&__pyx_kp_u__3, __pyx_k__3, sizeof(__pyx_k__3), 0, 1, 0, 0},
     {&__pyx_kp_u__4, __pyx_k__4, sizeof(__pyx_k__4), 0, 1, 0, 0},
-    {&__pyx_kp_u__5, __pyx_k__5, sizeof(__pyx_k__5), 0, 1, 0, 0},
-    {&__pyx_kp_u__6, __pyx_k__6, sizeof(__pyx_k__6), 0, 1, 0, 0},
-    {&__pyx_kp_u__7, __pyx_k__7, sizeof(__pyx_k__7), 0, 1, 0, 0},
-    {&__pyx_n_s__8, __pyx_k__8, sizeof(__pyx_k__8), 0, 0, 1, 1},
+    {&__pyx_n_s__5, __pyx_k__5, sizeof(__pyx_k__5), 0, 0, 1, 1},
+    {&__pyx_n_s__7, __pyx_k__7, sizeof(__pyx_k__7), 0, 0, 1, 1},
     {&__pyx_n_s_aiogram_types, __pyx_k_aiogram_types, sizeof(__pyx_k_aiogram_types), 0, 0, 1, 1},
     {&__pyx_n_s_aiogram_utils_keyboard, __pyx_k_aiogram_utils_keyboard, sizeof(__pyx_k_aiogram_utils_keyboard), 0, 0, 1, 1},
     {&__pyx_n_s_amount, __pyx_k_amount, sizeof(__pyx_k_amount), 0, 0, 1, 1},
@@ -5191,6 +5165,7 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_n_s_error, __pyx_k_error, sizeof(__pyx_k_error), 0, 0, 1, 1},
     {&__pyx_n_s_expiry_time, __pyx_k_expiry_time, sizeof(__pyx_k_expiry_time), 0, 0, 1, 1},
     {&__pyx_n_s_float, __pyx_k_float, sizeof(__pyx_k_float), 0, 0, 1, 1},
+    {&__pyx_n_s_format, __pyx_k_format, sizeof(__pyx_k_format), 0, 0, 1, 1},
     {&__pyx_kp_u_gc, __pyx_k_gc, sizeof(__pyx_k_gc), 0, 1, 0, 0},
     {&__pyx_n_s_get_balance, __pyx_k_get_balance, sizeof(__pyx_k_get_balance), 0, 0, 1, 1},
     {&__pyx_n_s_get_temporary_data, __pyx_k_get_temporary_data, sizeof(__pyx_k_get_temporary_data), 0, 0, 1, 1},
@@ -5198,6 +5173,7 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_n_s_handlers_keys_key_management, __pyx_k_handlers_keys_key_management, sizeof(__pyx_k_handlers_keys_key_management), 0, 0, 1, 1},
     {&__pyx_n_s_handlers_payments_utils, __pyx_k_handlers_payments_utils, sizeof(__pyx_k_handlers_payments_utils), 0, 0, 1, 1},
     {&__pyx_kp_s_handlers_payments_utils_py, __pyx_k_handlers_payments_utils_py, sizeof(__pyx_k_handlers_payments_utils_py), 0, 0, 1, 0},
+    {&__pyx_n_s_handlers_texts, __pyx_k_handlers_texts, sizeof(__pyx_k_handlers_texts), 0, 0, 1, 1},
     {&__pyx_n_s_import, __pyx_k_import, sizeof(__pyx_k_import), 0, 0, 1, 1},
     {&__pyx_n_s_initializing, __pyx_k_initializing, sizeof(__pyx_k_initializing), 0, 0, 1, 1},
     {&__pyx_n_s_int, __pyx_k_int, sizeof(__pyx_k_int), 0, 0, 1, 1},
@@ -5240,17 +5216,17 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "handlers/payments/utils.py":14
+  /* "handlers/payments/utils.py":15
  * 
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):             # <<<<<<<<<<<<<<
  *     try:
  *         builder = InlineKeyboardBuilder()
  */
-  __pyx_tuple__9 = PyTuple_Pack(11, __pyx_n_s_user_id, __pyx_n_s_amount, __pyx_n_s_builder, __pyx_n_s_create_key, __pyx_n_s_conn, __pyx_n_s_temp_data, __pyx_n_s_plan_price, __pyx_n_s_duration_days, __pyx_n_s_balance, __pyx_n_s_expiry_time, __pyx_n_s_e); if (unlikely(!__pyx_tuple__9)) __PYX_ERR(0, 14, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_tuple__9);
-  __Pyx_GIVEREF(__pyx_tuple__9);
-  __pyx_codeobj_ = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 11, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__9, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_utils_py, __pyx_n_s_send_payment_success_notificatio, 14, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj_)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_tuple__6 = PyTuple_Pack(11, __pyx_n_s_user_id, __pyx_n_s_amount, __pyx_n_s_builder, __pyx_n_s_create_key, __pyx_n_s_conn, __pyx_n_s_temp_data, __pyx_n_s_plan_price, __pyx_n_s_duration_days, __pyx_n_s_balance, __pyx_n_s_expiry_time, __pyx_n_s_e); if (unlikely(!__pyx_tuple__6)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_tuple__6);
+  __Pyx_GIVEREF(__pyx_tuple__6);
+  __pyx_codeobj_ = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 11, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__6, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_utils_py, __pyx_n_s_send_payment_success_notificatio, 15, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj_)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_RefNannyFinishContext();
   return 0;
   __pyx_L1_error:;
@@ -5312,15 +5288,15 @@ static int __Pyx_modinit_type_init_code(void) {
   __Pyx_RefNannySetupContext("__Pyx_modinit_type_init_code", 0);
   /*--- Type init code ---*/
   #if CYTHON_USE_TYPE_SPECS
-  __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification = (PyTypeObject *) __Pyx_PyType_FromModuleAndSpec(__pyx_m, &__pyx_type_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification_spec, NULL); if (unlikely(!__pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification)) __PYX_ERR(0, 14, __pyx_L1_error)
-  if (__Pyx_fix_up_extension_type_from_spec(&__pyx_type_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification_spec, __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification = (PyTypeObject *) __Pyx_PyType_FromModuleAndSpec(__pyx_m, &__pyx_type_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification_spec, NULL); if (unlikely(!__pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification)) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (__Pyx_fix_up_extension_type_from_spec(&__pyx_type_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification_spec, __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   #else
   __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification = &__pyx_type_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification;
   #endif
   #if !CYTHON_COMPILING_IN_LIMITED_API
   #endif
   #if !CYTHON_USE_TYPE_SPECS
-  if (__Pyx_PyType_Ready(__pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (__Pyx_PyType_Ready(__pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
   #endif
   #if PY_MAJOR_VERSION < 3
   __pyx_ptype_8handlers_8payments_5utils___pyx_scope_struct__send_payment_success_notification->tp_print = 0;
@@ -5774,7 +5750,7 @@ if (!__Pyx_RefNanny) {
  * from config import DATABASE_URL, USE_NEW_PAYMENT_FLOW
  * from database import clear_temporary_data, get_balance, get_temporary_data, update_balance             # <<<<<<<<<<<<<<
  * from handlers.buttons.notification import ADD_KEY, PROFILE, RENEW_KEY
- * from logger import logger
+ * from handlers.texts import PAYMENT_SUCCESS_MESSAGE
  */
   __pyx_t_3 = PyList_New(4); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 9, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
@@ -5815,8 +5791,8 @@ if (!__Pyx_RefNanny) {
  * from config import DATABASE_URL, USE_NEW_PAYMENT_FLOW
  * from database import clear_temporary_data, get_balance, get_temporary_data, update_balance
  * from handlers.buttons.notification import ADD_KEY, PROFILE, RENEW_KEY             # <<<<<<<<<<<<<<
+ * from handlers.texts import PAYMENT_SUCCESS_MESSAGE
  * from logger import logger
- * 
  */
   __pyx_t_2 = PyList_New(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 10, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
@@ -5849,51 +5825,72 @@ if (!__Pyx_RefNanny) {
   /* "handlers/payments/utils.py":11
  * from database import clear_temporary_data, get_balance, get_temporary_data, update_balance
  * from handlers.buttons.notification import ADD_KEY, PROFILE, RENEW_KEY
- * from logger import logger             # <<<<<<<<<<<<<<
- * 
+ * from handlers.texts import PAYMENT_SUCCESS_MESSAGE             # <<<<<<<<<<<<<<
+ * from logger import logger
  * 
  */
   __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_INCREF(__pyx_n_s_logger);
-  __Pyx_GIVEREF(__pyx_n_s_logger);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_logger)) __PYX_ERR(0, 11, __pyx_L1_error);
-  __pyx_t_2 = __Pyx_Import(__pyx_n_s_logger, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __Pyx_INCREF(__pyx_n_s_PAYMENT_SUCCESS_MESSAGE);
+  __Pyx_GIVEREF(__pyx_n_s_PAYMENT_SUCCESS_MESSAGE);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_n_s_PAYMENT_SUCCESS_MESSAGE)) __PYX_ERR(0, 11, __pyx_L1_error);
+  __pyx_t_2 = __Pyx_Import(__pyx_n_s_handlers_texts, __pyx_t_3, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_logger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_ImportFrom(__pyx_t_2, __pyx_n_s_PAYMENT_SUCCESS_MESSAGE); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_logger, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_PAYMENT_SUCCESS_MESSAGE, __pyx_t_3) < 0) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/utils.py":14
+  /* "handlers/payments/utils.py":12
+ * from handlers.buttons.notification import ADD_KEY, PROFILE, RENEW_KEY
+ * from handlers.texts import PAYMENT_SUCCESS_MESSAGE
+ * from logger import logger             # <<<<<<<<<<<<<<
+ * 
+ * 
+ */
+  __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_INCREF(__pyx_n_s_logger);
+  __Pyx_GIVEREF(__pyx_n_s_logger);
+  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_n_s_logger)) __PYX_ERR(0, 12, __pyx_L1_error);
+  __pyx_t_3 = __Pyx_Import(__pyx_n_s_logger, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_logger); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 12, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_logger, __pyx_t_2) < 0) __PYX_ERR(0, 12, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+
+  /* "handlers/payments/utils.py":15
  * 
  * 
  * async def send_payment_success_notification(user_id: int, amount: float):             # <<<<<<<<<<<<<<
  *     try:
  *         builder = InlineKeyboardBuilder()
  */
-  __pyx_t_2 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 14, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_user_id, __pyx_n_s_int) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_amount, __pyx_n_s_float) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
-  __pyx_t_3 = __Pyx_CyFunction_New(&__pyx_mdef_8handlers_8payments_5utils_1send_payment_success_notification, __Pyx_CYFUNCTION_COROUTINE, __pyx_n_s_send_payment_success_notificatio, NULL, __pyx_n_s_handlers_payments_utils, __pyx_d, ((PyObject *)__pyx_codeobj_)); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 14, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 15, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_3, __pyx_t_2);
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_send_payment_success_notificatio, __pyx_t_3) < 0) __PYX_ERR(0, 14, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_user_id, __pyx_n_s_int) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_amount, __pyx_n_s_float) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_8handlers_8payments_5utils_1send_payment_success_notification, __Pyx_CYFUNCTION_COROUTINE, __pyx_n_s_send_payment_success_notificatio, NULL, __pyx_n_s_handlers_payments_utils, __pyx_d, ((PyObject *)__pyx_codeobj_)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_2, __pyx_t_3);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_send_payment_success_notificatio, __pyx_t_2) < 0) __PYX_ERR(0, 15, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "handlers/payments/utils.py":1
  * from datetime import datetime, timedelta             # <<<<<<<<<<<<<<
  * 
  * import asyncpg
  */
-  __pyx_t_3 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 1, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_test, __pyx_t_3) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_t_2 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 1, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_test, __pyx_t_2) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /*--- Wrapped vars code ---*/
 
@@ -9135,75 +9132,6 @@ static PyObject *__Pyx_PyDict_GetItem(PyObject *d, PyObject* key) {
 }
 #endif
 
-/* JoinPyUnicode */
-  static PyObject* __Pyx_PyUnicode_Join(PyObject* value_tuple, Py_ssize_t value_count, Py_ssize_t result_ulength,
-                                      Py_UCS4 max_char) {
-#if CYTHON_USE_UNICODE_INTERNALS && CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
-    PyObject *result_uval;
-    int result_ukind, kind_shift;
-    Py_ssize_t i, char_pos;
-    void *result_udata;
-    CYTHON_MAYBE_UNUSED_VAR(max_char);
-#if CYTHON_PEP393_ENABLED
-    result_uval = PyUnicode_New(result_ulength, max_char);
-    if (unlikely(!result_uval)) return NULL;
-    result_ukind = (max_char <= 255) ? PyUnicode_1BYTE_KIND : (max_char <= 65535) ? PyUnicode_2BYTE_KIND : PyUnicode_4BYTE_KIND;
-    kind_shift = (result_ukind == PyUnicode_4BYTE_KIND) ? 2 : result_ukind - 1;
-    result_udata = PyUnicode_DATA(result_uval);
-#else
-    result_uval = PyUnicode_FromUnicode(NULL, result_ulength);
-    if (unlikely(!result_uval)) return NULL;
-    result_ukind = sizeof(Py_UNICODE);
-    kind_shift = (result_ukind == 4) ? 2 : result_ukind - 1;
-    result_udata = PyUnicode_AS_UNICODE(result_uval);
-#endif
-    assert(kind_shift == 2 || kind_shift == 1 || kind_shift == 0);
-    char_pos = 0;
-    for (i=0; i < value_count; i++) {
-        int ukind;
-        Py_ssize_t ulength;
-        void *udata;
-        PyObject *uval = PyTuple_GET_ITEM(value_tuple, i);
-        if (unlikely(__Pyx_PyUnicode_READY(uval)))
-            goto bad;
-        ulength = __Pyx_PyUnicode_GET_LENGTH(uval);
-        if (unlikely(!ulength))
-            continue;
-        if (unlikely((PY_SSIZE_T_MAX >> kind_shift) - ulength < char_pos))
-            goto overflow;
-        ukind = __Pyx_PyUnicode_KIND(uval);
-        udata = __Pyx_PyUnicode_DATA(uval);
-        if (!CYTHON_PEP393_ENABLED || ukind == result_ukind) {
-            memcpy((char *)result_udata + (char_pos << kind_shift), udata, (size_t) (ulength << kind_shift));
-        } else {
-            #if PY_VERSION_HEX >= 0x030d0000
-            if (unlikely(PyUnicode_CopyCharacters(result_uval, char_pos, uval, 0, ulength) < 0)) goto bad;
-            #elif CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030300F0 || defined(_PyUnicode_FastCopyCharacters)
-            _PyUnicode_FastCopyCharacters(result_uval, char_pos, uval, 0, ulength);
-            #else
-            Py_ssize_t j;
-            for (j=0; j < ulength; j++) {
-                Py_UCS4 uchar = __Pyx_PyUnicode_READ(ukind, udata, j);
-                __Pyx_PyUnicode_WRITE(result_ukind, result_udata, char_pos+j, uchar);
-            }
-            #endif
-        }
-        char_pos += ulength;
-    }
-    return result_uval;
-overflow:
-    PyErr_SetString(PyExc_OverflowError, "join() result is too long for a Python string");
-bad:
-    Py_DECREF(result_uval);
-    return NULL;
-#else
-    CYTHON_UNUSED_VAR(max_char);
-    CYTHON_UNUSED_VAR(result_ulength);
-    CYTHON_UNUSED_VAR(value_count);
-    return PyUnicode_Join(__pyx_empty_unicode, value_tuple);
-#endif
-}
-
 /* GetException */
   #if CYTHON_FAST_THREAD_STATE
 static int __Pyx__GetException(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb)
@@ -9297,6 +9225,75 @@ bad:
     Py_XDECREF(local_value);
     Py_XDECREF(local_tb);
     return -1;
+}
+
+/* JoinPyUnicode */
+  static PyObject* __Pyx_PyUnicode_Join(PyObject* value_tuple, Py_ssize_t value_count, Py_ssize_t result_ulength,
+                                      Py_UCS4 max_char) {
+#if CYTHON_USE_UNICODE_INTERNALS && CYTHON_ASSUME_SAFE_MACROS && !CYTHON_AVOID_BORROWED_REFS
+    PyObject *result_uval;
+    int result_ukind, kind_shift;
+    Py_ssize_t i, char_pos;
+    void *result_udata;
+    CYTHON_MAYBE_UNUSED_VAR(max_char);
+#if CYTHON_PEP393_ENABLED
+    result_uval = PyUnicode_New(result_ulength, max_char);
+    if (unlikely(!result_uval)) return NULL;
+    result_ukind = (max_char <= 255) ? PyUnicode_1BYTE_KIND : (max_char <= 65535) ? PyUnicode_2BYTE_KIND : PyUnicode_4BYTE_KIND;
+    kind_shift = (result_ukind == PyUnicode_4BYTE_KIND) ? 2 : result_ukind - 1;
+    result_udata = PyUnicode_DATA(result_uval);
+#else
+    result_uval = PyUnicode_FromUnicode(NULL, result_ulength);
+    if (unlikely(!result_uval)) return NULL;
+    result_ukind = sizeof(Py_UNICODE);
+    kind_shift = (result_ukind == 4) ? 2 : result_ukind - 1;
+    result_udata = PyUnicode_AS_UNICODE(result_uval);
+#endif
+    assert(kind_shift == 2 || kind_shift == 1 || kind_shift == 0);
+    char_pos = 0;
+    for (i=0; i < value_count; i++) {
+        int ukind;
+        Py_ssize_t ulength;
+        void *udata;
+        PyObject *uval = PyTuple_GET_ITEM(value_tuple, i);
+        if (unlikely(__Pyx_PyUnicode_READY(uval)))
+            goto bad;
+        ulength = __Pyx_PyUnicode_GET_LENGTH(uval);
+        if (unlikely(!ulength))
+            continue;
+        if (unlikely((PY_SSIZE_T_MAX >> kind_shift) - ulength < char_pos))
+            goto overflow;
+        ukind = __Pyx_PyUnicode_KIND(uval);
+        udata = __Pyx_PyUnicode_DATA(uval);
+        if (!CYTHON_PEP393_ENABLED || ukind == result_ukind) {
+            memcpy((char *)result_udata + (char_pos << kind_shift), udata, (size_t) (ulength << kind_shift));
+        } else {
+            #if PY_VERSION_HEX >= 0x030d0000
+            if (unlikely(PyUnicode_CopyCharacters(result_uval, char_pos, uval, 0, ulength) < 0)) goto bad;
+            #elif CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030300F0 || defined(_PyUnicode_FastCopyCharacters)
+            _PyUnicode_FastCopyCharacters(result_uval, char_pos, uval, 0, ulength);
+            #else
+            Py_ssize_t j;
+            for (j=0; j < ulength; j++) {
+                Py_UCS4 uchar = __Pyx_PyUnicode_READ(ukind, udata, j);
+                __Pyx_PyUnicode_WRITE(result_ukind, result_udata, char_pos+j, uchar);
+            }
+            #endif
+        }
+        char_pos += ulength;
+    }
+    return result_uval;
+overflow:
+    PyErr_SetString(PyExc_OverflowError, "join() result is too long for a Python string");
+bad:
+    Py_DECREF(result_uval);
+    return NULL;
+#else
+    CYTHON_UNUSED_VAR(max_char);
+    CYTHON_UNUSED_VAR(result_ulength);
+    CYTHON_UNUSED_VAR(value_count);
+    return PyUnicode_Join(__pyx_empty_unicode, value_tuple);
+#endif
 }
 
 /* pep479 */
@@ -9590,7 +9587,7 @@ static PyObject *__Pyx_ImportDottedModule_WalkParts(PyObject *module, PyObject *
 #endif
 static PyObject *__Pyx__ImportDottedModule(PyObject *name, PyObject *parts_tuple) {
 #if PY_MAJOR_VERSION < 3
-    PyObject *module, *from_list, *star = __pyx_n_s__8;
+    PyObject *module, *from_list, *star = __pyx_n_s__5;
     CYTHON_UNUSED_VAR(parts_tuple);
     from_list = PyList_New(1);
     if (unlikely(!from_list))
@@ -11041,7 +11038,7 @@ __Pyx_PyType_GetName(PyTypeObject* tp)
     if (unlikely(name == NULL) || unlikely(!PyUnicode_Check(name))) {
         PyErr_Clear();
         Py_XDECREF(name);
-        name = __Pyx_NewRef(__pyx_n_s__10);
+        name = __Pyx_NewRef(__pyx_n_s__7);
     }
     return name;
 }
