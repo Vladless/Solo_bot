@@ -16,6 +16,7 @@ from bot import bot
 from config import DATABASE_URL
 from filters.admin import IsAdminFilter
 from logger import logger
+from database import delete_user_data
 
 router = Router()
 
@@ -509,15 +510,24 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
 async def delete_banned_users(callback_query: types.CallbackQuery):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        deleted_count = await conn.execute("DELETE FROM blocked_users")
+        blocked_users = await conn.fetch("SELECT tg_id FROM blocked_users")
+        blocked_ids = [record['tg_id'] for record in blocked_users]
+
+        if not blocked_ids:
+            await callback_query.message.answer("📂 Нет заблокировавших пользователей для удаления.")
+            return
+
+        for tg_id in blocked_ids:
+            await delete_user_data(conn, tg_id)
+
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids)
 
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
         )
-
         await callback_query.message.answer(
-            text=f"🗑️ Удалено {deleted_count} записей о заблокировавших пользователях.",
+            text=f"🗑️ Удалено данные о {len(blocked_ids)} пользователях и связанных записях.",
             reply_markup=builder.as_markup(),
         )
     except Exception as e:
@@ -531,3 +541,4 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
         )
     finally:
         await conn.close()
+
