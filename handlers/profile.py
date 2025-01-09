@@ -105,7 +105,7 @@ async def process_callback_view_profile(
         await conn.close()
 
 
-
+@router.message(F.text == "/tariffs")
 @router.callback_query(F.data == "view_tariffs")
 async def view_tariffs_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
