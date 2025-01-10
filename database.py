@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
-
 from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 
@@ -17,34 +17,32 @@ async def save_temporary_data(session, tg_id: int, state: str, data: dict):
         ON CONFLICT (tg_id)
         DO UPDATE SET state = $2, data = $3, updated_at = $4
         """,
-        tg_id, state, json.dumps(data), datetime.utcnow()
+        tg_id,
+        state,
+        json.dumps(data),
+        datetime.utcnow(),
     )
+
 
 async def get_temporary_data(session, tg_id: int) -> dict | None:
     """Извлекает временные данные пользователя."""
     result = await session.fetchrow(
-        "SELECT state, data FROM temporary_data WHERE tg_id = $1",
-        tg_id
+        "SELECT state, data FROM temporary_data WHERE tg_id = $1", tg_id
     )
     if result:
-        return {
-            "state": result["state"],
-            "data": json.loads(result["data"])
-        }
+        return {"state": result["state"], "data": json.loads(result["data"])}
     return None
 
+
 async def clear_temporary_data(session, tg_id: int):
-    await session.execute(
-        "DELETE FROM temporary_data WHERE tg_id = $1",
-        tg_id
-    )
+    await session.execute("DELETE FROM temporary_data WHERE tg_id = $1", tg_id)
+
 
 async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
     await conn.execute(
         "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
-        tg_id
+        tg_id,
     )
-
 
 
 async def init_db(file_path: str = "assets/schema.sql"):
@@ -610,7 +608,9 @@ async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
     try:
 
         if referred_tg_id == referrer_tg_id:
-            logger.warning(f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку.")
+            logger.warning(
+                f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку."
+            )
             return
 
         await session.execute(
@@ -1244,11 +1244,11 @@ async def get_servers_from_db():
 async def delete_user_data(session: Any, tg_id: int):
 
     try:
-        await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
-    except Exception as e:
-        logger.warning(
-            f"У Вас версия без подарков для {tg_id}: {e}"
+        await session.execute(
+            "DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id
         )
+    except Exception as e:
+        logger.warning(f"У Вас версия без подарков для {tg_id}: {e}")
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
@@ -1257,7 +1257,12 @@ async def delete_user_data(session: Any, tg_id: int):
 
 
 async def store_gift_link(
-    gift_id: str, sender_tg_id: int, selected_months: int, expiry_time: datetime, gift_link: str, session: Any = None
+    gift_id: str,
+    sender_tg_id: int,
+    selected_months: int,
+    expiry_time: datetime,
+    gift_link: str,
+    session: Any = None,
 ):
     """
     Добавляет информацию о подарке в базу данных.

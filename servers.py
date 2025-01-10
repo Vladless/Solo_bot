@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from database import get_servers_from_db
 from logger import logger
 
@@ -104,8 +104,9 @@ async def notify_admin(server_name: str):
         current_time = datetime.now()
         last_notification_time = last_notification_times.get(server_name)
 
-        if last_notification_time and current_time - last_notification_time < timedelta(
-            minutes=3
+        if (
+            last_notification_time
+            and current_time - last_notification_time < timedelta(minutes=3)
         ):
             logger.info(
                 f"Не отправляем уведомление для сервера {server_name}, так как прошло менее 3 минут."
