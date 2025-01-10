@@ -10,10 +10,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import DATABASE_URL
 
 from backup import backup_database
 from bot import bot
-from config import DATABASE_URL
 from database import delete_user_data
 from filters.admin import IsAdminFilter
 from logger import logger
@@ -37,7 +37,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "4.0.0-preAlpha(9)" 
+    BOT_VERSION = "4.0.0-preAlpha(9)"
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -64,17 +64,12 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
         InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to")
     )
     builder.row(
-        InlineKeyboardButton(
-            text="🤖 Управление Ботом", callback_data="bot_management"
-        )
+        InlineKeyboardButton(text="🤖 Управление Ботом", callback_data="bot_management")
     )
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     await message.answer(
         f"🤖 Панель администратора\n\nВерсия бота: <b>{BOT_VERSION}</b>",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        reply_markup=builder.as_markup()
     )
 
 
@@ -87,17 +82,12 @@ async def handle_bot_management(callback_query: types.CallbackQuery):
     builder.row(
         InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
     )
-    builder.row(
-        InlineKeyboardButton(text="🚫 Баны", callback_data="ban_user")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")
-    )
+    builder.row(InlineKeyboardButton(text="🚫 Баны", callback_data="ban_user"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
     await callback_query.message.answer(
         "🤖 Управление ботом",
         reply_markup=builder.as_markup(),
     )
-
 
 
 @router.callback_query(F.data == "user_stats", IsAdminFilter())
@@ -209,7 +199,9 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
             )
             return
 
-        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
+        csv_data = (
+            "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
+        )
         for user in users:
             csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
 
@@ -285,15 +277,30 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "send_to", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all"))
-    builder.row(InlineKeyboardButton(text="📢 Отправить с подпиской", callback_data="send_to_subscribed"))
-    builder.row(InlineKeyboardButton(text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"))
-    builder.row(InlineKeyboardButton(text="📢 Рассылка по кластеру", callback_data="send_to_cluster"))
+    builder.row(
+        InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all")
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📢 Отправить с подпиской", callback_data="send_to_subscribed"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📢 Рассылка по кластеру", callback_data="send_to_cluster"
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
     await callback_query.message.answer(
         "✍️ Выберите группу пользователей и введите текст сообщения для рассылки:",
         reply_markup=builder.as_markup(),
     )
+
 
 @router.callback_query(F.data == "send_to_all", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
@@ -303,6 +310,7 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     )
     await state.set_state(UserEditorState.waiting_for_message)
 
+
 @router.callback_query(F.data == "send_to_subscribed", IsAdminFilter())
 async def handle_send_to_subscribed(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(send_to="subscribed")
@@ -310,6 +318,7 @@ async def handle_send_to_subscribed(callback_query: CallbackQuery, state: FSMCon
         "✍️ Введите текст сообщения для рассылки пользователям с активной подпиской:"
     )
     await state.set_state(UserEditorState.waiting_for_message)
+
 
 @router.callback_query(F.data == "send_to_unsubscribed", IsAdminFilter())
 async def handle_send_to_unsubscribed(callback_query: CallbackQuery, state: FSMContext):
@@ -319,8 +328,11 @@ async def handle_send_to_unsubscribed(callback_query: CallbackQuery, state: FSMC
     )
     await state.set_state(UserEditorState.waiting_for_message)
 
+
 @router.callback_query(F.data == "send_to_cluster", IsAdminFilter())
-async def handle_send_to_cluster(callback_query: CallbackQuery, state: FSMContext, session: Any):
+async def handle_send_to_cluster(
+    callback_query: CallbackQuery, state: FSMContext, session: Any
+):
     clusters = await session.fetch("SELECT DISTINCT cluster_name FROM servers")
 
     builder = InlineKeyboardBuilder()
@@ -328,7 +340,7 @@ async def handle_send_to_cluster(callback_query: CallbackQuery, state: FSMContex
         builder.row(
             InlineKeyboardButton(
                 text=f"🌐 {cluster['cluster_name']}",
-                callback_data=f"send_cluster|{cluster['cluster_name']}"
+                callback_data=f"send_cluster|{cluster['cluster_name']}",
             )
         )
 
@@ -357,34 +369,43 @@ async def process_message_to_all(
 
     try:
         state_data = await state.get_data()
-        send_to = state_data.get('send_to', 'all')
+        send_to = state_data.get("send_to", "all")
 
-        if send_to == 'all':
+        if send_to == "all":
             tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections")
-        elif send_to == 'subscribed':
-            tg_ids = await session.fetch("""
+        elif send_to == "subscribed":
+            tg_ids = await session.fetch(
+                """
                 SELECT DISTINCT c.tg_id 
                 FROM connections c
                 JOIN keys k ON c.tg_id = k.tg_id
                 WHERE k.expiry_time > $1
-            """, int(datetime.utcnow().timestamp() * 1000))
-        elif send_to == 'unsubscribed':
-            tg_ids = await session.fetch("""
+            """,
+                int(datetime.utcnow().timestamp() * 1000),
+            )
+        elif send_to == "unsubscribed":
+            tg_ids = await session.fetch(
+                """
                 SELECT c.tg_id 
                 FROM connections c
                 LEFT JOIN keys k ON c.tg_id = k.tg_id
                 GROUP BY c.tg_id
                 HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
-            """, int(datetime.utcnow().timestamp() * 1000))
-        elif send_to == 'cluster':
-            cluster_name = state_data.get('cluster_name')
-            tg_ids = await session.fetch("""
+            """,
+                int(datetime.utcnow().timestamp() * 1000),
+            )
+        elif send_to == "cluster":
+            cluster_name = state_data.get("cluster_name")
+            tg_ids = await session.fetch(
+                """
                 SELECT DISTINCT c.tg_id
                 FROM connections c
                 JOIN keys k ON c.tg_id = k.tg_id
                 JOIN servers s ON k.server_id = s.cluster_name
                 WHERE s.cluster_name = $1
-            """, cluster_name)
+            """,
+                cluster_name,
+            )
 
         total_users = len(tg_ids)
         success_count = 0
@@ -503,11 +524,11 @@ async def handle_ban_user(callback_query: types.CallbackQuery):
         InlineKeyboardButton(text="📄 Выгрузить в CSV", callback_data="export_to_csv")
     )
     builder.row(
-        InlineKeyboardButton(text="🗑️ Удалить из БД", callback_data="delete_banned_users")
+        InlineKeyboardButton(
+            text="🗑️ Удалить из БД", callback_data="delete_banned_users"
+        )
     )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
     await callback_query.message.answer(
         "🚫 Заблокировавшие бота\n\n"
         "Здесь можно просматривать и удалять пользователей, которые забанили вашего бота!",
@@ -523,6 +544,7 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
 
         import csv
         import io
+
         csv_output = io.StringIO()
         writer = csv.writer(csv_output)
         writer.writerow(["tg_id", "blocked_at"])
@@ -532,8 +554,7 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
         csv_output.seek(0)
 
         document = BufferedInputFile(
-            file=csv_output.getvalue().encode("utf-8"),
-            filename="banned_users.csv"
+            file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv"
         )
 
         builder = InlineKeyboardBuilder()
@@ -564,16 +585,20 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         blocked_users = await conn.fetch("SELECT tg_id FROM blocked_users")
-        blocked_ids = [record['tg_id'] for record in blocked_users]
+        blocked_ids = [record["tg_id"] for record in blocked_users]
 
         if not blocked_ids:
-            await callback_query.message.answer("📂 Нет заблокировавших пользователей для удаления.")
+            await callback_query.message.answer(
+                "📂 Нет заблокировавших пользователей для удаления."
+            )
             return
 
         for tg_id in blocked_ids:
             await delete_user_data(conn, tg_id)
 
-        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids)
+        await conn.execute(
+            "DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids
+        )
 
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -594,4 +619,3 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
         )
     finally:
         await conn.close()
-

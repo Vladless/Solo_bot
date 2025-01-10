@@ -7,7 +7,6 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -18,6 +17,7 @@ from config import (
     RENEWAL_PLANS,
     TOTAL_GB,
 )
+
 from database import (
     delete_key,
     get_balance,
@@ -105,14 +105,10 @@ def build_keys_response(records):
             )
 
     builder.row(
-        InlineKeyboardButton(
-            text="➕ Добавить подписку", callback_data="create_key"
-        )
+        InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key")
     )
 
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
     response_message = (
@@ -122,14 +118,18 @@ def build_keys_response(records):
     return inline_keyboard, response_message
 
 
-async def send_with_optional_image(send_message, send_photo, image_path, text, keyboard):
+async def send_with_optional_image(
+    send_message, send_photo, image_path, text, keyboard
+):
     """
     Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
     """
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_file:
             await send_photo(
-                photo=BufferedInputFile(image_file.read(), filename=os.path.basename(image_path)),
+                photo=BufferedInputFile(
+                    image_file.read(), filename=os.path.basename(image_path)
+                ),
                 caption=text,
                 reply_markup=keyboard,
             )
@@ -138,8 +138,6 @@ async def send_with_optional_image(send_message, send_photo, image_path, text, k
             text=text,
             reply_markup=keyboard,
         )
-
-
 
 
 @router.callback_query(F.data.startswith("view_key|"))
@@ -166,9 +164,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
             time_left = expiry_date - current_date
 
             if time_left.total_seconds() <= 0:
-                days_left_message = (
-                    "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
-                )
+                days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
             else:
                 total_seconds = int(time_left.total_seconds())
                 days = total_seconds // 86400
@@ -191,7 +187,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 builder.row(
                     InlineKeyboardButton(
                         text="🔄 Обновить подписку",
-                        callback_data=f"update_subscription|{key_name}"
+                        callback_data=f"update_subscription|{key_name}",
                     )
                 )
 
@@ -203,9 +199,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
             )
 
             builder.row(
-                InlineKeyboardButton(
-                    text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"
-                ),
+                InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
                 InlineKeyboardButton(
                     text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"
                 ),
@@ -217,7 +211,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 ),
                 InlineKeyboardButton(
                     text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"
-                )
+                ),
             )
 
             builder.row(
