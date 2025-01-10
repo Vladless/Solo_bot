@@ -10,6 +10,14 @@ router = Router()
 
 
 @router.callback_query(
+    AdminPanelCallback.filter(F.action == "admin"),
+    IsAdminFilter()
+)
+async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMContext):
+    await handle_admin_message(callback_query.message, state)
+
+
+@router.callback_query(
     F.data == "admin",
     IsAdminFilter()
 )
