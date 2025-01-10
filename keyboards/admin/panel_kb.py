@@ -60,9 +60,8 @@ def build_management_kb() -> InlineKeyboardMarkup:
         text="🔄 Перезагрузить бота",
         callback_data=AdminPanelCallback(action="restart").pack()
     )
-    builder.button(
-        text="⬅️ Назад",
-        callback_data="admin"
+    builder.row(
+        build_admin_back_btn("admin")
     )
     return builder.as_markup()
 
@@ -73,9 +72,8 @@ def build_restart_kb() -> InlineKeyboardMarkup:
         text="✅ Да, перезапустить",
         callback_data=AdminPanelCallback(action="restart_confirm").pack()
     )
-    builder.button(
-        text="🔙 Назад",
-        callback_data="admin"
+    builder.row(
+        build_admin_back_btn("admin")
     )
     return builder.as_markup()
 
@@ -86,5 +84,15 @@ def build_admin_back_kb(action: str) -> InlineKeyboardMarkup:
 
 def build_admin_singleton_kb(text: str, action: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text=text, callback_data=AdminPanelCallback(action=action).pack())
+    builder.row(
+        build_admin_btn(text, action)
+    )
     return builder.as_markup()
+
+
+def build_admin_back_btn(action: str) -> InlineKeyboardMarkup:
+    return build_admin_btn("🔙 Назад", action)
+
+
+def build_admin_btn(text: str, action: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=AdminPanelCallback(action=action).pack())
