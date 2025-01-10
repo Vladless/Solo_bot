@@ -5,10 +5,18 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
+
 from database import get_balance, get_key_count, get_referral_stats, get_trial
-from handlers.buttons.profile import ADD_SUB, GIFTS, INSTRUCTIONS, INVITE, MAIN_MENU, MY_SUBS, PAYMENT
+from handlers.buttons.profile import (
+    ADD_SUB,
+    GIFTS,
+    INSTRUCTIONS,
+    INVITE,
+    MAIN_MENU,
+    MY_SUBS,
+    PAYMENT,
+)
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 
 router = Router()
@@ -17,7 +25,9 @@ router = Router()
 @router.callback_query(F.data == "profile")
 @router.message(F.text == "/profile")
 async def process_callback_view_profile(
-    callback_query_or_message: types.Message | types.CallbackQuery, state: FSMContext, admin: bool
+    callback_query_or_message: types.Message | types.CallbackQuery,
+    state: FSMContext,
+    admin: bool,
 ):
     if isinstance(callback_query_or_message, types.CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
@@ -38,7 +48,9 @@ async def process_callback_view_profile(
     try:
         trial_status = await get_trial(chat_id, conn)
 
-        profile_message = profile_message_send(username, chat_id, int(balance), key_count)
+        profile_message = profile_message_send(
+            username, chat_id, int(balance), key_count
+        )
 
         if key_count == 0:
             profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
@@ -47,15 +59,10 @@ async def process_callback_view_profile(
 
         builder = InlineKeyboardBuilder()
 
-
         if trial_status == 0 or key_count == 0:
-            builder.row(
-                InlineKeyboardButton(text=ADD_SUB, callback_data="create_key")
-            )
+            builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
         else:
-            builder.row(
-                InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys")
-            )
+            builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
 
         builder.row(
             InlineKeyboardButton(

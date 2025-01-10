@@ -6,10 +6,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
@@ -369,7 +369,11 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
             await callback_query.message.answer(
                 f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
                 reply_markup=InlineKeyboardBuilder()
-                .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+                .row(
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="servers_editor"
+                    )
+                )
                 .as_markup(),
             )
             return
@@ -406,7 +410,6 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
         )
     finally:
         await conn.close()
-
 
 
 @router.callback_query(F.data.startswith("server_availability|"), IsAdminFilter())

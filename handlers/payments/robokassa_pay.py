@@ -7,8 +7,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from robokassa import HashAlgorithm, Robokassa
-
 from config import (
     ROBOKASSA_ENABLE,
     ROBOKASSA_LOGIN,
@@ -16,6 +14,8 @@ from config import (
     ROBOKASSA_PASSWORD2,
     ROBOKASSA_TEST_MODE,
 )
+from robokassa import HashAlgorithm, Robokassa
+
 from database import (
     add_connection,
     add_payment,
