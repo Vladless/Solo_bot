@@ -13,7 +13,8 @@ from logger import logger
 async def fetch_url_content(url, tg_id):
     try:
         logger.info(f"Получение URL: {url} для tg_id: {tg_id}")
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, ssl=False) as response:
                 if response.status == 200:
                     content = await response.text()
@@ -24,6 +25,9 @@ async def fetch_url_content(url, tg_id):
                         f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}"
                     )
                     return []
+    except asyncio.TimeoutError:
+        logger.error(f"Таймаут при получении {url} для tg_id: {tg_id}")
+        return []
     except Exception as e:
         logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
         return []
