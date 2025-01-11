@@ -120,6 +120,10 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             "SELECT COUNT(*) FROM connections WHERE created_at >= date_trunc('month', CURRENT_DATE)"
         )
 
+        users_updated_today = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE"
+        )
+
         active_keys = await session.fetchval(
             "SELECT COUNT(*) FROM keys WHERE expiry_time > $1",
             int(datetime.utcnow().timestamp() * 1000),
@@ -133,6 +137,8 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             f"   📆 За неделю: <b>{registrations_week}</b>\n"
             f"   📆 За месяц: <b>{registrations_month}</b>\n"
             f"   🌐 За все время: <b>{total_users}</b>\n\n"
+            f"🌟 Активные пользователи:\n"
+            f"   🌟 Активных сегодня: <b>{users_updated_today}</b>\n\n"
             f"👥 Рефералы:\n"
             f"   🤝 Всего привлечено: <b>{total_referrals}</b>\n\n"
             f"🔑 Ключи:\n"
