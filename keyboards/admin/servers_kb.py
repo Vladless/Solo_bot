@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn
 
 
-class AdminServerEditorCallback(CallbackData, prefix='admin_server_editor'):
+class AdminServerEditorCallback(CallbackData, prefix="admin_servers"):
     action: str
     data: str
 
