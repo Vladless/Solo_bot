@@ -1,15 +1,24 @@
 import asyncio
 
-import asyncpg
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, TOTAL_GB
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, LIMIT_IP, TOTAL_GB
 from database import get_servers_from_db
 from logger import logger
 
 
 async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_timestamp):
+    """
+    Создает ключ на всех серверах указанного кластера.
+
+    :param cluster_id: ID кластера.
+    :param tg_id: Telegram ID пользователя.
+    :param client_id: Уникальный идентификатор клиента.
+    :param email: Email клиента.
+    :param expiry_timestamp: Время истечения ключа (timestamp в миллисекундах).
+    :param allow_existing: Игнорируется, ключи всегда продолжают выполнение.
+    """
     try:
         tasks = []
         servers = await get_servers_from_db()
@@ -32,14 +41,6 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                 )
                 continue
 
-            conn = await asyncpg.connect(DATABASE_URL)
-            existing_key = await conn.fetchrow(
-                "SELECT 1 FROM keys WHERE email = $1", email
-            )
-
-            if existing_key:
-                raise ValueError(f"Email {email} уже существует в базе данных.")
-
             tasks.append(
                 add_client(
                     xui,
@@ -54,7 +55,6 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     inbound_id=int(inbound_id),
                 )
             )
-            await conn.close()
 
         await asyncio.gather(*tasks)
 

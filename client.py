@@ -1,6 +1,6 @@
 import py3xui
-
 from config import LIMIT_IP
+
 from logger import logger
 
 
@@ -41,8 +41,16 @@ async def add_client(
         return response if response else {"status": "failed"}
 
     except Exception as e:
-        logger.error(f"Ошибка при добавлении клиента {email}: {e}")
-        return {"status": "failed", "error": str(e)}
+        error_message = str(e)
+
+        if "Duplicate email" in error_message:
+            logger.warning(
+                f"Дублированный email: {email}. Пропуск. Сообщение: {error_message}"
+            )
+            return {"status": "duplicate", "email": email}
+
+        logger.error(f"Ошибка при добавлении клиента {email}: {error_message}")
+        return {"status": "failed", "error": error_message}
 
 
 async def extend_client_key(

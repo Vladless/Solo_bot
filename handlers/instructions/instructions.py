@@ -5,9 +5,15 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import CONNECT_MACOS, CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
-from handlers.texts import CONNECT_TV_TEXT, INSTRUCTION_PC, INSTRUCTIONS, KEY_MESSAGE, SUBSCRIPTION_DETAILS_TEXT
+
+from handlers.texts import (
+    CONNECT_TV_TEXT,
+    INSTRUCTION_PC,
+    INSTRUCTIONS,
+    KEY_MESSAGE,
+    SUBSCRIPTION_DETAILS_TEXT,
+)
 from logger import logger
 
 router = Router()
@@ -15,13 +21,17 @@ router = Router()
 
 @router.callback_query(F.data == "instructions")
 @router.message(F.text == "/instructions")
-async def send_instructions(callback_query_or_message: types.CallbackQuery | types.Message):
+async def send_instructions(
+    callback_query_or_message: types.CallbackQuery | types.Message,
+):
     instructions_message = INSTRUCTIONS
     image_path = os.path.join("img", "instructions.jpg")
 
     if not os.path.isfile(image_path):
         if isinstance(callback_query_or_message, types.CallbackQuery):
-            await callback_query_or_message.message.answer("Файл изображения не найден.")
+            await callback_query_or_message.message.answer(
+                "Файл изображения не найден."
+            )
         else:
             await callback_query_or_message.answer("Файл изображения не найден.")
         return
@@ -43,7 +53,6 @@ async def send_instructions(callback_query_or_message: types.CallbackQuery | typ
             caption=instructions_message,
             reply_markup=builder.as_markup(),
         )
-
 
 
 @router.callback_query(F.data.startswith("connect_pc|"))
@@ -101,15 +110,13 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
             text="▶ Продолжить", callback_data=f"continue_tv|{key_name}"
         )
     )
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
         text=CONNECT_TV_TEXT,
         reply_markup=builder.as_markup(),
         parse_mode="HTML",
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
     )
 
 
@@ -136,8 +143,7 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
     finally:
         await conn.close()
 
-
-    subscription_link = record['key']
+    subscription_link = record["key"]
 
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
 
@@ -147,12 +153,8 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
             text="📖 Полная инструкция", url="https://vpn4tv.com/quick-guide.html"
         )
     )
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
-        text=message_text,
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
+        text=message_text, reply_markup=builder.as_markup(), parse_mode="HTML"
     )

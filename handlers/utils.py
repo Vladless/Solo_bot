@@ -4,9 +4,9 @@ import re
 
 import aiohttp
 import asyncpg
+from config import DATABASE_URL
 
 from bot import bot
-from config import DATABASE_URL
 from database import get_servers_from_db
 from logger import logger
 
@@ -14,10 +14,12 @@ from logger import logger
 async def get_usd_rate():
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get('https://www.cbr-xml-daily.ru/daily_json.js') as response:
+            async with session.get(
+                "https://www.cbr-xml-daily.ru/daily_json.js"
+            ) as response:
                 if response.status == 200:
                     data = await response.text()
-                    usd = float(json.loads(data)['Valute']['USD']['Value'])
+                    usd = float(json.loads(data)["Valute"]["USD"]["Value"])
                 else:
                     usd = float(100)  # Default value if request fails
     except Exception as e:

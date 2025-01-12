@@ -1,15 +1,19 @@
+import asyncio
+
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
+from handlers.keys.key_utils import create_key_on_cluster
+from logger import logger
 
 router = Router()
 
@@ -330,6 +334,13 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
 
     builder.row(
         InlineKeyboardButton(
+            text="🔄 Синхронизировать",
+            callback_data=f"sync_cluster|{cluster_name}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
             text="🔙 Назад в управление кластерами", callback_data="servers_editor"
         )
     )
@@ -338,6 +349,67 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
         f"🔧 Управление серверами для кластера {cluster_name}",
         reply_markup=builder.as_markup(),
     )
+
+
+@router.callback_query(F.data.startswith("sync_cluster|"), IsAdminFilter())
+async def sync_cluster_handler(callback_query: types.CallbackQuery):
+    """Обработчик для синхронизации ключей на всех серверах выбранного кластера."""
+    cluster_name = callback_query.data.split("|")[1]
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        query_keys = """
+            SELECT tg_id, client_id, email, expiry_time
+            FROM keys
+            WHERE server_id = $1
+        """
+        keys_to_sync = await conn.fetch(query_keys, cluster_name)
+
+        if not keys_to_sync:
+            await callback_query.message.answer(
+                f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
+                reply_markup=InlineKeyboardBuilder()
+                .row(
+                    InlineKeyboardButton(
+                        text="🔙 Назад", callback_data="servers_editor"
+                    )
+                )
+                .as_markup(),
+            )
+            return
+
+        tasks = []
+
+        for key in keys_to_sync:
+            tasks.append(
+                asyncio.create_task(
+                    create_key_on_cluster(
+                        cluster_name,
+                        key["tg_id"],
+                        key["client_id"],
+                        key["email"],
+                        key["expiry_time"],
+                    )
+                )
+            )
+
+        await asyncio.gather(*tasks)
+        await callback_query.message.answer(
+            f"✅ Ключи успешно синхронизированы для кластера {cluster_name}.",
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+            .as_markup(),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
+        await callback_query.message.answer(
+            f"❌ Произошла ошибка при синхронизации: {e}",
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+            .as_markup(),
+        )
+    finally:
+        await conn.close()
 
 
 @router.callback_query(F.data.startswith("server_availability|"), IsAdminFilter())

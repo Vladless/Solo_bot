@@ -4,8 +4,8 @@ from datetime import datetime
 import aiohttp
 import asyncpg
 from aiohttp import web
-
 from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, TRANSITION_DATE_STR
+
 from database import get_servers_from_db
 from logger import logger
 
@@ -95,7 +95,9 @@ async def handle_old_subscription(request):
                 status=400,
             )
 
-        logger.info(f"Значение created_at для клиента с email {email}: {created_at_ms}, кластер: {cluster_name}")
+        logger.info(
+            f"Значение created_at для клиента с email {email}: {created_at_ms}, кластер: {cluster_name}"
+        )
 
         created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
         logger.info(
@@ -129,9 +131,8 @@ async def handle_old_subscription(request):
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "7",
-            "profile-title": "base64:" + base64.b64encode(
-                encoded_project_name.encode("utf-8")
-            ).decode("utf-8"),
+            "profile-title": "base64:"
+            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
         }
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
@@ -139,7 +140,6 @@ async def handle_old_subscription(request):
 
     finally:
         await conn.close()
-
 
 
 async def handle_new_subscription(request):
@@ -205,9 +205,8 @@ async def handle_new_subscription(request):
         "Content-Type": "text/plain; charset=utf-8",
         "Content-Disposition": "inline",
         "profile-update-interval": "7",
-        "profile-title": "base64:" + base64.b64encode(
-            encoded_project_name.encode("utf-8")
-        ).decode("utf-8"),
+        "profile-title": "base64:"
+        + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
     }
 
     logger.info(f"Возвращаем объединенные подписки для email: {email}")
