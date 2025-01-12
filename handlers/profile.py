@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
+from typing import Any
 
 from database import get_balance, get_key_count, get_referral_stats, get_trial
 from handlers.buttons.profile import (
