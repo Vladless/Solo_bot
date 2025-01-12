@@ -2,10 +2,10 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from keyboards.admin.panel_kb import AdminPanelCallback
+from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn
 
 
-class AdminCouponDeleteCallback(CallbackData, prefix='admin_coupon_delete'):
+class AdminCouponDeleteCallback(CallbackData, prefix="admin_coupon_delete"):
     coupon_code: str
 
 
@@ -19,9 +19,8 @@ def build_coupons_kb() -> InlineKeyboardMarkup:
         text="Купоны",
         callback_data=AdminPanelCallback(action="coupons_list").pack()
     )
-    builder.button(
-        text="🔙 Назад",
-        callback_data="admin"
+    builder.row(
+        build_admin_back_btn("admin")
     )
     return builder.as_markup()
 
@@ -36,8 +35,7 @@ def build_coupons_list_kb(coupons: list) -> InlineKeyboardMarkup:
             callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code),
         )
 
-    builder.button(
-        text="🔙 Назад",
-        callback_data=AdminPanelCallback(action="coupons").pack()
+    builder.row(
+        build_admin_back_btn("coupons")
     )
     return builder.as_markup()

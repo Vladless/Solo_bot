@@ -3,7 +3,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
-class AdminPanelCallback(CallbackData, prefix='admin_panel'):
+class AdminPanelCallback(CallbackData, prefix="admin_panel"):
     action: str
 
 
