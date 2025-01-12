@@ -17,7 +17,7 @@ from handlers.keys.key_utils import (
 )
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.users_editor_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
+from keyboards.admin.users_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
     build_user_delete_kb, AdminUserEditorCallback
 from logger import logger
 
