@@ -10,6 +10,8 @@ from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
+    BALANCE,
+    BALANCE_HISTORY,
     GIFTS,
     INSTRUCTIONS,
     INVITE,
@@ -66,8 +68,8 @@ async def process_callback_view_profile(
 
         builder.row(
             InlineKeyboardButton(
-                text=PAYMENT,
-                callback_data="pay",
+                text=BALANCE,
+                callback_data="balance",
             )
         )
         builder.row(
@@ -110,6 +112,46 @@ async def process_callback_view_profile(
                 )
     finally:
         await conn.close()
+
+
+@router.callback_query(F.data == "balance")
+async def balance_handler(callback_query: types.CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+    builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    await callback_query.message.answer(
+        "💰 Управление балансом:",
+        reply_markup=builder.as_markup()
+    )
+
+@router.callback_query(F.data == "balance_history")
+async def balance_history_handler(callback_query: types.CallbackQuery, session: Any):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    query = """
+    SELECT amount, payment_system, status, created_at
+    FROM payments
+    WHERE tg_id = $1
+    ORDER BY created_at DESC
+    """
+    records = await session.fetch(query, callback_query.from_user.id)
+
+    history_text = "📊 История операций с балансом:\n\n"
+    for record in records:
+        amount = record['amount']
+        payment_system = record['payment_system']
+        status = record['status']
+        date = record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+        history_text += f"<b>Сумма:</b> {amount}\n<b>Способ оплаты:</b> {payment_system}\n<b>Статус:</b> {status}\n<b>Дата:</b> {date}\n\n"
+
+    await callback_query.message.answer(
+        history_text,
+        reply_markup=builder.as_markup()
+    )
 
 
 @router.message(F.text == "/tariffs")

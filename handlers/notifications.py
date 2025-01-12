@@ -32,6 +32,28 @@ from logger import logger
 
 router = Router()
 
+async def check_users_and_update_blocked(bot: Bot):
+    conn = None
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        users = await conn.fetch("SELECT tg_id FROM users")
+
+        for user in users:
+            try:
+                await bot.send_chat_action(user['tg_id'], "typing")
+            except (TelegramForbiddenError,Exception):
+                await conn.execute(
+                    "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
+                    user['tg_id']
+                )
+                logger.info(f"User {user['tg_id']} added to blocked_users")
+    except Exception as e:
+        logger.error(f"Error in check_users_and_update_blocked: {e}")
+    finally:
+        if conn:
+            await conn.close()
+
+
 
 async def notify_expiring_keys(bot: Bot):
     conn = None
