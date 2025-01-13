@@ -93,7 +93,7 @@ async def handle_bot_management(callback_query: types.CallbackQuery):
 @router.callback_query(F.data == "user_stats", IsAdminFilter())
 async def user_stats_menu(callback_query: CallbackQuery, session: Any):
     try:
-        total_users = await session.fetchval("SELECT COUNT(*) FROM connections")
+        total_users = await session.fetchval("SELECT COUNT(*) FROM users")
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
         total_referrals = await session.fetchval("SELECT COUNT(*) FROM referrals")
 
@@ -111,13 +111,13 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
         )
 
         registrations_today = await session.fetchval(
-            "SELECT COUNT(*) FROM connections WHERE created_at >= CURRENT_DATE"
+            "SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE"
         )
         registrations_week = await session.fetchval(
-            "SELECT COUNT(*) FROM connections WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
         )
         registrations_month = await session.fetchval(
-            "SELECT COUNT(*) FROM connections WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
         )
 
         users_updated_today = await session.fetchval(
