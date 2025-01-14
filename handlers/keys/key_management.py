@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
+import pytz
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -178,6 +179,9 @@ async def create_key(
     message_or_query: Message | CallbackQuery | None = None,
 ):
     """Создаёт ключ с заданным сроком действия."""
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_time = expiry_time.astimezone(moscow_tz)
+
     while True:
         key_name = generate_random_email()
         logger.info(f"Generated random key name for user {tg_id}: {key_name}")
@@ -195,7 +199,7 @@ async def create_key(
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()
-    expiry_timestamp = int(expiry_time.timestamp() * 1000)
+    expiry_timestamp = int(expiry_time.astimezone(moscow_tz).timestamp() * 1000)
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
     try:
@@ -229,19 +233,13 @@ async def create_key(
     except Exception as e:
         logger.error(f"Error while creating the key for user {tg_id} on cluster: {e}")
 
+        error_message = "❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова."
         if isinstance(message_or_query, Message):
-            await message_or_query.answer(
-                "❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова."
-            )
+            await message_or_query.answer(error_message)
         elif isinstance(message_or_query, CallbackQuery):
-            await message_or_query.message.answer(
-                "❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова."
-            )
+            await message_or_query.message.answer(error_message)
         else:
-            await bot.send_message(
-                chat_id=tg_id,
-                text="❌ Произошла ошибка при создании ключа. Пожалуйста, попробуйте снова.",
-            )
+            await bot.send_message(chat_id=tg_id, text=error_message)
         return
 
     builder = InlineKeyboardBuilder()
@@ -252,9 +250,7 @@ async def create_key(
     )
     builder.row(
         InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
-        InlineKeyboardButton(
-            text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"
-        ),
+        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
     )
     builder.row(
         InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
@@ -262,20 +258,16 @@ async def create_key(
     )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    remaining_time = expiry_time - datetime.utcnow()
+    remaining_time = expiry_time - datetime.now(moscow_tz)
     days = remaining_time.days
     key_message = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
 
     if isinstance(message_or_query, Message):
         await message_or_query.answer(key_message, reply_markup=builder.as_markup())
     elif isinstance(message_or_query, CallbackQuery):
-        await message_or_query.message.answer(
-            key_message, reply_markup=builder.as_markup()
-        )
+        await message_or_query.message.answer(key_message, reply_markup=builder.as_markup())
     else:
-        await bot.send_message(
-            chat_id=tg_id, text=key_message, reply_markup=builder.as_markup()
-        )
+        await bot.send_message(chat_id=tg_id, text=key_message, reply_markup=builder.as_markup())
 
     if state:
         await state.clear()

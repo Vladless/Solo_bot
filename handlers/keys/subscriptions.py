@@ -6,7 +6,7 @@ import aiohttp
 import asyncpg
 from aiohttp import web
 
-from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, TRANSITION_DATE_STR
+from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR
 from database import get_servers_from_db
 from logger import logger
 
@@ -35,6 +35,11 @@ async def fetch_url_content(url, tg_id):
 
 
 async def combine_unique_lines(urls, tg_id, query_string):
+    if SUPERNODE:
+        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для tg_id: {tg_id}")
+        urls_with_query = [f"{urls[0]}?{query_string}"] if urls else []
+        return await fetch_url_content(urls_with_query[0], tg_id) if urls_with_query else []
+
     all_lines = []
     logger.info(
         f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}"

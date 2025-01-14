@@ -1,6 +1,6 @@
 import py3xui
 
-from config import LIMIT_IP
+from config import LIMIT_IP, SUPERNODE
 from logger import logger
 
 
@@ -15,6 +15,7 @@ async def add_client(
     enable: bool,
     flow: str,
     inbound_id: int,
+    sub_id
 ):
     """
     Adds a client to the server via 3x-ui.
@@ -30,7 +31,7 @@ async def add_client(
             expiry_time=expiry_time,
             enable=enable,
             tg_id=tg_id,
-            sub_id=email,
+            sub_id=sub_id,
             flow=flow,
         )
 
@@ -54,7 +55,7 @@ async def add_client(
 
 
 async def extend_client_key(
-    xui, inbound_id, email: str, new_expiry_time: int, client_id: str, total_gb: int
+    xui, inbound_id, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id = str
 ):
     """
     Функция для обновления срока действия ключа клиента по email.
@@ -78,7 +79,7 @@ async def extend_client_key(
         client.id = client_id
         client.expiry_time = new_expiry_time
         client.flow = "xtls-rprx-vision"
-        client.sub_id = email
+        client.sub_id = sub_id
         client.total_gb = total_gb
         client.enable = True
         client.limit_ip = LIMIT_IP
@@ -106,6 +107,11 @@ async def delete_client(
     """
     await xui.login()
     try:
+        if SUPERNODE:
+            await xui.client.delete(inbound_id, client_id)
+            logger.info(f"Клиент с ID {client_id} был удален успешно (SUPERNODE).")
+            return True
+
         client = await xui.client.get_by_email(email)
 
         if not client:

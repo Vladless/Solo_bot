@@ -3667,7 +3667,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  *                         new_expiry_time = data.get("new_expiry_time")
  *                         total_gb = data.get("total_gb")             # <<<<<<<<<<<<<<
  *                         cost = data.get("cost")
- *                         email = data.get("email")  #   email
+ *                         email = data.get("email")
  */
               __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_data, __pyx_n_s_get); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 37, __pyx_L13_error)
               __Pyx_GOTREF(__pyx_t_5);
@@ -3701,7 +3701,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  *                         new_expiry_time = data.get("new_expiry_time")
  *                         total_gb = data.get("total_gb")
  *                         cost = data.get("cost")             # <<<<<<<<<<<<<<
- *                         email = data.get("email")  #   email
+ *                         email = data.get("email")
  * 
  */
               __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_data, __pyx_n_s_get); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 38, __pyx_L13_error)
@@ -3735,7 +3735,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               /* "handlers/payments/utils.py":39
  *                         total_gb = data.get("total_gb")
  *                         cost = data.get("cost")
- *                         email = data.get("email")  #   email             # <<<<<<<<<<<<<<
+ *                         email = data.get("email")             # <<<<<<<<<<<<<<
  * 
  *                         if not all([plan, client_id, new_expiry_time, email]):
  */
@@ -3768,7 +3768,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
               __pyx_t_9 = 0;
 
               /* "handlers/payments/utils.py":41
- *                         email = data.get("email")  #   email
+ *                         email = data.get("email")
  * 
  *                         if not all([plan, client_id, new_expiry_time, email]):             # <<<<<<<<<<<<<<
  *                             logger.error(f"[RENEW]        {user_id}")
@@ -3850,7 +3850,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 goto __pyx_L12_return;
 
                 /* "handlers/payments/utils.py":41
- *                         email = data.get("email")  #   email
+ *                         email = data.get("email")
  * 
  *                         if not all([plan, client_id, new_expiry_time, email]):             # <<<<<<<<<<<<<<
  *                             logger.error(f"[RENEW]        {user_id}")
@@ -4625,8 +4625,8 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  *                             return
  * 
  *                 builder.row(             # <<<<<<<<<<<<<<
- *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
+ *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  */
           __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 73, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_9);
@@ -4634,19 +4634,19 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           /* "handlers/payments/utils.py":74
  * 
  *                 builder.row(
- *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),             # <<<<<<<<<<<<<<
- *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
+ *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),             # <<<<<<<<<<<<<<
+ *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                 )
  */
           __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 74, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_8);
           __pyx_t_4 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 74, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_4);
-          __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 74, __pyx_L13_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 74, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_6);
           if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 74, __pyx_L13_error)
           __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-          if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 74, __pyx_L13_error)
+          if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 74, __pyx_L13_error)
           __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_8, __pyx_empty_tuple, __pyx_t_4); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 74, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_6);
           __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
@@ -4654,8 +4654,8 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
 
           /* "handlers/payments/utils.py":75
  *                 builder.row(
- *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
- *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),             # <<<<<<<<<<<<<<
+ *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
+ *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),             # <<<<<<<<<<<<<<
  *                 )
  *                 await bot.send_message(
  */
@@ -4663,11 +4663,11 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __Pyx_GOTREF(__pyx_t_4);
           __pyx_t_8 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 75, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_8);
-          __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 75, __pyx_L13_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 75, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_12);
           if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_text, __pyx_t_12) < 0) __PYX_ERR(0, 75, __pyx_L13_error)
           __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-          if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 75, __pyx_L13_error)
+          if (PyDict_SetItem(__pyx_t_8, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 75, __pyx_L13_error)
           __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_8); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 75, __pyx_L13_error)
           __Pyx_GOTREF(__pyx_t_12);
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -4699,7 +4699,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
           /* "handlers/payments/utils.py":77
- *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
+ *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                 )
  *                 await bot.send_message(             # <<<<<<<<<<<<<<
  *                     chat_id=user_id,
@@ -4782,7 +4782,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
           __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
 
           /* "handlers/payments/utils.py":77
- *                     InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"),
+ *                     InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"),
  *                 )
  *                 await bot.send_message(             # <<<<<<<<<<<<<<
  *                     chat_id=user_id,
@@ -4899,7 +4899,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  *             finally:
  *                 await conn.close()             # <<<<<<<<<<<<<<
  *         else:
- *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))
+ *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))
  */
         /*finally:*/ {
           /*normal exit:*/{
@@ -5241,8 +5241,8 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
       /* "handlers/payments/utils.py":87
  *                 await conn.close()
  *         else:
- *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))             # <<<<<<<<<<<<<<
- *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))
+ *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))             # <<<<<<<<<<<<<<
+ *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))
  * 
  */
       /*else*/ {
@@ -5252,11 +5252,11 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __Pyx_GOTREF(__pyx_t_9);
         __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 87, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_12);
-        __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 87, __pyx_L4_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 87, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_6);
         if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 87, __pyx_L4_error)
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-        if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 87, __pyx_L4_error)
+        if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 87, __pyx_L4_error)
         __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_9, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 87, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_6);
         __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
@@ -5288,8 +5288,8 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
 
         /* "handlers/payments/utils.py":88
  *         else:
- *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))
- *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))             # <<<<<<<<<<<<<<
+ *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))
+ *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))             # <<<<<<<<<<<<<<
  * 
  *             await bot.send_message(
  */
@@ -5299,11 +5299,11 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __Pyx_GOTREF(__pyx_t_6);
         __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 88, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_12);
-        __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_ADD_KEY); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 88, __pyx_L4_error)
+        __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_RENEW_KEY); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 88, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_9);
         if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_9) < 0) __PYX_ERR(0, 88, __pyx_L4_error)
         __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-        if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_create_key) < 0) __PYX_ERR(0, 88, __pyx_L4_error)
+        if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_view_keys) < 0) __PYX_ERR(0, 88, __pyx_L4_error)
         __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 88, __pyx_L4_error)
         __Pyx_GOTREF(__pyx_t_9);
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
@@ -5334,7 +5334,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __Pyx_DECREF(__pyx_t_8); __pyx_t_8 = 0;
 
         /* "handlers/payments/utils.py":90
- *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))
+ *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))
  * 
  *             await bot.send_message(             # <<<<<<<<<<<<<<
  *                 chat_id=user_id,
@@ -5417,7 +5417,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
         __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
         /* "handlers/payments/utils.py":90
- *             builder.row(InlineKeyboardButton(text=ADD_KEY, callback_data="create_key"))
+ *             builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="view_keys"))
  * 
  *             await bot.send_message(             # <<<<<<<<<<<<<<
  *                 chat_id=user_id,
