@@ -6,10 +6,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
@@ -378,22 +378,19 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
             )
             return
 
-        tasks = []
-
         for key in keys_to_sync:
-            tasks.append(
-                asyncio.create_task(
-                    create_key_on_cluster(
-                        cluster_name,
-                        key["tg_id"],
-                        key["client_id"],
-                        key["email"],
-                        key["expiry_time"],
-                    )
+            try:
+                await create_key_on_cluster(
+                    cluster_name,
+                    key["tg_id"],
+                    key["client_id"],
+                    key["email"],
+                    key["expiry_time"],
                 )
-            )
+                await asyncio.sleep(0.2)
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
 
-        await asyncio.gather(*tasks)
         await callback_query.message.answer(
             f"✅ Ключи успешно синхронизированы для кластера {cluster_name}.",
             reply_markup=InlineKeyboardBuilder()

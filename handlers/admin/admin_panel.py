@@ -10,10 +10,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import DATABASE_URL
 
 from backup import backup_database
 from bot import bot
+from config import DATABASE_URL
 from database import delete_user_data
 from filters.admin import IsAdminFilter
 from logger import logger
@@ -37,7 +37,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "4.0.0-preAlpha(9)"
+    BOT_VERSION = "4.0.0-preAlpha(14)"
 
     builder = InlineKeyboardBuilder()
     builder.row(

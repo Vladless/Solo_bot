@@ -5,8 +5,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ErrorEvent
-from config import API_TOKEN
 
+from config import API_TOKEN
 from logger import logger
 from middlewares.admin import AdminMiddleware
 from middlewares.database import DatabaseMiddleware

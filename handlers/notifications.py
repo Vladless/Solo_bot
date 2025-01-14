@@ -5,17 +5,19 @@ import asyncpg
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from py3xui import AsyncApi
+
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
+    AUTO_DELETE_EXPIRED_KEYS,
+    AUTO_RENEW_KEYS,
     DATABASE_URL,
     DEV_MODE,
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
 )
-from py3xui import AsyncApi
-
 from database import (
     add_blocked_user,
     add_notification,
@@ -124,117 +126,58 @@ async def notify_10h_keys(
 
     logger.info(f"Найдено {len(records)} ключей для уведомления за 10 часов.")
 
-    async def process_record(record):
-        tg_id = record["tg_id"]
-        email = record["email"]
-        expiry_time = record["expiry_time"]
+    for record in records:
+        await process_10h_record(record, bot, conn)
 
-        expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-        current_date = datetime.utcnow()
-        time_left = expiry_date - current_date
-
-        if time_left.total_seconds() <= 0:
-            days_left_message = "Ключ истек"
-        elif time_left.days > 0:
-            days_left_message = f"{time_left.days}"
-        else:
-            hours_left = time_left.seconds // 3600
-            days_left_message = f"{hours_left}"
-
-        message = KEY_EXPIRY_10H.format(
-            email=email,
-            expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
-            days_left_message=days_left_message,
-            price=RENEWAL_PLANS["1"]["price"],
-        )
-
-        balance = await get_balance(tg_id)
-
-        if balance >= RENEWAL_PLANS["1"]["price"]:
-            try:
-                await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-                new_expiry_time = int(
-                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
-                )
-                await update_key_expiry(record["client_id"], new_expiry_time)
-
-                servers = await get_servers_from_db()
-
-                for cluster_id in servers:
-                    await renew_key_in_cluster(
-                        cluster_id,
-                        email,
-                        record["client_id"],
-                        new_expiry_time,
-                        TOTAL_GB,
-                    )
-                    logger.info(
-                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
-                    )
-
-                await conn.execute(
-                    """
-                    UPDATE keys
-                    SET notified = FALSE, notified_24h = FALSE
-                    WHERE client_id = $1
-                    """,
-                    record["client_id"],
-                )
-
-                keyboard = types.InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            types.InlineKeyboardButton(
-                                text="👤 Личный кабинет", callback_data="profile"
-                            )
-                        ]
-                    ]
-                )
-                await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
-                logger.info(
-                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
-                )
-            except TelegramForbiddenError:
-                logger.warning(
-                    f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users."
-                )
-                await add_blocked_user(tg_id, conn)
-            except Exception as e:
-                logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
-        else:
-            try:
-                keyboard = InlineKeyboardBuilder()
-                keyboard.button(
-                    text="🔄 Продлить VPN", callback_data=f"renew_key|{email}"
-                )
-                keyboard.button(text="💳 Пополнить баланс", callback_data="pay")
-                keyboard.button(text="👤 Личный кабинет", callback_data="profile")
-                keyboard.adjust(1)
-
-                await bot.send_message(
-                    tg_id, message, reply_markup=keyboard.as_markup()
-                )
-                logger.info(f"Уведомление отправлено пользователю {tg_id}.")
-
-                await conn.execute(
-                    "UPDATE keys SET notified = TRUE WHERE client_id = $1",
-                    record["client_id"],
-                )
-                logger.info(
-                    f"Обновлено поле notified для клиента {record['client_id']}."
-                )
-            except TelegramForbiddenError:
-                logger.warning(
-                    f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users."
-                )
-                await add_blocked_user(tg_id, conn)
-            except Exception as e:
-                logger.debug(
-                    f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
-                )
-
-    await asyncio.gather(*(process_record(record) for record in records))
     logger.info("Обработка всех уведомлений за 10 часов завершена.")
+
+
+async def process_10h_record(record, bot, conn):
+    tg_id = record["tg_id"]
+    email = record["email"]
+    expiry_time = record["expiry_time"]
+
+    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+    current_date = datetime.utcnow()
+    time_left = expiry_date - current_date
+
+    days_left_message = (
+        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+    )
+
+    message = KEY_EXPIRY_10H.format(
+        email=email,
+        expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
+        days_left_message=days_left_message,
+        price=RENEWAL_PLANS["1"]["price"],
+    )
+
+    balance = await get_balance(tg_id)
+
+    if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
+        try:
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
+            await update_key_expiry(record["client_id"], new_expiry_time)
+
+            servers = await get_servers_from_db()
+            for cluster_id in servers:
+                await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
+                logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
+
+            await conn.execute("UPDATE keys SET notified = TRUE WHERE client_id = $1", record["client_id"])
+
+            keyboard = types.InlineKeyboardMarkup(
+                inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
+            )
+
+            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+            logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+
+        except Exception as e:
+            logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
+    else:
+        await send_renewal_notification(bot, tg_id, email, message, conn, record["client_id"], "notified")
 
 
 async def notify_24h_keys(
@@ -256,125 +199,74 @@ async def notify_24h_keys(
 
     logger.info(f"Найдено {len(records_24h)} ключей для уведомления за 24 часа.")
 
-    async def process_record(record):
-        tg_id = record["tg_id"]
-        email = record["email"]
-        expiry_time = record["expiry_time"]
+    for record in records_24h:
+        await process_24h_record(record, bot, conn)
 
-        expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-        current_date = datetime.utcnow()
-        time_left = expiry_date - current_date
-
-        if time_left.total_seconds() <= 0:
-            days_left_message = "Ключ истек"
-        elif time_left.days > 0:
-            days_left_message = f"{time_left.days}"
-        else:
-            hours_left = time_left.seconds // 3600
-            days_left_message = f"{hours_left}"
-
-        message_24h = KEY_EXPIRY_24H.format(
-            email=email,
-            days_left_message=days_left_message,
-            expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-        balance = await get_balance(tg_id)
-
-        if balance >= RENEWAL_PLANS["1"]["price"]:
-            try:
-                await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-                new_expiry_time = int(
-                    (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
-                )
-                await update_key_expiry(record["client_id"], new_expiry_time)
-
-                servers = await get_servers_from_db()
-
-                for cluster_id in servers:
-                    await renew_key_in_cluster(
-                        cluster_id,
-                        email,
-                        record["client_id"],
-                        new_expiry_time,
-                        TOTAL_GB,
-                    )
-                    logger.info(
-                        f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
-                    )
-
-                await conn.execute(
-                    """
-                    UPDATE keys
-                    SET notified_24h = FALSE, notified = FALSE
-                    WHERE client_id = $1
-                    """,
-                    record["client_id"],
-                )
-
-                keyboard = InlineKeyboardBuilder()
-                keyboard.row(
-                    types.InlineKeyboardButton(
-                        text="👤 Личный кабинет", callback_data="profile"
-                    )
-                )
-                await bot.send_message(
-                    tg_id,
-                    text=KEY_RENEWED,
-                    reply_markup=keyboard.as_markup(),
-                )
-                logger.info(
-                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
-                )
-            except TelegramForbiddenError:
-                logger.warning(
-                    f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users."
-                )
-                await add_blocked_user(tg_id, conn)
-            except Exception as e:
-                logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
-        else:
-            try:
-                builder = InlineKeyboardBuilder()
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="🔄 Продлить VPN",
-                        callback_data=f"renew_key|{email}",
-                    )
-                )
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="💳 Пополнить баланс",
-                        callback_data="pay",
-                    )
-                )
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="👤 Личный кабинет",
-                        callback_data="profile",
-                    )
-                )
-                keyboard = builder.as_markup()
-                await bot.send_message(tg_id, message_24h, reply_markup=keyboard)
-                logger.info(f"Уведомление за 24 часа отправлено пользователю {tg_id}.")
-            except TelegramForbiddenError:
-                logger.warning(
-                    f"Бот заблокирован пользователем {tg_id}. Записываем в blocked_users."
-                )
-                await add_blocked_user(tg_id, conn)
-            except Exception as e:
-                logger.error(
-                    f"Ошибка при отправке уведомления за 24 часа пользователю {tg_id}: {e}"
-                )
-
-        await conn.execute(
-            "UPDATE keys SET notified_24h = TRUE WHERE client_id = $1",
-            record["client_id"],
-        )
-        logger.info(f"Обновлено поле notified_24h для клиента {record['client_id']}.")
-
-    await asyncio.gather(*(process_record(record) for record in records_24h))
     logger.info("Обработка всех уведомлений за 24 часа завершена.")
+
+
+
+async def process_24h_record(record, bot, conn):
+    tg_id = record["tg_id"]
+    email = record["email"]
+    expiry_time = record["expiry_time"]
+
+    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+    current_date = datetime.utcnow()
+    time_left = expiry_date - current_date
+
+    days_left_message = (
+        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+    )
+
+    message_24h = KEY_EXPIRY_24H.format(
+        email=email,
+        days_left_message=days_left_message,
+        expiry_date=expiry_date.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+    balance = await get_balance(tg_id)
+
+    if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
+        try:
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
+            await update_key_expiry(record["client_id"], new_expiry_time)
+
+            servers = await get_servers_from_db()
+            for cluster_id in servers:
+                await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
+                logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
+
+            await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", record["client_id"])
+
+            keyboard = types.InlineKeyboardMarkup(
+                inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
+            )
+
+            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+            logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+
+        except Exception as e:
+            logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
+    else:
+        await send_renewal_notification(bot, tg_id, email, message_24h, conn, record["client_id"], "notified_24h")
+
+
+async def send_renewal_notification(bot, tg_id, email, message, conn, client_id, flag):
+    try:
+        keyboard = InlineKeyboardBuilder()
+        keyboard.row(types.InlineKeyboardButton(text="🔄 Продлить VPN", callback_data=f"renew_key|{email}"))
+        keyboard.row(types.InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
+        keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+        await bot.send_message(tg_id, message, reply_markup=keyboard.as_markup())
+        logger.info(f"Уведомление отправлено пользователю {tg_id}.")
+
+        await conn.execute(f"UPDATE keys SET {flag} = TRUE WHERE client_id = $1", client_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 
 
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
@@ -461,9 +353,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         current_time,
     )
 
-    logger.info(
-        f"Найдено {len(expiring_keys)} подписок, срок действия которых скоро истекает."
-    )
+    logger.info(f"Найдено {len(expiring_keys)} подписок, срок действия которых скоро истекает.")
 
     for record in expiring_keys:
         try:
@@ -499,22 +389,16 @@ async def process_key(record, bot, conn):
     )
 
     try:
-        if balance >= RENEWAL_PLANS["1"]["price"]:
+        if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-            new_expiry_time = int(
-                (datetime.utcnow() + timedelta(days=30)).timestamp() * 1000
-            )
+            new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
 
             servers = await get_servers_from_db()
 
             for cluster_id in servers:
-                await renew_key_in_cluster(
-                    cluster_id, email, client_id, new_expiry_time, TOTAL_GB
-                )
-                logger.info(
-                    f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}."
-                )
+                await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
+                logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
 
             await conn.execute(
                 """
@@ -524,40 +408,27 @@ async def process_key(record, bot, conn):
                 """,
                 client_id,
             )
-            logger.info(
-                f"Флаги notified и notified_24 сброшены для клиента с ID {client_id}."
-            )
-            try:
-                await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
-                logger.info(
-                    f"Уведомление об успешном продлении отправлено клиенту {tg_id}."
-                )
-            except Exception as e:
-                logger.error(f"Ошибка при отправке уведомления клиенту {tg_id}: {e}")
+            logger.info(f"Флаги notified сброшены для клиента {client_id}.")
+
+            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+            logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
         else:
-            message_expired = "Ваша подписка истекла и была удалена. Получите новую через личный кабинет"
+            message_expired = "Ваша подписка истекла. Пополните баланс для продления."
+            await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
+            logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
 
-            try:
-                await bot.send_message(
-                    tg_id, text=message_expired, reply_markup=keyboard
-                )
-                logger.info(
-                    f"Уведомление об истечении подписки и удалении ключа отправлено пользователю {tg_id}."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Ошибка при отправке уведомления об истечении подписки пользователю {tg_id}: {e}"
-                )
+            if AUTO_DELETE_EXPIRED_KEYS:
+                servers = await get_servers_from_db()
 
-            servers = await get_servers_from_db()
+                for cluster_id in servers:
+                    await delete_key_from_cluster(cluster_id, email, client_id)
+                    logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
 
-            for cluster_id in servers:
-                await delete_key_from_cluster(cluster_id, email, client_id)
-                logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
-
-            await delete_key(client_id)
-            logger.info(f"Ключ для клиента с ID {client_id} удален из базы данных.")
+                await delete_key(client_id)
+                logger.info(f"Ключ {client_id} удалён из базы данных.")
+            else:
+                logger.info(f"Ключ {client_id} НЕ был удалён (AUTO_DELETE_EXPIRED_KEYS=False).")
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")

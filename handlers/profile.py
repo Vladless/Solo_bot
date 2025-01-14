@@ -1,13 +1,13 @@
 import os
+from typing import Any
 
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
-from typing import Any
 
+from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
@@ -56,7 +56,7 @@ async def process_callback_view_profile(
         )
 
         if key_count == 0:
-            profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Устройство, чтобы настроить VPN-подключение</i></pre>"
+            profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Подписка, чтобы настроить VPN-подключение</i></pre>"
         else:
             profile_message += f"\n<pre> <i>{NEWS_MESSAGE}</i></pre>"
 
@@ -138,21 +138,31 @@ async def balance_history_handler(callback_query: types.CallbackQuery, session: 
     FROM payments
     WHERE tg_id = $1
     ORDER BY created_at DESC
+    LIMIT 3
     """
     records = await session.fetch(query, callback_query.from_user.id)
 
-    history_text = "📊 История операций с балансом:\n\n"
-    for record in records:
-        amount = record['amount']
-        payment_system = record['payment_system']
-        status = record['status']
-        date = record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-        history_text += f"<b>Сумма:</b> {amount}\n<b>Способ оплаты:</b> {payment_system}\n<b>Статус:</b> {status}\n<b>Дата:</b> {date}\n\n"
+    if records:
+        history_text = "📊 <b>Последние 3 операции с балансом:</b>\n\n"
+        for record in records:
+            amount = record['amount']
+            payment_system = record['payment_system']
+            status = record['status']
+            date = record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            history_text += (
+                f"<b>Сумма:</b> {amount}₽\n"
+                f"<b>Способ оплаты:</b> {payment_system}\n"
+                f"<b>Статус:</b> {status}\n"
+                f"<b>Дата:</b> {date}\n\n"
+            )
+    else:
+        history_text = "❌ У вас пока нет операций с балансом."
 
     await callback_query.message.answer(
         history_text,
         reply_markup=builder.as_markup()
     )
+
 
 
 @router.message(F.text == "/tariffs")
