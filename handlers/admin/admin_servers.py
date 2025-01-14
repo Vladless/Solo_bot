@@ -50,7 +50,6 @@ async def handle_servers_editor(callback_query: types.CallbackQuery):
         "<i>🌐 <b>Кластеры</b> — это пространство серверов, в пределах которого создается подписка.</i>\n"
         "💡 Если вы хотите выдавать по 1 серверу, то добавьте всего 1 сервер в кластер.\n\n"
         "<i>⚠️ <b>Важно:</b> Кластеры удаляются автоматически, если удалить все серверы внутри них.</i>\n\n",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
 
@@ -60,8 +59,7 @@ async def handle_add_cluster(callback_query: types.CallbackQuery, state: FSMCont
     await callback_query.message.answer(
         "🔧 <b>Введите имя нового кластера:</b>\n\n"
         "<b>Имя кластера должно быть уникальным и на английском языке.</b>\n"
-        "<i>Пример:</i> <code>cluster2</code> или <code>us_east_1</code>",
-        parse_mode="HTML",
+        "<i>Пример:</i> <code>cluster2</code> или <code>us_east_1</code>"
     )
 
     await state.set_state(UserEditorState.waiting_for_cluster_name)
@@ -100,7 +98,6 @@ async def handle_cluster_name_input(message: types.Message, state: FSMContext):
         f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
         "Рекомендуется указать локацию сервера в имени.\n\n"
         "<i>Пример:</i> <code>server-asia</code>, <code>server-europe</code>",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
     await state.set_state(UserEditorState.waiting_for_server_name)
@@ -149,7 +146,6 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
         "API URL должен быть в следующем формате:\n\n"
         "<code>https://your_domain:port/panel_path</code>\n\n"
         "URL должен быть без слэша на конце!\n",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
     await state.set_state(UserEditorState.waiting_for_api_url)
@@ -176,7 +172,6 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
     if not api_url.startswith("https://"):
         await message.answer(
             "❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
-            parse_mode="HTML",
         )
         return
 
@@ -198,7 +193,6 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
         "<code>https://your_domain:port_sub/sub_path</code>\n\n"
         "URL должен быть без слэша и имени клиента на конце!\n"
         "Его можно увидеть в панели 3x-ui в информации о клиенте.",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
     await state.set_state(UserEditorState.waiting_for_subscription_url)
@@ -225,7 +219,6 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
     if not subscription_url.startswith("https://"):
         await message.answer(
             "❌ subscription_url должен начинаться с <code>https://</code>. Попробуйте снова.",
-            parse_mode="HTML",
         )
         return
 
@@ -244,7 +237,6 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
     await message.answer(
         f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
         "Это номер подключения vless в вашей панели 3x-ui. Обычно это <b>1</b> при чистой настройке по гайду.\n\n",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
     await state.set_state(UserEditorState.waiting_for_inbound_id)
@@ -501,7 +493,6 @@ async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMCo
             f"<b>📡 API URL:</b> {api_url}\n"
             f"<b>🌐 Subscription URL:</b> {subscription_url}\n"
             f"<b>🔑 Inbound ID:</b> {inbound_id}",
-            parse_mode="HTML",
             reply_markup=builder.as_markup(),
         )
     else:
@@ -570,7 +561,6 @@ async def handle_add_server(callback_query: types.CallbackQuery, state: FSMConte
         f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
         "Рекомендуется указать локацию сервера в имени.\n\n"
         "<i>Пример:</i> <code>server-asia</code>, <code>server-europe</code>",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
 
@@ -598,7 +588,6 @@ async def handle_backup_cluster(callback_query: types.CallbackQuery):
     await callback_query.message.answer(
         f"<b>Бэкап для кластера {cluster_name} был успешно создан и отправлен администраторам!</b>\n\n"
         f"🔔 <i>Бэкапы отправлены в боты панелей.</i>",
-        parse_mode="HTML",
         reply_markup=builder.as_markup(),
     )
     await callback_query.answer()

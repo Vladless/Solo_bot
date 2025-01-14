@@ -106,7 +106,7 @@ async def handle_error(
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 
-        await bot.send_message(tg_id, message, parse_mode="HTML")
+        await bot.send_message(tg_id, message)
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ошибки: {e}")

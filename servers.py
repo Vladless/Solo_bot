@@ -132,7 +132,6 @@ async def notify_admin(server_name: str):
                     "Проверьте соединение к серверу, подключение к панели или удалите его из таблицы серверов в боте, "
                     "чтобы не выдать подписку к неработающему серверу."
                 ),
-                parse_mode="HTML",
                 reply_markup=builder.as_markup(),
             )
             logger.info(
