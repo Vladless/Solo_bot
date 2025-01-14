@@ -3,21 +3,14 @@ import asyncio
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, TOTAL_GB
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB
 from database import get_servers_from_db
 from logger import logger
 
 
 async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_timestamp):
     """
-    Создает ключ на всех серверах указанного кластера.
-
-    :param cluster_id: ID кластера.
-    :param tg_id: Telegram ID пользователя.
-    :param client_id: Уникальный идентификатор клиента.
-    :param email: Email клиента.
-    :param expiry_timestamp: Время истечения ключа (timestamp в миллисекундах).
-    :param allow_existing: Игнорируется, ключи всегда продолжают выполнение.
+    Создает ключ на всех серверах указанного кластера с одинаковым sub_id и уникальным email при активном SUPERNODE.
     """
     try:
         tasks = []
@@ -35,17 +28,26 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
             )
 
             inbound_id = server_info.get("inbound_id")
+            server_name = server_info.get("server_name", "unknown")
+
             if not inbound_id:
                 logger.warning(
-                    f"INBOUND_ID отсутствует для сервера {server_info.get('server_name', 'unknown')}. Пропуск."
+                    f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
                 )
                 continue
+
+            if SUPERNODE:
+                unique_email = f"{email}_{server_name.lower()}"
+                sub_id = email
+            else:
+                unique_email = email
+                sub_id = unique_email
 
             tasks.append(
                 add_client(
                     xui,
                     client_id,
-                    email,
+                    unique_email,
                     tg_id,
                     limit_ip=LIMIT_IP,
                     total_gb=TOTAL_GB,
@@ -53,14 +55,19 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     enable=True,
                     flow="xtls-rprx-vision",
                     inbound_id=int(inbound_id),
+                    sub_id=sub_id
                 )
             )
+
+            if SUPERNODE:
+                await asyncio.sleep(0.2)
 
         await asyncio.gather(*tasks)
 
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         raise e
+
 
 
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
@@ -80,20 +87,30 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
             )
 
             inbound_id = server_info.get("inbound_id")
+            server_name = server_info.get("server_name", "unknown")
+
             if not inbound_id:
                 logger.warning(
-                    f"INBOUND_ID отсутствует для сервера {server_info.get('server_name', 'unknown')}. Пропуск."
+                    f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
                 )
                 continue
+
+            if SUPERNODE:
+                unique_email = f"{email}_{server_name.lower()}"
+                sub_id = email
+            else:
+                unique_email = email
+                sub_id = unique_email
 
             tasks.append(
                 extend_client_key(
                     xui,
                     int(inbound_id),
-                    email,
+                    unique_email,
                     new_expiry_time,
                     client_id,
                     total_gb,
+                    sub_id
                 )
             )
 

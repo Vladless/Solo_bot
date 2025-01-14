@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+import pytz
 from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -496,8 +497,9 @@ async def handle_expiry_time_input(
 
     try:
         expiry_time_str = message.text
+        moscow_tz = pytz.timezone("Europe/Moscow")
         expiry_time = int(
-            datetime.strptime(expiry_time_str, "%Y-%m-%d %H:%M:%S").timestamp() * 1000
+            datetime.strptime(expiry_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=moscow_tz).timestamp() * 1000
         )
 
         client_id = await get_client_id_by_email(email)

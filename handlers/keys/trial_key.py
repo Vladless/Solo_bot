@@ -7,14 +7,7 @@ import pytz
 from py3xui import AsyncApi
 
 from client import add_client
-from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
-    LIMIT_IP,
-    PUBLIC_LINK,
-    TOTAL_GB,
-    TRIAL_TIME,
-)
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
 from database import get_servers_from_db, store_key, use_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
@@ -26,18 +19,16 @@ async def create_trial_key(tg_id: int, session: Any):
         trial_status = await session.fetchval(
             "SELECT trial FROM connections WHERE tg_id = $1", tg_id
         )
-
         if trial_status == 1:
             return {"error": "Вы уже использовали пробную версию."}
-
     except Exception as e:
         logger.error(f"Ошибка при проверке триала: {e}")
 
     client_id = str(uuid.uuid4())
-    email = generate_random_email()
-    public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+    base_email = generate_random_email()
+    public_link = f"{PUBLIC_LINK}{base_email}/{tg_id}"
     instructions = INSTRUCTIONS
-    result = {"key": public_link, "instructions": instructions, "email": email}
+    result = {"key": public_link, "instructions": instructions, "email": base_email}
 
     moscow_tz = pytz.timezone("Europe/Moscow")
     current_time = datetime.now(moscow_tz)
@@ -46,14 +37,18 @@ async def create_trial_key(tg_id: int, session: Any):
 
     clusters = await get_servers_from_db()
     least_loaded_cluster = await get_least_loaded_cluster()
-
     if least_loaded_cluster not in clusters:
         raise ValueError(f"Кластер {least_loaded_cluster} не найден в базе данных.")
 
     servers_in_cluster = clusters[least_loaded_cluster]
     tasks = []
 
-    for server_info in servers_in_cluster:
+    for index, server_info in enumerate(servers_in_cluster):
+        if SUPERNODE:
+            email = f"{base_email}{index}"
+        else:
+            email = base_email
+
         tasks.append(
             add_client(
                 AsyncApi(
@@ -70,6 +65,7 @@ async def create_trial_key(tg_id: int, session: Any):
                 enable=True,
                 flow="xtls-rprx-vision",
                 inbound_id=int(server_info["inbound_id"]),
+                sub_id=base_email
             )
         )
 
@@ -78,7 +74,7 @@ async def create_trial_key(tg_id: int, session: Any):
     await store_key(
         tg_id,
         client_id,
-        email,
+        base_email,
         expiry_timestamp,
         public_link,
         server_id=least_loaded_cluster,
@@ -86,5 +82,4 @@ async def create_trial_key(tg_id: int, session: Any):
     )
 
     await use_trial(tg_id, session)
-
     return result
