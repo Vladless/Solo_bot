@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -19,8 +21,6 @@ from config import (
     TRIAL_TIME,
     USE_NEW_PAYMENT_FLOW,
 )
-
-from bot import bot
 from database import (
     get_balance,
     get_trial,
@@ -37,6 +37,7 @@ from handlers.buttons.add_subscribe import (
     TV_BUTTON,
 )
 from handlers.keys.key_utils import create_key_on_cluster
+from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import DISCOUNTS, key_message_success
 from handlers.utils import generate_random_email, get_least_loaded_cluster
@@ -145,8 +146,10 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     if balance < plan_price:
         required_amount = plan_price - balance
 
-        if USE_NEW_PAYMENT_FLOW:
+        if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
             await process_custom_amount_input(callback_query, session)
+        elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
+            await handle_custom_amount_input(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
             builder.row(

@@ -11,6 +11,7 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from config import (
     CHANNEL_EXISTS,
     CHANNEL_URL,
@@ -21,7 +22,6 @@ from config import (
     DOWNLOAD_IOS,
     SUPPORT_CHAT_URL,
 )
-
 from database import (
     add_connection,
     add_referral,
@@ -200,17 +200,22 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    builder.row(
-        InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
-        InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL),
-    )
+    if CHANNEL_EXISTS:
+        builder.row(
+            InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
+            InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL)
+        )
 
     if admin:
         builder.row(
             InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
         )
 
-    builder.row(InlineKeyboardButton(text="🌐 О нашем VPN", callback_data="about_vpn"))
+    builder.row(InlineKeyboardButton(text="🌐 О VPN", callback_data="about_vpn"))
 
     if os.path.isfile(image_path):
         with open(image_path, "rb") as image_from_buffer:
