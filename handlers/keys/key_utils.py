@@ -13,38 +13,39 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
     Создает ключ на всех серверах указанного кластера с одинаковым sub_id и уникальным email при активном SUPERNODE.
     """
     try:
-        tasks = []
         servers = await get_servers_from_db()
         cluster = servers.get(cluster_id)
 
         if not cluster:
             raise ValueError(f"Кластер с ID {cluster_id} не найден.")
 
-        for server_info in cluster:
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-            )
+        semaphore = asyncio.Semaphore(2)
 
-            inbound_id = server_info.get("inbound_id")
-            server_name = server_info.get("server_name", "unknown")
-
-            if not inbound_id:
-                logger.warning(
-                    f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
+        async def create_client_on_server(server_info):
+            async with semaphore:
+                xui = AsyncApi(
+                    server_info["api_url"],
+                    username=ADMIN_USERNAME,
+                    password=ADMIN_PASSWORD,
                 )
-                continue
 
-            if SUPERNODE:
-                unique_email = f"{email}_{server_name.lower()}"
-                sub_id = email
-            else:
-                unique_email = email
-                sub_id = unique_email
+                inbound_id = server_info.get("inbound_id")
+                server_name = server_info.get("server_name", "unknown")
 
-            tasks.append(
-                add_client(
+                if not inbound_id:
+                    logger.warning(
+                        f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
+                    )
+                    return
+
+                if SUPERNODE:
+                    unique_email = f"{email}_{server_name.lower()}"
+                    sub_id = email
+                else:
+                    unique_email = email
+                    sub_id = unique_email
+
+                await add_client(
                     xui,
                     client_id,
                     unique_email,
@@ -57,16 +58,20 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
                     inbound_id=int(inbound_id),
                     sub_id=sub_id
                 )
-            )
 
-            if SUPERNODE:
-                await asyncio.sleep(0.2)
+                if SUPERNODE:
+                    await asyncio.sleep(0.7)
 
-        await asyncio.gather(*tasks)
+        if SUPERNODE:
+            for server_info in cluster:
+                await create_client_on_server(server_info)
+        else:
+            await asyncio.gather(*(create_client_on_server(server) for server in cluster))
 
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         raise e
+
 
 
 

@@ -383,14 +383,12 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
 
         for key in keys_to_sync:
             for server_info in cluster_servers:
-                server_name = server_info.get("server_name", "unknown")
-                email = f"{key['email']}_{server_name.lower()}" if SUPERNODE else key['email']
                 try:
                     await create_key_on_cluster(
                         cluster_name,
                         key["tg_id"],
                         key["client_id"],
-                        email,
+                        key["email"],
                         key["expiry_time"],
                     )
                     await asyncio.sleep(0.6)
