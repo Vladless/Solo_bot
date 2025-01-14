@@ -41,7 +41,7 @@ async def process_coupon_code(message: types.Message, state: FSMContext, session
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await message.answer(
-        activation_result, reply_markup=builder.as_markup(), parse_mode="HTML"
+        activation_result, reply_markup=builder.as_markup()
     )
     await state.clear()
 

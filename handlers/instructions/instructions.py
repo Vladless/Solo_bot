@@ -95,7 +95,6 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     await callback_query.message.answer(
         instruction_message,
         reply_markup=builder.as_markup(),
-        parse_mode="HTML",
         disable_web_page_preview=True,
     )
 
@@ -115,7 +114,6 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
     await callback_query.message.answer(
         text=CONNECT_TV_TEXT,
         reply_markup=builder.as_markup(),
-        parse_mode="HTML",
         disable_web_page_preview=True,
     )
 
@@ -156,5 +154,5 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
-        text=message_text, reply_markup=builder.as_markup(), parse_mode="HTML"
+        text=message_text, reply_markup=builder.as_markup()
     )
