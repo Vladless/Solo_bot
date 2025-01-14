@@ -1618,7 +1618,7 @@ struct __pyx_obj_8handlers_8payments_12yookassa_pay___pyx_scope_struct_4_process
 };
 
 
-/* "handlers/payments/yookassa_pay.py":356
+/* "handlers/payments/yookassa_pay.py":351
  * 
  * 
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):             # <<<<<<<<<<<<<<
@@ -2385,9 +2385,6 @@ static double __Pyx__PyObject_AsDouble(PyObject* obj);
  likely(PyLong_CheckExact(obj)) ?\
  PyLong_AsDouble(obj) : __Pyx__PyObject_AsDouble(obj))
 #endif
-
-/* RaiseUnboundLocalError.proto */
-static CYTHON_INLINE void __Pyx_RaiseUnboundLocalError(const char *varname);
 
 /* ArgTypeTest.proto */
 #define __Pyx_ArgTypeTest(obj, type, none_allowed, name, exact)\
@@ -8789,12 +8786,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
     case 5: goto __pyx_L17_resume_from_await;
     case 6: goto __pyx_L18_resume_from_await;
     case 7: goto __pyx_L20_resume_from_await;
-    case 8: goto __pyx_L29_resume_from_await;
-    case 9: goto __pyx_L30_resume_from_await;
-    case 10: goto __pyx_L38_resume_from_await;
-    case 11: goto __pyx_L43_resume_from_await;
-    case 12: goto __pyx_L46_resume_from_await;
-    case 13: goto __pyx_L47_resume_from_await;
+    case 8: goto __pyx_L28_resume_from_await;
+    case 9: goto __pyx_L29_resume_from_await;
+    case 10: goto __pyx_L37_resume_from_await;
+    case 11: goto __pyx_L42_resume_from_await;
+    case 12: goto __pyx_L45_resume_from_await;
+    case 13: goto __pyx_L46_resume_from_await;
     default: /* CPython raises the right error here */
     __Pyx_RefNannyFinishContext();
     return NULL;
@@ -9814,7 +9811,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
  *             if payment["status"] == "pending":
  *                 payment_url = payment["confirmation"]["confirmation_url"]             # <<<<<<<<<<<<<<
  * 
- *                 if state_type == "waiting_for_payment":
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
  */
           __pyx_t_2 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_payment, __pyx_n_u_confirmation); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 326, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_2);
@@ -9828,279 +9825,188 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
           /* "handlers/payments/yookassa_pay.py":328
  *                 payment_url = payment["confirmation"]["confirmation_url"]
  * 
- *                 if state_type == "waiting_for_payment":             # <<<<<<<<<<<<<<
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)
- *                 elif state_type == "waiting_for_renewal_payment":
- */
-          if (unlikely(!__pyx_cur_scope->__pyx_v_state_type)) { __Pyx_RaiseUnboundLocalError("state_type"); __PYX_ERR(0, 328, __pyx_L21_error) }
-          __pyx_t_6 = (__Pyx_PyUnicode_Equals(__pyx_cur_scope->__pyx_v_state_type, __pyx_n_u_waiting_for_payment, Py_EQ)); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 328, __pyx_L21_error)
-          if (__pyx_t_6) {
-
-            /* "handlers/payments/yookassa_pay.py":329
- * 
- *                 if state_type == "waiting_for_payment":
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)             # <<<<<<<<<<<<<<
- *                 elif state_type == "waiting_for_renewal_payment":
- *                     payment_message = KEY_RENEWAL_PAYMENT_MESSAGE.format(amount=amount)
- */
-            __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_KEY_CREATION_PAYMENT_MESSAGE); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 329, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_1);
-            __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_format); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 329, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_2);
-            __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-            __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 329, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_1);
-            if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_amount, __pyx_cur_scope->__pyx_v_amount) < 0) __PYX_ERR(0, 329, __pyx_L21_error)
-            __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 329, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_12);
-            __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-            __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-            __Pyx_GIVEREF(__pyx_t_12);
-            __pyx_cur_scope->__pyx_v_payment_message = __pyx_t_12;
-            __pyx_t_12 = 0;
-
-            /* "handlers/payments/yookassa_pay.py":328
- *                 payment_url = payment["confirmation"]["confirmation_url"]
- * 
- *                 if state_type == "waiting_for_payment":             # <<<<<<<<<<<<<<
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)
- *                 elif state_type == "waiting_for_renewal_payment":
- */
-            goto __pyx_L28;
-          }
-
-          /* "handlers/payments/yookassa_pay.py":330
- *                 if state_type == "waiting_for_payment":
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)
- *                 elif state_type == "waiting_for_renewal_payment":             # <<<<<<<<<<<<<<
- *                     payment_message = KEY_RENEWAL_PAYMENT_MESSAGE.format(amount=amount)
- *                 else:
- */
-          if (unlikely(!__pyx_cur_scope->__pyx_v_state_type)) { __Pyx_RaiseUnboundLocalError("state_type"); __PYX_ERR(0, 330, __pyx_L21_error) }
-          __pyx_t_6 = (__Pyx_PyUnicode_Equals(__pyx_cur_scope->__pyx_v_state_type, __pyx_n_u_waiting_for_renewal_payment, Py_EQ)); if (unlikely((__pyx_t_6 < 0))) __PYX_ERR(0, 330, __pyx_L21_error)
-          if (__pyx_t_6) {
-
-            /* "handlers/payments/yookassa_pay.py":331
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)
- *                 elif state_type == "waiting_for_renewal_payment":
- *                     payment_message = KEY_RENEWAL_PAYMENT_MESSAGE.format(amount=amount)             # <<<<<<<<<<<<<<
- *                 else:
- *                     payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
- */
-            __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_KEY_RENEWAL_PAYMENT_MESSAGE); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 331, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_12);
-            __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_12, __pyx_n_s_format); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 331, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_1);
-            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            __pyx_t_12 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 331, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_12);
-            if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_amount, __pyx_cur_scope->__pyx_v_amount) < 0) __PYX_ERR(0, 331, __pyx_L21_error)
-            __pyx_t_2 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 331, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_2);
-            __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            __Pyx_GIVEREF(__pyx_t_2);
-            __pyx_cur_scope->__pyx_v_payment_message = __pyx_t_2;
-            __pyx_t_2 = 0;
-
-            /* "handlers/payments/yookassa_pay.py":330
- *                 if state_type == "waiting_for_payment":
- *                     payment_message = KEY_CREATION_PAYMENT_MESSAGE.format(amount=amount)
- *                 elif state_type == "waiting_for_renewal_payment":             # <<<<<<<<<<<<<<
- *                     payment_message = KEY_RENEWAL_PAYMENT_MESSAGE.format(amount=amount)
- *                 else:
- */
-            goto __pyx_L28;
-          }
-
-          /* "handlers/payments/yookassa_pay.py":333
- *                     payment_message = KEY_RENEWAL_PAYMENT_MESSAGE.format(amount=amount)
- *                 else:
- *                     payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)             # <<<<<<<<<<<<<<
- * 
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)             # <<<<<<<<<<<<<<
  *                 confirm_keyboard = InlineKeyboardMarkup(
+ *                     inline_keyboard=[
  */
-          /*else*/ {
-            __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_DEFAULT_PAYMENT_MESSAGE); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 333, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_2);
-            __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_format); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 333, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_12);
-            __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-            __pyx_t_2 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 333, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_2);
-            if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_amount, __pyx_cur_scope->__pyx_v_amount) < 0) __PYX_ERR(0, 333, __pyx_L21_error)
-            __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_12, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 333, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_1);
-            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-            __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-            __Pyx_GIVEREF(__pyx_t_1);
-            __pyx_cur_scope->__pyx_v_payment_message = __pyx_t_1;
-            __pyx_t_1 = 0;
-          }
-          __pyx_L28:;
+          __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_DEFAULT_PAYMENT_MESSAGE); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 328, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_1);
+          __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_format); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 328, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_2);
+          __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+          __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 328, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_1);
+          if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_amount, __pyx_cur_scope->__pyx_v_amount) < 0) __PYX_ERR(0, 328, __pyx_L21_error)
+          __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 328, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_12);
+          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+          __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+          __Pyx_GIVEREF(__pyx_t_12);
+          __pyx_cur_scope->__pyx_v_payment_message = __pyx_t_12;
+          __pyx_t_12 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":335
- *                     payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
+          /* "handlers/payments/yookassa_pay.py":329
  * 
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
  *                 confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
  *                     inline_keyboard=[
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_InlineKeyboardMarkup); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 335, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_1);
+          __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_InlineKeyboardMarkup); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 329, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_12);
 
-          /* "handlers/payments/yookassa_pay.py":336
- * 
+          /* "handlers/payments/yookassa_pay.py":330
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
  *                 confirm_keyboard = InlineKeyboardMarkup(
  *                     inline_keyboard=[             # <<<<<<<<<<<<<<
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],
  *                         [InlineKeyboardButton(text=PROFILE, callback_data="profile")],
  */
-          __pyx_t_2 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 336, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_2);
+          __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 330, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_1);
 
-          /* "handlers/payments/yookassa_pay.py":337
+          /* "handlers/payments/yookassa_pay.py":331
  *                 confirm_keyboard = InlineKeyboardMarkup(
  *                     inline_keyboard=[
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],             # <<<<<<<<<<<<<<
  *                         [InlineKeyboardButton(text=PROFILE, callback_data="profile")],
  *                     ]
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 337, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_12);
-          __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 337, __pyx_L21_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 331, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_2);
+          __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 331, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_3);
-          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_PAY_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 337, __pyx_L21_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_PAY_2); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 331, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_4);
-          if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_t_4) < 0) __PYX_ERR(0, 337, __pyx_L21_error)
+          if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_t_4) < 0) __PYX_ERR(0, 331, __pyx_L21_error)
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-          if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_url, __pyx_cur_scope->__pyx_v_payment_url) < 0) __PYX_ERR(0, 337, __pyx_L21_error)
-          __pyx_t_4 = __Pyx_PyObject_Call(__pyx_t_12, __pyx_empty_tuple, __pyx_t_3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 337, __pyx_L21_error)
+          if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_url, __pyx_cur_scope->__pyx_v_payment_url) < 0) __PYX_ERR(0, 331, __pyx_L21_error)
+          __pyx_t_4 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_empty_tuple, __pyx_t_3); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 331, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_4);
-          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
           __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-          __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 337, __pyx_L21_error)
+          __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 331, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_3);
           __Pyx_GIVEREF(__pyx_t_4);
-          if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_t_4)) __PYX_ERR(0, 337, __pyx_L21_error);
+          if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_t_4)) __PYX_ERR(0, 331, __pyx_L21_error);
           __pyx_t_4 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":338
+          /* "handlers/payments/yookassa_pay.py":332
  *                     inline_keyboard=[
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],
  *                         [InlineKeyboardButton(text=PROFILE, callback_data="profile")],             # <<<<<<<<<<<<<<
  *                     ]
  *                 )
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 338, __pyx_L21_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 332, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_4);
-          __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 338, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_12);
-          __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 338, __pyx_L21_error)
+          __pyx_t_2 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 332, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_2);
+          __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_PROFILE); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 332, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_13);
-          if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_t_13) < 0) __PYX_ERR(0, 338, __pyx_L21_error)
+          if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_text, __pyx_t_13) < 0) __PYX_ERR(0, 332, __pyx_L21_error)
           __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
-          if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_callback_data, __pyx_n_u_profile) < 0) __PYX_ERR(0, 338, __pyx_L21_error)
-          __pyx_t_13 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_12); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 338, __pyx_L21_error)
+          if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_callback_data, __pyx_n_u_profile) < 0) __PYX_ERR(0, 332, __pyx_L21_error)
+          __pyx_t_13 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 332, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_13);
           __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-          __pyx_t_12 = PyList_New(1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 338, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_12);
+          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+          __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 332, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_2);
           __Pyx_GIVEREF(__pyx_t_13);
-          if (__Pyx_PyList_SET_ITEM(__pyx_t_12, 0, __pyx_t_13)) __PYX_ERR(0, 338, __pyx_L21_error);
+          if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 0, __pyx_t_13)) __PYX_ERR(0, 332, __pyx_L21_error);
           __pyx_t_13 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":336
- * 
+          /* "handlers/payments/yookassa_pay.py":330
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
  *                 confirm_keyboard = InlineKeyboardMarkup(
  *                     inline_keyboard=[             # <<<<<<<<<<<<<<
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],
  *                         [InlineKeyboardButton(text=PROFILE, callback_data="profile")],
  */
-          __pyx_t_13 = PyList_New(2); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 336, __pyx_L21_error)
+          __pyx_t_13 = PyList_New(2); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 330, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_13);
           __Pyx_GIVEREF(__pyx_t_3);
-          if (__Pyx_PyList_SET_ITEM(__pyx_t_13, 0, __pyx_t_3)) __PYX_ERR(0, 336, __pyx_L21_error);
-          __Pyx_GIVEREF(__pyx_t_12);
-          if (__Pyx_PyList_SET_ITEM(__pyx_t_13, 1, __pyx_t_12)) __PYX_ERR(0, 336, __pyx_L21_error);
+          if (__Pyx_PyList_SET_ITEM(__pyx_t_13, 0, __pyx_t_3)) __PYX_ERR(0, 330, __pyx_L21_error);
+          __Pyx_GIVEREF(__pyx_t_2);
+          if (__Pyx_PyList_SET_ITEM(__pyx_t_13, 1, __pyx_t_2)) __PYX_ERR(0, 330, __pyx_L21_error);
           __pyx_t_3 = 0;
-          __pyx_t_12 = 0;
-          if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_inline_keyboard, __pyx_t_13) < 0) __PYX_ERR(0, 336, __pyx_L21_error)
+          __pyx_t_2 = 0;
+          if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_inline_keyboard, __pyx_t_13) < 0) __PYX_ERR(0, 330, __pyx_L21_error)
           __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":335
- *                     payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
+          /* "handlers/payments/yookassa_pay.py":329
  * 
+ *                 payment_message = DEFAULT_PAYMENT_MESSAGE.format(amount=amount)
  *                 confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
  *                     inline_keyboard=[
  *                         [InlineKeyboardButton(text=PAY_2, url=payment_url)],
  */
-          __pyx_t_13 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_empty_tuple, __pyx_t_2); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 335, __pyx_L21_error)
+          __pyx_t_13 = __Pyx_PyObject_Call(__pyx_t_12, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 329, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_13);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
           __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
           __Pyx_GIVEREF(__pyx_t_13);
           __pyx_cur_scope->__pyx_v_confirm_keyboard = __pyx_t_13;
           __pyx_t_13 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":342
+          /* "handlers/payments/yookassa_pay.py":336
  *                 )
  * 
  *                 await _send_message(             # <<<<<<<<<<<<<<
  *                     callback_query,
  *                     text=payment_message,
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_send_message); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 342, __pyx_L21_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_send_message); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 336, __pyx_L21_error)
           __Pyx_GOTREF(__pyx_t_13);
 
-          /* "handlers/payments/yookassa_pay.py":343
+          /* "handlers/payments/yookassa_pay.py":337
  * 
  *                 await _send_message(
  *                     callback_query,             # <<<<<<<<<<<<<<
  *                     text=payment_message,
  *                     reply_markup=confirm_keyboard,
  */
-          __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 342, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_2);
+          __pyx_t_1 = PyTuple_New(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 336, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_1);
           __Pyx_INCREF(__pyx_cur_scope->__pyx_v_callback_query);
           __Pyx_GIVEREF(__pyx_cur_scope->__pyx_v_callback_query);
-          if (__Pyx_PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_cur_scope->__pyx_v_callback_query)) __PYX_ERR(0, 342, __pyx_L21_error);
+          if (__Pyx_PyTuple_SET_ITEM(__pyx_t_1, 0, __pyx_cur_scope->__pyx_v_callback_query)) __PYX_ERR(0, 336, __pyx_L21_error);
 
-          /* "handlers/payments/yookassa_pay.py":344
+          /* "handlers/payments/yookassa_pay.py":338
  *                 await _send_message(
  *                     callback_query,
  *                     text=payment_message,             # <<<<<<<<<<<<<<
  *                     reply_markup=confirm_keyboard,
  *                 )
  */
-          __pyx_t_1 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 344, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_1);
-          if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_text, __pyx_cur_scope->__pyx_v_payment_message) < 0) __PYX_ERR(0, 344, __pyx_L21_error)
+          __pyx_t_12 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 338, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_12);
+          if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_text, __pyx_cur_scope->__pyx_v_payment_message) < 0) __PYX_ERR(0, 338, __pyx_L21_error)
 
-          /* "handlers/payments/yookassa_pay.py":345
+          /* "handlers/payments/yookassa_pay.py":339
  *                     callback_query,
  *                     text=payment_message,
  *                     reply_markup=confirm_keyboard,             # <<<<<<<<<<<<<<
  *                 )
  *             else:
  */
-          if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_confirm_keyboard) < 0) __PYX_ERR(0, 344, __pyx_L21_error)
+          if (PyDict_SetItem(__pyx_t_12, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_confirm_keyboard) < 0) __PYX_ERR(0, 338, __pyx_L21_error)
 
-          /* "handlers/payments/yookassa_pay.py":342
+          /* "handlers/payments/yookassa_pay.py":336
  *                 )
  * 
  *                 await _send_message(             # <<<<<<<<<<<<<<
  *                     callback_query,
  *                     text=payment_message,
  */
-          __pyx_t_12 = __Pyx_PyObject_Call(__pyx_t_13, __pyx_t_2, __pyx_t_1); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 342, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_12);
+          __pyx_t_2 = __Pyx_PyObject_Call(__pyx_t_13, __pyx_t_1, __pyx_t_12); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 336, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_2);
           __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
-          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
           __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-          __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_12);
           __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+          __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_2);
+          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
           __Pyx_XGOTREF(__pyx_r);
           if (likely(__pyx_r)) {
             __Pyx_XGIVEREF(__pyx_t_8);
@@ -10114,6 +10020,83 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
             /* return from generator, awaiting value */
             __pyx_generator->resume_label = 8;
+            return __pyx_r;
+            __pyx_L28_resume_from_await:;
+            __pyx_t_8 = __pyx_cur_scope->__pyx_t_0;
+            __pyx_cur_scope->__pyx_t_0 = 0;
+            __Pyx_XGOTREF(__pyx_t_8);
+            __pyx_t_9 = __pyx_cur_scope->__pyx_t_1;
+            __pyx_cur_scope->__pyx_t_1 = 0;
+            __Pyx_XGOTREF(__pyx_t_9);
+            __pyx_t_10 = __pyx_cur_scope->__pyx_t_2;
+            __pyx_cur_scope->__pyx_t_2 = 0;
+            __Pyx_XGOTREF(__pyx_t_10);
+            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 336, __pyx_L21_error)
+          } else {
+            PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
+            if (exc_type) {
+              if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
+              else __PYX_ERR(0, 336, __pyx_L21_error)
+            }
+          }
+
+          /* "handlers/payments/yookassa_pay.py":325
+ *             )
+ * 
+ *             if payment["status"] == "pending":             # <<<<<<<<<<<<<<
+ *                 payment_url = payment["confirmation"]["confirmation_url"]
+ * 
+ */
+          goto __pyx_L27;
+        }
+
+        /* "handlers/payments/yookassa_pay.py":342
+ *                 )
+ *             else:
+ *                 await _send_message(callback_query, "   .")             # <<<<<<<<<<<<<<
+ *         except Exception as e:
+ *             logger.error(f"   : {e}")
+ */
+        /*else*/ {
+          __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_send_message); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 342, __pyx_L21_error)
+          __Pyx_GOTREF(__pyx_t_12);
+          __pyx_t_1 = NULL;
+          __pyx_t_5 = 0;
+          #if CYTHON_UNPACK_METHODS
+          if (unlikely(PyMethod_Check(__pyx_t_12))) {
+            __pyx_t_1 = PyMethod_GET_SELF(__pyx_t_12);
+            if (likely(__pyx_t_1)) {
+              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+              __Pyx_INCREF(__pyx_t_1);
+              __Pyx_INCREF(function);
+              __Pyx_DECREF_SET(__pyx_t_12, function);
+              __pyx_t_5 = 1;
+            }
+          }
+          #endif
+          {
+            PyObject *__pyx_callargs[3] = {__pyx_t_1, __pyx_cur_scope->__pyx_v_callback_query, __pyx_kp_u__11};
+            __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
+            __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+            if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 342, __pyx_L21_error)
+            __Pyx_GOTREF(__pyx_t_2);
+            __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
+          }
+          __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_2);
+          __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+          __Pyx_XGOTREF(__pyx_r);
+          if (likely(__pyx_r)) {
+            __Pyx_XGIVEREF(__pyx_t_8);
+            __pyx_cur_scope->__pyx_t_0 = __pyx_t_8;
+            __Pyx_XGIVEREF(__pyx_t_9);
+            __pyx_cur_scope->__pyx_t_1 = __pyx_t_9;
+            __Pyx_XGIVEREF(__pyx_t_10);
+            __pyx_cur_scope->__pyx_t_2 = __pyx_t_10;
+            __Pyx_XGIVEREF(__pyx_r);
+            __Pyx_RefNannyFinishContext();
+            __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
+            /* return from generator, awaiting value */
+            __pyx_generator->resume_label = 9;
             return __pyx_r;
             __pyx_L29_resume_from_await:;
             __pyx_t_8 = __pyx_cur_scope->__pyx_t_0;
@@ -10131,83 +10114,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             if (exc_type) {
               if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
               else __PYX_ERR(0, 342, __pyx_L21_error)
-            }
-          }
-
-          /* "handlers/payments/yookassa_pay.py":325
- *             )
- * 
- *             if payment["status"] == "pending":             # <<<<<<<<<<<<<<
- *                 payment_url = payment["confirmation"]["confirmation_url"]
- * 
- */
-          goto __pyx_L27;
-        }
-
-        /* "handlers/payments/yookassa_pay.py":348
- *                 )
- *             else:
- *                 await _send_message(callback_query, "   .")             # <<<<<<<<<<<<<<
- *         except Exception as e:
- *             logger.error(f"   : {e}")
- */
-        /*else*/ {
-          __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_send_message); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 348, __pyx_L21_error)
-          __Pyx_GOTREF(__pyx_t_1);
-          __pyx_t_2 = NULL;
-          __pyx_t_5 = 0;
-          #if CYTHON_UNPACK_METHODS
-          if (unlikely(PyMethod_Check(__pyx_t_1))) {
-            __pyx_t_2 = PyMethod_GET_SELF(__pyx_t_1);
-            if (likely(__pyx_t_2)) {
-              PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_1);
-              __Pyx_INCREF(__pyx_t_2);
-              __Pyx_INCREF(function);
-              __Pyx_DECREF_SET(__pyx_t_1, function);
-              __pyx_t_5 = 1;
-            }
-          }
-          #endif
-          {
-            PyObject *__pyx_callargs[3] = {__pyx_t_2, __pyx_cur_scope->__pyx_v_callback_query, __pyx_kp_u__11};
-            __pyx_t_12 = __Pyx_PyObject_FastCall(__pyx_t_1, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
-            __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
-            if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 348, __pyx_L21_error)
-            __Pyx_GOTREF(__pyx_t_12);
-            __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-          }
-          __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_12);
-          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
-          __Pyx_XGOTREF(__pyx_r);
-          if (likely(__pyx_r)) {
-            __Pyx_XGIVEREF(__pyx_t_8);
-            __pyx_cur_scope->__pyx_t_0 = __pyx_t_8;
-            __Pyx_XGIVEREF(__pyx_t_9);
-            __pyx_cur_scope->__pyx_t_1 = __pyx_t_9;
-            __Pyx_XGIVEREF(__pyx_t_10);
-            __pyx_cur_scope->__pyx_t_2 = __pyx_t_10;
-            __Pyx_XGIVEREF(__pyx_r);
-            __Pyx_RefNannyFinishContext();
-            __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
-            /* return from generator, awaiting value */
-            __pyx_generator->resume_label = 9;
-            return __pyx_r;
-            __pyx_L30_resume_from_await:;
-            __pyx_t_8 = __pyx_cur_scope->__pyx_t_0;
-            __pyx_cur_scope->__pyx_t_0 = 0;
-            __Pyx_XGOTREF(__pyx_t_8);
-            __pyx_t_9 = __pyx_cur_scope->__pyx_t_1;
-            __pyx_cur_scope->__pyx_t_1 = 0;
-            __Pyx_XGOTREF(__pyx_t_9);
-            __pyx_t_10 = __pyx_cur_scope->__pyx_t_2;
-            __pyx_cur_scope->__pyx_t_2 = 0;
-            __Pyx_XGOTREF(__pyx_t_10);
-            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 348, __pyx_L21_error)
-          } else {
-            PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
-            if (exc_type) {
-              if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-              else __PYX_ERR(0, 348, __pyx_L21_error)
             }
           }
         }
@@ -10235,7 +10141,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
       __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
 
-      /* "handlers/payments/yookassa_pay.py":349
+      /* "handlers/payments/yookassa_pay.py":343
  *             else:
  *                 await _send_message(callback_query, "   .")
  *         except Exception as e:             # <<<<<<<<<<<<<<
@@ -10245,30 +10151,30 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
       __pyx_t_17 = __Pyx_PyErr_ExceptionMatches(((PyObject *)(&((PyTypeObject*)PyExc_Exception)[0])));
       if (__pyx_t_17) {
         __Pyx_AddTraceback("handlers.payments.yookassa_pay.process_custom_amount_input", __pyx_clineno, __pyx_lineno, __pyx_filename);
-        if (__Pyx_GetException(&__pyx_t_12, &__pyx_t_1, &__pyx_t_2) < 0) __PYX_ERR(0, 349, __pyx_L23_except_error)
+        if (__Pyx_GetException(&__pyx_t_2, &__pyx_t_12, &__pyx_t_1) < 0) __PYX_ERR(0, 343, __pyx_L23_except_error)
+        __Pyx_XGOTREF(__pyx_t_2);
         __Pyx_XGOTREF(__pyx_t_12);
         __Pyx_XGOTREF(__pyx_t_1);
-        __Pyx_XGOTREF(__pyx_t_2);
-        __Pyx_INCREF(__pyx_t_1);
-        __Pyx_GIVEREF(__pyx_t_1);
-        __pyx_cur_scope->__pyx_v_e = __pyx_t_1;
+        __Pyx_INCREF(__pyx_t_12);
+        __Pyx_GIVEREF(__pyx_t_12);
+        __pyx_cur_scope->__pyx_v_e = __pyx_t_12;
         /*try:*/ {
 
-          /* "handlers/payments/yookassa_pay.py":350
+          /* "handlers/payments/yookassa_pay.py":344
  *                 await _send_message(callback_query, "   .")
  *         except Exception as e:
  *             logger.error(f"   : {e}")             # <<<<<<<<<<<<<<
  *             await _send_message(callback_query, "    .")
  *     finally:
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_logger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 350, __pyx_L36_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_logger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 344, __pyx_L35_error)
           __Pyx_GOTREF(__pyx_t_3);
-          __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_error); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 350, __pyx_L36_error)
+          __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_error); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 344, __pyx_L35_error)
           __Pyx_GOTREF(__pyx_t_4);
           __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-          __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_e, __pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 350, __pyx_L36_error)
+          __pyx_t_3 = __Pyx_PyObject_FormatSimple(__pyx_cur_scope->__pyx_v_e, __pyx_empty_unicode); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 344, __pyx_L35_error)
           __Pyx_GOTREF(__pyx_t_3);
-          __pyx_t_16 = __Pyx_PyUnicode_Concat(__pyx_kp_u__24, __pyx_t_3); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 350, __pyx_L36_error)
+          __pyx_t_16 = __Pyx_PyUnicode_Concat(__pyx_kp_u__24, __pyx_t_3); if (unlikely(!__pyx_t_16)) __PYX_ERR(0, 344, __pyx_L35_error)
           __Pyx_GOTREF(__pyx_t_16);
           __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
           __pyx_t_3 = NULL;
@@ -10290,20 +10196,20 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             __pyx_t_13 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 1+__pyx_t_5);
             __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
             __Pyx_DECREF(__pyx_t_16); __pyx_t_16 = 0;
-            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 350, __pyx_L36_error)
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 344, __pyx_L35_error)
             __Pyx_GOTREF(__pyx_t_13);
             __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
           }
           __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
 
-          /* "handlers/payments/yookassa_pay.py":351
+          /* "handlers/payments/yookassa_pay.py":345
  *         except Exception as e:
  *             logger.error(f"   : {e}")
  *             await _send_message(callback_query, "    .")             # <<<<<<<<<<<<<<
  *     finally:
  *         await conn.close()
  */
-          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_send_message); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 351, __pyx_L36_error)
+          __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_send_message); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 345, __pyx_L35_error)
           __Pyx_GOTREF(__pyx_t_4);
           __pyx_t_16 = NULL;
           __pyx_t_5 = 0;
@@ -10323,7 +10229,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             PyObject *__pyx_callargs[3] = {__pyx_t_16, __pyx_cur_scope->__pyx_v_callback_query, __pyx_kp_u__25};
             __pyx_t_13 = __Pyx_PyObject_FastCall(__pyx_t_4, __pyx_callargs+1-__pyx_t_5, 2+__pyx_t_5);
             __Pyx_XDECREF(__pyx_t_16); __pyx_t_16 = 0;
-            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 351, __pyx_L36_error)
+            if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 345, __pyx_L35_error)
             __Pyx_GOTREF(__pyx_t_13);
             __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
           }
@@ -10349,7 +10255,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             /* return from generator, awaiting value */
             __pyx_generator->resume_label = 10;
             return __pyx_r;
-            __pyx_L38_resume_from_await:;
+            __pyx_L37_resume_from_await:;
             __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
             __pyx_cur_scope->__pyx_t_0 = 0;
             __Pyx_XGOTREF(__pyx_t_1);
@@ -10368,17 +10274,17 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             __pyx_t_12 = __pyx_cur_scope->__pyx_t_5;
             __pyx_cur_scope->__pyx_t_5 = 0;
             __Pyx_XGOTREF(__pyx_t_12);
-            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 351, __pyx_L36_error)
+            if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 345, __pyx_L35_error)
           } else {
             PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
             if (exc_type) {
               if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-              else __PYX_ERR(0, 351, __pyx_L36_error)
+              else __PYX_ERR(0, 345, __pyx_L35_error)
             }
           }
         }
 
-        /* "handlers/payments/yookassa_pay.py":349
+        /* "handlers/payments/yookassa_pay.py":343
  *             else:
  *                 await _send_message(callback_query, "   .")
  *         except Exception as e:             # <<<<<<<<<<<<<<
@@ -10389,9 +10295,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
           /*normal exit:*/{
             __Pyx_GOTREF(__pyx_cur_scope->__pyx_v_e);
             __Pyx_DECREF(__pyx_cur_scope->__pyx_v_e); __pyx_cur_scope->__pyx_v_e = 0;
-            goto __pyx_L37;
+            goto __pyx_L36;
           }
-          __pyx_L36_error:;
+          __pyx_L35_error:;
           /*exception exit:*/{
             __Pyx_PyThreadState_assign
             __pyx_t_20 = 0; __pyx_t_21 = 0; __pyx_t_22 = 0; __pyx_t_23 = 0; __pyx_t_24 = 0; __pyx_t_25 = 0;
@@ -10427,11 +10333,11 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
             __pyx_lineno = __pyx_t_17; __pyx_clineno = __pyx_t_18; __pyx_filename = __pyx_t_19;
             goto __pyx_L23_except_error;
           }
-          __pyx_L37:;
+          __pyx_L36:;
         }
+        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
         __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
         __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
-        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
         goto __pyx_L22_exception_handled;
       }
       goto __pyx_L23_except_error;
@@ -10458,7 +10364,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
     }
   }
 
-  /* "handlers/payments/yookassa_pay.py":353
+  /* "handlers/payments/yookassa_pay.py":347
  *             await _send_message(callback_query, "    .")
  *     finally:
  *         await conn.close()             # <<<<<<<<<<<<<<
@@ -10467,32 +10373,32 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
  */
   /*finally:*/ {
     /*normal exit:*/{
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 353, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_12 = NULL;
+      __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 347, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_12);
+      __pyx_t_2 = NULL;
       __pyx_t_5 = 0;
       #if CYTHON_UNPACK_METHODS
-      if (likely(PyMethod_Check(__pyx_t_1))) {
-        __pyx_t_12 = PyMethod_GET_SELF(__pyx_t_1);
-        if (likely(__pyx_t_12)) {
-          PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_1);
-          __Pyx_INCREF(__pyx_t_12);
+      if (likely(PyMethod_Check(__pyx_t_12))) {
+        __pyx_t_2 = PyMethod_GET_SELF(__pyx_t_12);
+        if (likely(__pyx_t_2)) {
+          PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+          __Pyx_INCREF(__pyx_t_2);
           __Pyx_INCREF(function);
-          __Pyx_DECREF_SET(__pyx_t_1, function);
+          __Pyx_DECREF_SET(__pyx_t_12, function);
           __pyx_t_5 = 1;
         }
       }
       #endif
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_12, NULL};
-        __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_1, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
-        __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 353, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_2);
-        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+        PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
+        __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
+        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 347, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
       }
-      __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_2);
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_1);
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_XGOTREF(__pyx_r);
       if (likely(__pyx_r)) {
         __Pyx_XGIVEREF(__pyx_r);
@@ -10501,13 +10407,13 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
         /* return from generator, awaiting value */
         __pyx_generator->resume_label = 11;
         return __pyx_r;
-        __pyx_L43_resume_from_await:;
-        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 353, __pyx_L1_error)
+        __pyx_L42_resume_from_await:;
+        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 347, __pyx_L1_error)
       } else {
         PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
         if (exc_type) {
           if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-          else __PYX_ERR(0, 353, __pyx_L1_error)
+          else __PYX_ERR(0, 347, __pyx_L1_error)
         }
       }
       goto __pyx_L7;
@@ -10534,32 +10440,32 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
       __Pyx_XGOTREF(__pyx_t_23);
       __pyx_t_18 = __pyx_lineno; __pyx_t_17 = __pyx_clineno; __pyx_t_26 = __pyx_filename;
       {
-        __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 353, __pyx_L45_error)
-        __Pyx_GOTREF(__pyx_t_1);
-        __pyx_t_12 = NULL;
+        __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 347, __pyx_L44_error)
+        __Pyx_GOTREF(__pyx_t_12);
+        __pyx_t_2 = NULL;
         __pyx_t_5 = 0;
         #if CYTHON_UNPACK_METHODS
-        if (likely(PyMethod_Check(__pyx_t_1))) {
-          __pyx_t_12 = PyMethod_GET_SELF(__pyx_t_1);
-          if (likely(__pyx_t_12)) {
-            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_1);
-            __Pyx_INCREF(__pyx_t_12);
+        if (likely(PyMethod_Check(__pyx_t_12))) {
+          __pyx_t_2 = PyMethod_GET_SELF(__pyx_t_12);
+          if (likely(__pyx_t_2)) {
+            PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+            __Pyx_INCREF(__pyx_t_2);
             __Pyx_INCREF(function);
-            __Pyx_DECREF_SET(__pyx_t_1, function);
+            __Pyx_DECREF_SET(__pyx_t_12, function);
             __pyx_t_5 = 1;
           }
         }
         #endif
         {
-          PyObject *__pyx_callargs[2] = {__pyx_t_12, NULL};
-          __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_1, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
-          __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-          if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 353, __pyx_L45_error)
-          __Pyx_GOTREF(__pyx_t_2);
-          __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+          PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
+          __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
+          __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+          if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 347, __pyx_L44_error)
+          __Pyx_GOTREF(__pyx_t_1);
+          __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
         }
-        __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_2);
-        __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+        __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_1);
+        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
         __Pyx_XGOTREF(__pyx_r);
         if (likely(__pyx_r)) {
           __Pyx_XGIVEREF(__pyx_t_8);
@@ -10583,7 +10489,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
           /* return from generator, awaiting value */
           __pyx_generator->resume_label = 12;
           return __pyx_r;
-          __pyx_L46_resume_from_await:;
+          __pyx_L45_resume_from_await:;
           __pyx_t_8 = __pyx_cur_scope->__pyx_t_0;
           __pyx_cur_scope->__pyx_t_0 = 0;
           __Pyx_XGOTREF(__pyx_t_8);
@@ -10605,12 +10511,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
           __pyx_cur_scope->__pyx_t_5 = 0;
           __Pyx_XGOTREF(__pyx_t_25);
           __pyx_t_26 = __pyx_cur_scope->__pyx_t_8;
-          if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 353, __pyx_L45_error)
+          if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 347, __pyx_L44_error)
         } else {
           PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
           if (exc_type) {
             if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-            else __PYX_ERR(0, 353, __pyx_L45_error)
+            else __PYX_ERR(0, 347, __pyx_L44_error)
           }
         }
       }
@@ -10627,7 +10533,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
       __pyx_t_10 = 0; __pyx_t_9 = 0; __pyx_t_8 = 0; __pyx_t_25 = 0; __pyx_t_24 = 0; __pyx_t_23 = 0;
       __pyx_lineno = __pyx_t_18; __pyx_clineno = __pyx_t_17; __pyx_filename = __pyx_t_26;
       goto __pyx_L1_error;
-      __pyx_L45_error:;
+      __pyx_L44_error:;
       if (PY_MAJOR_VERSION >= 3) {
         __Pyx_XGIVEREF(__pyx_t_25);
         __Pyx_XGIVEREF(__pyx_t_24);
@@ -10653,32 +10559,32 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
       __Pyx_XGOTREF(__pyx_t_10);
       __pyx_t_22 = __pyx_r;
       __pyx_r = 0;
-      __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 353, __pyx_L1_error)
-      __Pyx_GOTREF(__pyx_t_1);
-      __pyx_t_12 = NULL;
+      __pyx_t_12 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_conn, __pyx_n_s_close); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 347, __pyx_L1_error)
+      __Pyx_GOTREF(__pyx_t_12);
+      __pyx_t_2 = NULL;
       __pyx_t_5 = 0;
       #if CYTHON_UNPACK_METHODS
-      if (likely(PyMethod_Check(__pyx_t_1))) {
-        __pyx_t_12 = PyMethod_GET_SELF(__pyx_t_1);
-        if (likely(__pyx_t_12)) {
-          PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_1);
-          __Pyx_INCREF(__pyx_t_12);
+      if (likely(PyMethod_Check(__pyx_t_12))) {
+        __pyx_t_2 = PyMethod_GET_SELF(__pyx_t_12);
+        if (likely(__pyx_t_2)) {
+          PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_12);
+          __Pyx_INCREF(__pyx_t_2);
           __Pyx_INCREF(function);
-          __Pyx_DECREF_SET(__pyx_t_1, function);
+          __Pyx_DECREF_SET(__pyx_t_12, function);
           __pyx_t_5 = 1;
         }
       }
       #endif
       {
-        PyObject *__pyx_callargs[2] = {__pyx_t_12, NULL};
-        __pyx_t_2 = __Pyx_PyObject_FastCall(__pyx_t_1, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
-        __Pyx_XDECREF(__pyx_t_12); __pyx_t_12 = 0;
-        if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 353, __pyx_L1_error)
-        __Pyx_GOTREF(__pyx_t_2);
-        __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+        PyObject *__pyx_callargs[2] = {__pyx_t_2, NULL};
+        __pyx_t_1 = __Pyx_PyObject_FastCall(__pyx_t_12, __pyx_callargs+1-__pyx_t_5, 0+__pyx_t_5);
+        __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
+        if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 347, __pyx_L1_error)
+        __Pyx_GOTREF(__pyx_t_1);
+        __Pyx_DECREF(__pyx_t_12); __pyx_t_12 = 0;
       }
-      __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_2);
-      __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+      __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_1);
+      __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
       __Pyx_XGOTREF(__pyx_r);
       if (likely(__pyx_r)) {
         __Pyx_XGIVEREF(__pyx_t_8);
@@ -10701,7 +10607,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
         /* return from generator, awaiting value */
         __pyx_generator->resume_label = 13;
         return __pyx_r;
-        __pyx_L47_resume_from_await:;
+        __pyx_L46_resume_from_await:;
         __pyx_t_8 = __pyx_cur_scope->__pyx_t_0;
         __pyx_cur_scope->__pyx_t_0 = 0;
         __Pyx_XGOTREF(__pyx_t_8);
@@ -10723,12 +10629,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
         __pyx_t_25 = __pyx_cur_scope->__pyx_t_9;
         __pyx_cur_scope->__pyx_t_9 = 0;
         __Pyx_XGOTREF(__pyx_t_25);
-        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 353, __pyx_L1_error)
+        if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 347, __pyx_L1_error)
       } else {
         PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
         if (exc_type) {
           if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-          else __PYX_ERR(0, 353, __pyx_L1_error)
+          else __PYX_ERR(0, 347, __pyx_L1_error)
         }
       }
       __pyx_r = __pyx_t_22;
@@ -10784,7 +10690,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_14generator4(__pyx_
 }
 static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yookassa_pay.py":356
+/* "handlers/payments/yookassa_pay.py":351
  * 
  * 
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):             # <<<<<<<<<<<<<<
@@ -10853,7 +10759,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[0]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 356, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 351, __pyx_L3_error)
         else goto __pyx_L5_argtuple_error;
         CYTHON_FALLTHROUGH;
         case  1:
@@ -10861,21 +10767,21 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
           (void)__Pyx_Arg_NewRef_FASTCALL(values[1]);
           kw_args--;
         }
-        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 356, __pyx_L3_error)
+        else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 351, __pyx_L3_error)
         else {
-          __Pyx_RaiseArgtupleInvalid("_send_message", 0, 2, 3, 1); __PYX_ERR(0, 356, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("_send_message", 0, 2, 3, 1); __PYX_ERR(0, 351, __pyx_L3_error)
         }
         CYTHON_FALLTHROUGH;
         case  2:
         if (kw_args > 0) {
           PyObject* value = __Pyx_GetKwValue_FASTCALL(__pyx_kwds, __pyx_kwvalues, __pyx_n_s_reply_markup);
           if (value) { values[2] = __Pyx_Arg_NewRef_FASTCALL(value); kw_args--; }
-          else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 356, __pyx_L3_error)
+          else if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 351, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
         const Py_ssize_t kwd_pos_args = __pyx_nargs;
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "_send_message") < 0)) __PYX_ERR(0, 356, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_kwvalues, __pyx_pyargnames, 0, values + 0, kwd_pos_args, "_send_message") < 0)) __PYX_ERR(0, 351, __pyx_L3_error)
       }
     } else {
       switch (__pyx_nargs) {
@@ -10893,7 +10799,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   }
   goto __pyx_L6_skip;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("_send_message", 0, 2, 3, __pyx_nargs); __PYX_ERR(0, 356, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("_send_message", 0, 2, 3, __pyx_nargs); __PYX_ERR(0, 351, __pyx_L3_error)
   __pyx_L6_skip:;
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L3_error:;
@@ -10907,7 +10813,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_text), (&PyUnicode_Type), 0, "text", 1))) __PYX_ERR(0, 356, __pyx_L1_error)
+  if (unlikely(!__Pyx_ArgTypeTest(((PyObject *)__pyx_v_text), (&PyUnicode_Type), 0, "text", 1))) __PYX_ERR(0, 351, __pyx_L1_error)
   __pyx_r = __pyx_pf_8handlers_8payments_12yookassa_pay_15_send_message(__pyx_self, __pyx_v_callback_query, __pyx_v_text, __pyx_v_reply_markup);
 
   /* function exit code */
@@ -10937,7 +10843,7 @@ static PyObject *__pyx_pf_8handlers_8payments_12yookassa_pay_15_send_message(CYT
   if (unlikely(!__pyx_cur_scope)) {
     __pyx_cur_scope = ((struct __pyx_obj_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message *)Py_None);
     __Pyx_INCREF(Py_None);
-    __PYX_ERR(0, 356, __pyx_L1_error)
+    __PYX_ERR(0, 351, __pyx_L1_error)
   } else {
     __Pyx_GOTREF((PyObject *)__pyx_cur_scope);
   }
@@ -10951,7 +10857,7 @@ static PyObject *__pyx_pf_8handlers_8payments_12yookassa_pay_15_send_message(CYT
   __Pyx_INCREF(__pyx_cur_scope->__pyx_v_reply_markup);
   __Pyx_GIVEREF(__pyx_cur_scope->__pyx_v_reply_markup);
   {
-    __pyx_CoroutineObject *gen = __Pyx_Coroutine_New((__pyx_coroutine_body_t) __pyx_gb_8handlers_8payments_12yookassa_pay_17generator5, __pyx_codeobj__26, (PyObject *) __pyx_cur_scope, __pyx_n_s_send_message, __pyx_n_s_send_message, __pyx_n_s_handlers_payments_yookassa_pay); if (unlikely(!gen)) __PYX_ERR(0, 356, __pyx_L1_error)
+    __pyx_CoroutineObject *gen = __Pyx_Coroutine_New((__pyx_coroutine_body_t) __pyx_gb_8handlers_8payments_12yookassa_pay_17generator5, __pyx_codeobj__26, (PyObject *) __pyx_cur_scope, __pyx_n_s_send_message, __pyx_n_s_send_message, __pyx_n_s_handlers_payments_yookassa_pay); if (unlikely(!gen)) __PYX_ERR(0, 351, __pyx_L1_error)
     __Pyx_DECREF(__pyx_cur_scope);
     __Pyx_RefNannyFinishContext();
     return (PyObject *) gen;
@@ -10990,45 +10896,45 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_
     return NULL;
   }
   __pyx_L3_first_run:;
-  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 356, __pyx_L1_error)
+  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 351, __pyx_L1_error)
 
-  /* "handlers/payments/yookassa_pay.py":358
+  /* "handlers/payments/yookassa_pay.py":353
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):
  *     """   ."""
  *     if isinstance(callback_query, types.CallbackQuery):             # <<<<<<<<<<<<<<
  *         await callback_query.message.answer(text, reply_markup=reply_markup)
  *     elif isinstance(callback_query, types.Message):
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_types); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 358, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_types); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 353, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
-  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_CallbackQuery); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 358, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_CallbackQuery); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 353, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
-  __pyx_t_3 = PyObject_IsInstance(__pyx_cur_scope->__pyx_v_callback_query, __pyx_t_2); if (unlikely(__pyx_t_3 == ((int)-1))) __PYX_ERR(0, 358, __pyx_L1_error)
+  __pyx_t_3 = PyObject_IsInstance(__pyx_cur_scope->__pyx_v_callback_query, __pyx_t_2); if (unlikely(__pyx_t_3 == ((int)-1))) __PYX_ERR(0, 353, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   if (__pyx_t_3) {
 
-    /* "handlers/payments/yookassa_pay.py":359
+    /* "handlers/payments/yookassa_pay.py":354
  *     """   ."""
  *     if isinstance(callback_query, types.CallbackQuery):
  *         await callback_query.message.answer(text, reply_markup=reply_markup)             # <<<<<<<<<<<<<<
  *     elif isinstance(callback_query, types.Message):
  *         await callback_query.answer(text, reply_markup=reply_markup)
  */
-    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 359, __pyx_L1_error)
+    __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 354, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_answer); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 359, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_answer); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 354, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-    __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 359, __pyx_L1_error)
+    __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 354, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __Pyx_INCREF(__pyx_cur_scope->__pyx_v_text);
     __Pyx_GIVEREF(__pyx_cur_scope->__pyx_v_text);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_cur_scope->__pyx_v_text)) __PYX_ERR(0, 359, __pyx_L1_error);
-    __pyx_t_4 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 359, __pyx_L1_error)
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_2, 0, __pyx_cur_scope->__pyx_v_text)) __PYX_ERR(0, 354, __pyx_L1_error);
+    __pyx_t_4 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 354, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
-    if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_reply_markup) < 0) __PYX_ERR(0, 359, __pyx_L1_error)
-    __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_2, __pyx_t_4); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 359, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_4, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_reply_markup) < 0) __PYX_ERR(0, 354, __pyx_L1_error)
+    __pyx_t_5 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_t_2, __pyx_t_4); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 354, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -11044,16 +10950,16 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_
       __pyx_generator->resume_label = 1;
       return __pyx_r;
       __pyx_L5_resume_from_await:;
-      if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 359, __pyx_L1_error)
+      if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 354, __pyx_L1_error)
     } else {
       PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
       if (exc_type) {
         if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-        else __PYX_ERR(0, 359, __pyx_L1_error)
+        else __PYX_ERR(0, 354, __pyx_L1_error)
       }
     }
 
-    /* "handlers/payments/yookassa_pay.py":358
+    /* "handlers/payments/yookassa_pay.py":353
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):
  *     """   ."""
  *     if isinstance(callback_query, types.CallbackQuery):             # <<<<<<<<<<<<<<
@@ -11063,37 +10969,37 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_
     goto __pyx_L4;
   }
 
-  /* "handlers/payments/yookassa_pay.py":360
+  /* "handlers/payments/yookassa_pay.py":355
  *     if isinstance(callback_query, types.CallbackQuery):
  *         await callback_query.message.answer(text, reply_markup=reply_markup)
  *     elif isinstance(callback_query, types.Message):             # <<<<<<<<<<<<<<
  *         await callback_query.answer(text, reply_markup=reply_markup)
  */
-  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_types); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 360, __pyx_L1_error)
+  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_types); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 355, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
-  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_Message); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 360, __pyx_L1_error)
+  __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_Message); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 355, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-  __pyx_t_3 = PyObject_IsInstance(__pyx_cur_scope->__pyx_v_callback_query, __pyx_t_4); if (unlikely(__pyx_t_3 == ((int)-1))) __PYX_ERR(0, 360, __pyx_L1_error)
+  __pyx_t_3 = PyObject_IsInstance(__pyx_cur_scope->__pyx_v_callback_query, __pyx_t_4); if (unlikely(__pyx_t_3 == ((int)-1))) __PYX_ERR(0, 355, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
   if (__pyx_t_3) {
 
-    /* "handlers/payments/yookassa_pay.py":361
+    /* "handlers/payments/yookassa_pay.py":356
  *         await callback_query.message.answer(text, reply_markup=reply_markup)
  *     elif isinstance(callback_query, types.Message):
  *         await callback_query.answer(text, reply_markup=reply_markup)             # <<<<<<<<<<<<<<
  */
-    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_answer); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 361, __pyx_L1_error)
+    __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_answer); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 356, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
-    __pyx_t_5 = PyTuple_New(1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 361, __pyx_L1_error)
+    __pyx_t_5 = PyTuple_New(1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 356, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
     __Pyx_INCREF(__pyx_cur_scope->__pyx_v_text);
     __Pyx_GIVEREF(__pyx_cur_scope->__pyx_v_text);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_5, 0, __pyx_cur_scope->__pyx_v_text)) __PYX_ERR(0, 361, __pyx_L1_error);
-    __pyx_t_2 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 361, __pyx_L1_error)
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_5, 0, __pyx_cur_scope->__pyx_v_text)) __PYX_ERR(0, 356, __pyx_L1_error);
+    __pyx_t_2 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 356, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
-    if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_reply_markup) < 0) __PYX_ERR(0, 361, __pyx_L1_error)
-    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_t_5, __pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 361, __pyx_L1_error)
+    if (PyDict_SetItem(__pyx_t_2, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_reply_markup) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
+    __pyx_t_1 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_t_5, __pyx_t_2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 356, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
@@ -11109,16 +11015,16 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_
       __pyx_generator->resume_label = 2;
       return __pyx_r;
       __pyx_L6_resume_from_await:;
-      if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 361, __pyx_L1_error)
+      if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 356, __pyx_L1_error)
     } else {
       PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
       if (exc_type) {
         if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-        else __PYX_ERR(0, 361, __pyx_L1_error)
+        else __PYX_ERR(0, 356, __pyx_L1_error)
       }
     }
 
-    /* "handlers/payments/yookassa_pay.py":360
+    /* "handlers/payments/yookassa_pay.py":355
  *     if isinstance(callback_query, types.CallbackQuery):
  *         await callback_query.message.answer(text, reply_markup=reply_markup)
  *     elif isinstance(callback_query, types.Message):             # <<<<<<<<<<<<<<
@@ -11128,7 +11034,7 @@ static PyObject *__pyx_gb_8handlers_8payments_12yookassa_pay_17generator5(__pyx_
   __pyx_L4:;
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yookassa_pay.py":356
+  /* "handlers/payments/yookassa_pay.py":351
  * 
  * 
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):             # <<<<<<<<<<<<<<
@@ -12725,18 +12631,18 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __Pyx_GIVEREF(__pyx_tuple__34);
   __pyx_codeobj__18 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 12, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__34, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yookassa_pay_p, __pyx_n_s_process_custom_amount_input, 254, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__18)) __PYX_ERR(0, 254, __pyx_L1_error)
 
-  /* "handlers/payments/yookassa_pay.py":356
+  /* "handlers/payments/yookassa_pay.py":351
  * 
  * 
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):             # <<<<<<<<<<<<<<
  *     """   ."""
  *     if isinstance(callback_query, types.CallbackQuery):
  */
-  __pyx_tuple__35 = PyTuple_Pack(3, __pyx_n_s_callback_query, __pyx_n_s_text, __pyx_n_s_reply_markup); if (unlikely(!__pyx_tuple__35)) __PYX_ERR(0, 356, __pyx_L1_error)
+  __pyx_tuple__35 = PyTuple_Pack(3, __pyx_n_s_callback_query, __pyx_n_s_text, __pyx_n_s_reply_markup); if (unlikely(!__pyx_tuple__35)) __PYX_ERR(0, 351, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__35);
   __Pyx_GIVEREF(__pyx_tuple__35);
-  __pyx_codeobj__26 = (PyObject*)__Pyx_PyCode_New(3, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__35, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yookassa_pay_p, __pyx_n_s_send_message, 356, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__26)) __PYX_ERR(0, 356, __pyx_L1_error)
-  __pyx_tuple__36 = PyTuple_Pack(1, Py_None); if (unlikely(!__pyx_tuple__36)) __PYX_ERR(0, 356, __pyx_L1_error)
+  __pyx_codeobj__26 = (PyObject*)__Pyx_PyCode_New(3, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__35, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yookassa_pay_p, __pyx_n_s_send_message, 351, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__26)) __PYX_ERR(0, 351, __pyx_L1_error)
+  __pyx_tuple__36 = PyTuple_Pack(1, Py_None); if (unlikely(!__pyx_tuple__36)) __PYX_ERR(0, 351, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__36);
   __Pyx_GIVEREF(__pyx_tuple__36);
   __Pyx_RefNannyFinishContext();
@@ -12902,15 +12808,15 @@ static int __Pyx_modinit_type_init_code(void) {
   }
   #endif
   #if CYTHON_USE_TYPE_SPECS
-  __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message = (PyTypeObject *) __Pyx_PyType_FromModuleAndSpec(__pyx_m, &__pyx_type_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message_spec, NULL); if (unlikely(!__pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message)) __PYX_ERR(0, 356, __pyx_L1_error)
-  if (__Pyx_fix_up_extension_type_from_spec(&__pyx_type_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message_spec, __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
+  __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message = (PyTypeObject *) __Pyx_PyType_FromModuleAndSpec(__pyx_m, &__pyx_type_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message_spec, NULL); if (unlikely(!__pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message)) __PYX_ERR(0, 351, __pyx_L1_error)
+  if (__Pyx_fix_up_extension_type_from_spec(&__pyx_type_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message_spec, __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message) < 0) __PYX_ERR(0, 351, __pyx_L1_error)
   #else
   __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message = &__pyx_type_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message;
   #endif
   #if !CYTHON_COMPILING_IN_LIMITED_API
   #endif
   #if !CYTHON_USE_TYPE_SPECS
-  if (__Pyx_PyType_Ready(__pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
+  if (__Pyx_PyType_Ready(__pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message) < 0) __PYX_ERR(0, 351, __pyx_L1_error)
   #endif
   #if PY_MAJOR_VERSION < 3
   __pyx_ptype_8handlers_8payments_12yookassa_pay___pyx_scope_struct_5__send_message->tp_print = 0;
@@ -14187,23 +14093,23 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_process_custom_amount_input, __pyx_t_3) < 0) __PYX_ERR(0, 254, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yookassa_pay.py":356
+  /* "handlers/payments/yookassa_pay.py":351
  * 
  * 
  * async def _send_message(callback_query: types.CallbackQuery | types.Message, text: str, reply_markup=None):             # <<<<<<<<<<<<<<
  *     """   ."""
  *     if isinstance(callback_query, types.CallbackQuery):
  */
-  __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 356, __pyx_L1_error)
+  __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 351, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
-  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_callback_query, __pyx_kp_s_types_CallbackQuery_types_Messag) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
-  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_n_s_str) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_8handlers_8payments_12yookassa_pay_16_send_message, __Pyx_CYFUNCTION_COROUTINE, __pyx_n_s_send_message, NULL, __pyx_n_s_handlers_payments_yookassa_pay, __pyx_d, ((PyObject *)__pyx_codeobj__26)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 356, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_callback_query, __pyx_kp_s_types_CallbackQuery_types_Messag) < 0) __PYX_ERR(0, 351, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_n_s_str) < 0) __PYX_ERR(0, 351, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_8handlers_8payments_12yookassa_pay_16_send_message, __Pyx_CYFUNCTION_COROUTINE, __pyx_n_s_send_message, NULL, __pyx_n_s_handlers_payments_yookassa_pay, __pyx_d, ((PyObject *)__pyx_codeobj__26)); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 351, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_CyFunction_SetDefaultsTuple(__pyx_t_2, __pyx_tuple__36);
   __Pyx_CyFunction_SetAnnotationsDict(__pyx_t_2, __pyx_t_3);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_send_message, __pyx_t_2) < 0) __PYX_ERR(0, 356, __pyx_L1_error)
+  if (PyDict_SetItem(__pyx_d, __pyx_n_s_send_message, __pyx_t_2) < 0) __PYX_ERR(0, 351, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "handlers/payments/yookassa_pay.py":1
@@ -18076,11 +17982,6 @@ fallback:
     }
 bad:
     return (double)-1;
-}
-
-/* RaiseUnboundLocalError */
-  static CYTHON_INLINE void __Pyx_RaiseUnboundLocalError(const char *varname) {
-    PyErr_Format(PyExc_UnboundLocalError, "local variable '%s' referenced before assignment", varname);
 }
 
 /* ArgTypeTest */
