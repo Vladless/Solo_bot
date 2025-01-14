@@ -114,35 +114,52 @@ async def create_coupon(
         raise
 
 
-async def get_all_coupons(session: Any):
+async def get_all_coupons(session: Any, page: int = 1, per_page: int = 10):
     """
-    Получает список всех купонов из базы данных.
+    Получает список купонов из базы данных с пагинацией.
+
+    Args:
+        session (Any): Сессия базы данных для выполнения запроса
+        page (int): Номер страницы (по умолчанию 1)
+        per_page (int): Количество купонов на странице (по умолчанию 10)
 
     Returns:
-        list: Список словарей с информацией о купонах, каждый словарь содержит:
-            - code (str): Код купона
-            - amount (int): Сумма купона
-            - usage_limit (int): Максимальное количество использований
-            - usage_count (int): Текущее количество использований купона
+        dict: Словарь с информацией о купонах и пагинации:
+            - coupons (list): Список словарей с информацией о купонах
+            - total (int): Общее количество купонов
+            - pages (int): Общее количество страниц
+            - current_page (int): Текущая страница
 
     Raises:
         Exception: В случае ошибки при получении данных из базы
     """
     try:
+        offset = (page - 1) * per_page
         coupons = await session.fetch(
             """
             SELECT code, amount, usage_limit, usage_count
             FROM coupons
-        """
+            ORDER BY id
+            LIMIT $1 OFFSET $2
+            """,
+            per_page, offset
         )
 
-        logger.info(f"Успешно получено {len(coupons)} купонов из базы данных")
+        total_count = await session.fetchval("SELECT COUNT(*) FROM coupons")
+        total_pages = -(-total_count // per_page)  # Округление вверх
 
-        return coupons
+        logger.info(f"Успешно получено {len(coupons)} купонов из базы данных (страница {page})")
+
+        return {
+            "coupons": coupons,
+            "total": total_count,
+            "pages": total_pages,
+            "current_page": page
+        }
     except Exception as e:
         logger.error(f"Критическая ошибка при получении списка купонов: {e}")
         logger.exception("Трассировка стека ошибки получения купонов")
-        return []
+        return {"coupons": [], "total": 0, "pages": 0, "current_page": page}
 
 
 async def delete_coupon_from_db(coupon_code: str, session: Any):

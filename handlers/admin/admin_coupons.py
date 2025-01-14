@@ -27,31 +27,33 @@ async def show_coupon_management_menu(
     builder.row(
         InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon")
     )
-    builder.row(InlineKeyboardButton(text="Купоны", callback_data="coupons"))
+    builder.row(InlineKeyboardButton(text="🎟️ Купоны", callback_data="coupons"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
     await callback_query.message.answer(
         "🛠 Меню управления купонами:", reply_markup=builder.as_markup()
     )
 
 
-@router.callback_query(F.data == "coupons", IsAdminFilter())
+@router.callback_query(F.data.startswith("coupons"), IsAdminFilter())
 async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
     try:
-        coupons = await get_all_coupons(session)
+        page = int(callback_query.data.split(':')[1]) if ':' in callback_query.data else 1
+        per_page = 10
+        result = await get_all_coupons(session, page, per_page)
+        coupons = result["coupons"]
+        total_pages = result["pages"]
+        current_page = result["current_page"]
 
         if not coupons:
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-            )
-
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
             await callback_query.message.answer(
                 "❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
                 reply_markup=builder.as_markup(),
             )
             return
 
-        coupon_list = "📜 Список всех купонов:\n\n"
+        coupon_list = f"📜 Список купонов (страница {current_page} из {total_pages}):\n\n"
         builder = InlineKeyboardBuilder()
 
         for coupon in coupons:
@@ -61,23 +63,22 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
                 f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
+            builder.row(InlineKeyboardButton(
+                text=f"❌ Удалить {coupon['code']}",
+                callback_data=f"delete_coupon_{coupon['code']}"
+            ))
 
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"❌ Удалить {coupon['code']}",
-                    callback_data=f"delete_coupon_{coupon['code']}",
-                )
-            )
-
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-        )
-        await callback_query.message.answer(
-            coupon_list, reply_markup=builder.as_markup()
-        )
+        if current_page > 1:
+            builder.row(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"coupons:{current_page-1}"))
+        if current_page < total_pages:
+            builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page+1}"))
+        
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+        await callback_query.message.answer(coupon_list, reply_markup=builder.as_markup())
 
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
+        await callback_query.message.answer("Произошла ошибка при получении списка купонов.")
 
 
 @router.callback_query(F.data.startswith("delete_coupon_"), IsAdminFilter())
