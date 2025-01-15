@@ -5,14 +5,13 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ErrorEvent
-from config import API_TOKEN
 
+from config import API_TOKEN
 from logger import logger
 from middlewares.admin import AdminMiddleware
 from middlewares.database import DatabaseMiddleware
 from middlewares.delete import DeleteMessageMiddleware
 from middlewares.logging import LoggingMiddleware
-from middlewares.throttling import ThrottlingMiddleware
 from middlewares.user import UserMiddleware
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -30,9 +29,8 @@ dp.callback_query.middleware(UserMiddleware())
 dp.message.middleware(DatabaseMiddleware())
 dp.callback_query.middleware(DatabaseMiddleware())
 
-# Add throttling middleware
-dp.message.middleware(ThrottlingMiddleware(limit=1))  # 1 message per second
-dp.callback_query.middleware(ThrottlingMiddleware(limit=1))
+# dp.message.middleware(ThrottlingMiddleware(limit=1))
+# dp.callback_query.middleware(ThrottlingMiddleware(limit=1))
 
 dp.message.outer_middleware(DeleteMessageMiddleware())
 dp.callback_query.outer_middleware(DeleteMessageMiddleware())

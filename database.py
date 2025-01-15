@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
-from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 
+from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 

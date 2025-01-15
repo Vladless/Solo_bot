@@ -5,8 +5,8 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import CONNECT_MACOS, CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
 
+from config import CONNECT_MACOS, CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
 from handlers.texts import (
     CONNECT_TV_TEXT,
     INSTRUCTION_PC,

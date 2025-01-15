@@ -1,26 +1,29 @@
 import hashlib
 from typing import Any
 
+import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
+from robokassa import HashAlgorithm, Robokassa
+
 from config import (
+    DATABASE_URL,
     ROBOKASSA_ENABLE,
     ROBOKASSA_LOGIN,
     ROBOKASSA_PASSWORD1,
     ROBOKASSA_PASSWORD2,
     ROBOKASSA_TEST_MODE,
 )
-from robokassa import HashAlgorithm, Robokassa
-
 from database import (
     add_connection,
     add_payment,
     check_connection_exists,
     get_key_count,
+    get_temporary_data,
     update_balance,
 )
 from handlers.payments.utils import send_payment_success_notification
@@ -242,17 +245,31 @@ async def process_custom_amount_selection(
 
 
 @router.message(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
-async def handle_custom_amount_input(message: types.Message, state: FSMContext):
-    tg_id = message.chat.id
-    logger.info(f"User {tg_id} entered custom amount: {message.text}")
+async def handle_custom_amount_input(message: types.Message | types.CallbackQuery, state: FSMContext = None, session: Any = None):
+    if isinstance(message, types.CallbackQuery):
+        tg_id = message.message.chat.id
+    else:
+        tg_id = message.chat.id
+
+    logger.info(f"User {tg_id} initiated payment through ROBOKASSA")
     inv_id = 0
 
     try:
-        amount = int(message.text)
-        if amount <= 0:
-            raise ValueError("Сумма должна быть положительным числом.")
 
-        await state.update_data(amount=amount)
+        conn = await asyncpg.connect(DATABASE_URL)
+        user_data = await get_temporary_data(conn, tg_id)
+        await conn.close()
+
+        if not user_data:
+            await message.answer("Данные для оплаты не найдены. Попробуйте снова.")
+            return
+
+        state_type = user_data["state"]
+        amount = user_data["data"].get("required_amount", 0)
+
+        if amount <= 0:
+            await message.answer("Недостаточная сумма для пополнения.")
+            return
 
         payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
 
@@ -260,18 +277,38 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
 
         confirm_keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="Оплатить", url=payment_url)],
+                [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)],
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa")],
             ]
         )
 
-        await message.answer(
-            text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
-            reply_markup=confirm_keyboard,
-        )
-        await state.clear()
-    except ValueError as e:
-        logger.error(f"Некорректная сумма от пользователя {tg_id}: {e}")
-        await message.answer(
-            text="Введите корректную сумму в рублях (целое положительное число)."
-        )
+        if state_type == "waiting_for_payment":
+            message_text = f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"
+        elif state_type == "waiting_for_renewal_payment":
+            message_text = f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
+        else:
+            await message.answer("Некорректное состояние данных. Попробуйте снова.")
+            return
+
+        if isinstance(message, types.CallbackQuery):
+            await message.message.answer(
+                text=message_text,
+                reply_markup=confirm_keyboard,
+            )
+        else:
+            await message.answer(
+                text=message_text,
+                reply_markup=confirm_keyboard,
+            )
+
+        if isinstance(state, FSMContext):
+            await state.clear()
+
+    except Exception as e:
+        logger.error(f"Ошибка при создании платежа для пользователя {tg_id}: {e}")
+        error_message = "Произошла ошибка при создании платежа. Попробуйте позже."
+
+        if isinstance(message, types.CallbackQuery):
+            await message.message.answer(error_message)
+        else:
+            await message.answer(error_message)

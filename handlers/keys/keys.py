@@ -7,21 +7,25 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
+    ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
     PUBLIC_LINK,
     RENEWAL_PLANS,
     TOTAL_GB,
+    USE_NEW_PAYMENT_FLOW,
 )
-
 from database import (
     delete_key,
     get_balance,
     get_servers_from_db,
+    save_temporary_data,
     store_key,
     update_balance,
     update_key_expiry,
@@ -40,9 +44,10 @@ from handlers.keys.key_utils import (
     renew_key_in_cluster,
     update_key_on_cluster,
 )
+from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
-    INSUFFICIENT_FUNDS_MSG,
     KEY_NOT_FOUND_MSG,
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
@@ -113,7 +118,7 @@ def build_keys_response(records):
     inline_keyboard = builder.as_markup()
     response_message = (
         "<b>🔑 Список ваших подписок</b>\n\n"
-        "<i>👇 Выберите подписку для управления или добавьте новую (например, для подключения нового устройства):</i>"
+        "<i>👇 Выберите подписку для управления или добавьте новую для подключения дополнительного устройства:</i>"
     )
     return inline_keyboard, response_message
 
@@ -214,14 +219,22 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 ),
             )
 
-            builder.row(
-                InlineKeyboardButton(
-                    text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
-                ),
-                InlineKeyboardButton(
-                    text="❌ Удалить", callback_data=f"delete_key|{key_name}"
-                ),
-            )
+            # ✅ Добавлена проверка флага ENABLE_DELETE_KEY_BUTTON
+            if ENABLE_DELETE_KEY_BUTTON:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Удалить", callback_data=f"delete_key|{key_name}"
+                    ),
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(
+                        text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
+                    )
+                )
 
             builder.row(
                 InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
@@ -480,14 +493,9 @@ async def process_callback_confirm_delete(
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))
-async def process_callback_renew_plan(
-    callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_renew_plan(callback_query: types.CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
-    plan, client_id = (
-        callback_query.data.split("|")[1],
-        callback_query.data.split("|")[2],
-    )
+    plan, client_id = callback_query.data.split("|")[1], callback_query.data.split("|")[2]
     days_to_extend = 30 * int(plan)
 
     gb_multiplier = {"1": 1, "3": 3, "6": 6, "12": 12}
@@ -505,70 +513,95 @@ async def process_callback_renew_plan(
             current_time = datetime.utcnow().timestamp() * 1000
 
             if expiry_time <= current_time:
-                new_expiry_time = int(
-                    current_time + timedelta(days=days_to_extend).total_seconds() * 1000
-                )
+                new_expiry_time = int(current_time + timedelta(days=days_to_extend).total_seconds() * 1000)
             else:
-                new_expiry_time = int(
-                    expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000
-                )
+                new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
 
             cost = RENEWAL_PLANS[plan]["price"]
-
             balance = await get_balance(tg_id)
+
             if balance < cost:
-                builder = InlineKeyboardBuilder()
-                builder.row(
-                    InlineKeyboardButton(text="Пополнить баланс", callback_data="pay")
-                )
-                builder.row(
-                    InlineKeyboardButton(
-                        text="👤 Личный кабинет", callback_data="profile"
-                    )
+                required_amount = cost - balance
+
+                logger.info(f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
+
+                await save_temporary_data(
+                    session,
+                    tg_id,
+                    "waiting_for_renewal_payment",
+                    {
+                        "plan": plan,
+                        "client_id": client_id,
+                        "cost": cost,
+                        "required_amount": required_amount,
+                        "new_expiry_time": new_expiry_time,
+                        "total_gb": total_gb,
+                        "email": email,
+                    },
                 )
 
-                await callback_query.message.answer(
-                    INSUFFICIENT_FUNDS_MSG,
-                    reply_markup=builder.as_markup(),
-                )
+                if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
+                    logger.info(f"[RENEW] Запуск оплаты через Юкассу для пользователя {tg_id}")
+                    await process_custom_amount_input(callback_query, session)
+                elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
+                    logger.info(f"[RENEW] Запуск оплаты через Робокассу для пользователя {tg_id}")
+                    await handle_custom_amount_input(callback_query, session)
+                else:
+                    logger.info(f"[RENEW] Отправка сообщения о доплате пользователю {tg_id}")
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
+                    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+                    await callback_query.message.answer(
+                        f"💳 Недостаточно средств. Пополните баланс на {required_amount}₽.",
+                        reply_markup=builder.as_markup(),
+                    )
                 return
 
-            response_message = SUCCESS_RENEWAL_MSG.format(
-                months=RENEWAL_PLANS[plan]["months"]
-            )
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
-
-            await callback_query.message.answer(
-                response_message, reply_markup=builder.as_markup()
-            )
-
-            servers = await get_servers_from_db()
-
-            async def renew_key_on_servers():
-                tasks = []
-                for cluster_id in servers:
-                    task = asyncio.create_task(
-                        renew_key_in_cluster(
-                            cluster_id,
-                            email,
-                            client_id,
-                            new_expiry_time,
-                            total_gb,
-                        )
-                    )
-                    tasks.append(task)
-
-                await asyncio.gather(*tasks)
-
-                await update_balance(tg_id, -cost)
-                await update_key_expiry(client_id, new_expiry_time)
-
-            await renew_key_on_servers()
+            logger.info(f"[RENEW] Средств достаточно. Продление ключа для пользователя {tg_id}")
+            await complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_gb, cost, callback_query, plan)
 
         else:
             await callback_query.message.answer(KEY_NOT_FOUND_MSG)
+            logger.error(f"[RENEW] Ключ с client_id={client_id} не найден.")
     except Exception as e:
-        logger.error(e)
+        logger.error(f"[RENEW] Ошибка при продлении ключа для пользователя {tg_id}: {e}")
+
+
+async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_gb, cost, callback_query, plan):
+    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    if callback_query:
+        await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
+    else:
+        await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
+
+    servers = await get_servers_from_db()
+
+    logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. на всех серверах.")
+
+    async def renew_key_on_servers():
+        tasks = []
+        for cluster_id in servers:
+            task = asyncio.create_task(
+                renew_key_in_cluster(
+                    cluster_id,
+                    email,
+                    client_id,
+                    new_expiry_time,
+                    total_gb,
+                )
+            )
+            tasks.append(task)
+
+        await asyncio.gather(*tasks)
+
+        await update_balance(tg_id, -cost)
+        await update_key_expiry(client_id, new_expiry_time)
+        logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
+
+    await renew_key_on_servers()
+
