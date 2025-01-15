@@ -14,7 +14,11 @@ router = Router()
     IsAdminFilter()
 )
 async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMContext):
-    await handle_admin_message(callback_query.message, state)
+    await state.clear()
+    await callback_query.message.edit_text(
+        text="🤖 Панель администратора",
+        reply_markup=build_panel_kb()
+    )
 
 
 @router.callback_query(
@@ -31,7 +35,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 )
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.message.answer(
+    await message.answer(
         text="🤖 Панель администратора",
         reply_markup=build_panel_kb()
     )
@@ -41,7 +45,7 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     AdminPanelCallback.filter(F.action == "management"),
     IsAdminFilter()
 )
-async def handle_restart(callback_query: CallbackQuery):
+async def handle_management(callback_query: CallbackQuery):
     await callback_query.message.edit_text(
         text="🤖 Управление ботом",
         reply_markup=build_management_kb(),

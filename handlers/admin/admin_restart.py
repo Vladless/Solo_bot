@@ -14,10 +14,9 @@ router = Router()
     IsAdminFilter(),
 )
 async def handle_restart(callback_query: CallbackQuery):
-    kb = build_restart_kb()
-    await callback_query.message.answer(
-        text="🤔 Вы уверены, что хотите перезапустить бота?",
-        reply_markup=kb,
+    await callback_query.message.edit_text(
+        text="🤔 Вы уверены, что хотите перезагрузить бота?",
+        reply_markup=build_restart_kb(),
     )
 
 
@@ -26,7 +25,7 @@ async def handle_restart(callback_query: CallbackQuery):
     IsAdminFilter(),
 )
 async def confirm_restart_bot(callback_query: CallbackQuery):
-    kb = build_admin_back_kb("admin")
+    kb = build_admin_back_kb()
     try:
         subprocess.run(
             ["sudo", "systemctl", "restart", "bot.service"],
@@ -34,17 +33,17 @@ async def confirm_restart_bot(callback_query: CallbackQuery):
             capture_output=True,
             text=True,
         )
-        await callback_query.message.answer(
-            text="🔄 Бот успешно перезапущен.",
+        await callback_query.message.edit_text(
+            text="🔄 Бот успешно перезагружен!",
             reply_markup=kb
         )
     except subprocess.CalledProcessError:
-        await callback_query.message.answer(
-            text="🔄 Бот успешно перезапущен.",
+        await callback_query.message.edit_text(
+            text="🔄 Бот успешно перезагружен!",
             reply_markup=kb
         )
     except Exception as e:
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
             reply_markup=kb
         )
