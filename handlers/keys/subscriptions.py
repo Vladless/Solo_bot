@@ -1,11 +1,12 @@
+import asyncio
 import base64
 from datetime import datetime
 
 import aiohttp
 import asyncpg
 from aiohttp import web
-from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, TRANSITION_DATE_STR
 
+from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR
 from database import get_servers_from_db
 from logger import logger
 
@@ -13,7 +14,8 @@ from logger import logger
 async def fetch_url_content(url, tg_id):
     try:
         logger.info(f"Получение URL: {url} для tg_id: {tg_id}")
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, ssl=False) as response:
                 if response.status == 200:
                     content = await response.text()
@@ -24,12 +26,20 @@ async def fetch_url_content(url, tg_id):
                         f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}"
                     )
                     return []
+    except asyncio.TimeoutError:
+        logger.error(f"Таймаут при получении {url} для tg_id: {tg_id}")
+        return []
     except Exception as e:
         logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
         return []
 
 
 async def combine_unique_lines(urls, tg_id, query_string):
+    if SUPERNODE:
+        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для tg_id: {tg_id}")
+        urls_with_query = [f"{urls[0]}?{query_string}"] if urls else []
+        return await fetch_url_content(urls_with_query[0], tg_id) if urls_with_query else []
+
     all_lines = []
     logger.info(
         f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}"
