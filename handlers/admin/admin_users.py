@@ -121,13 +121,22 @@ async def handle_key_name_input(
         state: FSMContext,
         session: Any
 ):
+    kb = build_admin_back_kb()
+
+    if not message.text:
+        await message.reply(
+            text="🚫 Пожалуйста, отправьте текстовое сообщение.",
+            reply_markup=kb
+        )
+        return
+
     key_name = sanitize_key_name(message.text)
     key_details = await get_key_details(key_name, session)
 
     if not key_details:
         await message.edit_text(
             text="🚫 Пользователь с указанным именем ключа не найден.",
-            reply_markup=build_admin_back_kb()
+            reply_markup=kb
         )
         return
 
