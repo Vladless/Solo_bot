@@ -27,7 +27,7 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="clusters_add").pack()
     )
     builder.row(
-        build_admin_back_btn("admin")
+        build_admin_back_btn()
     )
     builder.adjust(1)
     return builder.as_markup()
