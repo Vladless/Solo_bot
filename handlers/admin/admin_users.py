@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
-from aiogram import Bot, F, Router, types
+from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
@@ -113,33 +113,25 @@ async def handle_user_data_input(
 
 
 @router.message(
-    UserEditorState.waiting_for_message_text,
+    UserEditorState.waiting_for_key_name,
     IsAdminFilter()
 )
-async def handle_message_text_input(
+async def handle_key_name_input(
         message: types.Message,
         state: FSMContext,
-        bot: Bot
+        session: Any
 ):
-    data = await state.get_data()
-    tg_id = data.get("tg_id")
+    key_name = sanitize_key_name(message.text)
+    key_details = await get_key_details(key_name, session)
 
-    try:
-        await bot.send_message(
-            chat_id=tg_id,
-            text=message.text
+    if not key_details:
+        await message.edit_text(
+            text="🚫 Пользователь с указанным именем ключа не найден.",
+            reply_markup=build_admin_back_kb()
         )
-        await message.answer(
-            text="✅ Сообщение успешно отправлено.",
-            reply_markup=build_editor_kb(tg_id)
-        )
-    except Exception as e:
-        await message.answer(
-            text=f"❌ Не удалось отправить сообщение: {e}",
-            reply_markup=build_editor_kb(tg_id)
-        )
+        return
 
-    await state.clear()
+    await process_user_search(message, state, session, key_details["tg_id"])
 
 
 @router.callback_query(
@@ -160,6 +152,35 @@ async def handle_send_message(
 
     await state.update_data(tg_id=tg_id)
     await state.set_state(UserEditorState.waiting_for_message_text)
+
+
+@router.message(
+    UserEditorState.waiting_for_message_text,
+    IsAdminFilter()
+)
+async def handle_message_text_input(
+        message: types.Message,
+        state: FSMContext
+):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+
+    try:
+        await message.bot.send_message(
+            chat_id=tg_id,
+            text=message.text
+        )
+        await message.answer(
+            text="✅ Сообщение успешно отправлено.",
+            reply_markup=build_editor_kb(tg_id)
+        )
+    except Exception as e:
+        await message.answer(
+            text=f"❌ Не удалось отправить сообщение: {e}",
+            reply_markup=build_editor_kb(tg_id)
+        )
+
+    await state.clear()
 
 
 @router.callback_query(
@@ -260,40 +281,6 @@ async def process_key_edit(
         text=text,
         reply_markup=build_key_edit_kb(key_details, email)
     )
-
-
-@router.message(
-    UserEditorState.waiting_for_key_name,
-    IsAdminFilter()
-)
-async def handle_key_name_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
-    key_name = sanitize_key_name(message.text)
-    key_details = await get_key_details(key_name, session)
-
-    if not key_details:
-        await message.edit_text(
-            text="🚫 Пользователь с указанным именем ключа не найден.",
-            reply_markup=build_admin_back_kb()
-        )
-        await state.clear()
-        return
-
-    text = (
-        f"🔑 Ключ: <code>{key_details['key']}</code>\n"
-        f"⏰ Дата истечения: <b>{key_details['expiry_date']}</b>\n"
-        f"💰 Баланс пользователя: <b>{key_details['balance']}</b>\n"
-        f"🌐 Сервер: <b>{key_details['server_name']}</b>"
-    )
-
-    await message.edit_text(
-        text=text,
-        reply_markup=build_key_edit_kb(key_details, key_name)
-    )
-    await state.clear()
 
 
 @router.callback_query(
@@ -538,6 +525,8 @@ async def process_user_search(
         tg_id: int,
         edit: bool = False
 ) -> None:
+    await state.clear()
+
     username = await session.fetchval(
         "SELECT username FROM users WHERE tg_id = $1", tg_id
     )
@@ -576,8 +565,6 @@ async def process_user_search(
             text=text,
             reply_markup=build_user_edit_kb(tg_id, key_records)
         )
-
-    await state.clear()
 
 
 async def get_key_details(email, session):

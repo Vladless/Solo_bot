@@ -72,13 +72,6 @@ def build_user_delete_kb(tg_id: int):
 def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="ℹ️ Получить информацию о юзере",
-        callback_data=AdminUserEditorCallback(
-            action="users_info",
-            tg_id=key_details["tg_id"]
-        ).pack()
-    )
-    builder.button(
         text="⏳ Изменить время истечения",
         callback_data=AdminUserEditorCallback(
             action="users_change_expiry",
