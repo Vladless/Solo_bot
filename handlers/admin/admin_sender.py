@@ -6,7 +6,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
 
-from bot import bot
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.sender_kb import build_sender_kb, AdminSenderCallback
@@ -88,7 +87,10 @@ async def process_message(
         for record in tg_ids:
             tg_id = record["tg_id"]
             try:
-                await bot.send_message(chat_id=tg_id, text=text_message)
+                await message.bot.send_message(
+                    chat_id=tg_id,
+                    text=text_message
+                )
                 success_count += 1
             except Exception:
                 pass
