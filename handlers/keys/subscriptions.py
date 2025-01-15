@@ -10,6 +10,16 @@ from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITIO
 from database import get_servers_from_db
 from logger import logger
 
+# Глобальная переменная для пула соединений
+db_pool = None
+
+async def init_db_pool():
+    """
+    Инициализация пула соединений, если он ещё не создан.
+    """
+    global db_pool
+    if not db_pool:
+        db_pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=5, max_size=20)
 
 async def fetch_url_content(url, tg_id):
     try:
@@ -33,43 +43,41 @@ async def fetch_url_content(url, tg_id):
         logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
         return []
 
-
 async def combine_unique_lines(urls, tg_id, query_string):
     if SUPERNODE:
         logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для tg_id: {tg_id}")
-        urls_with_query = [f"{urls[0]}?{query_string}"] if urls else []
-        return await fetch_url_content(urls_with_query[0], tg_id) if urls_with_query else []
+        if not urls:
+            return []
+        url_with_query = f"{urls[0]}?{query_string}" if query_string else urls[0]
+        return await fetch_url_content(url_with_query, tg_id)
 
-    all_lines = []
     logger.info(
         f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}"
     )
 
-    urls_with_query = [f"{url}?{query_string}" for url in urls]
+    urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
-    for url in urls_with_query:
-        lines = await fetch_url_content(url, tg_id)
-        all_lines.extend(lines)
+    tasks = [fetch_url_content(url, tg_id) for url in urls_with_query]
+    results = await asyncio.gather(*tasks)
 
-    all_lines = list(set(filter(None, all_lines)))
+    all_lines = set()
+    for lines in results:
+        all_lines.update(filter(None, lines))
+
     logger.info(
         f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}"
     )
 
-    return all_lines
-
+    return list(all_lines)
 
 transition_date = datetime.strptime(TRANSITION_DATE_STR, "%Y-%m-%d %H:%M:%S")
-
 transition_timestamp_ms = int(transition_date.timestamp() * 1000)
-
 transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
 
 logger.info(
     f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}"
 )
-
 
 async def handle_old_subscription(request):
     email = request.match_info.get("email")
@@ -83,8 +91,10 @@ async def handle_old_subscription(request):
 
     logger.info(f"Обработка запроса для старого клиента с email: {email}")
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    # Инициализируем пул соединений
+    await init_db_pool()
+
+    async with db_pool.acquire() as conn:
         key_info = await conn.fetchrow(
             "SELECT created_at, server_id FROM keys WHERE email = $1", email
         )
@@ -121,35 +131,31 @@ async def handle_old_subscription(request):
                 status=400,
             )
 
-        servers = await get_servers_from_db()
-        cluster_servers = servers.get(cluster_name, [])
-        logger.info(f"Сервера в кластере: {cluster_servers}")
+    servers = await get_servers_from_db()
+    cluster_servers = servers.get(cluster_name, [])
+    logger.info(f"Сервера в кластере: {cluster_servers}")
 
-        urls = []
-        for server in cluster_servers:
-            server_subscription_url = f"{server['subscription_url']}/{email}"
-            urls.append(server_subscription_url)
+    urls = [
+        f"{server['subscription_url']}/{email}" for server in cluster_servers
+    ]
 
-        combined_subscriptions = await combine_unique_lines(urls, email, "")
+    combined_subscriptions = await combine_unique_lines(urls, email, "")
 
-        base64_encoded = base64.b64encode(
-            "\n".join(combined_subscriptions).encode("utf-8")
-        ).decode("utf-8")
+    base64_encoded = base64.b64encode(
+        "\n".join(combined_subscriptions).encode("utf-8")
+    ).decode("utf-8")
 
-        encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
-        headers = {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Content-Disposition": "inline",
-            "profile-update-interval": "7",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
-        }
+    encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
+    headers = {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": "inline",
+        "profile-update-interval": "7",
+        "profile-title": "base64:"
+        + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+    }
 
-        logger.info(f"Возвращаем объединенные подписки для email: {email}")
-        return web.Response(text=base64_encoded, headers=headers)
-
-    finally:
-        await conn.close()
+    logger.info(f"Возвращаем объединенные подписки для email: {email}")
+    return web.Response(text=base64_encoded, headers=headers)
 
 
 async def handle_new_subscription(request):
@@ -165,9 +171,10 @@ async def handle_new_subscription(request):
 
     logger.info(f"Обработка запроса для нового клиента: email={email}, tg_id={tg_id}")
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
+    # Инициализируем пул соединений
+    await init_db_pool()
 
+    async with db_pool.acquire() as conn:
         client_data = await conn.fetchrow(
             "SELECT tg_id, server_id FROM keys WHERE email = $1", email
         )
@@ -189,16 +196,12 @@ async def handle_new_subscription(request):
                 status=403,
             )
 
-    finally:
-        await conn.close()
-
     servers = await get_servers_from_db()
     cluster_servers = servers.get(cluster_name, [])
 
-    urls = []
-    for server in cluster_servers:
-        server_subscription_url = f"{server['subscription_url']}/{email}"
-        urls.append(server_subscription_url)
+    urls = [
+        f"{server['subscription_url']}/{email}" for server in cluster_servers
+    ]
 
     query_string = request.query_string
     logger.info(f"Извлечен query string: {query_string}")
