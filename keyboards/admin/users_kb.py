@@ -33,6 +33,14 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
         ).pack()
     )
     builder.button(
+        text="✉️ Сообщение",
+        callback_data=AdminUserEditorCallback(
+            action="users_send_message",
+            tg_id=tg_id
+        ).pack()
+    )
+
+    builder.button(
         text="🔄 Восстановить триал",
         callback_data=AdminUserEditorCallback(
             action="users_trial_restore",
@@ -45,6 +53,9 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
             action="users_delete_user",
             tg_id=tg_id
         ).pack()
+    )
+    builder.row(
+        build_editor_btn("🔄 Обновить", tg_id, edit=True)
     )
     builder.row(
         build_admin_back_btn()

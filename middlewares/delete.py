@@ -19,10 +19,10 @@ pass_callbacks = [
 ]
 
 pass_states = [
-    'UserEditorState',
-    'AdminServersEditor',
-    'AdminSender',
-    'AdminCouponsState'
+    "UserEditorState",
+    "AdminServersEditor",
+    "AdminSender",
+    "AdminCouponsState"
 ]
 
 
