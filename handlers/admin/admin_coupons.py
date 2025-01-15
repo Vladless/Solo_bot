@@ -168,7 +168,7 @@ async def handle_delete_coupon(
         if result:
             await show_coupon_list(callback_query, session)
         else:
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 text=f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
             )
             await show_coupon_list(callback_query, session)

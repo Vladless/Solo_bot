@@ -82,7 +82,7 @@ async def handle_user_data_input(
     kb = build_admin_back_kb()
 
     if not message.text:
-        await message.reply(
+        await message.answer(
             text="🚫 Пожалуйста, отправьте текстовое сообщение.",
             reply_markup=kb
         )
@@ -101,7 +101,7 @@ async def handle_user_data_input(
         )
 
         if not user:
-            await message.reply(
+            await message.answer(
                 text="🚫 Пользователь с указанным Username не найден!",
                 reply_markup=kb,
             )
@@ -124,7 +124,7 @@ async def handle_key_name_input(
     kb = build_admin_back_kb()
 
     if not message.text:
-        await message.reply(
+        await message.answer(
             text="🚫 Пожалуйста, отправьте текстовое сообщение.",
             reply_markup=kb
         )
@@ -134,7 +134,7 @@ async def handle_key_name_input(
     key_details = await get_key_details(key_name, session)
 
     if not key_details:
-        await message.edit_text(
+        await message.answer(
             text="🚫 Пользователь с указанным именем ключа не найден.",
             reply_markup=kb
         )
@@ -239,7 +239,7 @@ async def handle_new_balance_input(
     tg_id = user_data.get("tg_id")
 
     if not message.text.isdigit() or int(message.text) < 0:
-        await message.edit_text(
+        await message.answer(
             text="❌ Пожалуйста, введите корректную сумму для изменения баланса.",
             reply_markup=build_editor_kb(tg_id),
         )
@@ -253,8 +253,8 @@ async def handle_new_balance_input(
         tg_id,
     )
 
-    await message.edit_text(
-        text=f"✅ Баланс успешно изменен на <b>{new_balance}</b>.",
+    await message.answer(
+        text=f"✅ Баланс успешно изменен на <b>{new_balance}</b>",
         reply_markup=build_admin_back_kb()
     )
     await state.clear()
