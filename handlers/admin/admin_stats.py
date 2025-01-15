@@ -19,7 +19,7 @@ router = Router()
 )
 async def user_stats_menu(callback_query: CallbackQuery, session: Any):
     try:
-        total_users = await session.fetchval("SELECT COUNT(*) FROM connections")
+        total_users = await session.fetchval("SELECT COUNT(*) FROM users")
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
         total_referrals = await session.fetchval("SELECT COUNT(*) FROM referrals")
 
@@ -36,6 +36,20 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             "SELECT COALESCE(SUM(amount), 0) FROM payments"
         )
 
+        registrations_today = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE"
+        )
+        registrations_week = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+        )
+        registrations_month = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+        )
+
+        users_updated_today = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE"
+        )
+
         active_keys = await session.fetchval(
             "SELECT COUNT(*) FROM keys WHERE expiry_time > $1",
             int(datetime.utcnow().timestamp() * 1000),
@@ -45,8 +59,14 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
         stats_message = (
             f"📊 <b>Подробная статистика проекта:</b>\n\n"
             f"👥 Пользователи:\n"
-            f"   🌐 Зарегистрировано: <b>{total_users}</b>\n"
-            f"   🤝 Привлеченных рефералов: <b>{total_referrals}</b>\n\n"
+            f"   📅 За день: <b>{registrations_today}</b>\n"
+            f"   📆 За неделю: <b>{registrations_week}</b>\n"
+            f"   📆 За месяц: <b>{registrations_month}</b>\n"
+            f"   🌐 За все время: <b>{total_users}</b>\n\n"
+            f"🌟 Активные пользователи:\n"
+            f"   🌟 Активных сегодня: <b>{users_updated_today}</b>\n\n"
+            f"👥 Рефералы:\n"
+            f"   🤝 Всего привлечено: <b>{total_referrals}</b>\n\n"
             f"🔑 Ключи:\n"
             f"   🌈 Всего сгенерировано: <b>{total_keys}</b>\n"
             f"   ✅ Действующих: <b>{active_keys}</b>\n"
@@ -58,11 +78,9 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n"
         )
 
-        kb = build_stats_kb()
-
         await callback_query.message.edit_text(
             text=stats_message,
-            reply_markup=kb
+            reply_markup=build_stats_kb()
         )
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
