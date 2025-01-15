@@ -25,7 +25,7 @@ class AdminServersEditor(StatesGroup):
 
 
 @router.callback_query(
-    AdminPanelCallback.filter(F.action == "servers_editor"),
+    AdminPanelCallback.filter(F.action == "servers"),
     IsAdminFilter(),
 )
 async def handle_servers_editor(
@@ -41,7 +41,7 @@ async def handle_servers_editor(
         "<i>⚠️ <b>Важно:</b> Кластеры удаляются автоматически, если удалить все серверы внутри них.</i>\n\n"
     )
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=text,
         parse_mode="HTML",
         reply_markup=build_clusters_editor_kb(servers),
@@ -62,7 +62,7 @@ async def handle_add_cluster(
         "<i>Пример:</i> <code>cluster1</code> или <code>us_east_1</code>"
     )
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=text,
         parse_mode="HTML",
     )
@@ -93,10 +93,10 @@ async def handle_cluster_name_input(
         "<i>Пример:</i> <code>server-frankfurt1</code>, <code>fra1</code>"
     )
 
-    await message.answer(
+    await message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
 
     await state.set_state(AdminServersEditor.waiting_for_server_name)
@@ -135,10 +135,10 @@ async def handle_server_name_input(
         "URL должен быть без слэша на конце!\n"
     )
 
-    await message.answer(
+    await message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
 
     await state.set_state(AdminServersEditor.waiting_for_api_url)
@@ -174,7 +174,7 @@ async def handle_api_url_input(
         "Его можно увидеть в панели 3x-ui в информации о клиенте."
     )
 
-    await message.answer(
+    await message.edit_text(
         text=text,
         parse_mode="HTML",
         reply_markup=build_cancel_kb(),
@@ -210,10 +210,10 @@ async def handle_subscription_url_input(
         "Это номер подключения vless в вашей панели 3x-ui. Обычно это <b>1</b> при чистой настройке по гайду.\n\n"
     )
 
-    await message.answer(
+    await message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
     await state.set_state(AdminServersEditor.waiting_for_inbound_id)
 
@@ -254,9 +254,9 @@ async def handle_inbound_id_input(
     )
     await conn.close()
 
-    await message.answer(
+    await message.edit_text(
         text=f"✅ Кластер {cluster_name} и сервер {server_name} успешно добавлены!",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
 
     await state.clear()
@@ -275,7 +275,7 @@ async def handle_manage_cluster(
     servers = await get_servers_from_db()
     cluster_servers = servers.get(cluster_name, [])
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=f"🔧 Управление серверами для кластера {cluster_name}",
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
@@ -295,7 +295,7 @@ async def handle_check_server_availability(
     cluster_servers = servers.get(cluster_name, [])
 
     if not cluster_servers:
-        await callback_query.answer(
+        await callback_query.message.answer(
             text=f"Кластер '{cluster_name}' не содержит серверов."
         )
         return
@@ -331,10 +331,8 @@ async def handle_check_server_availability(
 
     await in_progress_message.edit_text(
         text=text,
-        reply_markup=build_admin_back_kb("servers_editor")
+        reply_markup=build_admin_back_kb("servers")
     )
-
-    await callback_query.answer()
 
 
 @router.callback_query(
@@ -366,13 +364,15 @@ async def handle_manage_server(
             f"<b>🔑 Inbound ID:</b> {inbound_id}"
         )
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=text,
             parse_mode="HTML",
             reply_markup=build_manage_server_kb(server_name, cluster_name),
         )
     else:
-        await callback_query.message.answer("❌ Сервер не найден.")
+        await callback_query.message.edit_text(
+            text="❌ Сервер не найден."
+        )
 
 
 @router.callback_query(
@@ -385,7 +385,7 @@ async def handle_delete_server(
 ):
     server_name = callback_data.data
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=f"🗑️ Вы уверены, что хотите удалить сервер {server_name}?",
         reply_markup=build_delete_server_kb(server_name),
     )
@@ -410,9 +410,9 @@ async def handle_confirm_delete_server(
     )
     await conn.close()
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=f"🗑️ Сервер {server_name} успешно удален.",
-        reply_markup=build_admin_back_kb("servers_editor")
+        reply_markup=build_admin_back_kb("servers")
     )
 
 
@@ -435,10 +435,10 @@ async def handle_add_server(
         "<i>Пример:</i> <code>server-asia</code>, <code>server-europe</code>"
     )
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
 
     await state.set_state(AdminServersEditor.waiting_for_server_name)
@@ -470,9 +470,8 @@ async def handle_backup_cluster(
         f"🔔 <i>Бэкапы отправлены в боты панелей.</i>"
     )
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=build_admin_back_kb("servers_editor"),
+        reply_markup=build_admin_back_kb("servers"),
     )
-    await callback_query.answer()

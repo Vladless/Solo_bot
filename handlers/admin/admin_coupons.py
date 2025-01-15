@@ -23,15 +23,10 @@ class AdminCouponsState(StatesGroup):
 )
 async def show_coupon_management_menu(
         callback_query: types.CallbackQuery,
-        state: FSMContext
 ):
-    await state.clear()
-
-    kb = build_coupons_kb()
-
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text="🛠 Меню управления купонами:",
-        reply_markup=kb
+        reply_markup=build_coupons_kb()
     )
 
 
@@ -49,7 +44,7 @@ async def handle_create_coupon(
         "Пример: <b>'COUPON1 50 5'</b> 👈\n\n"
     )
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=text,
         reply_markup=build_admin_back_kb("coupons"),
     )
@@ -102,14 +97,14 @@ async def process_coupon_data(
     try:
         await create_coupon(coupon_code, coupon_amount, usage_limit, session)
 
-        result_message = (
+        text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
             f"💰 Сумма: <b>{coupon_amount} рублей</b> \n"
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>"
         )
 
         await message.answer(
-            text=result_message,
+            text=text,
             reply_markup=kb
         )
         await state.clear()
@@ -130,8 +125,8 @@ async def show_coupon_list(
         coupons = await get_all_coupons(session)
 
         if not coupons:
-            await callback_query.message.answer(
-                text="❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
+            await callback_query.message.edit_text(
+                text="❌ На данный момент нет доступных купонов!",
                 reply_markup=build_admin_back_kb("coupons"),
             )
             return
@@ -147,7 +142,7 @@ async def show_coupon_list(
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=coupon_list,
             reply_markup=kb
         )

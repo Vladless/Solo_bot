@@ -93,7 +93,7 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
         )
 
         if not users:
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 text="📭 Нет пользователей для экспорта.",
                 reply_markup=kb
             )
@@ -109,16 +109,15 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
         file = BufferedInputFile(file_name.getvalue(), filename="users_export.csv")
 
         await callback_query.message.answer_document(
-            file,
-            caption="📥 Экспорт пользователей в CSV",
-            reply_markup=kb
+            document=file,
+            caption="📥 Экспорт пользователей в CSV"
         )
         file_name.close()
 
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей в CSV: {e}")
-        await callback_query.message.answer(
-            text="❗ Произошла ошибка при экспорте пользователей.",
+        await callback_query.message.edit_text(
+            text=f"❗ Произошла ошибка при экспорте: {e}",
             reply_markup=kb
         )
 
@@ -148,7 +147,7 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
         )
 
         if not payments:
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 text="📭 Нет платежей для экспорта.",
                 reply_markup=kb
             )
@@ -165,14 +164,13 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
 
         await callback_query.message.answer_document(
             document=file,
-            caption="📥 Экспорт платежей в CSV",
-            reply_markup=kb
+            caption="📥 Экспорт платежей в CSV"
         )
         file_name.close()
 
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей в CSV: {e}")
-        await callback_query.message.answer(
-            text="❗ Произошла ошибка при экспорте платежей.",
+        await callback_query.message.edit_text(
+            text=f"❗ Произошла ошибка при экспорте: {e}",
             reply_markup=kb
         )

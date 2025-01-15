@@ -26,14 +26,14 @@ class AdminSender(StatesGroup):
 async def handle_sender(
         callback_query: CallbackQuery
 ):
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text="✍️ Выберите группу пользователей для рассылки:",
         reply_markup=build_sender_kb(),
     )
 
 
 @router.callback_query(
-    AdminSenderCallback,
+    AdminSenderCallback.filter(),
     IsAdminFilter(),
 )
 async def handle_sender_callback(
@@ -41,7 +41,7 @@ async def handle_sender_callback(
         callback_data: AdminSenderCallback,
         state: FSMContext
 ):
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text="✍️ Введите текст сообщения для рассылки:",
         reply_markup=build_admin_back_kb("sender"),
     )
@@ -93,11 +93,16 @@ async def process_message(
             except Exception:
                 pass
 
+        text = (
+            f"📤 Рассылка завершена!"
+            f"\n\n👥 Всего пользователей: {total_users}"
+            f"\n✅ Доставлено: {success_count}"
+            f"\n❌ Не доставлено: {total_users - success_count}"
+        )
+
         await message.answer(
-            f"📤 Рассылка завершена:\n"
-            f"👥 Всего пользователей: {total_users}\n"
-            f"✅ Доставлено: {success_count}\n"
-            f"❌ Не доставлено: {total_users - success_count}"
+            text=text,
+            reply_markup=build_admin_back_kb("stats")
         )
     except Exception as e:
         logger.error(f"❗ Ошибка при подключении к базе данных: {e}")
