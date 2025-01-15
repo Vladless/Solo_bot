@@ -29,6 +29,7 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("admin")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -66,8 +67,9 @@ def build_manage_cluster_kb(cluster_servers, cluster_name) -> InlineKeyboardMark
         ).pack()
     )
     builder.row(
-        build_admin_back_btn("servers_editor")
+        build_admin_back_btn("servers")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -87,6 +89,7 @@ def build_manage_server_kb(server_name: str, cluster_name: str) -> InlineKeyboar
             data=cluster_name
         ).pack()
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -106,6 +109,7 @@ def build_delete_server_kb(server_name: str) -> InlineKeyboardMarkup:
             data=server_name
         ).pack()
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -114,7 +118,8 @@ def build_cancel_kb() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="❌ Отменить",
-            callback_data="servers_editor"
+            callback_data="servers"
         )
     )
+    builder.adjust(1)
     return builder.as_markup()

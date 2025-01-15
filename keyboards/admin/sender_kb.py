@@ -32,4 +32,5 @@ def build_sender_kb() -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("admin")
     )
+    builder.adjust(1)
     return builder.as_markup()

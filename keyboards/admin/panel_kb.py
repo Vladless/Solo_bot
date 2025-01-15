@@ -43,6 +43,7 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         text="👤 Личный кабинет",
         callback_data="profile"
     )
+    builder.adjust(1, 1, 2, 1)
     return builder.as_markup()
 
 
@@ -63,6 +64,7 @@ def build_management_kb() -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("admin")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -75,6 +77,7 @@ def build_restart_kb() -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("admin")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 

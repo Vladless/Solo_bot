@@ -46,6 +46,7 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("users_editor")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -61,6 +62,7 @@ def build_user_delete_kb(tg_id: int):
     builder.row(
         build_admin_back_btn("users_editor")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -96,6 +98,7 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("users_editor")
     )
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -113,4 +116,5 @@ def build_key_delete_kb(client_id: str) -> InlineKeyboardMarkup:
     builder.row(
         build_admin_back_btn("users_editor")
     )
+    builder.adjust(1)
     return builder.as_markup()
