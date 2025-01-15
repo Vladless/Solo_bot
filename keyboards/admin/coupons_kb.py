@@ -20,7 +20,7 @@ def build_coupons_kb() -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="coupons_list").pack()
     )
     builder.row(
-        build_admin_back_btn("admin")
+        build_admin_back_btn()
     )
     return builder.as_markup()
 
