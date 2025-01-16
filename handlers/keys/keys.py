@@ -78,7 +78,7 @@ async def process_callback_or_message_view_keys(
     try:
         records = await session.fetch(
             """
-            SELECT email, client_id FROM keys WHERE tg_id = $1
+            SELECT email, client_id, expiry_time FROM keys WHERE tg_id = $1
             """,
             chat_id,
         )
@@ -103,9 +103,11 @@ def build_keys_response(records):
     if records:
         for record in records:
             key_name = record["email"]
+            expiry_date = datetime.utcfromtimestamp(record["expiry_time"] / 1000).strftime("%d.%m.%Y")
             builder.row(
                 InlineKeyboardButton(
-                    text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
+                    text=f"🔑 {key_name} (до {expiry_date})", 
+                    callback_data=f"view_key|{key_name}"
                 )
             )
 
@@ -235,7 +237,11 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                         text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
                     )
                 )
-
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔙 Назад", callback_data="view_keys"
+                )
+            )
             builder.row(
                 InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
             )
