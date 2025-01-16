@@ -12,7 +12,7 @@ router = Router()
     AdminPanelCallback.filter(F.action == "backups"),
     IsAdminFilter(),
 )
-async def handle_backup(
+async def handle_backups(
         callback_query: CallbackQuery
 ):
     kb = build_admin_back_kb("management")

@@ -38,7 +38,7 @@ class UserEditorState(StatesGroup):
     AdminPanelCallback.filter(F.action == "search_user"),
     IsAdminFilter(),
 )
-async def handle_users_search(
+async def handle_search_user(
         callback_query: CallbackQuery,
         state: FSMContext
 ):
@@ -59,7 +59,7 @@ async def handle_users_search(
     AdminPanelCallback.filter(F.action == "search_key"),
     IsAdminFilter(),
 )
-async def handle_users_search_key(
+async def handle_search_key(
         callback_query: CallbackQuery,
         state: FSMContext
 ):
@@ -196,7 +196,7 @@ async def handle_message_text_input(
     AdminUserEditorCallback.filter(F.action == "users_trial_restore"),
     IsAdminFilter(),
 )
-async def handle_restore_trial(
+async def handle_trial_restore(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback,
         session: Any
@@ -213,7 +213,7 @@ async def handle_restore_trial(
     AdminUserEditorCallback.filter(F.action == "users_balance_change"),
     IsAdminFilter()
 )
-async def process_balance_change(
+async def handle_balance_change(
         callback_query: CallbackQuery,
         callback_data: AdminUserEditorCallback,
         state: FSMContext
@@ -264,7 +264,7 @@ async def handle_new_balance_input(
     AdminUserEditorCallback.filter(F.action == "users_key_edit"),
     IsAdminFilter()
 )
-async def process_key_edit(
+async def handle_key_edit(
         callback_query: CallbackQuery,
         callback_data: AdminUserEditorCallback,
         session: Any
@@ -296,7 +296,7 @@ async def process_key_edit(
     AdminUserEditorCallback.filter(F.action == "users_change_expiry"),
     IsAdminFilter()
 )
-async def prompt_expiry_change(
+async def handle_change_expiry(
         callback_query: CallbackQuery,
         callback_data: AdminUserEditorCallback,
         state: FSMContext
@@ -390,7 +390,7 @@ async def handle_expiry_time_input(
     AdminUserEditorCallback.filter(F.action == "users_delete_key"),
     IsAdminFilter()
 )
-async def process_callback_delete_key(
+async def handle_delete_key(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback,
         session: Any
@@ -417,7 +417,7 @@ async def process_callback_delete_key(
     AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"),
     IsAdminFilter()
 )
-async def process_callback_confirm_delete(
+async def handle_delete_key_confirm(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback,
         session: Any
@@ -459,7 +459,7 @@ async def process_callback_confirm_delete(
     AdminUserEditorCallback.filter(F.action == "users_delete_user"),
     IsAdminFilter()
 )
-async def confirm_delete_user(
+async def handle_delete_user(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback
 ):
@@ -474,7 +474,7 @@ async def confirm_delete_user(
     AdminUserEditorCallback.filter(F.action == "users_delete_user_confirm"),
     IsAdminFilter()
 )
-async def delete_user(
+async def handle_delete_user_confirm(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback,
         session: Any
@@ -512,7 +512,7 @@ async def delete_user(
     AdminUserEditorCallback.filter(F.action == "users_editor"),
     IsAdminFilter()
 )
-async def handle_users_editor(
+async def handle_editor(
         callback_query: types.CallbackQuery,
         callback_data: AdminUserEditorCallback,
         state: FSMContext,

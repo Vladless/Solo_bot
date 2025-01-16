@@ -52,7 +52,7 @@ async def handle_sender_callback(
     AdminSender.waiting_for_message,
     IsAdminFilter(),
 )
-async def process_message(
+async def handle_message_input(
         message: types.Message,
         state: FSMContext,
         session: Any

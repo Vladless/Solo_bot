@@ -17,7 +17,7 @@ router = Router()
     AdminPanelCallback.filter(F.action == "stats"),
     IsAdminFilter(),
 )
-async def user_stats_menu(callback_query: CallbackQuery, session: Any):
+async def handle_stats(callback_query: CallbackQuery, session: Any):
     try:
         total_users = await session.fetchval("SELECT COUNT(*) FROM users")
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
@@ -90,7 +90,7 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
     AdminPanelCallback.filter(F.action == "stats_export_users_csv"),
     IsAdminFilter(),
 )
-async def export_users_csv(callback_query: CallbackQuery, session: Any):
+async def handle_export_users_csv(callback_query: CallbackQuery, session: Any):
     kb = build_admin_back_kb("stats")
 
     try:
@@ -144,7 +144,7 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
     AdminPanelCallback.filter(F.action == "stats_export_payments_csv"),
     IsAdminFilter(),
 )
-async def export_payments_csv(callback_query: CallbackQuery, session: Any):
+async def handle_export_payments_csv(callback_query: CallbackQuery, session: Any):
     kb = build_admin_back_kb("stats")
 
     try:
