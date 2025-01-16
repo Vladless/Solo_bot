@@ -18,6 +18,7 @@ from config import (
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
+    EXPIRED_KEYS_CHECK_INTERVAL
 )
 from database import (
     add_blocked_user,
@@ -57,6 +58,24 @@ async def check_users_and_update_blocked(bot: Bot):
             await conn.close()
 
 
+async def periodic_expired_keys_check(bot: Bot):
+    """Периодическая проверка истекших ключей с кастомным интервалом."""
+    while True:
+        conn = None
+        try:
+            conn = await asyncpg.connect(DATABASE_URL)
+            current_time = int(datetime.utcnow().timestamp() * 1000)
+            await handle_expired_keys(bot, conn, current_time)
+            logger.info("✅ Проверка истекших ключей выполнена.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в periodic_expired_keys_check: {e}")
+        finally:
+            if conn:
+                await conn.close()
+
+        await asyncio.sleep(EXPIRED_KEYS_CHECK_INTERVAL)
+
+
 
 async def notify_expiring_keys(bot: Bot):
     conn = None
@@ -65,25 +84,19 @@ async def notify_expiring_keys(bot: Bot):
         logger.info("Подключение к базе данных успешно.")
 
         current_time = int(datetime.utcnow().timestamp() * 1000)
-        threshold_time_10h = int(
-            (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000
-        )
-        threshold_time_24h = int(
-            (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000
-        )
+        threshold_time_10h = int((datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000)
+        threshold_time_24h = int((datetime.utcnow() + timedelta(days=1)).timestamp() * 1000)
 
         logger.info("Начало обработки уведомлений.")
 
         await notify_inactive_trial_users(bot, conn)
-        await asyncio.sleep(0,5)
+        await asyncio.sleep(0.5)
         await check_online_users()
-        await asyncio.sleep(0,5)
+        await asyncio.sleep(0.5)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
-        await asyncio.sleep(0,5)
+        await asyncio.sleep(0.5)
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
-        await asyncio.sleep(0,5)
-        await handle_expired_keys(bot, conn, current_time)
-        await asyncio.sleep(0,5)
+        await asyncio.sleep(0.5)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомлений: {e}")
@@ -91,6 +104,7 @@ async def notify_expiring_keys(bot: Bot):
         if conn:
             await conn.close()
             logger.info("Соединение с базой данных закрыто.")
+
 
 
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
