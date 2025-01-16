@@ -43,9 +43,11 @@ async def create_trial_key(tg_id: int, session: Any):
     servers_in_cluster = clusters[least_loaded_cluster]
     tasks = []
 
-    for index, server_info in enumerate(servers_in_cluster):
+    for server_info in servers_in_cluster:
+        server_name = server_info.get("server_name", "unknown")
+
         if SUPERNODE:
-            email = f"{base_email}{index}"
+            email = f"{base_email}_{server_name.lower()}"
         else:
             email = base_email
 
