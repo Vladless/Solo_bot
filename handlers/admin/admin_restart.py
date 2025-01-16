@@ -24,7 +24,7 @@ async def handle_restart(callback_query: CallbackQuery):
     AdminPanelCallback.filter(F.action == "restart_confirm"),
     IsAdminFilter(),
 )
-async def confirm_restart_bot(callback_query: CallbackQuery):
+async def handle_restart_confirm(callback_query: CallbackQuery):
     kb = build_admin_back_kb()
     try:
         subprocess.run(

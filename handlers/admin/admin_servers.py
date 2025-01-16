@@ -28,7 +28,7 @@ class AdminServersEditor(StatesGroup):
     AdminPanelCallback.filter(F.action == "servers"),
     IsAdminFilter(),
 )
-async def handle_servers_editor(
+async def handle_servers(
         callback_query: types.CallbackQuery
 ):
     servers = await get_servers_from_db()
@@ -43,7 +43,6 @@ async def handle_servers_editor(
 
     await callback_query.message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_clusters_editor_kb(servers),
     )
 
@@ -52,7 +51,7 @@ async def handle_servers_editor(
     AdminPanelCallback.filter(F.action == "clusters_add"),
     IsAdminFilter(),
 )
-async def handle_add_cluster(
+async def handle_clusters_add(
         callback_query: types.CallbackQuery,
         state: FSMContext
 ):
@@ -64,7 +63,6 @@ async def handle_add_cluster(
 
     await callback_query.message.edit_text(
         text=text,
-        parse_mode="HTML",
     )
 
     await state.set_state(AdminServersEditor.waiting_for_cluster_name)
@@ -95,7 +93,6 @@ async def handle_cluster_name_input(
 
     await message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_admin_back_kb("servers"),
     )
 
@@ -137,7 +134,6 @@ async def handle_server_name_input(
 
     await message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_admin_back_kb("servers"),
     )
 
@@ -155,7 +151,6 @@ async def handle_api_url_input(
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
-            parse_mode="HTML",
         )
         return
 
@@ -176,7 +171,6 @@ async def handle_api_url_input(
 
     await message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_cancel_kb(),
     )
 
@@ -194,7 +188,6 @@ async def handle_subscription_url_input(
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ subscription_url должен начинаться с <code>https://</code>. Попробуйте снова.",
-            parse_mode="HTML",
         )
         return
 
@@ -212,7 +205,6 @@ async def handle_subscription_url_input(
 
     await message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_admin_back_kb("servers"),
     )
     await state.set_state(AdminServersEditor.waiting_for_inbound_id)
@@ -266,7 +258,7 @@ async def handle_inbound_id_input(
     AdminServerEditorCallback.filter(F.action == "clusters_manage"),
     IsAdminFilter()
 )
-async def handle_manage_cluster(
+async def handle_clusters_manage(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback,
 ):
@@ -285,7 +277,7 @@ async def handle_manage_cluster(
     AdminServerEditorCallback.filter(F.action == "servers_availability"),
     IsAdminFilter()
 )
-async def handle_check_server_availability(
+async def handle_servers_availability(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback
 ):
@@ -339,7 +331,7 @@ async def handle_check_server_availability(
     AdminServerEditorCallback.filter(F.action == "servers_manage"),
     IsAdminFilter()
 )
-async def handle_manage_server(
+async def handle_servers_manage(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback
 ):
@@ -366,7 +358,6 @@ async def handle_manage_server(
 
         await callback_query.message.edit_text(
             text=text,
-            parse_mode="HTML",
             reply_markup=build_manage_server_kb(server_name, cluster_name),
         )
     else:
@@ -379,7 +370,7 @@ async def handle_manage_server(
     AdminServerEditorCallback.filter(F.action == "servers_delete"),
     IsAdminFilter()
 )
-async def handle_delete_server(
+async def handle_servers_delete(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback
 ):
@@ -395,7 +386,7 @@ async def handle_delete_server(
     AdminServerEditorCallback.filter(F.action == "servers_delete_confirm"),
     IsAdminFilter()
 )
-async def handle_confirm_delete_server(
+async def handle_servers_delete_confirm(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback
 ):
@@ -420,7 +411,7 @@ async def handle_confirm_delete_server(
     AdminServerEditorCallback.filter(F.action == "servers_add"),
     IsAdminFilter()
 )
-async def handle_add_server(
+async def handle_servers_add(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback,
         state: FSMContext
@@ -437,7 +428,6 @@ async def handle_add_server(
 
     await callback_query.message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_admin_back_kb("servers"),
     )
 
@@ -448,7 +438,7 @@ async def handle_add_server(
     AdminServerEditorCallback.filter(F.action == "clusters_backup"),
     IsAdminFilter()
 )
-async def handle_backup_cluster(
+async def handle_clusters_backup(
         callback_query: types.CallbackQuery,
         callback_data: AdminServerEditorCallback,
 ):
@@ -472,6 +462,5 @@ async def handle_backup_cluster(
 
     await callback_query.message.edit_text(
         text=text,
-        parse_mode="HTML",
         reply_markup=build_admin_back_kb("servers"),
     )

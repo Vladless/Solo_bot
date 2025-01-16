@@ -21,7 +21,7 @@ class AdminCouponsState(StatesGroup):
     AdminPanelCallback.filter(F.action == "coupons"),
     IsAdminFilter(),
 )
-async def show_coupon_management_menu(
+async def handle_coupons(
         callback_query: types.CallbackQuery,
 ):
     await callback_query.message.edit_text(
@@ -34,7 +34,7 @@ async def show_coupon_management_menu(
     AdminPanelCallback.filter(F.action == "coupons_create"),
     IsAdminFilter(),
 )
-async def handle_create_coupon(
+async def handle_coupons_create(
         callback_query: types.CallbackQuery,
         state: FSMContext
 ):
@@ -55,7 +55,7 @@ async def handle_create_coupon(
     AdminCouponsState.waiting_for_coupon_data,
     IsAdminFilter()
 )
-async def process_coupon_data(
+async def handle_coupon_data_input(
         message: types.Message,
         state: FSMContext,
         session: Any
@@ -117,7 +117,7 @@ async def process_coupon_data(
     AdminPanelCallback.filter(F.action == "coupons_list"),
     IsAdminFilter(),
 )
-async def show_coupon_list(
+async def handle_coupons_list(
         callback_query: types.CallbackQuery,
         session: Any
 ):
@@ -155,7 +155,7 @@ async def show_coupon_list(
     AdminCouponDeleteCallback.filter(),
     IsAdminFilter(),
 )
-async def handle_delete_coupon(
+async def handle_coupon_delete(
         callback_query: types.CallbackQuery,
         callback_data: AdminCouponDeleteCallback,
         session: Any
@@ -166,12 +166,12 @@ async def handle_delete_coupon(
         result = await delete_coupon_from_db(coupon_code, session)
 
         if result:
-            await show_coupon_list(callback_query, session)
+            await handle_coupons_list(callback_query, session)
         else:
             await callback_query.message.edit_text(
                 text=f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
             )
-            await show_coupon_list(callback_query, session)
+            await handle_coupons_list(callback_query, session)
 
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
