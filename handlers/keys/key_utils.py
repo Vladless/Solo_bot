@@ -212,6 +212,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     enable=True,
                     flow="xtls-rprx-vision",
                     inbound_id=int(inbound_id),
+                    sub_id=email
                 )
             )
 
