@@ -22,9 +22,14 @@ async def handle_backups(
         reply_markup=kb
     )
 
-    await backup_database()
+    exception = await backup_database()
+
+    if exception:
+        text = f"❌ Ошибка при создании резервной копии: {exception}"
+    else:
+        text = "✅ Резервная копия успешно создана и отправлена администраторам."
 
     await callback_query.message.edit_text(
-        text="✅ Резервная копия успешно создана и отправлена администратору.",
+        text=text,
         reply_markup=kb
     )
