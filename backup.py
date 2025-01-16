@@ -4,7 +4,7 @@ from datetime import datetime
 
 from aiogram.types import BufferedInputFile
 
-from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER
+from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
 from logger import logger
 
 
@@ -21,7 +21,8 @@ async def backup_database():
 
 def _create_database_backup():
     USER = DB_USER
-    HOST = "localhost"
+    HOST = PG_HOST
+    PORT = PG_PORT
     BACKUP_DIR = BACK_DIR
     DATE = datetime.now().strftime("%Y-%m-%d-%H%M%S")
     BACKUP_FILE = f"{BACKUP_DIR}/{DB_NAME}-backup-{DATE}.sql"
@@ -36,6 +37,8 @@ def _create_database_backup():
                 USER,
                 "-h",
                 HOST,
+                "-p",
+                PORT,
                 "-F",
                 "c",
                 "-f",
