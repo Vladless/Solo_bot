@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
+import pytz
 
 import asyncpg
 from aiogram import Bot, Router, types
@@ -17,6 +18,7 @@ from config import (
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
+    EXPIRED_KEYS_CHECK_INTERVAL
 )
 from database import (
     add_blocked_user,
@@ -56,6 +58,24 @@ async def check_users_and_update_blocked(bot: Bot):
             await conn.close()
 
 
+async def periodic_expired_keys_check(bot: Bot):
+    """Периодическая проверка истекших ключей с кастомным интервалом."""
+    while True:
+        conn = None
+        try:
+            conn = await asyncpg.connect(DATABASE_URL)
+            current_time = int(datetime.utcnow().timestamp() * 1000)
+            await handle_expired_keys(bot, conn, current_time)
+            logger.info("✅ Проверка истекших ключей выполнена.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в periodic_expired_keys_check: {e}")
+        finally:
+            if conn:
+                await conn.close()
+
+        await asyncio.sleep(EXPIRED_KEYS_CHECK_INTERVAL)
+
+
 
 async def notify_expiring_keys(bot: Bot):
     conn = None
@@ -64,25 +84,19 @@ async def notify_expiring_keys(bot: Bot):
         logger.info("Подключение к базе данных успешно.")
 
         current_time = int(datetime.utcnow().timestamp() * 1000)
-        threshold_time_10h = int(
-            (datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000
-        )
-        threshold_time_24h = int(
-            (datetime.utcnow() + timedelta(days=1)).timestamp() * 1000
-        )
+        threshold_time_10h = int((datetime.utcnow() + timedelta(hours=10)).timestamp() * 1000)
+        threshold_time_24h = int((datetime.utcnow() + timedelta(days=1)).timestamp() * 1000)
 
         logger.info("Начало обработки уведомлений.")
 
         await notify_inactive_trial_users(bot, conn)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
         await check_online_users()
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
-        await asyncio.sleep(1)
-        await handle_expired_keys(bot, conn, current_time)
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомлений: {e}")
@@ -90,6 +104,7 @@ async def notify_expiring_keys(bot: Bot):
         if conn:
             await conn.close()
             logger.info("Соединение с базой данных закрыто.")
+
 
 
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
@@ -137,8 +152,10 @@ async def process_10h_record(record, bot, conn):
     email = record["email"]
     expiry_time = record["expiry_time"]
 
-    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-    current_date = datetime.utcnow()
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
+    expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
     time_left = expiry_date - current_date
 
     days_left_message = (
@@ -211,8 +228,10 @@ async def process_24h_record(record, bot, conn):
     email = record["email"]
     expiry_time = record["expiry_time"]
 
-    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-    current_date = datetime.utcnow()
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
+    expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
     time_left = expiry_date - current_date
 
     days_left_message = (
@@ -368,13 +387,15 @@ async def process_key(record, bot, conn):
     email = record["email"]
     balance = await get_balance(tg_id)
     expiry_time = record["expiry_time"]
-    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-    current_date = datetime.utcnow()
+
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
     time_left = expiry_date - current_date
 
     logger.info(
-        f"Время истечения ключа: {expiry_time} (UTC: {expiry_date}), "
-        f"Текущее время (UTC): {current_date}, "
+        f"Время истечения ключа: {expiry_time} (МСК: {expiry_date}), "
+        f"Текущее время (МСК): {current_date}, "
         f"Оставшееся время: {time_left}"
     )
 
@@ -391,7 +412,8 @@ async def process_key(record, bot, conn):
     try:
         if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
-            new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
+
+            new_expiry_time = int((datetime.now(moscow_tz) + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time)
 
             servers = await get_servers_from_db()
@@ -410,28 +432,41 @@ async def process_key(record, bot, conn):
             )
             logger.info(f"Флаги notified сброшены для клиента {client_id}.")
 
-            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
-            logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+            try:
+                await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+                logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+            except Exception as e:
+                logger.error(f"Не удалось отправить уведомление о продлении клиенту {tg_id}: {e}")
 
         else:
             message_expired = "Ваша подписка истекла. Пополните баланс для продления."
-            await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
-            logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
+            try:
+                await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
+                logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
+            except Exception as e:
+                logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
 
             if AUTO_DELETE_EXPIRED_KEYS:
                 servers = await get_servers_from_db()
 
                 for cluster_id in servers:
-                    await delete_key_from_cluster(cluster_id, email, client_id)
-                    logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
+                    try:
+                        await delete_key_from_cluster(cluster_id, email, client_id)
+                        logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
+                    except Exception as e:
+                        logger.error(f"Ошибка при удалении клиента {client_id} из кластера {cluster_id}: {e}")
 
-                await delete_key(client_id)
-                logger.info(f"Ключ {client_id} удалён из базы данных.")
+                try:
+                    await delete_key(client_id)
+                    logger.info(f"Ключ {client_id} удалён из базы данных.")
+                except Exception as e:
+                    logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
             else:
                 logger.info(f"Ключ {client_id} НЕ был удалён (AUTO_DELETE_EXPIRED_KEYS=False).")
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
+
 
 
 async def check_online_users():
