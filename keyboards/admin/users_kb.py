@@ -2,13 +2,15 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config import RENEWAL_PRICES
 from keyboards.admin.panel_kb import build_admin_back_btn
 
 
 class AdminUserEditorCallback(CallbackData, prefix="admin_users"):
     action: str
     tg_id: int
-    data: str | None = None
+    data: str | int | None = None
+    edit: bool = False
 
 
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
@@ -28,7 +30,7 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder.button(
         text="💸 Изменить баланс",
         callback_data=AdminUserEditorCallback(
-            action="users_balance_change",
+            action="users_balance_edit",
             tg_id=tg_id
         ).pack()
     )
@@ -55,12 +57,71 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
         ).pack()
     )
     builder.row(
-        build_editor_btn("🔄 Обновить", tg_id, edit=True)
+        build_editor_btn("🔄 Обновить данные", tg_id, edit=True)
     )
     builder.row(
         build_admin_back_btn()
     )
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_users_balance_change_kb(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔙 Назад",  # todo: fix magic text was set
+        callback_data=AdminUserEditorCallback(
+            action="users_balance_edit",
+            tg_id=tg_id
+        ).pack()
+    )
+    return builder.as_markup()
+
+
+def build_users_balance_kb(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for month, amount in RENEWAL_PRICES.items():
+        builder.button(
+            text=f"+ {amount}Р ({month} мес.)",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_add",
+                tg_id=tg_id,
+                data=amount
+            ).pack()
+        )
+        builder.button(
+            text=f"- {amount}Р ({month} мес.)",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_add",
+                tg_id=tg_id,
+                data=-amount
+            ).pack()
+        )
+    builder.button(
+        text="💵 Добавить",
+        callback_data=AdminUserEditorCallback(
+            action="users_balance_add",
+            tg_id=tg_id
+        ).pack()
+    )
+    builder.button(
+        text="💵 Вычесть",
+        callback_data=AdminUserEditorCallback(
+            action="users_balance_take",
+            tg_id=tg_id
+        ).pack()
+    )
+    builder.button(
+        text="💵 Установить баланс",
+        callback_data=AdminUserEditorCallback(
+            action="users_balance_set",
+            tg_id=tg_id
+        ).pack()
+    )
+    builder.row(
+        build_editor_back_btn(tg_id, True)
+    )
+    builder.adjust(2, 2, 2, 2, 2, 1)
     return builder.as_markup()
 
 
@@ -145,7 +206,7 @@ def build_editor_btn(text: str, tg_id: int, edit: bool = False) -> InlineKeyboar
         text=text,
         callback_data=AdminUserEditorCallback(
             action="users_editor",
-            data="" if edit else "edit",
-            tg_id=tg_id
+            tg_id=tg_id,
+            edit=edit
         ).pack()
     )
