@@ -4,7 +4,7 @@ from datetime import datetime
 
 from aiogram.types import BufferedInputFile
 
-from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST
+from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
 from logger import logger
 
 
@@ -43,6 +43,8 @@ def _create_database_backup() -> (str | None, Exception | None):
                 DB_USER,
                 "-h",
                 PG_HOST,
+                "-p",
+                PG_PORT,
                 "-F",
                 "c",
                 "-f",
