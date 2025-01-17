@@ -141,10 +141,24 @@ def build_user_delete_kb(tg_id: int):
     return builder.as_markup()
 
 
+def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text=f"🔙 Назад",
+        callback_data=AdminUserEditorCallback(
+            action="users_key_edit",
+            tg_id=tg_id,
+            data=email
+        ).pack()
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="⏳ Изменить время истечения",
+        text="⏳ Время истечения",
         callback_data=AdminUserEditorCallback(
             action="users_change_expiry",
             data=email,
@@ -152,7 +166,15 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
         ).pack()
     )
     builder.button(
-        text="❌ Удалить ключ",
+        text="🔄 Перевыпустить",
+        callback_data=AdminUserEditorCallback(
+            action="users_update_key",
+            data=email,
+            tg_id=key_details["tg_id"]
+        ).pack()
+    )
+    builder.button(
+        text="❌ Удалить",
         callback_data=AdminUserEditorCallback(
             action="users_delete_key",
             data=email,

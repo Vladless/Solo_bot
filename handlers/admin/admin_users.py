@@ -6,20 +6,20 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
-from filters.admin import IsAdminFilter
 
 from config import TOTAL_GB
 from database import delete_user_data, get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
+from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
-    renew_key_in_cluster,
+    renew_key_in_cluster, update_subscription,
 )
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.users_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
     build_user_delete_kb, AdminUserEditorCallback, build_editor_kb, build_users_balance_kb, \
-    build_users_balance_change_kb
+    build_users_balance_change_kb, build_user_key_kb
 from logger import logger
 
 router = Router()
@@ -203,6 +203,7 @@ async def handle_trial_restore(
         session: Any
 ):
     tg_id = callback_data.tg_id
+
     await restore_trial(tg_id, session)
     await callback_query.message.edit_text(
         text="✅ Триал успешно восстановлен!",
@@ -406,9 +407,11 @@ async def handle_change_expiry(
         state: FSMContext
 ):
     email = callback_data.data
+
     await callback_query.message.edit_text(
         text=f"✍️ Введите новое время истечения для ключа <b>{email}</b> в формате <code>YYYY-MM-DD HH:MM:SS</code>:"
     )
+
     await state.update_data(tg_id=callback_data.tg_id, email=email)
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
@@ -488,6 +491,29 @@ async def handle_expiry_time_input(
     except Exception as e:
         logger.error(e)
     await state.clear()
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_update_key"),
+    IsAdminFilter()
+)
+async def handle_update_key(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserEditorCallback,
+        session: Any
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    try:
+        await update_subscription(tg_id, email, session)
+        await handle_key_edit(callback_query, callback_data, session)
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении ключа {email} администратором: {e}")
+        await callback_query.message.answer(
+            text=f"❗ Произошла ошибка при обновлении ключа: {e}",
+            reply_markup=build_user_key_kb(tg_id, email)
+        )
 
 
 @router.callback_query(
