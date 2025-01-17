@@ -1,9 +1,8 @@
 from datetime import datetime
-from io import BytesIO
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, BufferedInputFile
+from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
