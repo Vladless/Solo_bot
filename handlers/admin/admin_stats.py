@@ -9,6 +9,7 @@ from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.stats_kb import build_stats_kb
 from logger import logger
+from utils.csv_export import export_payments_csv, export_users_csv
 
 router = Router()
 
@@ -17,7 +18,10 @@ router = Router()
     AdminPanelCallback.filter(F.action == "stats"),
     IsAdminFilter(),
 )
-async def handle_stats(callback_query: CallbackQuery, session: Any):
+async def handle_stats(
+        callback_query: CallbackQuery,
+        session: Any
+):
     try:
         total_users = await session.fetchval("SELECT COUNT(*) FROM users")
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
@@ -90,48 +94,18 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
     AdminPanelCallback.filter(F.action == "stats_export_users_csv"),
     IsAdminFilter(),
 )
-async def handle_export_users_csv(callback_query: CallbackQuery, session: Any):
+async def handle_export_users_csv(
+        callback_query: CallbackQuery,
+        session: Any
+):
     kb = build_admin_back_kb("stats")
 
     try:
-        users = await session.fetch(
-            """
-            SELECT 
-                u.tg_id, 
-                u.username, 
-                u.first_name, 
-                u.last_name, 
-                u.language_code, 
-                u.is_bot, 
-                c.balance, 
-                c.trial 
-            FROM users u
-            LEFT JOIN connections c ON u.tg_id = c.tg_id
-        """
-        )
-
-        if not users:
-            await callback_query.message.edit_text(
-                text="📭 Нет пользователей для экспорта.",
-                reply_markup=kb
-            )
-            return
-
-        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"  # Заголовки CSV
-        for user in users:
-            csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
-
-        file_name = BytesIO(csv_data.encode("utf-8-sig"))
-        file_name.seek(0)
-
-        file = BufferedInputFile(file_name.getvalue(), filename="users_export.csv")
-
+        export = await export_users_csv(session)
         await callback_query.message.answer_document(
-            document=file,
+            document=export,
             caption="📥 Экспорт пользователей в CSV"
         )
-        file_name.close()
-
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей в CSV: {e}")
         await callback_query.message.edit_text(
@@ -144,47 +118,18 @@ async def handle_export_users_csv(callback_query: CallbackQuery, session: Any):
     AdminPanelCallback.filter(F.action == "stats_export_payments_csv"),
     IsAdminFilter(),
 )
-async def handle_export_payments_csv(callback_query: CallbackQuery, session: Any):
+async def handle_export_payments_csv(
+        callback_query: CallbackQuery,
+        session: Any
+):
     kb = build_admin_back_kb("stats")
 
     try:
-        payments = await session.fetch(
-            """
-            SELECT 
-                u.tg_id, 
-                u.username, 
-                u.first_name, 
-                u.last_name, 
-                p.amount, 
-                p.payment_system,
-                p.status,
-                p.created_at 
-            FROM users u
-            JOIN payments p ON u.tg_id = p.tg_id
-        """
-        )
-
-        if not payments:
-            await callback_query.message.edit_text(
-                text="📭 Нет платежей для экспорта.",
-                reply_markup=kb
-            )
-            return
-
-        csv_data = "tg_id,username,first_name,last_name,amount,payment_system,status,created_at\n"  # Заголовки CSV
-        for payment in payments:
-            csv_data += f"{payment['tg_id']},{payment['username']},{payment['first_name']},{payment['last_name']},{payment['amount']},{payment['payment_system']},{payment['status']},{payment['created_at']}\n"
-
-        file_name = BytesIO(csv_data.encode("utf-8-sig"))
-        file_name.seek(0)
-
-        file = BufferedInputFile(file_name.getvalue(), filename="payments_export.csv")
-
+        export = await export_payments_csv(session)
         await callback_query.message.answer_document(
-            document=file,
+            document=export,
             caption="📥 Экспорт платежей в CSV"
         )
-        file_name.close()
 
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей в CSV: {e}")
