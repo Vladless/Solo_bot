@@ -396,7 +396,7 @@ async def handle_key_edit(
         f"<b>🔑 Информация о ключе</b>"
         f"\n\n<code>{key_details['key']}</code>"
         f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']}</b>"
-        f"\n🌐 Кластер: <b>{key_details['server_name']}</b>"
+        f"\n🌐 Кластер: <b>{key_details['cluster_name']}</b>"
         f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
     )
 
@@ -727,7 +727,7 @@ async def process_user_search(
 async def get_key_details(email, session):
     record = await session.fetchrow(
         """
-        SELECT k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
+        SELECT k.client_id, k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
         FROM keys k
         JOIN connections c ON k.tg_id = c.tg_id
         WHERE k.email = $1
@@ -739,27 +739,16 @@ async def get_key_details(email, session):
         return None
 
     cluster_name = record["server_id"]
-
     moscow_tz = pytz.timezone("Europe/Moscow")
     expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
-    current_date = datetime.now(moscow_tz)
-    time_left = expiry_date - current_date
-
-    if time_left.total_seconds() <= 0:
-        days_left_message = "<b>Ключ истек.</b>"
-    elif time_left.days > 0:
-        days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
-    else:
-        hours_left = time_left.seconds // 3600
-        days_left_message = f"Осталось часов: <b>{hours_left}</b>"
 
     return {
-        "key": record["key"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
-        "days_left_message": days_left_message,
-        "server_name": cluster_name,
+        "client_id": record["client_id"],
         "balance": record["balance"],
         "tg_id": record["tg_id"],
+        "key": record["key"],
+        "cluster_name": cluster_name,
+        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
     }
 
 
