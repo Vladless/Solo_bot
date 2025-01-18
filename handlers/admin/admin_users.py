@@ -288,7 +288,7 @@ async def handle_balance_add(
     await state.update_data(tg_id=tg_id, op_type="add")
     await state.set_state(UserEditorState.waiting_for_balance)
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
         reply_markup=build_users_balance_change_kb(tg_id)
     )
@@ -308,8 +308,8 @@ async def handle_balance_add(
     await state.update_data(tg_id=tg_id, op_type="take")
     await state.set_state(UserEditorState.waiting_for_balance)
 
-    await callback_query.message.answer(
-        text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
+    await callback_query.message.edit_text(
+        text="✍️ Введите сумму, которую хотите вычесть из баланса пользователя:",
         reply_markup=build_users_balance_change_kb(tg_id)
     )
 
@@ -328,7 +328,7 @@ async def handle_balance_add(
     await state.update_data(tg_id=tg_id, op_type="set")
     await state.set_state(UserEditorState.waiting_for_balance)
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text="✍️ Введите баланс, который хотите установить пользователю:",
         reply_markup=build_users_balance_change_kb(tg_id)
     )
