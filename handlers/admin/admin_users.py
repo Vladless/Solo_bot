@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
+import pytz
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
@@ -737,18 +738,11 @@ async def get_key_details(email, session):
     if not record:
         return None
 
-    servers = await get_servers_from_db()
+    cluster_name = record["server_id"]
 
-    cluster_name = "Неизвестный кластер"
-    for cluster_name, cluster_servers in servers.items():
-        if any(
-                server["inbound_id"] == record["server_id"] for server in cluster_servers
-        ):
-            cluster_name = cluster_name
-            break
-
-    expiry_date = datetime.utcfromtimestamp(record["expiry_time"] / 1000)
-    current_date = datetime.utcnow()
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
     time_left = expiry_date - current_date
 
     if time_left.total_seconds() <= 0:
@@ -761,7 +755,7 @@ async def get_key_details(email, session):
 
     return {
         "key": record["key"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года"),
+        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
         "days_left_message": days_left_message,
         "server_name": cluster_name,
         "balance": record["balance"],
