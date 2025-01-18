@@ -28,6 +28,13 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
         )
 
     builder.button(
+        text="✉️ Сообщение",
+        callback_data=AdminUserEditorCallback(
+            action="users_send_message",
+            tg_id=tg_id
+        ).pack()
+    )
+    builder.button(
         text="💸 Изменить баланс",
         callback_data=AdminUserEditorCallback(
             action="users_balance_edit",
@@ -35,15 +42,7 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
         ).pack()
     )
     builder.button(
-        text="✉️ Сообщение",
-        callback_data=AdminUserEditorCallback(
-            action="users_send_message",
-            tg_id=tg_id
-        ).pack()
-    )
-
-    builder.button(
-        text="🔄 Восстановить триал",
+        text="♻️ Восстановить триал",
         callback_data=AdminUserEditorCallback(
             action="users_trial_restore",
             tg_id=tg_id
@@ -188,14 +187,14 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_key_delete_kb(tg_id: int, client_id: str) -> InlineKeyboardMarkup:
+def build_key_delete_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text="✅ Да, удалить",
             callback_data=AdminUserEditorCallback(
                 action="users_delete_key_confirm",
-                data=client_id,
+                data=email,
                 tg_id=tg_id
             ).pack()
         )
