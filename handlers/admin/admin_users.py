@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
@@ -44,9 +45,11 @@ async def handle_search_user(
         state: FSMContext
 ):
     text = (
-        "🔍 Введите ID или Username пользователя для поиска:"
+        "<b>🔍 Поиск пользователя</b>"
+        "\n\n📌 Введите ID, Username или перешлите сообщение пользователя."
         "\n\n🆔 ID - числовой айди"
         "\n📝 Username - юзернейм пользователя"
+        "\n\n<i>✉️ Для поиска, вы можете просто переслать сообщение от пользователя.</i>"
     )
 
     await state.set_state(UserEditorState.waiting_for_user_data)
@@ -81,6 +84,11 @@ async def handle_user_data_input(
         session: Any
 ):
     kb = build_admin_back_kb()
+
+    if message.forward_from:
+        tg_id = message.forward_from.id
+        await process_user_search(message, state, session, tg_id)
+        return
 
     if not message.text:
         await message.answer(
@@ -508,6 +516,8 @@ async def handle_update_key(
     try:
         await update_subscription(tg_id, email, session)
         await handle_key_edit(callback_query, callback_data, session)
+    except TelegramBadRequest:
+        pass
     except Exception as e:
         logger.error(f"Ошибка при обновлении ключа {email} администратором: {e}")
         await callback_query.message.answer(
@@ -539,7 +549,7 @@ async def handle_delete_key(
 
     await callback_query.message.edit_text(
         text="❓ Вы уверены, что хотите удалить ключ?",
-        reply_markup=build_key_delete_kb(callback_data.tg_id, client_id)
+        reply_markup=build_key_delete_kb(callback_data.tg_id, email)
     )
 
 
@@ -552,26 +562,27 @@ async def handle_delete_key_confirm(
         callback_data: AdminUserEditorCallback,
         session: Any
 ):
-    client_id = callback_data.data
+    email = callback_data.data
     record = await session.fetchrow(
-        "SELECT email FROM keys WHERE client_id = $1", client_id
+        "SELECT client_id FROM keys WHERE email = $1", email
     )
 
     kb = build_editor_kb(callback_data.tg_id)
 
     if record:
+        client_id = record["client_id"]
         clusters = await get_servers_from_db()
 
-        async def delete_key_from_servers(email, client_id):
+        async def delete_key_from_servers():
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
-                for server in cluster_servers:
+                for _ in cluster_servers:
                     tasks.append(
                         delete_key_from_cluster(cluster_name, email, client_id)
                     )
             await asyncio.gather(*tasks)
 
-        await delete_key_from_servers(record["email"], client_id)
+        await delete_key_from_servers()
         await delete_key_from_db(client_id, session)
 
         await callback_query.message.edit_text(
@@ -698,10 +709,13 @@ async def process_user_search(
     kb = build_user_edit_kb(tg_id, key_records)
 
     if edit:
-        await message.edit_text(
-            text=text,
-            reply_markup=kb
-        )
+        try:
+            await message.edit_text(
+                text=text,
+                reply_markup=kb
+            )
+        except TelegramBadRequest:
+            pass
     else:
         await message.answer(
             text=text,
