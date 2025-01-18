@@ -111,15 +111,3 @@ def build_delete_server_kb(server_name: str) -> InlineKeyboardMarkup:
     )
     builder.adjust(1)
     return builder.as_markup()
-
-
-def build_cancel_kb() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="❌ Отменить",
-            callback_data="servers"
-        )
-    )
-    builder.adjust(1)
-    return builder.as_markup()

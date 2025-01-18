@@ -9,7 +9,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.servers_kb import build_cancel_kb, build_manage_server_kb, \
+from keyboards.admin.servers_kb import build_manage_server_kb, \
     build_delete_server_kb, \
     build_manage_cluster_kb, build_clusters_editor_kb, AdminServerEditorCallback
 
@@ -63,6 +63,7 @@ async def handle_clusters_add(
 
     await callback_query.message.edit_text(
         text=text,
+        reply_markup=build_admin_back_kb("servers")
     )
 
     await state.set_state(AdminServersEditor.waiting_for_cluster_name)
@@ -78,7 +79,8 @@ async def handle_cluster_name_input(
 ):
     if not message.text:
         await message.answer(
-            text="❌ Имя кластера не может быть пустым. Попробуйте снова."
+            text="❌ Имя кластера не может быть пустым. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -87,11 +89,11 @@ async def handle_cluster_name_input(
 
     text = (
         f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
-        "Рекомендуется указать локацию сервера в имени.\n\n"
-        "<i>Пример:</i> <code>server-frankfurt1</code>, <code>fra1</code>"
+        "Рекомендуется указать локацию и номер сервера в имени.\n\n"
+        "<i>Пример:</i> <code>de1</code>, <code>fra1</code>, <code>fi2</code>"
     )
 
-    await message.edit_text(
+    await message.answer(
         text=text,
         reply_markup=build_admin_back_kb("servers"),
     )
@@ -109,7 +111,8 @@ async def handle_server_name_input(
 ):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым. Попробуйте снова."
+            text="❌ Имя сервера не может быть пустым. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -117,7 +120,8 @@ async def handle_server_name_input(
 
     if not await check_unique_server_name(server_name):
         await message.answer(
-            text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя."
+            text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -132,7 +136,7 @@ async def handle_server_name_input(
         "URL должен быть без слэша на конце!\n"
     )
 
-    await message.edit_text(
+    await message.answer(
         text=text,
         reply_markup=build_admin_back_kb("servers"),
     )
@@ -151,6 +155,7 @@ async def handle_api_url_input(
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -169,9 +174,9 @@ async def handle_api_url_input(
         "Его можно увидеть в панели 3x-ui в информации о клиенте."
     )
 
-    await message.edit_text(
+    await message.answer(
         text=text,
-        reply_markup=build_cancel_kb(),
+        reply_markup=build_admin_back_kb("servers"),
     )
 
     await state.set_state(AdminServersEditor.waiting_for_subscription_url)
@@ -188,6 +193,7 @@ async def handle_subscription_url_input(
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ subscription_url должен начинаться с <code>https://</code>. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -203,7 +209,7 @@ async def handle_subscription_url_input(
         "Это номер подключения vless в вашей панели 3x-ui. Обычно это <b>1</b> при чистой настройке по гайду.\n\n"
     )
 
-    await message.edit_text(
+    await message.answer(
         text=text,
         reply_markup=build_admin_back_kb("servers"),
     )
@@ -222,7 +228,8 @@ async def handle_inbound_id_input(
 
     if not inbound_id.isdigit():
         await message.answer(
-            text="❌ inbound_id должен быть числовым значением. Попробуйте снова."
+            text="❌ inbound_id должен быть числовым значением. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -246,7 +253,7 @@ async def handle_inbound_id_input(
     )
     await conn.close()
 
-    await message.edit_text(
+    await message.answer(
         text=f"✅ Кластер {cluster_name} и сервер {server_name} успешно добавлены!",
         reply_markup=build_admin_back_kb("servers"),
     )
