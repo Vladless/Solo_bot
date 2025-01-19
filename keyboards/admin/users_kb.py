@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -22,11 +24,14 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
 
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    current_time = datetime.now(tz=timezone.utc)
 
     for record in key_records:
         email = record["email"]
+        expiry = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=timezone.utc)
+        days = (expiry - current_time).days
         builder.button(
-            text=f"🔑 {email}",
+            text=f"🔑 {email} ({'<1' if days < 1 else days} дн.)",
             callback_data=AdminUserEditorCallback(
                 action="users_key_edit",
                 tg_id=tg_id,
