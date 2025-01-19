@@ -13,6 +13,13 @@ class AdminUserEditorCallback(CallbackData, prefix="admin_users"):
     edit: bool = False
 
 
+class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
+    action: str
+    tg_id: int
+    data: str
+    month: int | None = None
+
+
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
@@ -124,6 +131,78 @@ def build_users_balance_kb(tg_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def build_users_key_show_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔙 Назад",  # todo: fix magic text was set
+        callback_data=AdminUserEditorCallback(
+            action="users_key_edit",
+            tg_id=tg_id,
+            data=email,
+            edit=True
+        ).pack()
+    )
+    return builder.as_markup()
+
+
+def build_users_key_expiry_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for month in RENEWAL_PRICES.keys():
+        month = int(month)
+        builder.button(
+            text=f"+ {month} мес.",
+            callback_data=AdminUserKeyEditorCallback(
+                action="add",
+                tg_id=tg_id,
+                data=email,
+                month=month
+            ).pack()
+        )
+        builder.button(
+            text=f"- {month} мес.",
+            callback_data=AdminUserKeyEditorCallback(
+                action="add",
+                tg_id=tg_id,
+                data=email,
+                month=-month
+            ).pack()
+        )
+    builder.button(
+        text="⏳ Добавить дни",
+        callback_data=AdminUserKeyEditorCallback(
+            action="add",
+            tg_id=tg_id,
+            data=email
+        ).pack()
+    )
+    builder.button(
+        text="⏳ Вычесть дни",
+        callback_data=AdminUserKeyEditorCallback(
+            action="take",
+            tg_id=tg_id,
+            data=email
+        ).pack()
+    )
+    builder.button(
+        text="⏳ Установить дату истечения",
+        callback_data=AdminUserKeyEditorCallback(
+            action="set",
+            tg_id=tg_id,
+            data=email
+        ).pack()
+    )
+    builder.button(
+        text="🔙 Назад",  # todo: fix magic text was set
+        callback_data=AdminUserEditorCallback(
+            action="users_key_edit",
+            tg_id=tg_id,
+            data=email
+        ).pack()
+    )
+    builder.adjust(2, 2, 2, 2, 2, 1)
+    return builder.as_markup()
+
+
 def build_user_delete_kb(tg_id: int):
     builder = InlineKeyboardBuilder()
     builder.button(
@@ -159,7 +238,7 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder.button(
         text="⏳ Время истечения",
         callback_data=AdminUserEditorCallback(
-            action="users_change_expiry",
+            action="users_expiry_edit",
             data=email,
             tg_id=key_details["tg_id"]
         ).pack()

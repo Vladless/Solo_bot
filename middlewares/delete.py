@@ -8,7 +8,7 @@ from keyboards.admin.coupons_kb import AdminCouponDeleteCallback
 from keyboards.admin.panel_kb import AdminPanelCallback
 from keyboards.admin.sender_kb import AdminSenderCallback
 from keyboards.admin.servers_kb import AdminServerEditorCallback
-from keyboards.admin.users_kb import AdminUserEditorCallback
+from keyboards.admin.users_kb import AdminUserEditorCallback, AdminUserKeyEditorCallback
 
 pass_callbacks = [
     AdminPanelCallback,
@@ -16,6 +16,7 @@ pass_callbacks = [
     AdminSenderCallback,
     AdminServerEditorCallback,
     AdminUserEditorCallback,
+    AdminUserKeyEditorCallback,
 ]
 
 

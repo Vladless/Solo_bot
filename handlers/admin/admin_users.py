@@ -1,10 +1,11 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 import pytz
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
@@ -21,7 +22,8 @@ from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.users_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
     build_user_delete_kb, AdminUserEditorCallback, build_editor_kb, build_users_balance_kb, \
-    build_users_balance_change_kb, build_user_key_kb
+    build_users_balance_change_kb, build_user_key_kb, build_users_key_expiry_kb, AdminUserKeyEditorCallback, \
+    build_users_key_show_kb
 from logger import logger
 
 router = Router()
@@ -299,7 +301,7 @@ async def handle_balance_add(
     AdminUserEditorCallback.filter(F.action == "users_balance_take"),
     IsAdminFilter()
 )
-async def handle_balance_add(
+async def handle_balance_take(
         callback_query: CallbackQuery,
         callback_data: AdminUserEditorCallback,
         state: FSMContext
@@ -319,7 +321,7 @@ async def handle_balance_add(
     AdminUserEditorCallback.filter(F.action == "users_balance_set"),
     IsAdminFilter()
 )
-async def handle_balance_add(
+async def handle_balance_set(
         callback_query: CallbackQuery,
         callback_data: AdminUserEditorCallback,
         state: FSMContext
@@ -379,8 +381,9 @@ async def handle_balance_input(
 )
 async def handle_key_edit(
         callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
+        callback_data: CallbackData,
+        session: Any,
+        update: bool = False
 ):
     email = callback_data.data
     key_details = await get_key_details(email, session)
@@ -395,34 +398,178 @@ async def handle_key_edit(
     text = (
         f"<b>🔑 Информация о ключе</b>"
         f"\n\n<code>{key_details['key']}</code>"
-        f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']}</b>"
+        f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']} (UTC)</b>"
         f"\n🌐 Кластер: <b>{key_details['cluster_name']}</b>"
         f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
     )
 
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=build_key_edit_kb(key_details, email)
-    )
+    if not update or not callback_data.edit:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=build_key_edit_kb(key_details, email)
+        )
+    else:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
+        )
 
 
 @router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_change_expiry"),
+    AdminUserEditorCallback.filter(F.action == "users_expiry_edit"),
     IsAdminFilter()
 )
 async def handle_change_expiry(
         callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext
+        callback_data: AdminUserEditorCallback
 ):
+    tg_id = callback_data.tg_id
     email = callback_data.data
 
-    await callback_query.message.edit_text(
-        text=f"✍️ Введите новое время истечения для ключа <b>{email}</b> в формате <code>YYYY-MM-DD HH:MM:SS</code>:"
+    await callback_query.message.edit_reply_markup(
+        reply_markup=build_users_key_expiry_kb(tg_id, email)
     )
 
-    await state.update_data(tg_id=callback_data.tg_id, email=email)
+
+@router.callback_query(
+    AdminUserKeyEditorCallback.filter(F.action == "add"),
+    IsAdminFilter()
+)
+async def handle_expiry_add(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserKeyEditorCallback,
+        state: FSMContext,
+        session: Any
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+    month = callback_data.month
+
+    key_details = await get_key_details(email, session)
+
+    if not key_details:
+        await callback_query.message.edit_text(
+            text="🚫 Информация о ключе не найдена.",
+            reply_markup=build_editor_kb(tg_id),
+        )
+        return
+
+    if month:
+        await change_expiry_time(key_details["expiry_time"] + month * 30 * 24 * 3600 * 1000, email, session)
+        await handle_key_edit(callback_query, callback_data, session, True)
+        return
+
+    await state.update_data(tg_id=tg_id, email=email, op_type="add")
     await state.set_state(UserEditorState.waiting_for_expiry_time)
+
+    await callback_query.message.edit_text(
+        text="✍️ Введите количество дней, которое хотите добавить к времени действия ключа:",
+        reply_markup=build_users_key_show_kb(tg_id, email)
+    )
+
+
+@router.callback_query(
+    AdminUserKeyEditorCallback.filter(F.action == "take"),
+    IsAdminFilter()
+)
+async def handle_expiry_take(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserKeyEditorCallback,
+        state: FSMContext
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    await state.update_data(tg_id=tg_id, email=email, op_type="take")
+    await state.set_state(UserEditorState.waiting_for_expiry_time)
+
+    await callback_query.message.edit_text(
+        text="✍️ Введите количество дней, которое хотите вычесть из времени действия ключа:",
+        reply_markup=build_users_key_show_kb(tg_id, email)
+    )
+
+
+@router.callback_query(
+    AdminUserKeyEditorCallback.filter(F.action == "set"),
+    IsAdminFilter()
+)
+async def handle_expiry_set(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserKeyEditorCallback,
+        state: FSMContext
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    await state.update_data(tg_id=tg_id, email=email, op_type="set")
+    await state.set_state(UserEditorState.waiting_for_expiry_time)
+
+    text = (
+        "✍️ Введите новое время действия ключа:"
+        "\n\n📌 Формат: <b>год-месяц-день час:минута</b>"
+        "\n Пример: 2025-02-09 09:01"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_users_key_show_kb(tg_id, email)
+    )
+
+
+@router.message(
+    UserEditorState.waiting_for_expiry_time,
+    IsAdminFilter()
+)
+async def handle_expiry_time_input(
+        message: types.Message,
+        state: FSMContext,
+        session: Any
+):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+    email = data.get("email")
+    op_type = data.get("op_type")
+
+    if op_type != "set" and (not message.text.isdigit() or int(message.text) < 0):
+        await message.answer(
+            text="🚫 Пожалуйста, введите корректное количество дней!",
+            reply_markup=build_users_key_show_kb(tg_id, email)
+        )
+        return
+
+    key_details = await get_key_details(email, session)
+
+    if not key_details:
+        await message.answer(
+            text="🚫 Информация о ключе не найдена.",
+            reply_markup=build_editor_kb(tg_id),
+        )
+        return
+
+    if op_type == "add":
+        days = int(message.text)
+        text = f"✅ Ко времени действия ключа добавлено <b>{days} дн.</b>"
+        await change_expiry_time(key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session)
+    elif op_type == "take":
+        days = int(message.text)
+        text = f"✅ Из времени действия ключа вычтено <b>{days} дн.</b>"
+        await change_expiry_time(key_details["expiry_time"] - days * 24 * 3600 * 1000, email, session)
+    else:
+        try:
+            expiry_time = int(
+                datetime.strptime(message.text, "%Y-%m-%d %H:%M").timestamp() * 1000
+            )
+            text = f"✅ Время действия ключа изменено на <b>{message.text}</b>"
+            await change_expiry_time(expiry_time, email, session)
+        except ValueError:
+            text = f"🚫 Пожалуйста, используйте корректный формат даты!"
+        except Exception as e:
+            text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
+
+    await message.answer(
+        text=text,
+        reply_markup=build_users_key_show_kb(tg_id, email)
+    )
 
 
 @router.message(
@@ -438,54 +585,8 @@ async def handle_expiry_time_input(
     email = user_data.get("email")
 
     try:
-        expiry_time = int(
-            datetime.strptime(message.text, "%Y-%m-%d %H:%M:%S").timestamp() * 1000
-        )
 
-        client_id = await get_client_id_by_email(email)
-
-        if client_id is None:
-            await message.edit_text(
-                text=f"🚫 Клиент с Email {email} не найден. 🔍",
-                reply_markup=build_admin_back_kb(),
-            )
-            await state.clear()
-            return
-
-        server_id = await session.fetchrow(
-            "SELECT server_id FROM keys WHERE client_id = $1", client_id
-        )
-
-        if not server_id:
-            await message.edit_text(
-                text="🚫 Клиент не найден в базе данных. 🔍",
-                reply_markup=build_admin_back_kb(),
-            )
-            await state.clear()
-            return
-
-        clusters = await get_servers_from_db()
-
-        async def update_key_on_all_servers():
-            tasks = [
-                asyncio.create_task(
-                    renew_key_in_cluster(
-                        cluster_name,
-                        email,
-                        client_id,
-                        expiry_time,
-                        total_gb=TOTAL_GB,
-                    )
-                )
-                for cluster_name in clusters
-            ]
-
-            await asyncio.gather(*tasks)
-
-        await update_key_on_all_servers()
-        await update_key_expiry(client_id, expiry_time)
-
-        response_message = f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
+        response_message = f"✅ Время истечения ключа для клиента ({email}) успешно обновлено на всех серверах."
 
         await message.edit_text(
             text=response_message,
@@ -739,8 +840,7 @@ async def get_key_details(email, session):
         return None
 
     cluster_name = record["server_id"]
-    moscow_tz = pytz.timezone("Europe/Moscow")
-    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
+    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=UTC)
 
     return {
         "client_id": record["client_id"],
@@ -748,8 +848,44 @@ async def get_key_details(email, session):
         "tg_id": record["tg_id"],
         "key": record["key"],
         "cluster_name": cluster_name,
+        "expiry_time": record["expiry_time"],
         "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
     }
+
+
+async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exception | None:
+    client_id = await get_client_id_by_email(email)
+
+    if client_id is None:
+        return ValueError(f"User with email {email} was not found")
+
+    server_id = await session.fetchrow(
+        "SELECT server_id FROM keys WHERE client_id = $1", client_id
+    )
+
+    if not server_id:
+        return ValueError(f"User with client_id {server_id} was not found")
+
+    clusters = await get_servers_from_db()
+
+    async def update_key_on_all_servers():
+        tasks = [
+            asyncio.create_task(
+                renew_key_in_cluster(
+                    cluster_name,
+                    email,
+                    client_id,
+                    expiry_time,
+                    total_gb=TOTAL_GB,
+                )
+            )
+            for cluster_name in clusters
+        ]
+
+        await asyncio.gather(*tasks)
+
+    await update_key_on_all_servers()
+    await update_key_expiry(client_id, expiry_time)
 
 
 async def get_user_balance(tg_id: int, session: Any) -> float:
