@@ -7,14 +7,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ErrorEvent
 
 from config import API_TOKEN
+from filters.private import IsPrivate
 from logger import logger
 from middlewares.admin import AdminMiddleware
 from middlewares.database import DatabaseMiddleware
 from middlewares.delete import DeleteMessageMiddleware
 from middlewares.logging import LoggingMiddleware
-from middlewares.user import UserMiddleware
 from middlewares.throttling import ThrottlingMiddleware
-from filters.private import IsPrivate
+from middlewares.user import UserMiddleware
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()

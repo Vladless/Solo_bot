@@ -72,7 +72,7 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
             builder.row(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"coupons:{current_page-1}"))
         if current_page < total_pages:
             builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page+1}"))
-        
+
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
         await callback_query.message.answer(coupon_list, reply_markup=builder.as_markup())
 
