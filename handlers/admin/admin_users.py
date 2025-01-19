@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime, UTC
 from typing import Any
 
-import pytz
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters.callback_data import CallbackData
