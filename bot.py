@@ -13,6 +13,8 @@ from middlewares.database import DatabaseMiddleware
 from middlewares.delete import DeleteMessageMiddleware
 from middlewares.logging import LoggingMiddleware
 from middlewares.user import UserMiddleware
+from middlewares.throttling import ThrottlingMiddleware
+from filters.private import IsPrivate
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
@@ -29,11 +31,14 @@ dp.callback_query.middleware(UserMiddleware())
 dp.message.middleware(DatabaseMiddleware())
 dp.callback_query.middleware(DatabaseMiddleware())
 
-# dp.message.middleware(ThrottlingMiddleware(limit=1))
-# dp.callback_query.middleware(ThrottlingMiddleware(limit=1))
+dp.message.middleware(ThrottlingMiddleware())
+dp.callback_query.middleware(ThrottlingMiddleware())
 
 dp.message.outer_middleware(DeleteMessageMiddleware())
 dp.callback_query.outer_middleware(DeleteMessageMiddleware())
+
+dp.message.filter(IsPrivate())
+dp.callback_query.filter(IsPrivate())
 
 
 @dp.error()
