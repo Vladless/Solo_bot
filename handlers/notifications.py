@@ -1,8 +1,8 @@
 import asyncio
 from datetime import datetime, timedelta
-import pytz
 
 import asyncpg
+import pytz
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -15,10 +15,10 @@ from config import (
     AUTO_RENEW_KEYS,
     DATABASE_URL,
     DEV_MODE,
+    EXPIRED_KEYS_CHECK_INTERVAL,
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
-    EXPIRED_KEYS_CHECK_INTERVAL
 )
 from database import (
     add_blocked_user,

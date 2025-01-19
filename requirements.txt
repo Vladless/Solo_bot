@@ -34,3 +34,4 @@ ping3
 ruff
 pytz
 cachetools
+babel

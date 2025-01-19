@@ -106,7 +106,7 @@ def build_keys_response(records):
             expiry_date = datetime.utcfromtimestamp(record["expiry_time"] / 1000).strftime("%d.%m.%Y")
             builder.row(
                 InlineKeyboardButton(
-                    text=f"🔑 {key_name} (до {expiry_date})", 
+                    text=f"🔑 {key_name} (до {expiry_date})",
                     callback_data=f"view_key|{key_name}"
                 )
             )

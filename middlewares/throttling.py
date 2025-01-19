@@ -1,4 +1,5 @@
-from typing import Any, Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, MutableMapping
+from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.flags import get_flag
@@ -6,6 +7,7 @@ from aiogram.types import TelegramObject, Update, User
 from cachetools import TTLCache
 
 from logger import logger
+
 
 class ThrottlingMiddleware(BaseMiddleware):
     def __init__(
