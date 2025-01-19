@@ -24,7 +24,7 @@ dp.message.filter(IsPrivate())
 dp.callback_query.filter(IsPrivate())
 
 
-@router.errors(ExceptionTypeFilter(Exception))
+@dp.errors(ExceptionTypeFilter(Exception))
 async def errors_handler(
     event: ErrorEvent,
     bot: Bot,
