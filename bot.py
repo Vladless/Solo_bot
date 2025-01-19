@@ -12,33 +12,13 @@ from aiogram.utils.markdown import hbold
 from config import ADMIN_ID, API_TOKEN
 from filters.private import IsPrivate
 from logger import logger
-from middlewares.admin import AdminMiddleware
-from middlewares.database import DatabaseMiddleware
-from middlewares.delete import DeleteMessageMiddleware
-from middlewares.logging import LoggingMiddleware
-from middlewares.throttling import ThrottlingMiddleware
-from middlewares.user import UserMiddleware
+from middlewares import register_middleware
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-dp.message.middleware(LoggingMiddleware())
-dp.callback_query.middleware(LoggingMiddleware())
-
-dp.message.middleware(AdminMiddleware())
-dp.callback_query.middleware(AdminMiddleware())
-dp.message.middleware(UserMiddleware())
-dp.callback_query.middleware(UserMiddleware())
-
-dp.message.middleware(DatabaseMiddleware())
-dp.callback_query.middleware(DatabaseMiddleware())
-
-dp.message.middleware(ThrottlingMiddleware())
-dp.callback_query.middleware(ThrottlingMiddleware())
-
-dp.message.outer_middleware(DeleteMessageMiddleware())
-dp.callback_query.outer_middleware(DeleteMessageMiddleware())
+register_middleware(dp)
 
 dp.message.filter(IsPrivate())
 dp.callback_query.filter(IsPrivate())
