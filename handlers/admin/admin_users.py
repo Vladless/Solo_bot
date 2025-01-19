@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import F, Router, types
@@ -246,7 +246,7 @@ async def handle_balance_change(
         f"<b>💵 Изменение баланса</b>"
         f"\n\n🆔 ID: <b>{tg_id}</b>"
         f"\n💰 Баланс: <b>{balance}Р</b>"
-        f"\n📊 Последние операции:"
+        f"\n📊 Последние операции (5):"
     )
 
     if records:
@@ -256,9 +256,9 @@ async def handle_balance_change(
             status = record["status"]
             date = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
             text += (
-                f"\n\n<blockquote>Сумма: {amount} | {payment_system}"
-                f"\nСтатус: {status}"
-                f"\nДата: {date}</blockquote>"
+                f"\n<blockquote>💸 Сумма: {amount} | {payment_system}"
+                f"\n📌 Статус: {status}"
+                f"\n⏳ Дата: {date}</blockquote>"
             )
     else:
         text += "\n <i>🚫 Отсутствуют</i>"
@@ -571,37 +571,6 @@ async def handle_expiry_time_input(
     )
 
 
-@router.message(
-    UserEditorState.waiting_for_expiry_time,
-    IsAdminFilter()
-)
-async def handle_expiry_time_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
-    user_data = await state.get_data()
-    email = user_data.get("email")
-
-    try:
-
-        response_message = f"✅ Время истечения ключа для клиента ({email}) успешно обновлено на всех серверах."
-
-        await message.edit_text(
-            text=response_message,
-            reply_markup=build_admin_back_kb()
-        )
-    except ValueError:
-        tg_id = user_data.get("tg_id")
-        await message.edit_text(
-            text="❌ Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.",
-            reply_markup=build_editor_kb(tg_id),
-        )
-    except Exception as e:
-        logger.error(e)
-    await state.clear()
-
-
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_update_key"),
     IsAdminFilter()
@@ -793,7 +762,7 @@ async def process_user_search(
         "SELECT username FROM users WHERE tg_id = $1", tg_id
     )
     key_records = await session.fetch(
-        "SELECT email FROM keys WHERE tg_id = $1", tg_id
+        "SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id
     )
     referral_count = await session.fetchval(
         "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
@@ -839,7 +808,7 @@ async def get_key_details(email, session):
         return None
 
     cluster_name = record["server_id"]
-    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=UTC)
+    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=timezone.utc)
 
     return {
         "client_id": record["client_id"],
