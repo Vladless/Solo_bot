@@ -10,7 +10,7 @@ from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
 
 from config import ADMIN_ID, API_TOKEN
-from filters.private import IsPrivate
+from filters.private import IsPrivateFilter
 from logger import logger
 from middlewares import register_middleware
 
@@ -20,8 +20,8 @@ dp = Dispatcher(bot=bot, storage=storage)
 
 register_middleware(dp)
 
-dp.message.filter(IsPrivate())
-dp.callback_query.filter(IsPrivate())
+dp.message.filter(IsPrivateFilter())
+dp.callback_query.filter(IsPrivateFilter())
 
 
 @dp.errors(ExceptionTypeFilter(Exception))
