@@ -13,11 +13,13 @@ from .payments import router as payments_router
 from .profile import router as profile_router
 from .start import router as start_router
 from .user import router as user_router
+from .captcha import router as captcha_router
 
 router = Router(name="handlers_main_router")
 
 router.include_routers(
     start_router,
+    captcha_router,
     profile_router,
     pay_router,
     donate_router,
