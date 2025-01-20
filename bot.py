@@ -18,6 +18,8 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
+version = "4.0.0-preAlpha(14-dev)"
+
 dp.message.middleware(LoggingMiddleware())
 dp.callback_query.middleware(LoggingMiddleware())
 
