@@ -4,74 +4,64 @@ from datetime import datetime
 
 from aiogram.types import BufferedInputFile
 
-from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER
+from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
 from logger import logger
 
 
-async def backup_database():
-    from bot import bot
+async def backup_database() -> Exception | None:
+    backup_file_path, exception = _create_database_backup()
+
+    if exception:
+        logger.error(f"Ошибка при создании бэкапа базы данных: {exception}")
+        return exception
 
     try:
-        if backup_file_path := _create_database_backup():
-            await _send_backup_to_admin(bot, backup_file_path)
-            _cleanup_old_backups()
+        await _send_backup_to_admins(backup_file_path)
+        exception = _cleanup_old_backups()
+
+        if exception:
+            logger.error(f"Ошибка при удалении старых бэкапов базы данных: {exception}")
+            return exception
+
+        return None
     except Exception as e:
-        logger.error(f"Ошибка при создании или отправке бэкапа: {e}")
+        logger.error(f"Ошибка при отправке бэкапа базы данных: {e}")
+        return e
 
 
-def _create_database_backup():
-    USER = DB_USER
-    HOST = "localhost"
-    BACKUP_DIR = BACK_DIR
-    DATE = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    BACKUP_FILE = f"{BACKUP_DIR}/{DB_NAME}-backup-{DATE}.sql"
-
-    os.environ["PGPASSWORD"] = DB_PASSWORD
+def _create_database_backup() -> (str | None, Exception | None):
+    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    filename = os.path.join(BACK_DIR, f"{DB_NAME}-backup-{date_formatted}.sql")
 
     try:
+        os.environ["PGPASSWORD"] = DB_PASSWORD
+
         subprocess.run(
             [
                 "pg_dump",
                 "-U",
-                USER,
+                DB_USER,
                 "-h",
-                HOST,
+                PG_HOST,
+                "-p",
+                PG_PORT,
                 "-F",
                 "c",
                 "-f",
-                BACKUP_FILE,
+                filename,
                 DB_NAME,
             ],
             check=True,
         )
-        logger.info(f"Бэкап базы данных создан: {BACKUP_FILE}")
-        return BACKUP_FILE
+        logger.info(f"Бэкап базы данных создан: {filename}")
+        return filename, None
     except subprocess.CalledProcessError as e:
-        logger.error(f"Ошибка при создании бэкапа базы данных: {e}")
-        return None
+        return None, e
     finally:
         del os.environ["PGPASSWORD"]
 
 
-async def _send_backup_to_admin(bot, backup_file_path):
-    try:
-        with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(
-                backup_file.read(), filename=os.path.basename(backup_file_path)
-            )
-            admin_ids: int | list[int] = ADMIN_ID
-            if isinstance(admin_ids, list):
-                for id in admin_ids:
-                    await bot.send_document(id, backup_input_file)
-                    logger.info(f"Бэкап базы данных отправлен админу: {id}")
-            else:
-                await bot.send_document(admin_ids, backup_input_file)
-                logger.info(f"Бэкап базы данных отправлен админу: {ADMIN_ID}")
-    except Exception as e:
-        logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
-
-
-def _cleanup_old_backups():
+def _cleanup_old_backups() -> None | Exception:
     try:
         subprocess.run(
             [
@@ -91,10 +81,30 @@ def _cleanup_old_backups():
             check=True,
         )
         logger.info("Старые бэкапы удалены.")
+        return None
     except subprocess.CalledProcessError as e:
-        logger.error(f"Ошибка при удалении старых бэкапов: {e}")
+        return e
 
 
-async def create_backup_and_send_to_admins(xui):
+async def create_backup_and_send_to_admins(xui) -> None:
     await xui.login()
     await xui.database.export()
+
+
+async def _send_backup_to_admins(backup_file_path: str) -> None:
+    try:
+        from bot import bot
+        with open(backup_file_path, "rb") as backup_file:
+            backup_input_file = BufferedInputFile(
+                file=backup_file.read(),
+                filename=os.path.basename(backup_file_path)
+            )
+            admin_ids = ADMIN_ID if isinstance(ADMIN_ID, list) else [ADMIN_ID]
+            for admin_id in admin_ids:
+                await bot.send_document(
+                    chat_id=admin_id,
+                    document=backup_input_file
+                )
+            logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")

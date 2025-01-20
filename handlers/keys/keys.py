@@ -7,6 +7,7 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.yookassa_pay import process_custom_amount_input
 
 from bot import bot
 from config import (
@@ -26,7 +27,6 @@ from database import (
     get_balance,
     get_servers_from_db,
     save_temporary_data,
-    store_key,
     update_balance,
     update_key_expiry,
 )
@@ -42,10 +42,9 @@ from handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
     renew_key_in_cluster,
-    update_key_on_cluster,
+    update_subscription,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,
@@ -53,7 +52,7 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from handlers.utils import get_least_loaded_cluster, handle_error
+from handlers.utils import handle_error
 from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
@@ -64,7 +63,7 @@ router = Router()
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
 async def process_callback_or_message_view_keys(
-    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
+        callback_query_or_message: types.Message | types.CallbackQuery, session: Any
 ):
     if isinstance(callback_query_or_message, types.CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
@@ -124,7 +123,7 @@ def build_keys_response(records):
 
 
 async def send_with_optional_image(
-    send_message, send_photo, image_path, text, keyboard
+        send_message, send_photo, image_path, text, keyboard
 ):
     """
     Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
@@ -268,67 +267,16 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
 @router.callback_query(F.data.startswith("update_subscription|"))
 async def process_callback_update_subscription(
-    callback_query: types.CallbackQuery, session: Any
+        callback_query: types.CallbackQuery, session: Any
 ):
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
+
     try:
-        record = await session.fetchrow(
-            """
-            SELECT k.key, k.expiry_time, k.email, k.server_id, k.client_id
-            FROM keys k
-            WHERE k.tg_id = $1 AND k.email = $2
-            """,
-            tg_id,
-            email,
-        )
-
-        if record:
-            expiry_time = record["expiry_time"]
-            client_id = record["client_id"]
-            public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
-
-            try:
-                await session.execute(
-                    """
-                    DELETE FROM keys
-                    WHERE tg_id = $1 AND email = $2
-                    """,
-                    tg_id,
-                    email,
-                )
-            except Exception as delete_error:
-                await callback_query.message.answer(
-                    f"Ошибка при удалении старой подписки: {delete_error}",
-                )
-                return
-
-            least_loaded_cluster_id = await get_least_loaded_cluster()
-
-            await asyncio.gather(
-                update_key_on_cluster(
-                    tg_id,
-                    client_id,
-                    email,
-                    expiry_time,
-                    least_loaded_cluster_id,
-                )
-            )
-
-            await store_key(
-                tg_id,
-                client_id,
-                email,
-                expiry_time,
-                public_link,
-                server_id=least_loaded_cluster_id,
-                session=session,
-            )
-
-            await process_callback_view_key(callback_query, session)
-        else:
-            await callback_query.message.answer("<b>Ключ не найден в базе данных.</b>")
+        await update_subscription(tg_id, email, session)
+        await process_callback_view_key(callback_query, session)
     except Exception as e:
+        logger.error(f"Ошибка при обновлении ключа {email} пользователем: {e}")
         await handle_error(
             tg_id, callback_query, f"Ошибка при обновлении подписки: {e}"
         )
@@ -436,7 +384,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
 @router.callback_query(F.data.startswith("confirm_delete|"))
 async def process_callback_confirm_delete(
-    callback_query: types.CallbackQuery, session: Any
+        callback_query: types.CallbackQuery, session: Any
 ):
     email = callback_query.data.split("|")[1]
     try:
@@ -523,7 +471,8 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
             if balance < cost:
                 required_amount = cost - balance
 
-                logger.info(f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
+                logger.info(
+                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
 
                 await save_temporary_data(
                     session,
@@ -604,4 +553,3 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
 
     await renew_key_on_servers()
-
