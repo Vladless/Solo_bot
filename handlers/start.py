@@ -21,6 +21,7 @@ from config import (
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
     SUPPORT_CHAT_URL,
+    CAPTCHA_ENABLE,
 )
 from database import (
     add_connection,
@@ -41,6 +42,7 @@ from handlers.keys.key_management import create_key
 from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
 from logger import logger
+from handlers.captcha import generate_captcha
 
 router = Router()
 
@@ -58,6 +60,12 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     await state.clear()
+
+    # Проверка капчи, если включена
+    if CAPTCHA_ENABLE:
+        captcha = await generate_captcha(state)
+        await message.answer(text=captcha["text"], reply_markup=captcha["markup"])
+        return
 
     if message.text:
         try:
