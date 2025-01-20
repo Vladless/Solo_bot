@@ -64,13 +64,12 @@ async def check_captcha(
 
     if selected_emoji == correct_emoji:
         logger.info(f"Пользователь {callback.message.chat.id} успешно прошел капчу")
-        await callback.message.delete()
         await start_command(callback.message, state, session, admin)
     else:
         logger.warning(
             f"Пользователь {callback.message.chat.id} неверно ответил на капчу"
         )
         captcha = await generate_captcha(state)
-        await callback.message.edit_text(
+        await callback.message.answer(
             text=captcha["text"], reply_markup=captcha["markup"]
         )
