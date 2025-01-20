@@ -1,12 +1,13 @@
 from typing import Any
 
-from admin import AdminMiddleware
 from aiogram import Dispatcher
-from delete import DeleteMessageMiddleware
-from loggings import LoggingMiddleware
-from session import SessionMiddleware
-from throttling import ThrottlingMiddleware
-from user import UserMiddleware
+
+from .admin import AdminMiddleware
+from .delete import DeleteMessageMiddleware
+from .loggings import LoggingMiddleware
+from .session import SessionMiddleware
+from .throttling import ThrottlingMiddleware
+from .user import UserMiddleware
 
 
 def register_middleware(dispatcher: Dispatcher) -> None:
