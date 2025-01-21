@@ -12,7 +12,9 @@ router = Router()
 @router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=KICKED))
 async def user_blocked_bot(event: ChatMemberUpdated, session: Any):
     logger.info(f"User {event.from_user.id} blocked the bot.")
-    await session.execute("INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING", event.from_user.id)
+    await session.execute(
+        "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING", event.from_user.id
+    )
 
 
 @router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=MEMBER))

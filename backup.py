@@ -59,9 +59,7 @@ def _create_database_backup():
 async def _send_backup_to_admin(bot, backup_file_path):
     try:
         with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(
-                backup_file.read(), filename=os.path.basename(backup_file_path)
-            )
+            backup_input_file = BufferedInputFile(backup_file.read(), filename=os.path.basename(backup_file_path))
             admin_ids: int | list[int] = ADMIN_ID
             if isinstance(admin_ids, list):
                 for id in admin_ids:

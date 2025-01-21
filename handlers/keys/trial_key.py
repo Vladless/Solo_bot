@@ -16,9 +16,7 @@ from logger import logger
 
 async def create_trial_key(tg_id: int, session: Any):
     try:
-        trial_status = await session.fetchval(
-            "SELECT trial FROM connections WHERE tg_id = $1", tg_id
-        )
+        trial_status = await session.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
         if trial_status == 1:
             return {"error": "Вы уже использовали пробную версию."}
     except Exception as e:
@@ -67,7 +65,7 @@ async def create_trial_key(tg_id: int, session: Any):
                 enable=True,
                 flow="xtls-rprx-vision",
                 inbound_id=int(server_info["inbound_id"]),
-                sub_id=base_email
+                sub_id=base_email,
             )
         )
 

@@ -18,9 +18,7 @@ router = Router()
 
 
 @router.callback_query(F.data == "activate_coupon")
-async def handle_activate_coupon(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
@@ -40,9 +38,7 @@ async def process_coupon_code(message: types.Message, state: FSMContext, session
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await message.answer(
-        activation_result, reply_markup=builder.as_markup()
-    )
+    await message.answer(activation_result, reply_markup=builder.as_markup())
     await state.clear()
 
 

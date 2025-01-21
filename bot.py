@@ -44,7 +44,7 @@ async def errors_handler(
                     filename=f"error_{event.update.update_id}.txt",
                 ),
                 caption=f"{hbold(type(event.exception).__name__)}: {str(event.exception)[:1021]}...",
-        )
+            )
     except TelegramBadRequest as exception:
         logger.warning(f"Failed to send error details: {exception}")
     except Exception as exception:

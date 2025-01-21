@@ -36,6 +36,7 @@ from logger import logger
 
 router = Router()
 
+
 async def periodic_expired_keys_check(bot: Bot):
     """Периодическая проверка истекших ключей с кастомным интервалом."""
     while True:
@@ -52,7 +53,6 @@ async def periodic_expired_keys_check(bot: Bot):
                 await conn.close()
 
         await asyncio.sleep(EXPIRED_KEYS_CHECK_INTERVAL)
-
 
 
 async def notify_expiring_keys(bot: Bot):
@@ -84,21 +84,16 @@ async def notify_expiring_keys(bot: Bot):
             logger.info("Соединение с базой данных закрыто.")
 
 
-
 async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
     if DEV_MODE:
         return False
     try:
         member = await bot.get_chat_member(chat_id, bot.id)
         blocked = member.status == "left"
-        logger.info(
-            f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}"
-        )
+        logger.info(f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}")
         return blocked
     except Exception as e:
-        logger.warning(
-            f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
-        )
+        logger.warning(f"Не удалось проверить статус бота для пользователя {chat_id}: {e}")
         return False
 
 
@@ -137,7 +132,11 @@ async def process_10h_record(record, bot, conn):
     time_left = expiry_date - current_date
 
     days_left_message = (
-        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+        "Ключ истек"
+        if time_left.total_seconds() <= 0
+        else f"{time_left.days}"
+        if time_left.days > 0
+        else f"{time_left.seconds // 3600}"
     )
 
     message = KEY_EXPIRY_10H.format(
@@ -200,7 +199,6 @@ async def notify_24h_keys(
     logger.info("Обработка всех уведомлений за 24 часа завершена.")
 
 
-
 async def process_24h_record(record, bot, conn):
     tg_id = record["tg_id"]
     email = record["email"]
@@ -213,7 +211,11 @@ async def process_24h_record(record, bot, conn):
     time_left = expiry_date - current_date
 
     days_left_message = (
-        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+        "Ключ истек"
+        if time_left.total_seconds() <= 0
+        else f"{time_left.days}"
+        if time_left.days > 0
+        else f"{time_left.seconds // 3600}"
     )
 
     message_24h = KEY_EXPIRY_24H.format(
@@ -287,9 +289,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user.get("username", "Пользователь")
 
         try:
-            can_notify = await check_notification_time(
-                tg_id, "inactive_trial", hours=24, session=conn
-            )
+            can_notify = await check_notification_time(tg_id, "inactive_trial", hours=24, session=conn)
 
             if can_notify:
                 builder = InlineKeyboardBuilder()
@@ -299,11 +299,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                         callback_data="create_key",
                     )
                 )
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="👤 Личный кабинет", callback_data="profile"
-                    )
-                )
+                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
                 keyboard = builder.as_markup()
 
                 message = (
@@ -315,20 +311,14 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
                 try:
                     await bot.send_message(tg_id, message, reply_markup=keyboard)
-                    logger.info(
-                        f"Отправлено уведомление неактивному пользователю {tg_id}."
-                    )
+                    logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
                     await add_notification(tg_id, "inactive_trial", session=conn)
 
                 except TelegramForbiddenError:
-                    logger.warning(
-                        f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users."
-                    )
+                    logger.warning(f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
                     await add_blocked_user(tg_id, conn)
                 except Exception as e:
-                    logger.error(
-                        f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
-                    )
+                    logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 
         except Exception as e:
             logger.error(f"Ошибка при обработке пользователя {tg_id}: {e}")
@@ -378,13 +368,7 @@ async def process_key(record, bot, conn):
     )
 
     keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                types.InlineKeyboardButton(
-                    text="👤 Личный кабинет", callback_data="profile"
-                )
-            ]
-        ]
+        inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
     )
 
     try:
@@ -446,15 +430,12 @@ async def process_key(record, bot, conn):
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
 
 
-
 async def check_online_users():
     servers = await get_servers_from_db()
 
     for cluster_id, cluster in servers.items():
         for server_id, server in enumerate(cluster):
-            xui = AsyncApi(
-                server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD
-            )
+            xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
             await xui.login()
             try:
                 online_users = len(await xui.client.online())
@@ -462,6 +443,4 @@ async def check_online_users():
                     f"Сервер '{server['server_name']}' доступен, текущее количество активных пользователей: {online_users}."
                 )
             except Exception as e:
-                logger.error(
-                    f"Не удалось проверить пользователей на сервере {server_id}: {e}"
-                )
+                logger.error(f"Не удалось проверить пользователей на сервере {server_id}: {e}")

@@ -43,9 +43,7 @@ class UserEditorState(StatesGroup):
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-    await callback_query.message.answer(
-        "🔍 Введите Telegram ID клиента:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("🔍 Введите Telegram ID клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
 
@@ -53,20 +51,14 @@ async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
 async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-    await callback_query.message.answer(
-        "🔍 Введите Username клиента:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("🔍 Введите Username клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_username)
 
 
 @router.message(UserEditorState.waiting_for_username, IsAdminFilter())
-async def handle_username_input(
-    message: types.Message, state: FSMContext, session: Any
-):
+async def handle_username_input(message: types.Message, state: FSMContext, session: Any):
     username = message.text.strip().lstrip("@").replace("https://t.me/", "")
-    user_record = await session.fetchrow(
-        "SELECT tg_id FROM users WHERE username = $1", username
-    )
+    user_record = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
 
     if not user_record:
         builder = InlineKeyboardBuilder()
@@ -79,16 +71,10 @@ async def handle_username_input(
         return
 
     tg_id = user_record["tg_id"]
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
+    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
         builder = InlineKeyboardBuilder()
@@ -103,9 +89,7 @@ async def handle_username_input(
     builder = InlineKeyboardBuilder()
 
     for (email,) in key_records:
-        builder.row(
-            InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}")
-        )
+        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -120,21 +104,9 @@ async def handle_username_input(
             callback_data=f"restore_trial_{tg_id}",
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
+    builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     user_info = (
@@ -153,9 +125,7 @@ async def handle_username_input(
 async def handle_send_message(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.data.split("_")[2]
     await state.update_data(target_tg_id=tg_id)
-    await callback_query.message.answer(
-        "✉️ Введите текст сообщения, которое вы хотите отправить пользователю."
-    )
+    await callback_query.message.answer("✉️ Введите текст сообщения, которое вы хотите отправить пользователю.")
     await state.set_state(UserEditorState.waiting_for_message_text)
 
 
@@ -181,16 +151,10 @@ async def process_send_message(message: types.Message, state: FSMContext, bot: B
 @router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
 async def handle_tg_id_input(message: types.Message, state: FSMContext, session: Any):
     tg_id = int(message.text)
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
+    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
         builder = InlineKeyboardBuilder()
@@ -205,9 +169,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
     builder = InlineKeyboardBuilder()
 
     for (email,) in key_records:
-        builder.row(
-            InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}")
-        )
+        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -215,27 +177,15 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
             callback_data=f"change_balance_{tg_id}",
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
     builder.row(
         InlineKeyboardButton(
             text="🔄 Восстановить пробник",
             callback_data=f"restore_trial_{tg_id}",
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
 
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
@@ -258,15 +208,9 @@ async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any
     await restore_trial(tg_id, session)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад в меню администратора", callback_data="admin"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="admin"))
 
-    await callback_query.message.answer(
-        "✅ Триал успешно восстановлен.", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("✅ Триал успешно восстановлен.", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("change_balance_"), IsAdminFilter())
@@ -275,16 +219,12 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
     await state.update_data(tg_id=tg_id)
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-    await callback_query.message.answer(
-        "💸 Введите новую сумму баланса:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("💸 Введите новую сумму баланса:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
 
 @router.message(UserEditorState.waiting_for_new_balance, IsAdminFilter())
-async def handle_new_balance_input(
-    message: types.Message, state: FSMContext, session: Any
-):
+async def handle_new_balance_input(message: types.Message, state: FSMContext, session: Any):
     if not message.text.isdigit() or int(message.text) < 0:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
@@ -318,7 +258,6 @@ async def handle_new_balance_input(
 
 
 async def get_key_details(email, session):
-
     record = await session.fetchrow(
         """
         SELECT k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
@@ -399,25 +338,19 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
     )
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
-    await callback_query.message.answer(
-        response_message, reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "search_by_key_name", IsAdminFilter())
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-    await callback_query.message.answer(
-        "🔑 Введите имя ключа:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("🔑 Введите имя ключа:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_key_name)
 
 
 @router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
-async def handle_key_name_input(
-    message: types.Message, state: FSMContext, session: Any
-):
+async def handle_key_name_input(message: types.Message, state: FSMContext, session: Any):
     key_name = sanitize_key_name(message.text)
     key_details = await get_key_details(key_name, session)
 
@@ -474,18 +407,14 @@ async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext)
 
 
 @router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
-async def handle_expiry_time_input(
-    message: types.Message, state: FSMContext, session: Any
-):
+async def handle_expiry_time_input(message: types.Message, state: FSMContext, session: Any):
     user_data = await state.get_data()
     email = user_data.get("email")
 
     if not email:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-        await message.answer(
-            "📧 Email не найден в состоянии. 🚫", reply_markup=builder.as_markup()
-        )
+        await message.answer("📧 Email не найден в состоянии. 🚫", reply_markup=builder.as_markup())
         await state.clear()
         return
 
@@ -499,9 +428,7 @@ async def handle_expiry_time_input(
         client_id = await get_client_id_by_email(email)
         if client_id is None:
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor")
-            )
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
             await message.answer(
                 f"🚫 Клиент с email {email} не найден. 🔍",
                 reply_markup=builder.as_markup(),
@@ -509,14 +436,10 @@ async def handle_expiry_time_input(
             await state.clear()
             return
 
-        record = await session.fetchrow(
-            "SELECT server_id FROM keys WHERE client_id = $1", client_id
-        )
+        record = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
         if not record:
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor")
-            )
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
             await message.answer(
                 "🚫 Клиент не найден в базе данных. 🔍",
                 reply_markup=builder.as_markup(),
@@ -547,7 +470,9 @@ async def handle_expiry_time_input(
 
         await update_key_expiry(client_id, expiry_time)
 
-        response_message = f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
+        response_message = (
+            f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."
+        )
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
@@ -565,20 +490,14 @@ async def handle_expiry_time_input(
 
 
 @router.callback_query(F.data.startswith("delete_key_admin|"), IsAdminFilter())
-async def process_callback_delete_key(
-    callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_delete_key(callback_query: types.CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
-    client_id = await session.fetchval(
-        "SELECT client_id FROM keys WHERE email = $1", email
-    )
+    client_id = await session.fetchval("SELECT client_id FROM keys WHERE email = $1", email)
 
     if client_id is None:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
-        await callback_query.message.answer(
-            "🔍 Ключ не найден. 🚫", reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer("🔍 Ключ не найден. 🚫", reply_markup=builder.as_markup())
         return
 
     builder = InlineKeyboardBuilder()
@@ -588,9 +507,7 @@ async def process_callback_delete_key(
             callback_data=f"confirm_delete_admin|{client_id}",
         )
     )
-    builder.row(
-        types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="user_editor")
-    )
+    builder.row(types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="user_editor"))
     await callback_query.message.answer(
         "<b>❓ Вы уверены, что хотите удалить ключ?</b>",
         reply_markup=builder.as_markup(),
@@ -598,13 +515,9 @@ async def process_callback_delete_key(
 
 
 @router.callback_query(F.data.startswith("confirm_delete_admin|"), IsAdminFilter())
-async def process_callback_confirm_delete(
-    callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     client_id = callback_query.data.split("|")[1]
-    record = await session.fetchrow(
-        "SELECT email FROM keys WHERE client_id = $1", client_id
-    )
+    record = await session.fetchrow("SELECT email FROM keys WHERE client_id = $1", client_id)
 
     if record:
         email = record["email"]
@@ -618,74 +531,38 @@ async def process_callback_confirm_delete(
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
                 for server in cluster_servers:
-                    tasks.append(
-                        delete_key_from_cluster(cluster_name, email, client_id)
-                    )
+                    tasks.append(delete_key_from_cluster(cluster_name, email, client_id))
             await asyncio.gather(*tasks)
 
         await delete_key_from_servers(email, client_id)
         await delete_key_from_db(client_id, session)
 
-        await callback_query.message.answer(
-            response_message, reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
         response_message = "🚫 Ключ не найден или уже удален."
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
-        await callback_query.message.answer(
-            response_message, reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())
-async def handle_user_info(
-    callback_query: types.CallbackQuery, state: FSMContext, session: Any
-):
+async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = int(callback_query.data.split("|")[1])
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
+    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     builder = InlineKeyboardBuilder()
 
     for (email,) in key_records:
-        builder.row(
-            InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}")
-        )
+        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
 
-    builder.row(
-        InlineKeyboardButton(
-            text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
+    builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
+    builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
 
     user_info = (
@@ -702,19 +579,13 @@ async def handle_user_info(
 
 
 @router.callback_query(F.data.startswith("confirm_delete_user_"), IsAdminFilter())
-async def confirm_delete_user(
-    callback_query: types.CallbackQuery, state: FSMContext, session: Any
-):
+async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = int(callback_query.data.split("_")[3])
 
     confirmation_markup = InlineKeyboardMarkup(
         row_width=2,
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Подтвердить", callback_data=f"delete_user_{tg_id}"
-                )
-            ],
+            [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"delete_user_{tg_id}")],
             [InlineKeyboardButton(text="❌ Отменить", callback_data="user_editor")],
         ],
     )
@@ -729,9 +600,7 @@ async def confirm_delete_user(
 async def delete_user(callback_query: types.CallbackQuery, session: Any):
     tg_id = int(callback_query.data.split("_")[2])
 
-    key_records = await session.fetch(
-        "SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id
-    )
+    key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)
 
     async def delete_keys_from_servers():
         try:
@@ -742,9 +611,7 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
             await asyncio.gather(*tasks)
         except Exception as e:
-            logger.error(
-                f"Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}"
-            )
+            logger.error(f"Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
 
     await delete_keys_from_servers()
 
@@ -754,13 +621,9 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
         back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor")
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-        await callback_query.message.answer(
-            f"🗑️ Пользователь с ID {tg_id} был удален.", reply_markup=keyboard
-        )
+        await callback_query.message.answer(f"🗑️ Пользователь с ID {tg_id} был удален.", reply_markup=keyboard)
     except Exception as e:
-        logger.error(
-            f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
         await callback_query.message.answer(
             f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
         )

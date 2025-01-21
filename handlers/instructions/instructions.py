@@ -29,9 +29,7 @@ async def send_instructions(
 
     if not os.path.isfile(image_path):
         if isinstance(callback_query_or_message, types.CallbackQuery):
-            await callback_query_or_message.message.answer(
-                "Файл изображения не найден."
-            )
+            await callback_query_or_message.message.answer("Файл изображения не найден.")
         else:
             await callback_query_or_message.answer("Файл изображения не найден.")
         return
@@ -71,9 +69,7 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     )
 
     if not record:
-        await callback_query.message.answer(
-            "❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍"
-        )
+        await callback_query.message.answer("❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍")
         return
 
     key = record["key"]
@@ -81,14 +77,8 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     instruction_message = f"{key_message}{INSTRUCTION_PC}"
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_MACOS}{key}")
-    )
+    builder.row(InlineKeyboardButton(text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"))
+    builder.row(InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_MACOS}{key}"))
     builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=f"{SUPPORT_CHAT_URL}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
@@ -104,11 +94,7 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="▶ Продолжить", callback_data=f"continue_tv|{key_name}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="▶ Продолжить", callback_data=f"continue_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await callback_query.message.answer(
@@ -146,13 +132,7 @@ async def process_continue_tv(callback_query: types.CallbackQuery):
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="📖 Полная инструкция", url="https://vpn4tv.com/quick-guide.html"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="📖 Полная инструкция", url="https://vpn4tv.com/quick-guide.html"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await callback_query.message.answer(
-        text=message_text, reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer(text=message_text, reply_markup=builder.as_markup())

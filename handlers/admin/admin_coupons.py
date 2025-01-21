@@ -19,25 +19,19 @@ router = Router()
 
 
 @router.callback_query(F.data == "coupons_editor", IsAdminFilter())
-async def show_coupon_management_menu(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def show_coupon_management_menu(callback_query: types.CallbackQuery, state: FSMContext):
     await state.clear()
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon")
-    )
+    builder.row(InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon"))
     builder.row(InlineKeyboardButton(text="🎟️ Купоны", callback_data="coupons"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
-    await callback_query.message.answer(
-        "🛠 Меню управления купонами:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("🛠 Меню управления купонами:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("coupons"), IsAdminFilter())
 async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
     try:
-        page = int(callback_query.data.split(':')[1]) if ':' in callback_query.data else 1
+        page = int(callback_query.data.split(":")[1]) if ":" in callback_query.data else 1
         per_page = 10
         result = await get_all_coupons(session, page, per_page)
         coupons = result["coupons"]
@@ -63,15 +57,16 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
                 f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
-            builder.row(InlineKeyboardButton(
-                text=f"❌ Удалить {coupon['code']}",
-                callback_data=f"delete_coupon_{coupon['code']}"
-            ))
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"❌ Удалить {coupon['code']}", callback_data=f"delete_coupon_{coupon['code']}"
+                )
+            )
 
         if current_page > 1:
-            builder.row(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"coupons:{current_page-1}"))
+            builder.row(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"coupons:{current_page - 1}"))
         if current_page < total_pages:
-            builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page+1}"))
+            builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page + 1}"))
 
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
         await callback_query.message.answer(coupon_list, reply_markup=builder.as_markup())
@@ -154,9 +149,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext, session
         )
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-        )
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
 
         await message.answer(result_message, reply_markup=builder.as_markup())
         await state.clear()
