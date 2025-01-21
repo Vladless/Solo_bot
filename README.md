@@ -6,12 +6,12 @@
 
 - [v1.4](https://github.com/Vladless/Solo_bot/releases/tag/v1.4) — бот для продажи ключей VLESS:
 
-![](preview.jpg)
+![](.github/images/preview_v1.jpg)
 
 - [v2.3.1](https://github.com/Vladless/Solo_bot/releases/tag/v2.3.1) — стабильная версия подписок вместо ключей с
   кнопками автодобавления в приложение:
 
-![](preview_v_2.jpg)
+![](.github/images/preview_v2.jpg)
 
 - [v3.1](https://github.com/Vladless/Solo_bot/releases/tag/v3.1) — версия бота со значительным расширением возможностей.
 
