@@ -51,9 +51,7 @@ async def process_callback_view_profile(
     try:
         trial_status = await get_trial(chat_id, conn)
 
-        profile_message = profile_message_send(
-            username, chat_id, int(balance), key_count
-        )
+        profile_message = profile_message_send(username, chat_id, int(balance), key_count)
 
         if key_count == 0:
             profile_message += "\n<pre>🔧 <i>Нажмите кнопку ➕ Подписка, чтобы настроить VPN-подключение</i></pre>"
@@ -81,9 +79,7 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
         )
         if admin:
-            builder.row(
-                InlineKeyboardButton(text="🔧 Администратор", callback_data="admin")
-            )
+            builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
         if os.path.isfile(image_path):
@@ -122,10 +118,8 @@ async def balance_handler(callback_query: types.CallbackQuery):
     builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    await callback_query.message.answer(
-        "💰 Управление балансом:",
-        reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("💰 Управление балансом:", reply_markup=builder.as_markup())
+
 
 @router.callback_query(F.data == "balance_history")
 async def balance_history_handler(callback_query: types.CallbackQuery, session: Any):
@@ -145,10 +139,10 @@ async def balance_history_handler(callback_query: types.CallbackQuery, session: 
     if records:
         history_text = "📊 <b>Последние 3 операции с балансом:</b>\n\n"
         for record in records:
-            amount = record['amount']
-            payment_system = record['payment_system']
-            status = record['status']
-            date = record['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            amount = record["amount"]
+            payment_system = record["payment_system"]
+            status = record["status"]
+            date = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
             history_text += (
                 f"<b>Сумма:</b> {amount}₽\n"
                 f"<b>Способ оплаты:</b> {payment_system}\n"
@@ -158,11 +152,7 @@ async def balance_history_handler(callback_query: types.CallbackQuery, session: 
     else:
         history_text = "❌ У вас пока нет операций с балансом."
 
-    await callback_query.message.answer(
-        history_text,
-        reply_markup=builder.as_markup()
-    )
-
+    await callback_query.message.answer(history_text, reply_markup=builder.as_markup())
 
 
 @router.message(F.text == "/tariffs")

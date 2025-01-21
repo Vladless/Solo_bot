@@ -40,48 +40,23 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     BOT_VERSION = "4.0.0-preAlpha(14)"
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="📊 Статистика пользователей", callback_data="user_stats"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="👥 Управление пользователями", callback_data="user_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🖥️ Управление серверами", callback_data="servers_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🎟️ Управление купонами", callback_data="coupons_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🤖 Управление Ботом", callback_data="bot_management")
-    )
+    builder.row(InlineKeyboardButton(text="📊 Статистика пользователей", callback_data="user_stats"))
+    builder.row(InlineKeyboardButton(text="👥 Управление пользователями", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="🖥️ Управление серверами", callback_data="servers_editor"))
+    builder.row(InlineKeyboardButton(text="🎟️ Управление купонами", callback_data="coupons_editor"))
+    builder.row(InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to"))
+    builder.row(InlineKeyboardButton(text="🤖 Управление Ботом", callback_data="bot_management"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     await message.answer(
-        f"🤖 Панель администратора\n\nВерсия бота: <b>{BOT_VERSION}</b>",
-        reply_markup=builder.as_markup()
+        f"🤖 Панель администратора\n\nВерсия бота: <b>{BOT_VERSION}</b>", reply_markup=builder.as_markup()
     )
 
 
 @router.callback_query(F.data == "bot_management")
 async def handle_bot_management(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
-    )
+    builder.row(InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups"))
+    builder.row(InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot"))
     builder.row(InlineKeyboardButton(text="🚫 Баны", callback_data="ban_user"))
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
     await callback_query.message.answer(
@@ -106,13 +81,9 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
         total_payments_month = await session.fetchval(
             "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
         )
-        total_payments_all_time = await session.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments"
-        )
+        total_payments_all_time = await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments")
 
-        registrations_today = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE"
-        )
+        registrations_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
         registrations_week = await session.fetchval(
             "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
         )
@@ -120,9 +91,7 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
         )
 
-        users_updated_today = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE"
-        )
+        users_updated_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE")
 
         active_keys = await session.fetchval(
             "SELECT COUNT(*) FROM keys WHERE expiry_time > $1",
@@ -153,27 +122,17 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
         )
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="user_stats")
-        )
+        builder.row(InlineKeyboardButton(text="🔄 Обновить", callback_data="user_stats"))
         builder.row(
             InlineKeyboardButton(
                 text="📥 Выгрузить пользователей в CSV",
                 callback_data="export_users_csv",
             )
         )
-        builder.row(
-            InlineKeyboardButton(
-                text="📥 Выгрузить оплаты в CSV", callback_data="export_payments_csv"
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin")
-        )
+        builder.row(InlineKeyboardButton(text="📥 Выгрузить оплаты в CSV", callback_data="export_payments_csv"))
+        builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
 
-        await callback_query.message.answer(
-            stats_message, reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer(stats_message, reply_markup=builder.as_markup())
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
 
@@ -200,14 +159,10 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
         )
 
         if not users:
-            await callback_query.message.answer(
-                "📭 Нет пользователей для экспорта.", reply_markup=builder.as_markup()
-            )
+            await callback_query.message.answer("📭 Нет пользователей для экспорта.", reply_markup=builder.as_markup())
             return
 
-        csv_data = (
-            "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
-        )
+        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
         for user in users:
             csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
 
@@ -253,9 +208,7 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
         )
 
         if not payments:
-            await callback_query.message.answer(
-                "📭 Нет платежей для экспорта.", reply_markup=builder.as_markup()
-            )
+            await callback_query.message.answer("📭 Нет платежей для экспорта.", reply_markup=builder.as_markup())
             return
 
         csv_data = "tg_id,username,first_name,last_name,amount,payment_system,status,created_at\n"  # Заголовки CSV
@@ -283,24 +236,10 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "send_to", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all")
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📢 Отправить с подпиской", callback_data="send_to_subscribed"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📢 Рассылка по кластеру", callback_data="send_to_cluster"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="📢 Отправить всем", callback_data="send_to_all"))
+    builder.row(InlineKeyboardButton(text="📢 Отправить с подпиской", callback_data="send_to_subscribed"))
+    builder.row(InlineKeyboardButton(text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"))
+    builder.row(InlineKeyboardButton(text="📢 Рассылка по кластеру", callback_data="send_to_cluster"))
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
     await callback_query.message.answer(
         "✍️ Выберите группу пользователей и введите текст сообщения для рассылки:",
@@ -311,34 +250,26 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "send_to_all", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(send_to="all")
-    await callback_query.message.answer(
-        "✍️ Введите текст сообщения для рассылки всем пользователям:"
-    )
+    await callback_query.message.answer("✍️ Введите текст сообщения для рассылки всем пользователям:")
     await state.set_state(UserEditorState.waiting_for_message)
 
 
 @router.callback_query(F.data == "send_to_subscribed", IsAdminFilter())
 async def handle_send_to_subscribed(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(send_to="subscribed")
-    await callback_query.message.answer(
-        "✍️ Введите текст сообщения для рассылки пользователям с активной подпиской:"
-    )
+    await callback_query.message.answer("✍️ Введите текст сообщения для рассылки пользователям с активной подпиской:")
     await state.set_state(UserEditorState.waiting_for_message)
 
 
 @router.callback_query(F.data == "send_to_unsubscribed", IsAdminFilter())
 async def handle_send_to_unsubscribed(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(send_to="unsubscribed")
-    await callback_query.message.answer(
-        "✍️ Введите текст сообщения для рассылки пользователям без активной подписки:"
-    )
+    await callback_query.message.answer("✍️ Введите текст сообщения для рассылки пользователям без активной подписки:")
     await state.set_state(UserEditorState.waiting_for_message)
 
 
 @router.callback_query(F.data == "send_to_cluster", IsAdminFilter())
-async def handle_send_to_cluster(
-    callback_query: CallbackQuery, state: FSMContext, session: Any
-):
+async def handle_send_to_cluster(callback_query: CallbackQuery, state: FSMContext, session: Any):
     clusters = await session.fetch("SELECT DISTINCT cluster_name FROM servers")
 
     builder = InlineKeyboardBuilder()
@@ -368,9 +299,7 @@ async def handle_send_cluster(callback_query: CallbackQuery, state: FSMContext):
 
 
 @router.message(UserEditorState.waiting_for_message, IsAdminFilter())
-async def process_message_to_all(
-    message: types.Message, state: FSMContext, session: Any
-):
+async def process_message_to_all(message: types.Message, state: FSMContext, session: Any):
     text_message = message.text
 
     try:
@@ -424,9 +353,7 @@ async def process_message_to_all(
                 success_count += 1
             except Exception as e:
                 error_count += 1
-                logger.error(
-                    f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}"
-                )
+                logger.error(f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}")
 
         await message.answer(
             f"📤 Рассылка завершена:\n"
@@ -442,13 +369,9 @@ async def process_message_to_all(
 
 @router.callback_query(F.data == "backups", IsAdminFilter())
 async def handle_backup(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer(
-        "💾 Инициализация резервного копирования базы данных..."
-    )
+    await callback_query.message.answer("💾 Инициализация резервного копирования базы данных...")
     await backup_database()
-    await callback_query.message.answer(
-        "✅ Резервная копия успешно создана и отправлена администратору."
-    )
+    await callback_query.message.answer("✅ Резервная копия успешно создана и отправлена администратору.")
 
 
 @router.callback_query(F.data == "restart_bot", IsAdminFilter())
@@ -456,9 +379,7 @@ async def handle_restart(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(UserEditorState.waiting_for_restart_confirmation)
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(
-            text="✅ Да, перезапустить", callback_data="confirm_restart"
-        ),
+        InlineKeyboardButton(text="✅ Да, перезапустить", callback_data="confirm_restart"),
         InlineKeyboardButton(text="❌ Нет, отмена", callback_data="admin"),
     )
     builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
@@ -484,13 +405,9 @@ async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
             text=True,
         )
         await state.clear()
-        await callback_query.message.answer(
-            "🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer("🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup())
     except subprocess.CalledProcessError:
-        await callback_query.message.answer(
-            "🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup()
-        )
+        await callback_query.message.answer("🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup())
     except Exception as e:
         await callback_query.message.answer(
             f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
@@ -507,37 +424,20 @@ async def user_editor_menu(callback_query: CallbackQuery):
             callback_data="search_by_key_name",
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 Поиск по Username", callback_data="search_by_username"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"))
+    builder.row(InlineKeyboardButton(text="🌐 Поиск по Username", callback_data="search_by_username"))
     builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="admin"))
-    await callback_query.message.answer(
-        "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer("👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "ban_user")
 async def handle_ban_user(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="📄 Выгрузить в CSV", callback_data="export_to_csv")
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🗑️ Удалить из БД", callback_data="delete_banned_users"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="📄 Выгрузить в CSV", callback_data="export_to_csv"))
+    builder.row(InlineKeyboardButton(text="🗑️ Удалить из БД", callback_data="delete_banned_users"))
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
     await callback_query.message.answer(
-        "🚫 Заблокировавшие бота\n\n"
-        "Здесь можно просматривать и удалять пользователей, которые забанили вашего бота!",
+        "🚫 Заблокировавшие бота\n\nЗдесь можно просматривать и удалять пользователей, которые забанили вашего бота!",
         reply_markup=builder.as_markup(),
     )
 
@@ -559,14 +459,10 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
 
         csv_output.seek(0)
 
-        document = BufferedInputFile(
-            file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv"
-        )
+        document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv")
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
-        )
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
 
         await callback_query.message.answer_document(
             document=document,
@@ -575,9 +471,7 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
         )
     except Exception as e:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
-        )
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
         await callback_query.message.answer(
             text=f"Ошибка при выгрузке CSV: {e}",
             reply_markup=builder.as_markup(),
@@ -594,31 +488,23 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
         blocked_ids = [record["tg_id"] for record in blocked_users]
 
         if not blocked_ids:
-            await callback_query.message.answer(
-                "📂 Нет заблокировавших пользователей для удаления."
-            )
+            await callback_query.message.answer("📂 Нет заблокировавших пользователей для удаления.")
             return
 
         for tg_id in blocked_ids:
             await delete_user_data(conn, tg_id)
 
-        await conn.execute(
-            "DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids
-        )
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids)
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
-        )
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
         await callback_query.message.answer(
             text=f"🗑️ Удалено данные о {len(blocked_ids)} пользователях и связанных записях.",
             reply_markup=builder.as_markup(),
         )
     except Exception as e:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management")
-        )
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
         await callback_query.message.answer(
             text=f"Ошибка при удалении записей: {e}",
             reply_markup=builder.as_markup(),

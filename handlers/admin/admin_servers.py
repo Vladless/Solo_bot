@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, SUPERNODE
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
@@ -33,15 +33,9 @@ async def handle_servers_editor(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
 
     for cluster_name, cluster_servers in servers.items():
-        builder.row(
-            InlineKeyboardButton(
-                text=f"⚙️ {cluster_name}", callback_data=f"manage_cluster|{cluster_name}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"⚙️ {cluster_name}", callback_data=f"manage_cluster|{cluster_name}"))
 
-    builder.row(
-        InlineKeyboardButton(text="➕ Добавить кластер", callback_data="add_cluster")
-    )
+    builder.row(InlineKeyboardButton(text="➕ Добавить кластер", callback_data="add_cluster"))
     builder.row(InlineKeyboardButton(text="🔙 Назад в админку", callback_data="admin"))
 
     await callback_query.message.answer(
@@ -72,11 +66,7 @@ async def handle_cluster_name_input(message: types.Message, state: FSMContext):
     if cluster_name == "❌ Отменить":
         await state.clear()
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🔧 Управление кластерами", callback_data="servers_editor"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="🔧 Управление кластерами", callback_data="servers_editor"))
         await message.answer(
             "Процесс создания кластера отменен. Вы вернулись в меню управления серверами.",
             reply_markup=builder.as_markup(),
@@ -90,9 +80,7 @@ async def handle_cluster_name_input(message: types.Message, state: FSMContext):
     await state.update_data(cluster_name=cluster_name)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor")
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor"))
 
     await message.answer(
         f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
@@ -110,11 +98,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
     if server_name == "❌ Отменить":
         await state.clear()
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🔧 Управление кластерами", callback_data="servers_editor"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="🔧 Управление кластерами", callback_data="servers_editor"))
         await message.answer(
             "Процесс создания кластера был отменен. Вы вернулись в меню управления серверами.",
             reply_markup=builder.as_markup(),
@@ -127,9 +111,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
 
     server_unique = await check_unique_server_name(server_name)
     if not server_unique:
-        await message.answer(
-            "❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя."
-        )
+        await message.answer("❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.")
         return
 
     user_data = await state.get_data()
@@ -137,9 +119,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
     await state.update_data(server_name=server_name)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor")
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor"))
 
     await message.answer(
         f"<b>Введите API URL для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
@@ -158,11 +138,7 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
     if api_url == "❌ Отменить":
         await state.clear()
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🔧 Управление кластерами", callback_data="servers_editor"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="🔧 Управление кластерами", callback_data="servers_editor"))
         await message.answer(
             "Процесс создания кластера был отменен. Вы вернулись в меню управления серверами.",
             reply_markup=builder.as_markup(),
@@ -183,9 +159,7 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
     await state.update_data(api_url=api_url)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor")
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor"))
 
     await message.answer(
         f"<b>Введите subscription_url для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
@@ -205,11 +179,7 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
     if subscription_url == "❌ Отменить":
         await state.clear()
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🔧 Управление кластерами", callback_data="servers_editor"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="🔧 Управление кластерами", callback_data="servers_editor"))
         await message.answer(
             "Процесс создания кластера был отменен. Вы вернулись в меню управления серверами.",
             reply_markup=builder.as_markup(),
@@ -230,9 +200,7 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
     await state.update_data(subscription_url=subscription_url)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor")
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor"))
 
     await message.answer(
         f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
@@ -247,9 +215,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext):
     inbound_id = message.text.strip()
 
     if not inbound_id.isdigit():
-        await message.answer(
-            "❌ inbound_id должен быть числовым значением. Попробуйте снова."
-        )
+        await message.answer("❌ inbound_id должен быть числовым значением. Попробуйте снова.")
         return
 
     user_data = await state.get_data()
@@ -273,11 +239,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext):
     await conn.close()
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад к кластерам", callback_data="servers_editor"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад к кластерам", callback_data="servers_editor"))
 
     await message.answer(
         f"✅ Кластер {cluster_name} и сервер {server_name} успешно добавлены!",
@@ -304,11 +266,7 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
             )
         )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="➕ Добавить сервер", callback_data=f"add_server|{cluster_name}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="➕ Добавить сервер", callback_data=f"add_server|{cluster_name}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -331,11 +289,7 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
         )
     )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад в управление кластерами", callback_data="servers_editor"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
 
     await callback_query.message.answer(
         f"🔧 Управление серверами для кластера {cluster_name}",
@@ -361,11 +315,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
             await callback_query.message.answer(
                 f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
                 reply_markup=InlineKeyboardBuilder()
-                .row(
-                    InlineKeyboardButton(
-                        text="🔙 Назад", callback_data="servers_editor"
-                    )
-                )
+                .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
                 .as_markup(),
             )
             return
@@ -421,36 +371,24 @@ async def handle_check_server_availability(callback_query: types.CallbackQuery):
         "Это может занять до 1 минуты, пожалуйста, подождите..."
     )
 
-    availability_message = (
-        f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
-    )
+    availability_message = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
 
     for server in cluster_servers:
-        xui = AsyncApi(
-            server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD
-        )
+        xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
         try:
             await xui.login()
 
             online_users = len(await xui.client.online())
-            availability_message += (
-                f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
-            )
+            availability_message += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
 
         except Exception as e:
             availability_message += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"))
 
-    await in_progress_message.edit_text(
-        availability_message, reply_markup=builder.as_markup()
-    )
+    await in_progress_message.edit_text(availability_message, reply_markup=builder.as_markup())
 
     await callback_query.answer()
 
@@ -464,9 +402,7 @@ async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMCo
     server = None
     cluster_name = None
     for cluster, cluster_servers in servers.items():
-        server = next(
-            (s for s in cluster_servers if s["server_name"] == server_name), None
-        )
+        server = next((s for s in cluster_servers if s["server_name"] == server_name), None)
         if server:
             cluster_name = cluster
             break
@@ -477,16 +413,8 @@ async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMCo
         inbound_id = server["inbound_id"]
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(
-                text="🗑️ Удалить", callback_data=f"delete_server|{server_name}"
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_server|{server_name}"))
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"))
 
         await callback_query.message.answer(
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
@@ -505,12 +433,8 @@ async def handle_delete_server(callback_query: types.CallbackQuery, state: FSMCo
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(
-            text="✅ Да", callback_data=f"confirm_delete_server|{server_name}"
-        ),
-        InlineKeyboardButton(
-            text="❌ Нет", callback_data=f"manage_server|{server_name}"
-        ),
+        InlineKeyboardButton(text="✅ Да", callback_data=f"confirm_delete_server|{server_name}"),
+        InlineKeyboardButton(text="❌ Нет", callback_data=f"manage_server|{server_name}"),
     )
 
     await callback_query.message.answer(
@@ -520,9 +444,7 @@ async def handle_delete_server(callback_query: types.CallbackQuery, state: FSMCo
 
 
 @router.callback_query(F.data.startswith("confirm_delete_server|"), IsAdminFilter())
-async def handle_confirm_delete_server(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def handle_confirm_delete_server(callback_query: types.CallbackQuery, state: FSMContext):
     server_name = callback_query.data.split("|")[1]
 
     conn = await asyncpg.connect(DATABASE_URL)
@@ -535,15 +457,9 @@ async def handle_confirm_delete_server(
     await conn.close()
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад в управление кластерами", callback_data="servers_editor"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
 
-    await callback_query.message.answer(
-        f"🗑️ Сервер {server_name} успешно удален.", reply_markup=builder.as_markup()
-    )
+    await callback_query.message.answer(f"🗑️ Сервер {server_name} успешно удален.", reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("add_server|"), IsAdminFilter())
@@ -553,9 +469,7 @@ async def handle_add_server(callback_query: types.CallbackQuery, state: FSMConte
     await state.update_data(cluster_name=cluster_name)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor")
-    )
+    builder.row(InlineKeyboardButton(text="❌ Отменить", callback_data="servers_editor"))
 
     await callback_query.message.answer(
         f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"

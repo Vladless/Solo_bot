@@ -14,9 +14,7 @@ from logger import logger
 async def get_usd_rate():
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "https://www.cbr-xml-daily.ru/daily_json.js"
-            ) as response:
+            async with session.get("https://www.cbr-xml-daily.ru/daily_json.js") as response:
                 if response.status == 200:
                     data = await response.text()
                     usd = float(json.loads(data)["Valute"]["USD"]["Value"])
@@ -86,9 +84,7 @@ async def get_least_loaded_cluster() -> str:
     return least_loaded_cluster
 
 
-async def handle_error(
-    tg_id: int, callback_query: object | None = None, message: str = ""
-) -> None:
+async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
 
@@ -100,9 +96,7 @@ async def handle_error(
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
-                await bot.delete_message(
-                    chat_id=tg_id, message_id=callback_query.message.message_id
-                )
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 

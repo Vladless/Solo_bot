@@ -55,16 +55,12 @@ class Form(StatesGroup):
 
 
 @router.callback_query(F.data == "create_key")
-async def confirm_create_new_key(
-    callback_query: CallbackQuery, state: FSMContext, session: Any
-):
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
 
-    logger.info(
-        f"Balance for user {tg_id} is sufficient. Proceeding with key creation."
-    )
+    logger.info(f"Balance for user {tg_id} is sufficient. Proceeding with key creation.")
 
     await handle_key_creation(tg_id, state, session, callback_query)
 
@@ -83,9 +79,7 @@ async def handle_key_creation(
         expiry_time = current_time + timedelta(days=TRIAL_TIME)
         logger.info(f"Assigned 1-day trial to user {tg_id}.")
 
-        await session.execute(
-            "UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id
-        )
+        await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
         await create_key(tg_id, expiry_time, state, session, message_or_query)
     else:
         builder = InlineKeyboardBuilder()
@@ -107,9 +101,7 @@ async def handle_key_creation(
                 )
             )
 
-        builder.row(
-            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-        )
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
         await message_or_query.message.answer(
             "💳 Выберите тарифный план для создания нового ключа:",
@@ -153,12 +145,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             await handle_custom_amount_input(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay")
-            )
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
+            builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             await callback_query.message.answer(
                 f"💳 Недостаточно средств. Для продолжения необходимо пополнить баланс на {required_amount}₽.",
@@ -193,9 +181,7 @@ async def create_key(
         )
         if not existing_key:
             break
-        logger.warning(
-            f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one."
-        )
+        logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()

@@ -59,8 +59,6 @@ class ThrottlingMiddleware(BaseMiddleware):
                 )
                 self.caches[key][user.id] = None
             else:
-                logger.debug(
-                    f"No throttling key provided for user {user.id}, proceeding without throttle."
-                )
+                logger.debug(f"No throttling key provided for user {user.id}, proceeding without throttle.")
 
         return await handler(event, data)

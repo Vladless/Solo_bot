@@ -15,7 +15,7 @@ async def add_client(
     enable: bool,
     flow: str,
     inbound_id: int,
-    sub_id
+    sub_id,
 ):
     """
     Adds a client to the server via 3x-ui.
@@ -45,9 +45,7 @@ async def add_client(
         error_message = str(e)
 
         if "Duplicate email" in error_message:
-            logger.warning(
-                f"Дублированный email: {email}. Пропуск. Сообщение: {error_message}"
-            )
+            logger.warning(f"Дублированный email: {email}. Пропуск. Сообщение: {error_message}")
             return {"status": "duplicate", "email": email}
 
         logger.error(f"Ошибка при добавлении клиента {email}: {error_message}")
@@ -55,7 +53,7 @@ async def add_client(
 
 
 async def extend_client_key(
-    xui, inbound_id, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id = str
+    xui, inbound_id, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id=str
 ):
     """
     Функция для обновления срока действия ключа клиента по email.
@@ -72,9 +70,7 @@ async def extend_client_key(
             logger.warning(f"Ошибка: клиент {email} не имеет действительного ID.")
             return
 
-        logger.info(
-            f"Обновление ключа клиента {client.email} с ID {client.id} до нового времени: {new_expiry_time}"
-        )
+        logger.info(f"Обновление ключа клиента {client.email} с ID {client.id} до нового времени: {new_expiry_time}")
 
         client.id = client_id
         client.expiry_time = new_expiry_time
@@ -87,9 +83,7 @@ async def extend_client_key(
 
         await xui.client.update(client.id, client)
         await xui.client.reset_stats(inbound_id, email)
-        logger.info(
-            f"Ключ клиента {client.email} успешно продлён до {new_expiry_time}."
-        )
+        logger.info(f"Ключ клиента {client.email} успешно продлён до {new_expiry_time}.")
 
     except Exception as e:
         logger.error(f"Ошибка при обновлении клиента с email {email}: {e}")
