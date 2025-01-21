@@ -3,7 +3,7 @@ import locale
 import os
 from datetime import datetime, timedelta
 from typing import Any
-
+import aiofiles
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -123,9 +123,10 @@ async def send_with_optional_image(send_message, send_photo, image_path, text, k
     Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
     """
     if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_file:
+        async with aiofiles.open(image_path, "rb") as image_file:
+            image_data = await image_file.read()
             await send_photo(
-                photo=BufferedInputFile(image_file.read(), filename=os.path.basename(image_path)),
+                photo=BufferedInputFile(image_data, filename=os.path.basename(image_path)),
                 caption=text,
                 reply_markup=keyboard,
             )
@@ -219,9 +220,10 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 await callback_query.message.answer("Файл изображения не найден.")
                 return
 
-            with open(image_path, "rb") as image_file:
+            async with aiofiles.open(image_path, "rb") as image_file:
+                image_data = await image_file.read()
                 await callback_query.message.answer_photo(
-                    photo=BufferedInputFile(image_file.read(), filename="pic_view.jpg"),
+                    photo=BufferedInputFile(image_data, filename="pic_view.jpg"),
                     caption=response_message,
                     reply_markup=keyboard,
                 )

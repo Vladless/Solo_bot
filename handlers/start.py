@@ -1,6 +1,6 @@
 import os
 from typing import Any
-
+import aiofiles
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -190,9 +190,10 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
     builder.row(InlineKeyboardButton(text="🌐 О VPN", callback_data="about_vpn"))
 
     if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_from_buffer:
+        async with aiofiles.open(image_path, "rb") as image_from_buffer:
+            image_data = await image_from_buffer.read()
             await message.answer_photo(
-                photo=BufferedInputFile(image_from_buffer.read(), filename="pic.jpg"),
+                photo=BufferedInputFile(image_data, filename="pic.jpg"),
                 caption=WELCOME_TEXT,
                 reply_markup=builder.as_markup(),
             )
