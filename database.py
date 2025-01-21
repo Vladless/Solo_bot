@@ -46,7 +46,7 @@ async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
 
 
 async def init_db(file_path: str = "assets/schema.sql"):
-    with open(file_path) as file:
+    with open(file_path, mode="r") as file:
         sql_content = file.read()
 
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
