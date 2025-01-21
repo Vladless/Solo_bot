@@ -20,6 +20,7 @@ from config import (
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
     TRIAL_TIME,
+    USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
@@ -37,7 +38,7 @@ from handlers.buttons.add_subscribe import (
     PC_BUTTON,
     TV_BUTTON,
 )
-from handlers.keys.key_utils import create_key_on_cluster
+from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import DISCOUNTS, key_message_success
@@ -166,9 +167,9 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             )
         return
 
-    await update_balance(tg_id, -plan_price)
     expiry_time = datetime.utcnow() + timedelta(days=duration_days)
     await create_key(tg_id, expiry_time, None, session, callback_query)
+    await update_balance(tg_id, -plan_price)
 
 
 async def create_key(
@@ -182,9 +183,65 @@ async def create_key(
     moscow_tz = pytz.timezone("Europe/Moscow")
     expiry_time = expiry_time.astimezone(moscow_tz)
 
+    if USE_COUNTRY_SELECTION:
+        logger.info("[Country Selection] USE_COUNTRY_SELECTION включен.")
+
+        logger.info("[Country Selection] Получение наименее загруженного кластера.")
+        least_loaded_cluster = await get_least_loaded_cluster()
+        logger.info(f"[Country Selection] Наименее загруженный кластер: {least_loaded_cluster}")
+
+        logger.info(f"[Country Selection] Получение списка серверов для кластера {least_loaded_cluster}.")
+        servers = await session.fetch(
+            "SELECT server_name FROM servers WHERE cluster_name = $1",
+            least_loaded_cluster,
+        )
+        countries = [server["server_name"] for server in servers]
+        logger.info(f"[Country Selection] Список серверов: {countries}")
+
+        builder = InlineKeyboardBuilder()
+        for country in countries:
+            callback_data = f"select_country|{country}|{expiry_time.isoformat()}"
+            builder.row(
+                InlineKeyboardButton(
+                    text=country, callback_data=callback_data
+                )
+            )
+            logger.info(f"[Country Selection] Добавлена кнопка для страны: {country} с callback_data: {callback_data}")
+
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="profile"))
+        logger.info("[Country Selection] Добавлена кнопка '🔙 Назад'.")
+
+        if isinstance(message_or_query, Message):
+            logger.info("[Country Selection] Сообщение пользователя - тип Message.")
+            await message_or_query.answer(
+                "🌍 Пожалуйста, выберите страну для вашего ключа:",
+                reply_markup=builder.as_markup(),
+            )
+            logger.info("[Country Selection] Сообщение отправлено с выбором страны.")
+        elif isinstance(message_or_query, CallbackQuery):
+            logger.info("[Country Selection] Сообщение пользователя - тип CallbackQuery.")
+            await message_or_query.message.answer(
+                "🌍 Пожалуйста, выберите страну для вашего ключа:",
+                reply_markup=builder.as_markup(),
+            )
+            logger.info("[Country Selection] Сообщение отправлено с выбором страны.")
+        elif tg_id is not None:
+            logger.info("[Country Selection] Использование tg_id для отправки сообщения.")
+            await bot.send_message(
+                chat_id=tg_id,
+                text="🌍 Пожалуйста, выберите страну для вашего ключа:",
+                reply_markup=builder.as_markup(),
+            )
+            logger.info(f"[Country Selection] Сообщение отправлено напрямую в чат {tg_id}.")
+        else:
+            logger.error("[Country Selection] Невозможно определить идентификатор чата. Сообщение не отправлено.")
+
+        logger.info("[Country Selection] Возврат из функции.")
+        return
+
     while True:
         key_name = generate_random_email()
-        logger.info(f"Generated random key name for user {tg_id}: {key_name}")
+        logger.info(f"[Key Generation] Сгенерировано имя ключа: {key_name} для пользователя {tg_id}")
 
         existing_key = await session.fetchrow(
             "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
@@ -193,13 +250,11 @@ async def create_key(
         )
         if not existing_key:
             break
-        logger.warning(
-            f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one."
-        )
+        logger.warning(f"[Key Generation] Имя ключа {key_name} уже существует. Генерация нового.")
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()
-    expiry_timestamp = int(expiry_time.astimezone(moscow_tz).timestamp() * 1000)
+    expiry_timestamp = int(expiry_time.timestamp() * 1000)
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
     try:
@@ -218,7 +273,7 @@ async def create_key(
         ]
 
         await asyncio.gather(*tasks)
-        logger.info(f"Key created on cluster {least_loaded_cluster} for user {tg_id}.")
+        logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
 
         await store_key(
             tg_id,
@@ -229,9 +284,10 @@ async def create_key(
             least_loaded_cluster,
             session,
         )
+        logger.info(f"[Database] Ключ сохранён в базе данных для пользователя {tg_id}")
 
     except Exception as e:
-        logger.error(f"Error while creating the key for user {tg_id} on cluster: {e}")
+        logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
 
         error_message = "❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова."
         if isinstance(message_or_query, Message):
@@ -268,6 +324,124 @@ async def create_key(
         await message_or_query.message.answer(key_message, reply_markup=builder.as_markup())
     else:
         await bot.send_message(chat_id=tg_id, text=key_message, reply_markup=builder.as_markup())
+
+    if state:
+        await state.clear()
+        logger.info(f"[FSM] Состояние пользователя {tg_id} очищено")
+
+
+@router.callback_query(F.data.startswith("select_country|"))
+async def handle_country_selection(callback_query: CallbackQuery, session: Any):
+    """Обработчик выбора страны."""
+    data = callback_query.data.split("|")
+    selected_country = data[1]
+    expiry_time_str = data[2]
+
+    tg_id = callback_query.from_user.id
+
+    logger.info(f"Пользователь {tg_id} выбрал страну: {selected_country}")
+    logger.info(f"Получено время истечения: {expiry_time_str}")
+
+    try:
+        expiry_time = datetime.fromisoformat(expiry_time_str)
+    except ValueError:
+        logger.error(f"Ошибка преобразования времени истечения: {expiry_time_str}")
+        await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
+        return
+
+    await finalize_key_creation(tg_id, expiry_time, selected_country, None, session, callback_query)
+
+
+async def finalize_key_creation(
+    tg_id: int,
+    expiry_time: datetime,
+    selected_country: str,
+    state: FSMContext | None,
+    session: Any,
+    callback_query: CallbackQuery,
+):
+    """Финализирует создание ключа с выбранной страной."""
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_time = expiry_time.astimezone(moscow_tz)
+
+    while True:
+        key_name = generate_random_email()
+        logger.info(f"Generated random key name for user {tg_id}: {key_name}")
+
+        existing_key = await session.fetchrow(
+            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
+            key_name,
+            tg_id,
+        )
+        if not existing_key:
+            break
+        logger.warning(
+            f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one."
+        )
+
+    client_id = str(uuid.uuid4())
+    email = key_name.lower()
+    expiry_timestamp = int(expiry_time.timestamp() * 1000)
+    public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
+    try:
+        server_info = await session.fetchrow(
+            "SELECT api_url, inbound_id, server_name FROM servers WHERE server_name = $1",
+            selected_country,
+        )
+
+        if not server_info:
+            raise ValueError(f"Сервер {selected_country} не найден.")
+
+        semaphore = asyncio.Semaphore(2)
+
+        await create_client_on_server(
+            server_info=server_info,
+            tg_id=tg_id,
+            client_id=client_id,
+            email=email,
+            expiry_timestamp=expiry_timestamp,
+            semaphore=semaphore,
+        )
+
+        logger.info(f"Key created on server {selected_country} for user {tg_id}.")
+
+        await store_key(
+            tg_id,
+            client_id,
+            email,
+            expiry_timestamp,
+            public_link,
+            selected_country,
+            session,
+        )
+
+    except Exception as e:
+        logger.error(f"Error while creating the key for user {tg_id}: {e}")
+        await callback_query.message.answer("❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова.")
+        return
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.row(
+        InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+        InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
+    )
+    builder.row(
+        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
+        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
+    )
+    builder.row(
+        InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+        InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+    )
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    remaining_time = expiry_time - datetime.now(moscow_tz)
+    days = remaining_time.days
+    key_message = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
+
+    await callback_query.message.answer(key_message, reply_markup=builder.as_markup())
 
     if state:
         await state.clear()
