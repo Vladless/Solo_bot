@@ -1,7 +1,7 @@
 import os
 import subprocess
 from datetime import datetime
-
+import aiofiles
 from aiogram.types import BufferedInputFile
 
 from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
@@ -58,8 +58,9 @@ def _create_database_backup():
 
 async def _send_backup_to_admin(bot, backup_file_path):
     try:
-        with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(backup_file.read(), filename=os.path.basename(backup_file_path))
+        async with aiofiles.open(backup_file_path, "rb") as backup_file:
+            backup_file_data = await backup_file.read()
+            backup_input_file = BufferedInputFile(backup_file_data, filename=os.path.basename(backup_file_path))
             admin_ids: int | list[int] = ADMIN_ID
             if isinstance(admin_ids, list):
                 for id in admin_ids:

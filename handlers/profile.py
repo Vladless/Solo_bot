@@ -3,6 +3,7 @@ from typing import Any
 
 import asyncpg
 from aiogram import F, Router, types
+import aiofiles
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -83,16 +84,17 @@ async def process_callback_view_profile(
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
         if os.path.isfile(image_path):
-            with open(image_path, "rb") as image_file:
+            async with aiofiles.open(image_path, "rb") as image_file:
+                image_data = await image_file.read()
                 if is_callback:
                     await callback_query_or_message.message.answer_photo(
-                        photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                        photo=BufferedInputFile(image_data, filename="pic.jpg"),
                         caption=profile_message,
                         reply_markup=builder.as_markup(),
                     )
                 else:
                     await callback_query_or_message.answer_photo(
-                        photo=BufferedInputFile(image_file.read(), filename="pic.jpg"),
+                        photo=BufferedInputFile(image_data, filename="pic.jpg"),
                         caption=profile_message,
                         reply_markup=builder.as_markup(),
                     )
@@ -173,9 +175,10 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
     )
 
     if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_file:
+        async with aiofiles.open(image_path, "rb") as image_file:
+            image_data = await image_file.read()
             await callback_query.message.answer_photo(
-                photo=BufferedInputFile(image_file.read(), filename="tariffs.jpg"),
+                photo=BufferedInputFile(image_data, filename="tariffs.jpg"),
                 caption=tariffs_message,
                 reply_markup=builder.as_markup(),
             )
@@ -200,9 +203,10 @@ async def invite_handler(callback_query: types.CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_file:
+        async with aiofiles.open(image_path, "rb") as image_file:
+            image_data = await image_file.read()
             await callback_query.message.answer_photo(
-                photo=BufferedInputFile(image_file.read(), filename="pic_invite.jpg"),
+                photo=BufferedInputFile(image_data, filename="pic_invite.jpg"),
                 caption=invite_message,
                 reply_markup=builder.as_markup(),
             )

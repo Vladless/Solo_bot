@@ -1,6 +1,6 @@
 import os
 from typing import Any
-
+import aiofiles
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
@@ -45,9 +45,10 @@ async def send_instructions(
     else:
         send_photo = callback_query_or_message.answer_photo
 
-    with open(image_path, "rb") as image_from_buffer:
+    async with aiofiles.open(image_path, "rb") as image_from_buffer:
+        image_data = await image_from_buffer.read()
         await send_photo(
-            BufferedInputFile(image_from_buffer.read(), filename="instructions.jpg"),
+            BufferedInputFile(image_data, filename="instructions.jpg"),
             caption=instructions_message,
             reply_markup=builder.as_markup(),
         )
