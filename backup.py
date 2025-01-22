@@ -25,6 +25,10 @@ def _create_database_backup():
     PORT = PG_PORT
     BACKUP_DIR = BACK_DIR
     DATE = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR)
+
     BACKUP_FILE = f"{BACKUP_DIR}/{DB_NAME}-backup-{DATE}.sql"
 
     os.environ["PGPASSWORD"] = DB_PASSWORD
