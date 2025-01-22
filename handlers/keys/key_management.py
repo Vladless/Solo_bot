@@ -133,20 +133,20 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     duration_days = int(plan_id) * 30
     balance = await get_balance(tg_id)
 
-    await save_temporary_data(
-        session,
-        tg_id,
-        "waiting_for_payment",
-        {
-            "plan_id": plan_id,
-            "plan_price": plan_price,
-            "duration_days": duration_days,
-            "required_amount": max(0, plan_price - balance),
-        },
-    )
-
     if balance < plan_price:
         required_amount = plan_price - balance
+
+        await save_temporary_data(
+            session,
+            tg_id,
+            "waiting_for_payment",
+            {
+                "plan_id": plan_id,
+                "plan_price": plan_price,
+                "duration_days": duration_days,
+                "required_amount": required_amount,
+            },
+        )
 
         if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
             await process_custom_amount_input(callback_query, session)
