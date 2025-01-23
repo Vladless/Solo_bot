@@ -44,7 +44,7 @@ class UserEditorState(StatesGroup):
 @router.callback_query(F.data == "search_by_tg_id", IsAdminFilter())
 async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
     await callback_query.message.answer("🔍 Введите Telegram ID клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_tg_id)
 
@@ -52,7 +52,7 @@ async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "search_by_username", IsAdminFilter())
 async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
     await callback_query.message.answer("🔍 Введите Username клиента:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_username)
 
@@ -64,7 +64,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
 
     if not user_record:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "🔍 Пользователь с указанным username не найден. 🚫",
             reply_markup=builder.as_markup(),
@@ -80,7 +80,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
 
     if balance is None:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "🚫 Пользователь с указанным tg_id не найден. 🔍",
             reply_markup=builder.as_markup(),
@@ -109,7 +109,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
     builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
     builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
 
     user_info = (
         f"📊 Информация о пользователе:\n\n"
@@ -160,7 +160,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
 
     if balance is None:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "❌ Пользователь с указанным tg_id не найден. 🔍",
             reply_markup=builder.as_markup(),
@@ -189,7 +189,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
     )
     builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
 
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
 
     user_info = (
         f"📊 Информация о пользователе:\n\n"
@@ -210,7 +210,7 @@ async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any
     await update_trial(tg_id, 0, session)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад в меню администратора", callback_data="admin"))
 
     await callback_query.message.answer("✅ Триал успешно восстановлен.", reply_markup=builder.as_markup())
 
@@ -220,7 +220,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
     tg_id = int(callback_query.data.split("_")[2])
     await state.update_data(tg_id=tg_id)
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
     await callback_query.message.answer("💸 Введите новую сумму баланса:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
@@ -229,7 +229,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
 async def handle_new_balance_input(message: types.Message, state: FSMContext, session: Any):
     if not message.text.isdigit() or int(message.text) < 0:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "❌ Пожалуйста, введите корректную сумму для изменения баланса.",
             reply_markup=builder.as_markup(),
@@ -251,7 +251,7 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext, se
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад в меню администратора",
+            text="⬅️ Назад в меню администратора",
             callback_data="admin",
         )
     )
@@ -266,7 +266,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
 
     if not key_details:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await callback_query.message.answer(
             "🔍 <b>Информация о ключе не найдена.</b> 🚫",
             reply_markup=builder.as_markup(),
@@ -299,7 +299,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
             callback_data=f"delete_key_admin|{email}",
         )
     )
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
 
     await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
 
@@ -307,7 +307,7 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "search_by_key_name", IsAdminFilter())
 async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
     await callback_query.message.answer("🔑 Введите имя ключа:", reply_markup=builder.as_markup())
     await state.set_state(UserEditorState.waiting_for_key_name)
 
@@ -319,7 +319,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
 
     if not key_details:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "🚫 Пользователь с указанным именем ключа не найден.",
             reply_markup=builder.as_markup(),
@@ -353,7 +353,7 @@ async def handle_key_name_input(message: types.Message, state: FSMContext, sessi
             callback_data=f"delete_key_admin|{key_name}",
         )
     )
-    key_buttons.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    key_buttons.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
 
     await message.answer(response_message, reply_markup=key_buttons.as_markup())
     await state.clear()
@@ -376,7 +376,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
 
     if not email:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer("📧 Email не найден в состоянии. 🚫", reply_markup=builder.as_markup())
         await state.clear()
         return
@@ -391,7 +391,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         client_id = await get_client_id_by_email(email)
         if client_id is None:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
             await message.answer(
                 f"🚫 Клиент с email {email} не найден. 🔍",
                 reply_markup=builder.as_markup(),
@@ -402,7 +402,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         record = await get_key_details(email, session)
         if not record:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
             await message.answer(
                 "🚫 Клиент не найден в базе данных. 🔍",
                 reply_markup=builder.as_markup(),
@@ -438,11 +438,11 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
         await message.answer(response_message, reply_markup=builder.as_markup())
     except ValueError:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await message.answer(
             "❌ Пожалуйста, используйте формат: YYYY-MM-DD HH:MM:SS.",
             reply_markup=builder.as_markup(),
@@ -459,7 +459,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
 
     if key_details is None:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
         await callback_query.message.answer("🔍 Ключ не найден. 🚫", reply_markup=builder.as_markup())
         return
 
@@ -526,7 +526,7 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
     builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔄 Обновить клиента", callback_data=f"user_info|{tg_id}"))
     builder.row(InlineKeyboardButton(text="✉️ Отправить сообщение", callback_data=f"send_message_{tg_id}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
 
     user_info = (
         f"📊 Информация о пользователе:\n\n"
@@ -581,7 +581,7 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
     try:
         await delete_user_data(session, tg_id)
 
-        back_button = InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor")
+        back_button = InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor")
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
         await callback_query.message.answer(f"🗑️ Пользователь с ID {tg_id} был удален.", reply_markup=keyboard)

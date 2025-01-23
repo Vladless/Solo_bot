@@ -37,7 +37,7 @@ async def handle_servers_editor(callback_query: types.CallbackQuery, session: An
         builder.row(InlineKeyboardButton(text=f"⚙️ {cluster_name}", callback_data=f"manage_cluster|{cluster_name}"))
 
     builder.row(InlineKeyboardButton(text="➕ Добавить кластер", callback_data="add_cluster"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад в админку", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад в админку", callback_data="admin"))
 
     await callback_query.message.answer(
         "<b>🔧 Управление кластерами</b>\n\n"
@@ -235,7 +235,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext, ses
     )
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад к кластерам", callback_data="servers_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад к кластерам", callback_data="servers_editor"))
 
     await message.answer(
         f"✅ Кластер {cluster_name} и сервер {server_name} успешно добавлены!",
@@ -285,7 +285,7 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
         )
     )
 
-    builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад в управление кластерами", callback_data="servers_editor"))
 
     await callback_query.message.answer(
         f"🔧 Управление серверами для кластера {cluster_name}",
@@ -305,7 +305,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any
             await callback_query.message.answer(
                 f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
                 reply_markup=InlineKeyboardBuilder()
-                .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+                .row(InlineKeyboardButton(text="⬅️ Назад", callback_data="servers_editor"))
                 .as_markup(),
             )
             return
@@ -330,7 +330,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any
         await callback_query.message.answer(
             f"✅ Ключи успешно синхронизированы для кластера {cluster_name}.",
             reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+            .row(InlineKeyboardButton(text="⬅️ Назад", callback_data="servers_editor"))
             .as_markup(),
         )
     except Exception as e:
@@ -338,7 +338,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any
         await callback_query.message.answer(
             f"❌ Произошла ошибка при синхронизации: {e}",
             reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+            .row(InlineKeyboardButton(text="⬅️ Назад", callback_data="servers_editor"))
             .as_markup(),
         )
 
@@ -374,7 +374,7 @@ async def handle_check_server_availability(callback_query: types.CallbackQuery, 
             availability_message += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"manage_cluster|{cluster_name}"))
 
     await in_progress_message.edit_text(availability_message, reply_markup=builder.as_markup())
 
@@ -402,7 +402,7 @@ async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMCo
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_server|{server_name}"))
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=f"manage_cluster|{cluster_name}"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"manage_cluster|{cluster_name}"))
 
         await callback_query.message.answer(
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
@@ -438,7 +438,7 @@ async def handle_confirm_delete_server(callback_query: types.CallbackQuery, stat
     await delete_server(server_name, session)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад в управление кластерами", callback_data="servers_editor"))
 
     await callback_query.message.answer(f"🗑️ Сервер {server_name} успешно удален.", reply_markup=builder.as_markup())
 
@@ -478,7 +478,7 @@ async def handle_backup_cluster(callback_query: types.CallbackQuery, session: An
         await create_backup_and_send_to_admins(xui)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="servers_editor"))
 
     await callback_query.message.answer(
         f"<b>Бэкап для кластера {cluster_name} был успешно создан и отправлен администраторам!</b>\n\n"

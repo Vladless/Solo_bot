@@ -214,7 +214,7 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_robokassa"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa"))
 
     await callback_query.message.answer(
         "Пожалуйста, введите сумму пополнения.",

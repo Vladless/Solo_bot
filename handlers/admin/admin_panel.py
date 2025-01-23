@@ -138,7 +138,7 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "export_users_csv", IsAdminFilter())
 async def export_users_csv(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_stats"))
     try:
         users = await session.fetch(
             """
@@ -187,7 +187,7 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data == "export_payments_csv", IsAdminFilter())
 async def export_payments_csv(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_stats"))
     try:
         payments = await session.fetch(
             """
@@ -238,7 +238,7 @@ async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
     builder.row(InlineKeyboardButton(text="📢 Отправить с подпиской", callback_data="send_to_subscribed"))
     builder.row(InlineKeyboardButton(text="📢 Отправить без подписки", callback_data="send_to_unsubscribed"))
     builder.row(InlineKeyboardButton(text="📢 Рассылка по кластеру", callback_data="send_to_cluster"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
     await callback_query.message.answer(
         "✍️ Выберите группу пользователей и введите текст сообщения для рассылки:",
         reply_markup=builder.as_markup(),
@@ -279,7 +279,7 @@ async def handle_send_to_cluster(callback_query: CallbackQuery, state: FSMContex
             )
         )
 
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="send_to"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="send_to"))
     await callback_query.message.answer(
         "✍️ Выберите кластер для рассылки сообщений:",
         reply_markup=builder.as_markup(),
