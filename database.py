@@ -1407,3 +1407,40 @@ async def update_coupon_usage_count(coupon_id: int, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при обновлении счетчика использования купона {coupon_id}: {e}")
         raise
+
+
+
+
+async def get_last_payments(tg_id: int, session: Any):
+    """
+    Получает последние 3 платежа пользователя.
+
+    Args:
+        tg_id (int): Telegram ID пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        list: Список последних платежей пользователя
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        records = await session.fetch(
+            """
+            SELECT amount, payment_system, status, created_at
+            FROM payments 
+            WHERE tg_id = $1
+            ORDER BY created_at DESC
+            LIMIT 3
+            """,
+            tg_id
+        )
+        logger.info(f"Успешно получены последние платежи для пользователя {tg_id}")
+        return records
+    except Exception as e:
+        logger.error(f"Ошибка при получении последних платежей для пользователя {tg_id}: {e}")
+        raise
+
+
+
