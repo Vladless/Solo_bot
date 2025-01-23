@@ -187,7 +187,6 @@ async def process_10h_record(record, bot, conn):
         await send_renewal_notification(bot, tg_id, email, message, conn, record["client_id"], "notified")
 
 
-
 async def notify_24h_keys(
     bot: Bot,
     conn: asyncpg.Connection,
@@ -327,12 +326,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user["username"]
         first_name = user["first_name"]
         last_name = user["last_name"]
-        display_name = (
-            username
-            or first_name
-            or last_name
-            or "Пользователь"
-        )
+        display_name = username or first_name or last_name or "Пользователь"
 
         try:
             can_notify = await check_notification_time(tg_id, "inactive_trial", hours=24, session=conn)
@@ -407,9 +401,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     for record in expired_keys:
         try:
             await delete_key_from_cluster(record["server_id"], record["email"], record["email"])
-            await conn.execute(
-                "DELETE FROM keys WHERE client_id = $1", record["client_id"]
-            )
+            await conn.execute("DELETE FROM keys WHERE client_id = $1", record["client_id"])
             logger.info(f"Удалён истёкший ключ {record['client_id']} пользователя {record['tg_id']}.")
         except Exception as e:
             logger.error(f"Ошибка при удалении истёкшего ключа {record['client_id']}: {e}")
@@ -468,7 +460,7 @@ async def process_key(record, bot, conn):
                         await bot.send_photo(
                             tg_id,
                             photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
-                            caption = KEY_RENEWED.format(email=email),
+                            caption=KEY_RENEWED.format(email=email),
                             reply_markup=keyboard,
                         )
                 else:

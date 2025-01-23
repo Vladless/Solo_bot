@@ -189,11 +189,7 @@ async def create_key(
         builder = InlineKeyboardBuilder()
         for country in countries:
             callback_data = f"select_country|{country}|{expiry_time.isoformat()}"
-            builder.row(
-                InlineKeyboardButton(
-                    text=country, callback_data=callback_data
-                )
-            )
+            builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
             logger.info(f"[Country Selection] Добавлена кнопка для страны: {country} с callback_data: {callback_data}")
 
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="profile"))
@@ -363,9 +359,7 @@ async def finalize_key_creation(
         )
         if not existing_key:
             break
-        logger.warning(
-            f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one."
-        )
+        logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()

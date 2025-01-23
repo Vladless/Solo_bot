@@ -73,9 +73,7 @@ async def create_client_on_server(
         server_name = server_info.get("server_name", "unknown")
 
         if not inbound_id:
-            logger.warning(
-                f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-            )
+            logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             return
 
         if SUPERNODE:
@@ -101,7 +99,6 @@ async def create_client_on_server(
 
         if SUPERNODE:
             await asyncio.sleep(0.7)
-
 
 
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):

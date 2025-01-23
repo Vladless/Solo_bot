@@ -114,9 +114,7 @@ def build_keys_response(records):
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
-                formatted_date_full = expiry_date_full.strftime(
-                    "до %d %B %Y года, %H:%M"
-                ).lower()
+                formatted_date_full = expiry_date_full.strftime("до %d %B %Y года, %H:%M").lower()
 
                 formatted_date_short = expiry_date_full.strftime("до %d %B").lower()
             else:
@@ -124,23 +122,16 @@ def build_keys_response(records):
                 formatted_date_short = "без срока действия"
 
             button_text = f"{key_name} ({formatted_date_short})"
-            builder.row(
-                InlineKeyboardButton(
-                    text=button_text, callback_data=f"view_key|{key_name}"
-                )
-            )
+            builder.row(InlineKeyboardButton(text=button_text, callback_data=f"view_key|{key_name}"))
 
             response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
 
     else:
         response_message = (
-            "<b>🔑 У вас пока нет подписок.</b>\n\n"
-            "Вы можете создать новую подписку для подключения устройств."
+            "<b>🔑 У вас пока нет подписок.</b>\n\nВы можете создать новую подписку для подключения устройств."
         )
 
-    builder.row(
-        InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key")
-    )
+    builder.row(InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
@@ -380,9 +371,8 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                 months = plan_details["months"]
                 price = plan_details["price"]
                 discount = DISCOUNTS.get(plan_id, 0)
-                button_text = (
-                    f'📅 {months} месяц{"а" if months > 1 else ""} ({price} руб.)'
-                    + (f' {discount}% скидка' if discount > 0 else "")
+                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)" + (
+                    f" {discount}% скидка" if discount > 0 else ""
                 )
                 builder.row(
                     InlineKeyboardButton(
@@ -391,11 +381,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                     )
                 )
 
-            builder.row(
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data="view_keys"
-                )
-            )
+            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys"))
 
             balance = await get_balance(tg_id)
 

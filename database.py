@@ -776,9 +776,7 @@ async def get_referral_stats(referrer_tg_id: int):
             referrer_tg_id,
         )
 
-        logger.debug(
-            f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}"
-        )
+        logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
 
         return {
             "total_referrals": total_referrals,
