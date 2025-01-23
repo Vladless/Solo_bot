@@ -8,7 +8,7 @@ from py3xui import AsyncApi
 
 from client import ClientConfig, add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
-from database import get_servers_from_db, get_trial, store_key, use_trial
+from database import get_servers_from_db, get_trial, store_key, set_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
@@ -83,5 +83,5 @@ async def create_trial_key(tg_id: int, session: Any):
         session=session,
     )
 
-    await use_trial(tg_id, session)
+    await set_trial(tg_id, 1, session)
     return result

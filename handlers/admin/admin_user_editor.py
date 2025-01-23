@@ -16,7 +16,7 @@ from database import (
     get_key_details,
     get_keys,
     get_servers_from_db,
-    restore_trial,
+    set_trial,
     update_key_expiry,
 )
 from filters.admin import IsAdminFilter
@@ -207,7 +207,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
 async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any):
     tg_id = int(callback_query.data.split("_")[2])
 
-    await restore_trial(tg_id, session)
+    await set_trial(tg_id, 0, session)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад в меню администратора", callback_data="admin"))
