@@ -9,7 +9,7 @@ from ping3 import ping
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL, PING_TIME
-from database import add_server_to_db, get_servers_from_db
+from database import add_server_to_db, check_unique_server_name, get_servers_from_db
 from logger import logger
 
 try:
@@ -34,14 +34,7 @@ async def sync_servers_with_db():
 
         for cluster_name, servers in CLUSTERS.items():
             for server_key, server_info in servers.items():
-                exists = await conn.fetchval(
-                    """
-                    SELECT 1 FROM servers
-                    WHERE cluster_name = $1 AND server_name = $2
-                    """,
-                    cluster_name,
-                    server_info["name"],
-                )
+                exists = await check_unique_server_name(server_info["name"], conn, cluster_name)
 
                 if not exists:
                     await add_server_to_db(

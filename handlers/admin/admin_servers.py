@@ -11,7 +11,7 @@ from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import add_server_to_db, check_unique_server_name, get_keys_by_server, get_servers_from_db
+from database import add_server_to_db, check_unique_server_name, delete_server, get_keys_by_server, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
 from logger import logger
@@ -93,7 +93,7 @@ async def handle_cluster_name_input(message: types.Message, state: FSMContext):
 
 
 @router.message(UserEditorState.waiting_for_server_name, IsAdminFilter())
-async def handle_server_name_input(message: types.Message, state: FSMContext):
+async def handle_server_name_input(message: types.Message, state: FSMContext, session: Any):
     server_name = message.text.strip()
 
     if server_name == "❌ Отменить":
@@ -110,7 +110,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
         await message.answer("❌ Имя сервера не может быть пустым. Попробуйте снова.")
         return
 
-    server_unique = await check_unique_server_name(server_name)
+    server_unique = await check_unique_server_name(server_name, session)
     if not server_unique:
         await message.answer("❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.")
         return
@@ -432,17 +432,10 @@ async def handle_delete_server(callback_query: types.CallbackQuery, state: FSMCo
 
 
 @router.callback_query(F.data.startswith("confirm_delete_server|"), IsAdminFilter())
-async def handle_confirm_delete_server(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_confirm_delete_server(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     server_name = callback_query.data.split("|")[1]
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(
-        """
-        DELETE FROM servers WHERE server_name = $1
-        """,
-        server_name,
-    )
-    await conn.close()
+    await delete_server(server_name, session)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад в управление кластерами", callback_data="servers_editor"))
