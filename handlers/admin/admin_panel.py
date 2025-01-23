@@ -12,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
 from bot import bot
-from database import delete_user_data, remove_blocked_user
+from database import delete_user_data, delete_blocked_user
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -488,7 +488,7 @@ async def delete_banned_users(callback_query: types.CallbackQuery, session: Any)
         for tg_id in blocked_ids:
             await delete_user_data(session, tg_id)
 
-        await remove_blocked_user(blocked_ids, session)
+        await delete_blocked_user(blocked_ids, session)
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))

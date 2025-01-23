@@ -27,7 +27,7 @@ from database import (
     get_balance,
     get_key_details,
     get_trial,
-    save_temporary_data,
+    create_temporary_data,
     store_key,
     update_balance,
 )
@@ -129,7 +129,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     if balance < plan_price:
         required_amount = plan_price - balance
 
-        await save_temporary_data(
+        await create_temporary_data(
             session,
             tg_id,
             "waiting_for_payment",

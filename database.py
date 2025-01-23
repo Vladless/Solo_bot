@@ -9,7 +9,7 @@ from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
-async def save_temporary_data(session, tg_id: int, state: str, data: dict):
+async def create_temporary_data(session, tg_id: int, state: str, data: dict):
     """Сохраняет временные данные пользователя."""
     await session.execute(
         """
@@ -34,17 +34,18 @@ async def get_temporary_data(session, tg_id: int) -> dict | None:
 
 
 async def clear_temporary_data(session, tg_id: int):
+    # TODO rename delete_temporary_data
     await session.execute("DELETE FROM temporary_data WHERE tg_id = $1", tg_id)
 
 
-async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
+async def create_blocked_user(tg_id: int, conn: asyncpg.Connection):
     await conn.execute(
         "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
         tg_id,
     )
 
 
-async def remove_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
+async def delete_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
     """
     Удаляет пользователя или список пользователей из списка заблокированных.
 
@@ -166,7 +167,7 @@ async def get_all_coupons(session: Any, page: int = 1, per_page: int = 10):
         return {"coupons": [], "total": 0, "pages": 0, "current_page": page}
 
 
-async def delete_coupon_from_db(coupon_code: str, session: Any):
+async def delete_coupon(coupon_code: str, session: Any):
     """
     Удаляет купон из базы данных по его коду.
 
@@ -181,7 +182,7 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
         Exception: В случае ошибки при выполнении запроса к базе данных
 
     Example:
-        result = await delete_coupon_from_db('SALE50', session)
+        result = await delete_coupon('SALE50', session)
     """
     try:
         coupon_record = await session.fetchrow(
@@ -210,59 +211,34 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
         return False
 
 
-async def restore_trial(tg_id: int, session: Any):
+async def set_trial(tg_id: int, status: int, session: Any):
     """
-    Восстанавливает возможность использования триального периода для пользователя.
+    Устанавливает статус триального периода для пользователя.
 
     Args:
         tg_id (int): Telegram ID пользователя
+        status (int): Статус триального периода (0 - доступен, 1 - использован)
         session (Any): Сессия базы данных
 
     Returns:
-        bool: True, если триал успешно восстановлен, False в случае ошибки
+        bool: True, если статус успешно установлен, False в случае ошибки
     """
     try:
         await session.execute(
             """
             INSERT INTO connections (tg_id, trial) 
-            VALUES ($1, 0) 
+            VALUES ($1, $2) 
             ON CONFLICT (tg_id) 
-            DO UPDATE SET trial = 0
+            DO UPDATE SET trial = $2
             """,
             tg_id,
+            status,
         )
-        logger.info(f"Триальный период успешно восстановлен для пользователя {tg_id}")
+        status_text = "восстановлен" if status == 0 else "использован"
+        logger.info(f"Триальный период успешно {status_text} для пользователя {tg_id}")
         return True
     except Exception as e:
-        logger.error(f"Ошибка при восстановлении триального периода для пользователя {tg_id}: {e}")
-        return False
-
-
-async def use_trial(tg_id: int, session: Any):
-    """
-    Отмечает использование триального периода для пользователя.
-
-    Args:
-        tg_id (int): Telegram ID пользователя
-        session (Any): Сессия базы данных
-
-    Returns:
-        bool: True, если триал успешно использован, False в случае ошибки
-    """
-    try:
-        await session.execute(
-            """
-            INSERT INTO connections (tg_id, trial) 
-            VALUES ($1, 1) 
-            ON CONFLICT (tg_id) 
-            DO UPDATE SET trial = 1
-            """,
-            tg_id,
-        )
-        logger.info(f"Триальный период успешно использован для пользователя {tg_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при использовании триала для пользователя {tg_id}: {e}")
+        logger.error(f"Ошибка при установке статуса триального периода для пользователя {tg_id}: {e}")
         return False
 
 

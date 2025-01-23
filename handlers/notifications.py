@@ -23,7 +23,7 @@ from config import (
     TRIAL_TIME,
 )
 from database import (
-    add_blocked_user,
+    create_blocked_user,
     add_notification,
     check_notification_time,
     delete_key,
@@ -356,7 +356,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
                 except TelegramForbiddenError:
                     logger.warning(f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
-                    await add_blocked_user(tg_id, conn)
+                    await create_blocked_user(tg_id, conn)
                 except Exception as e:
                     logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 

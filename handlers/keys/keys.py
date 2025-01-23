@@ -31,7 +31,7 @@ from database import (
     get_balance,
     get_key_details,
     get_servers_from_db,
-    save_temporary_data,
+    create_temporary_data,
     store_key,
     update_balance,
     update_key_expiry,
@@ -449,7 +449,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
                     f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}"
                 )
 
-                await save_temporary_data(
+                await create_temporary_data(
                     session,
                     tg_id,
                     "waiting_for_renewal_payment",

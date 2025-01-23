@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import create_coupon, delete_coupon_from_db, get_all_coupons
+from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -81,7 +81,7 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any
     coupon_code = callback_query.data[len("delete_coupon_") :]
 
     try:
-        result = await delete_coupon_from_db(coupon_code, session)
+        result = await delete_coupon(coupon_code, session)
 
         if result:
             await show_coupon_list(callback_query, session)
