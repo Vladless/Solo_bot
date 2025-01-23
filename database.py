@@ -1295,3 +1295,38 @@ async def delete_key(identifier, session):
         logger.info(f"Ключ с идентификатором {identifier} успешно удалён")
     except Exception as e:
         logger.error(f"Ошибка при удалении ключа с идентификатором {identifier} из базы данных: {e}")
+
+
+async def add_server_to_db(
+    cluster_name: str, server_name: str, api_url: str, subscription_url: str, inbound_id: int, session: Any
+):
+    """
+    Добавляет новый сервер в базу данных.
+
+    Args:
+        cluster_name (str): Название кластера
+        server_name (str): Название сервера
+        api_url (str): URL API сервера
+        subscription_url (str): URL подписки
+        inbound_id (int): ID входящего подключения
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при добавлении сервера
+    """
+    try:
+        await session.execute(
+            """
+            INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            cluster_name,
+            server_name,
+            api_url,
+            subscription_url,
+            inbound_id,
+        )
+        logger.info(f"Сервер {server_name} успешно добавлен в кластер {cluster_name}")
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении сервера {server_name} в кластер {cluster_name}: {e}")
+        raise
