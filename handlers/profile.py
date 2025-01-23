@@ -9,7 +9,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
-from database import get_balance, get_key_count, get_referral_stats, get_trial
+from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
     BALANCE,
@@ -129,14 +129,7 @@ async def balance_history_handler(callback_query: types.CallbackQuery, session: 
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    query = """
-    SELECT amount, payment_system, status, created_at
-    FROM payments
-    WHERE tg_id = $1
-    ORDER BY created_at DESC
-    LIMIT 3
-    """
-    records = await session.fetch(query, callback_query.from_user.id)
+    records = await get_last_payments(callback_query.from_user.id, session)
 
     if records:
         history_text = "📊 <b>Последние 3 операции с балансом:</b>\n\n"
