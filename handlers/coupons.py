@@ -7,7 +7,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import check_coupon_usage, create_coupon_usage, get_coupon_by_code, update_balance, update_coupon_usage_count
+from database import (
+    check_coupon_usage,
+    create_coupon_usage,
+    get_coupon_by_code,
+    update_balance,
+    update_coupon_usage_count,
+)
 
 
 class CouponActivationState(StatesGroup):
@@ -49,7 +55,6 @@ async def activate_coupon(user_id: int, coupon_code: str, session: Any):
         return "<b>❌ Купон не найден</b> 🚫 или его использование ограничено. 🔒 Пожалуйста, проверьте код и попробуйте снова. 🔍"
 
     usage_exists = await check_coupon_usage(coupon_record["id"], user_id, session)
-
 
     if usage_exists:
         return "<b>❌ Вы уже активировали этот купон.</b> 🚫 Купоны могут быть активированы только один раз. 🔒"
