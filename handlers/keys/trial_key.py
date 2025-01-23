@@ -8,7 +8,7 @@ from py3xui import AsyncApi
 
 from client import add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
-from database import get_servers_from_db, store_key, use_trial
+from database import get_servers_from_db, get_trial, store_key, use_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
@@ -16,7 +16,7 @@ from logger import logger
 
 async def create_trial_key(tg_id: int, session: Any):
     try:
-        trial_status = await session.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
+        trial_status = await get_trial(tg_id, session)
         if trial_status == 1:
             return {"error": "Вы уже использовали пробную версию."}
     except Exception as e:

@@ -13,6 +13,7 @@ from config import TOTAL_GB
 from database import (
     delete_user_data,
     get_client_id_by_email,
+    get_key_details,
     get_servers_from_db,
     restore_trial,
     update_key_expiry,
@@ -257,45 +258,6 @@ async def handle_new_balance_input(message: types.Message, state: FSMContext, se
     await state.clear()
 
 
-async def get_key_details(email, session):
-    record = await session.fetchrow(
-        """
-        SELECT k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
-        FROM keys k
-        JOIN connections c ON k.tg_id = c.tg_id
-        WHERE k.email = $1
-        """,
-        email,
-    )
-
-    if not record:
-        return None
-
-    cluster_name = record["server_id"]
-
-    moscow_tz = pytz.timezone("Europe/Moscow")
-    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
-    current_date = datetime.now(moscow_tz)
-    time_left = expiry_date - current_date
-
-    if time_left.total_seconds() <= 0:
-        days_left_message = "<b>Ключ истек.</b>"
-    elif time_left.days > 0:
-        days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
-    else:
-        hours_left = time_left.seconds // 3600
-        days_left_message = f"Осталось часов: <b>{hours_left}</b>"
-
-    return {
-        "key": record["key"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
-        "days_left_message": days_left_message,
-        "server_name": cluster_name,
-        "balance": record["balance"],
-        "tg_id": record["tg_id"],
-    }
-
-
 @router.callback_query(F.data.startswith("edit_key_"), IsAdminFilter())
 async def process_key_edit(callback_query: CallbackQuery, session: Any):
     email = callback_query.data.split("_", 2)[2]
@@ -492,9 +454,9 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
 @router.callback_query(F.data.startswith("delete_key_admin|"), IsAdminFilter())
 async def process_callback_delete_key(callback_query: types.CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
-    client_id = await session.fetchval("SELECT client_id FROM keys WHERE email = $1", email)
+    key_details = await get_key_details(email, session)
 
-    if client_id is None:
+    if key_details is None:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
         await callback_query.message.answer("🔍 Ключ не найден. 🚫", reply_markup=builder.as_markup())
@@ -504,7 +466,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
     builder.row(
         types.InlineKeyboardButton(
             text="✅ Да, удалить",
-            callback_data=f"confirm_delete_admin|{client_id}",
+            callback_data=f"confirm_delete_admin|{key_details['client_id']}",
         )
     )
     builder.row(types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="user_editor"))

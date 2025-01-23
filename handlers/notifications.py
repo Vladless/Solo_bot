@@ -401,7 +401,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     for record in expired_keys:
         try:
             await delete_key_from_cluster(record["server_id"], record["email"], record["email"])
-            await conn.execute("DELETE FROM keys WHERE client_id = $1", record["client_id"])
+            await delete_key(record["client_id"], conn)
             logger.info(f"Удалён истёкший ключ {record['client_id']} пользователя {record['tg_id']}.")
         except Exception as e:
             logger.error(f"Ошибка при удалении истёкшего ключа {record['client_id']}: {e}")
@@ -497,7 +497,7 @@ async def process_key(record, bot, conn):
                         logger.error(f"Ошибка при удалении клиента {client_id} из кластера {cluster_id}: {e}")
 
                 try:
-                    await delete_key(client_id)
+                    await delete_key(client_id, conn)
                     logger.info(f"Ключ {client_id} удалён из базы данных.")
                 except Exception as e:
                     logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")

@@ -2,12 +2,12 @@ import os
 from typing import Any
 
 import aiofiles
-import asyncpg
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CONNECT_MACOS, CONNECT_WINDOWS, DATABASE_URL, SUPPORT_CHAT_URL
+from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
+from database import get_key_details
 from handlers.texts import (
     CONNECT_TV_TEXT,
     INSTRUCTION_PC,
@@ -60,15 +60,7 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
-    record = await session.fetchrow(
-        """
-        SELECT k.key
-        FROM keys k
-        WHERE k.tg_id = $1 AND k.email = $2
-        """,
-        tg_id,
-        key_name,
-    )
+    record = await get_key_details(key_name, session)
 
     if not record:
         await callback_query.message.answer("❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍")
@@ -107,27 +99,15 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("continue_tv|"))
-async def process_continue_tv(callback_query: types.CallbackQuery):
+async def process_continue_tv(callback_query: types.CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     tg_id = callback_query.from_user.id
 
     logger.info(f"tg_id: {tg_id}, key_name: {key_name}")
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        record = await conn.fetchrow(
-            """
-            SELECT k.key
-            FROM keys k
-            WHERE k.tg_id = $1 AND k.email = $2
-            """,
-            tg_id,
-            key_name,
-        )
+    record = await get_key_details(key_name, session)
 
-        logger.info(f"Query result: {record}")
-    finally:
-        await conn.close()
+    logger.info(f"Query result: {record}")
 
     subscription_link = record["key"]
 
