@@ -347,7 +347,10 @@ async def process_message_to_all(message: types.Message, state: FSMContext, sess
         for record in tg_ids:
             tg_id = record["tg_id"]
             try:
-                await bot.send_message(chat_id=tg_id, text=text_message)
+                # Создаем кнопку для личного кабинета
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                await bot.send_message(chat_id=tg_id, text=text_message, reply_markup=builder.as_markup())
                 success_count += 1
             except Exception as e:
                 error_count += 1
