@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import asyncpg
 from aiogram import F, Router, types
@@ -10,7 +11,7 @@ from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import check_unique_server_name, get_servers_from_db
+from database import add_server_to_db, check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
 from logger import logger
@@ -211,7 +212,7 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
 
 
 @router.message(UserEditorState.waiting_for_inbound_id, IsAdminFilter())
-async def handle_inbound_id_input(message: types.Message, state: FSMContext):
+async def handle_inbound_id_input(message: types.Message, state: FSMContext, session: Any):
     inbound_id = message.text.strip()
 
     if not inbound_id.isdigit():
@@ -224,19 +225,14 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext):
     api_url = user_data.get("api_url")
     subscription_url = user_data.get("subscription_url")
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(
-        """
-        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id) 
-        VALUES ($1, $2, $3, $4, $5)
-        """,
-        cluster_name,
-        server_name,
-        api_url,
-        subscription_url,
-        inbound_id,
+    await add_server_to_db(
+        cluster_name=cluster_name,
+        server_name=server_name,
+        api_url=api_url,
+        subscription_url=subscription_url,
+        inbound_id=inbound_id,
+        session=session,
     )
-    await conn.close()
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад к кластерам", callback_data="servers_editor"))

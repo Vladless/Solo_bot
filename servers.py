@@ -9,7 +9,7 @@ from ping3 import ping
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL, PING_TIME
-from database import get_servers_from_db
+from database import add_server_to_db, get_servers_from_db
 from logger import logger
 
 try:
@@ -44,16 +44,13 @@ async def sync_servers_with_db():
                 )
 
                 if not exists:
-                    await conn.execute(
-                        """
-                        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id)
-                        VALUES ($1, $2, $3, $4, $5)
-                        """,
-                        cluster_name,
-                        server_info["name"],
-                        server_info["API_URL"],
-                        server_info["SUBSCRIPTION"],
-                        server_info["INBOUND_ID"],
+                    await add_server_to_db(
+                        cluster_name=cluster_name,
+                        server_name=server_info["name"],
+                        api_url=server_info["API_URL"],
+                        subscription_url=server_info["SUBSCRIPTION"],
+                        inbound_id=server_info["INBOUND_ID"],
+                        session=conn,
                     )
                     logger.info(f"Сервер {server_info['name']} из кластера {cluster_name} добавлен в базу данных.")
                 else:
