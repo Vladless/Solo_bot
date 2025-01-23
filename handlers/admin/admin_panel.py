@@ -3,7 +3,6 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any
 
-import asyncpg
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -13,8 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from backup import backup_database
 from bot import bot
-from config import DATABASE_URL
-from database import delete_user_data
+from database import delete_user_data, remove_blocked_user
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -443,10 +441,9 @@ async def handle_ban_user(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "export_to_csv")
-async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
-    conn = await asyncpg.connect(DATABASE_URL)
+async def export_banned_users_to_csv(callback_query: types.CallbackQuery, session: Any):
     try:
-        banned_users = await conn.fetch("SELECT tg_id, blocked_at FROM blocked_users")
+        banned_users = await session.fetch("SELECT tg_id, blocked_at FROM blocked_users")
 
         import csv
         import io
@@ -476,15 +473,12 @@ async def export_banned_users_to_csv(callback_query: types.CallbackQuery):
             text=f"Ошибка при выгрузке CSV: {e}",
             reply_markup=builder.as_markup(),
         )
-    finally:
-        await conn.close()
 
 
 @router.callback_query(F.data == "delete_banned_users")
-async def delete_banned_users(callback_query: types.CallbackQuery):
-    conn = await asyncpg.connect(DATABASE_URL)
+async def delete_banned_users(callback_query: types.CallbackQuery, session: Any):
     try:
-        blocked_users = await conn.fetch("SELECT tg_id FROM blocked_users")
+        blocked_users = await session.fetch("SELECT tg_id FROM blocked_users")
         blocked_ids = [record["tg_id"] for record in blocked_users]
 
         if not blocked_ids:
@@ -492,9 +486,9 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
             return
 
         for tg_id in blocked_ids:
-            await delete_user_data(conn, tg_id)
+            await delete_user_data(session, tg_id)
 
-        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids)
+        await remove_blocked_user(blocked_ids, session)
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="bot_management"))
@@ -509,5 +503,3 @@ async def delete_banned_users(callback_query: types.CallbackQuery):
             text=f"Ошибка при удалении записей: {e}",
             reply_markup=builder.as_markup(),
         )
-    finally:
-        await conn.close()

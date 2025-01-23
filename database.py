@@ -43,6 +43,19 @@ async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
     )
 
 
+async def remove_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
+    """
+    Удаляет пользователя или список пользователей из списка заблокированных.
+
+    :param tg_id: ID пользователя Telegram или список ID
+    :param conn: Подключение к базе данных
+    """
+    if isinstance(tg_id, list):
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", tg_id)
+    else:
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = $1", tg_id)
+
+
 async def init_db(file_path: str = "assets/schema.sql"):
     with open(file_path, mode="r") as file:
         sql_content = file.read()
