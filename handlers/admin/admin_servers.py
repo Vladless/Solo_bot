@@ -11,7 +11,7 @@ from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import add_server_to_db, check_unique_server_name, delete_server, get_keys_by_server, get_servers_from_db
+from database import create_server, check_unique_server_name, delete_server, get_keys_by_server, get_servers
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
 from logger import logger
@@ -28,8 +28,8 @@ class UserEditorState(StatesGroup):
 
 
 @router.callback_query(F.data == "servers_editor", IsAdminFilter())
-async def handle_servers_editor(callback_query: types.CallbackQuery):
-    servers = await get_servers_from_db()
+async def handle_servers_editor(callback_query: types.CallbackQuery, session: Any):
+    servers = await get_servers(session)
 
     builder = InlineKeyboardBuilder()
 
@@ -225,7 +225,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext, ses
     api_url = user_data.get("api_url")
     subscription_url = user_data.get("subscription_url")
 
-    await add_server_to_db(
+    await create_server(
         cluster_name=cluster_name,
         server_name=server_name,
         api_url=api_url,
@@ -246,10 +246,10 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext, ses
 
 
 @router.callback_query(F.data.startswith("manage_cluster|"), IsAdminFilter())
-async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     cluster_name = callback_query.data.split("|")[1]
 
-    servers = await get_servers_from_db()
+    servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
 
     builder = InlineKeyboardBuilder()
@@ -310,7 +310,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any
             )
             return
 
-        servers = await get_servers_from_db()
+        servers = await get_servers(session)
         cluster_servers = servers.get(cluster_name, [])
 
         for key in keys_to_sync:
@@ -344,10 +344,10 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any
 
 
 @router.callback_query(F.data.startswith("server_availability|"), IsAdminFilter())
-async def handle_check_server_availability(callback_query: types.CallbackQuery):
+async def handle_check_server_availability(callback_query: types.CallbackQuery, session: Any):
     cluster_name = callback_query.data.split("|")[1]
 
-    servers = await get_servers_from_db()
+    servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
 
     if not cluster_servers:
@@ -382,10 +382,10 @@ async def handle_check_server_availability(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("manage_server|"), IsAdminFilter())
-async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_manage_server(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     server_name = callback_query.data.split("|")[1]
 
-    servers = await get_servers_from_db()
+    servers = await get_servers(session)
 
     server = None
     cluster_name = None
@@ -463,10 +463,10 @@ async def handle_add_server(callback_query: types.CallbackQuery, state: FSMConte
 
 
 @router.callback_query(F.data.startswith("backup_cluster|"), IsAdminFilter())
-async def handle_backup_cluster(callback_query: types.CallbackQuery):
+async def handle_backup_cluster(callback_query: types.CallbackQuery, session: Any):
     cluster_name = callback_query.data.split("|")[1]
 
-    servers = await get_servers_from_db()
+    servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
 
     for server in cluster_servers:

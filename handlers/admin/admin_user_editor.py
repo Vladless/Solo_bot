@@ -15,7 +15,7 @@ from database import (
     get_client_id_by_email,
     get_key_details,
     get_keys,
-    get_servers_from_db,
+    get_servers,
     set_trial,
     update_key_expiry,
 )
@@ -410,7 +410,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
             await state.clear()
             return
 
-        clusters = await get_servers_from_db()
+        clusters = await get_servers(session)
 
         async def update_key_on_all_servers():
             tasks = []
@@ -488,7 +488,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
 
-        clusters = await get_servers_from_db()
+        clusters = await get_servers(session)
 
         async def delete_key_from_servers(email, client_id):
             tasks = []
@@ -569,7 +569,7 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
         try:
             tasks = []
             for email, client_id in key_records:
-                servers = await get_servers_from_db()
+                servers = await get_servers(session)
                 for cluster_id, cluster in servers.items():
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
             await asyncio.gather(*tasks)

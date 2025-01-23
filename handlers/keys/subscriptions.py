@@ -7,7 +7,7 @@ import asyncpg
 from aiohttp import web
 
 from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR
-from database import get_key_details, get_servers_from_db
+from database import get_key_details, get_servers
 from logger import logger
 
 # Глобальная переменная для пула соединений
@@ -122,7 +122,7 @@ async def handle_old_subscription(request):
                 status=400,
             )
 
-    servers = await get_servers_from_db()
+    servers = await get_servers()
     cluster_servers = servers.get(cluster_name, [])
     logger.info(f"Сервера в кластере: {cluster_servers}")
 
@@ -180,7 +180,7 @@ async def handle_new_subscription(request):
                 status=403,
             )
 
-    servers = await get_servers_from_db()
+    servers = await get_servers()
     cluster_servers = servers.get(cluster_name, [])
 
     urls = [f"{server['subscription_url']}/{email}" for server in cluster_servers]

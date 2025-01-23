@@ -28,7 +28,7 @@ from database import (
     check_notification_time,
     delete_key,
     get_balance,
-    get_servers_from_db,
+    get_servers,
     update_balance,
     update_key_expiry,
 )
@@ -156,7 +156,7 @@ async def process_10h_record(record, bot, conn):
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
@@ -245,7 +245,7 @@ async def process_24h_record(record, bot, conn):
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
@@ -438,7 +438,7 @@ async def process_key(record, bot, conn):
             new_expiry_time = int((datetime.now(moscow_tz) + timedelta(days=30)).timestamp() * 1000)
             await update_key_expiry(client_id, new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
 
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
@@ -487,7 +487,7 @@ async def process_key(record, bot, conn):
                 logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
 
             if AUTO_DELETE_EXPIRED_KEYS:
-                servers = await get_servers_from_db()
+                servers = await get_servers(conn)
 
                 for cluster_id in servers:
                     try:
@@ -509,7 +509,7 @@ async def process_key(record, bot, conn):
 
 
 async def check_online_users():
-    servers = await get_servers_from_db()
+    servers = await get_servers()
 
     for cluster_id, cluster in servers.items():
         for server_id, server in enumerate(cluster):

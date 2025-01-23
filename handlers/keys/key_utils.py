@@ -4,7 +4,7 @@ from py3xui import AsyncApi
 
 from client import ClientConfig, add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB
-from database import get_servers_from_db
+from database import get_servers
 from logger import logger
 
 
@@ -13,7 +13,7 @@ async def create_key_on_cluster(cluster_id: str, tg_id: int, client_id: str, ema
     Создает ключ на всех серверах указанного кластера.
     """
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -105,7 +105,7 @@ async def create_client_on_server(
 
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -147,7 +147,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
 async def delete_key_from_cluster(cluster_id, email, client_id):
     """Удаление ключа с серверов в кластере"""
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -186,7 +186,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
 
 async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id):
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:

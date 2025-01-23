@@ -8,7 +8,7 @@ from py3xui import AsyncApi
 
 from client import ClientConfig, add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
-from database import get_servers_from_db, get_trial, store_key, set_trial
+from database import get_servers, get_trial, store_key, set_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
@@ -33,7 +33,7 @@ async def create_trial_key(tg_id: int, session: Any):
     expiry_time = current_time + timedelta(days=TRIAL_TIME)
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
-    clusters = await get_servers_from_db()
+    clusters = await get_servers(session)
     least_loaded_cluster = await get_least_loaded_cluster()
     if least_loaded_cluster not in clusters:
         raise ValueError(f"Кластер {least_loaded_cluster} не найден в базе данных.")
