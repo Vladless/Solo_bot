@@ -2,7 +2,7 @@ import asyncio
 
 from py3xui import AsyncApi
 
-from client import add_client, delete_client, extend_client_key
+from client import ClientConfig, add_client, delete_client, extend_client_key
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB
 from database import get_servers_from_db
 from logger import logger
@@ -85,16 +85,18 @@ async def create_client_on_server(
 
         await add_client(
             xui,
-            client_id,
-            unique_email,
-            tg_id,
-            limit_ip=LIMIT_IP,
-            total_gb=TOTAL_GB,
-            expiry_time=expiry_timestamp,
-            enable=True,
-            flow="xtls-rprx-vision",
-            inbound_id=int(inbound_id),
-            sub_id=sub_id,
+            ClientConfig(
+                client_id=client_id,
+                email=unique_email,
+                tg_id=tg_id,
+                limit_ip=LIMIT_IP,
+                total_gb=TOTAL_GB,
+                expiry_time=expiry_timestamp,
+                enable=True,
+                flow="xtls-rprx-vision",
+                inbound_id=int(inbound_id),
+                sub_id=sub_id,
+            ),
         )
 
         if SUPERNODE:
@@ -208,16 +210,18 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
             tasks.append(
                 add_client(
                     xui,
-                    client_id,
-                    email,
-                    tg_id,
-                    limit_ip=LIMIT_IP,
-                    total_gb=TOTAL_GB,
-                    expiry_time=expiry_time,
-                    enable=True,
-                    flow="xtls-rprx-vision",
-                    inbound_id=int(inbound_id),
-                    sub_id=email,
+                    ClientConfig(
+                        client_id=client_id,
+                        email=email,
+                        tg_id=tg_id,
+                        limit_ip=LIMIT_IP,
+                        total_gb=TOTAL_GB,
+                        expiry_time=expiry_time,
+                        enable=True,
+                        flow="xtls-rprx-vision",
+                        inbound_id=int(inbound_id),
+                        sub_id=email,
+                    ),
                 )
             )
 
