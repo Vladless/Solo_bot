@@ -14,6 +14,7 @@ from database import (
     delete_user_data,
     get_client_id_by_email,
     get_key_details,
+    get_keys,
     get_servers_from_db,
     restore_trial,
     update_key_expiry,
@@ -74,7 +75,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
     tg_id = user_record["tg_id"]
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+    key_records = await get_keys(tg_id, session)
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
@@ -154,7 +155,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
     tg_id = int(message.text)
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+    key_records = await get_keys(tg_id, session)
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     if balance is None:
@@ -398,7 +399,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
             await state.clear()
             return
 
-        record = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
+        record = await get_key_details(email, session)
         if not record:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
@@ -512,7 +513,7 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
     tg_id = int(callback_query.data.split("|")[1])
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+    key_records = await get_keys(tg_id, session)
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     builder = InlineKeyboardBuilder()

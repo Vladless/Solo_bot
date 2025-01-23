@@ -300,6 +300,7 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        #TODO
         query_keys = """
             SELECT tg_id, client_id, email, expiry_time
             FROM keys
