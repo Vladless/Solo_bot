@@ -9,6 +9,7 @@ from logger import logger
 @dataclass
 class ClientConfig:
     """Конфигурация клиента для добавления/обновления."""
+
     client_id: str
     email: str
     tg_id: str
@@ -64,13 +65,7 @@ async def add_client(xui: py3xui.API, config: ClientConfig) -> Dict[str, Any]:
 
 
 async def extend_client_key(
-    xui: py3xui.API,
-    inbound_id: int,
-    email: str,
-    new_expiry_time: int,
-    client_id: str,
-    total_gb: int,
-    sub_id: str
+    xui: py3xui.API, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str
 ) -> Optional[bool]:
     """
     Обновляет срок действия ключа клиента.
