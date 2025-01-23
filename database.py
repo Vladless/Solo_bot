@@ -44,7 +44,7 @@ async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
 
 
 async def init_db(file_path: str = "assets/schema.sql"):
-    with open(file_path) as file:
+    with open(file_path, mode="r") as file:
         sql_content = file.read()
 
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
@@ -764,19 +764,21 @@ async def get_referral_stats(referrer_tg_id: int):
                 WHERE rl.level < {MAX_REFERRAL_LEVELS}
             )
             SELECT 
-                SUM(p.amount * CASE 
-                    {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
-                    ELSE 0
-                END) AS total_bonus
+                COALESCE(SUM(p.amount * (
+                    CASE 
+                        {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
+                        ELSE 0 
+                    END)), 0) AS total_bonus
             FROM referral_levels rl
             JOIN payments p ON rl.referred_tg_id = p.tg_id
-            WHERE p.status = 'success'
+            WHERE p.status = 'success' AND rl.level <= {MAX_REFERRAL_LEVELS}
             """,
             referrer_tg_id,
         )
 
-        total_referral_bonus = total_referral_bonus or 0
-        logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
+        logger.debug(
+            f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}"
+        )
 
         return {
             "total_referrals": total_referrals,

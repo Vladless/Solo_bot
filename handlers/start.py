@@ -100,6 +100,15 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                     await message.answer("❌ Вы не можете получить подарок от самого себя.")
                     return await show_start_menu(message, admin, session)
 
+                await session.execute(
+                    """
+                    INSERT INTO connections (tg_id, balance, trial)
+                    VALUES ($1, 0, 1)
+                    ON CONFLICT (tg_id) DO UPDATE SET trial = 1
+                    """,
+                    recipient_tg_id,
+                )
+
                 selected_months = gift_info["selected_months"]
                 expiry_time = gift_info["expiry_time"]
                 expiry_time_naive = expiry_time.replace(tzinfo=None)

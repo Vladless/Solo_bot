@@ -8,9 +8,9 @@ from database import get_servers_from_db
 from logger import logger
 
 
-async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_timestamp):
+async def create_key_on_cluster(cluster_id: str, tg_id: int, client_id: str, email: str, expiry_timestamp: int):
     """
-    Создает ключ на всех серверах указанного кластера с одинаковым sub_id и уникальным email при активном SUPERNODE.
+    Создает ключ на всех серверах указанного кластера.
     """
     try:
         servers = await get_servers_from_db()
@@ -21,54 +21,87 @@ async def create_key_on_cluster(cluster_id, tg_id, client_id, email, expiry_time
 
         semaphore = asyncio.Semaphore(2)
 
-        async def create_client_on_server(server_info):
-            async with semaphore:
-                xui = AsyncApi(
-                    server_info["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                )
-
-                inbound_id = server_info.get("inbound_id")
-                server_name = server_info.get("server_name", "unknown")
-
-                if not inbound_id:
-                    logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
-                    return
-
-                if SUPERNODE:
-                    unique_email = f"{email}_{server_name.lower()}"
-                    sub_id = email
-                else:
-                    unique_email = email
-                    sub_id = unique_email
-
-                await add_client(
-                    xui,
-                    client_id,
-                    unique_email,
-                    tg_id,
-                    limit_ip=LIMIT_IP,
-                    total_gb=TOTAL_GB,
-                    expiry_time=expiry_timestamp,
-                    enable=True,
-                    flow="xtls-rprx-vision",
-                    inbound_id=int(inbound_id),
-                    sub_id=sub_id,
-                )
-
-                if SUPERNODE:
-                    await asyncio.sleep(0.7)
-
         if SUPERNODE:
             for server_info in cluster:
-                await create_client_on_server(server_info)
+                await create_client_on_server(
+                    server_info,
+                    tg_id,
+                    client_id,
+                    email,
+                    expiry_timestamp,
+                    semaphore,
+                )
         else:
-            await asyncio.gather(*(create_client_on_server(server) for server in cluster))
+            await asyncio.gather(
+                *(
+                    create_client_on_server(
+                        server,
+                        tg_id,
+                        client_id,
+                        email,
+                        expiry_timestamp,
+                        semaphore,
+                    )
+                    for server in cluster
+                )
+            )
 
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         raise e
+
+
+async def create_client_on_server(
+    server_info: dict,
+    tg_id: int,
+    client_id: str,
+    email: str,
+    expiry_timestamp: int,
+    semaphore: asyncio.Semaphore,
+):
+    """
+    Создает клиента на указанном сервере.
+    """
+    async with semaphore:
+        xui = AsyncApi(
+            server_info["api_url"],
+            username=ADMIN_USERNAME,
+            password=ADMIN_PASSWORD,
+        )
+
+        inbound_id = server_info.get("inbound_id")
+        server_name = server_info.get("server_name", "unknown")
+
+        if not inbound_id:
+            logger.warning(
+                f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
+            )
+            return
+
+        if SUPERNODE:
+            unique_email = f"{email}_{server_name.lower()}"
+            sub_id = email
+        else:
+            unique_email = email
+            sub_id = unique_email
+
+        await add_client(
+            xui,
+            client_id,
+            unique_email,
+            tg_id,
+            limit_ip=LIMIT_IP,
+            total_gb=TOTAL_GB,
+            expiry_time=expiry_timestamp,
+            enable=True,
+            flow="xtls-rprx-vision",
+            inbound_id=int(inbound_id),
+            sub_id=sub_id,
+        )
+
+        if SUPERNODE:
+            await asyncio.sleep(0.7)
+
 
 
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
