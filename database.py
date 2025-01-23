@@ -474,7 +474,7 @@ async def get_balance(tg_id: int) -> float:
         conn = await asyncpg.connect(DATABASE_URL)
         balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
         logger.info(f"Получен баланс для пользователя {tg_id}: {balance}")
-        return balance if balance is not None else 0.0
+        return round(balance, 1) if balance is not None else 0.0
     except Exception as e:
         logger.error(f"Ошибка при получении баланса для пользователя {tg_id}: {e}")
         return 0.0
