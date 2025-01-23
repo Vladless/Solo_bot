@@ -279,7 +279,7 @@ async def delete_coupon(coupon_code: str, session: Any):
         return False
 
 
-async def set_trial(tg_id: int, status: int, session: Any):
+async def update_trial(tg_id: int, status: int, session: Any):
     """
     Устанавливает статус триального периода для пользователя.
 
@@ -1568,6 +1568,8 @@ async def get_all_keys(session: Any = None):
     finally:
         if conn is not None and session is None:
             await conn.close()
+
+
 import json
 from datetime import datetime
 from typing import Any
