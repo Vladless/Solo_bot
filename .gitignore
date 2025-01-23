@@ -54,5 +54,6 @@ scripts
 models.py
 Dockerfile
 .csv
-
+/logs
 setup.py
+.ruff_cache
