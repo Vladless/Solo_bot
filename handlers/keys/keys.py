@@ -264,20 +264,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
             client_id = record["client_id"]
             public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
-            try:
-                await session.execute(
-                    """
-                    DELETE FROM keys
-                    WHERE tg_id = $1 AND email = $2
-                    """,
-                    tg_id,
-                    email,
-                )
-            except Exception as delete_error:
-                await callback_query.message.answer(
-                    f"Ошибка при удалении старой подписки: {delete_error}",
-                )
-                return
+            await delete_key(client_id, session)
 
             least_loaded_cluster_id = await get_least_loaded_cluster()
 
@@ -517,15 +504,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
     conn = await asyncpg.connect(DATABASE_URL)
-    key_info = await conn.fetchrow(
-        """
-        SELECT server_id 
-        FROM keys 
-        WHERE tg_id = $1 AND client_id = $2
-        """,
-        tg_id,
-        client_id,
-    )
+    key_info = await get_key_details(email, conn)
 
     if not key_info:
         logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")

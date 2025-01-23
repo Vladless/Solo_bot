@@ -228,11 +228,7 @@ async def create_key(
         key_name = generate_random_email()
         logger.info(f"[Key Generation] Сгенерировано имя ключа: {key_name} для пользователя {tg_id}")
 
-        existing_key = await session.fetchrow(
-            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
-            key_name,
-            tg_id,
-        )
+        existing_key = await get_key_details(key_name, session)
         if not existing_key:
             break
         logger.warning(f"[Key Generation] Имя ключа {key_name} уже существует. Генерация нового.")
