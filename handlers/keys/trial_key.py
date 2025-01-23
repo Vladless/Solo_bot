@@ -6,7 +6,7 @@ from typing import Any
 import pytz
 from py3xui import AsyncApi
 
-from client import add_client
+from client import ClientConfig, add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
 from database import get_servers_from_db, get_trial, store_key, use_trial
 from handlers.texts import INSTRUCTIONS
@@ -56,16 +56,18 @@ async def create_trial_key(tg_id: int, session: Any):
                     username=ADMIN_USERNAME,
                     password=ADMIN_PASSWORD,
                 ),
-                client_id,
-                email,
-                tg_id,
-                limit_ip=LIMIT_IP,
-                total_gb=TOTAL_GB,
-                expiry_time=expiry_timestamp,
-                enable=True,
-                flow="xtls-rprx-vision",
-                inbound_id=int(server_info["inbound_id"]),
-                sub_id=base_email,
+                ClientConfig(
+                    client_id=client_id,
+                    email=email,
+                    tg_id=tg_id,
+                    limit_ip=LIMIT_IP,
+                    total_gb=TOTAL_GB,
+                    expiry_time=expiry_timestamp,
+                    enable=True,
+                    flow="xtls-rprx-vision",
+                    inbound_id=int(server_info["inbound_id"]),
+                    sub_id=base_email,
+                ),
             )
         )
 
