@@ -88,12 +88,6 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
                     callback_data=f"robokassa_amount|{PAYMENT_OPTIONS[i]['callback_data']}",
                 )
             )
-    builder.row(
-        InlineKeyboardButton(
-            text="💰 Ввести свою сумму",
-            callback_data="enter_custom_amount_robokassa",
-        )
-    )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
 
     key_count = await get_key_count(tg_id)

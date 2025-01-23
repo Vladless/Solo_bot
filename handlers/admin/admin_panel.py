@@ -37,7 +37,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
 
-    BOT_VERSION = "4.0.0-preAlpha(14)"
+    BOT_VERSION = "4.0.0-Alpha(21)"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📊 Статистика пользователей", callback_data="user_stats"))

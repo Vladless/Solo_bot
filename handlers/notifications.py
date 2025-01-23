@@ -1,10 +1,12 @@
 import asyncio
+import os
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
+from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
@@ -161,17 +163,29 @@ async def process_10h_record(record, bot, conn):
 
             await conn.execute("UPDATE keys SET notified = TRUE WHERE client_id = $1", record["client_id"])
 
+            image_path = os.path.join("img", "notify_10h.jpg")
             keyboard = types.InlineKeyboardMarkup(
                 inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
             )
 
-            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+            if os.path.isfile(image_path):
+                with open(image_path, "rb") as image_file:
+                    await bot.send_photo(
+                        tg_id,
+                        photo=BufferedInputFile(image_file.read(), filename="notify_10h.jpg"),
+                        caption=KEY_RENEWED.format(email=email),
+                        reply_markup=keyboard,
+                    )
+            else:
+                await bot.send_message(tg_id, text=KEY_RENEWED.format(email=email), reply_markup=keyboard)
+
             logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
         except Exception as e:
             logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
     else:
         await send_renewal_notification(bot, tg_id, email, message, conn, record["client_id"], "notified")
+
 
 
 async def notify_24h_keys(
@@ -239,11 +253,22 @@ async def process_24h_record(record, bot, conn):
 
             await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", record["client_id"])
 
+            image_path = os.path.join("img", "notify_24h.jpg")
             keyboard = types.InlineKeyboardMarkup(
                 inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
             )
 
-            await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+            if os.path.isfile(image_path):
+                with open(image_path, "rb") as image_file:
+                    await bot.send_photo(
+                        tg_id,
+                        photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                        caption=KEY_RENEWED.format(email=email),
+                        reply_markup=keyboard,
+                    )
+            else:
+                await bot.send_message(tg_id, text=KEY_RENEWED.format(email=email), reply_markup=keyboard)
+
             logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
         except Exception as e:
@@ -259,7 +284,19 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
         keyboard.row(types.InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
         keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-        await bot.send_message(tg_id, message, reply_markup=keyboard.as_markup())
+        image_path = os.path.join("img", "notify_24h.jpg")
+
+        if os.path.isfile(image_path):
+            with open(image_path, "rb") as image_file:
+                await bot.send_photo(
+                    tg_id,
+                    photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                    caption=message,
+                    reply_markup=keyboard.as_markup(),
+                )
+        else:
+            await bot.send_message(tg_id, message, reply_markup=keyboard.as_markup())
+
         logger.info(f"Уведомление отправлено пользователю {tg_id}.")
 
         await conn.execute(f"UPDATE keys SET {flag} = TRUE WHERE client_id = $1", client_id)
@@ -273,7 +310,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
     inactive_trial_users = await conn.fetch(
         """
-        SELECT tg_id, username FROM users 
+        SELECT tg_id, username, first_name, last_name FROM users 
         WHERE tg_id IN (
             SELECT tg_id FROM connections 
             WHERE trial = 0
@@ -286,7 +323,16 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
     for user in inactive_trial_users:
         tg_id = user["tg_id"]
-        username = user.get("username", "Пользователь")
+
+        username = user["username"]
+        first_name = user["first_name"]
+        last_name = user["last_name"]
+        display_name = (
+            username
+            or first_name
+            or last_name
+            or "Пользователь"
+        )
 
         try:
             can_notify = await check_notification_time(tg_id, "inactive_trial", hours=24, session=conn)
@@ -303,7 +349,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 keyboard = builder.as_markup()
 
                 message = (
-                    f"👋 Привет, {username}!\n\n"
+                    f"👋 Привет, {display_name}!\n\n"
                     f"🎉 У тебя есть бесплатный пробный период на {TRIAL_TIME} дней!\n"
                     "🕒 Не упусти возможность попробовать наш VPN прямо сейчас.\n\n"
                     "💡 Нажми на кнопку ниже, чтобы активировать пробный доступ."
@@ -333,7 +379,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
     expiring_keys = await conn.fetch(
         """
-        SELECT tg_id, client_id, expiry_time, email FROM keys 
+        SELECT tg_id, client_id, expiry_time, email, server_id FROM keys 
         WHERE expiry_time <= $1 AND expiry_time > $2
         """,
         threshold_time,
@@ -347,6 +393,26 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             await process_key(record, bot, conn)
         except Exception as e:
             logger.error(f"Ошибка при обработке подписки {record['client_id']}: {e}")
+
+    expired_keys = await conn.fetch(
+        """
+        SELECT tg_id, client_id, email, server_id FROM keys 
+        WHERE expiry_time <= $1
+        """,
+        current_time,
+    )
+
+    logger.info(f"Найдено {len(expired_keys)} истёкших ключей.")
+
+    for record in expired_keys:
+        try:
+            await delete_key_from_cluster(record["server_id"], record["email"], record["email"])
+            await conn.execute(
+                "DELETE FROM keys WHERE client_id = $1", record["client_id"]
+            )
+            logger.info(f"Удалён истёкший ключ {record['client_id']} пользователя {record['tg_id']}.")
+        except Exception as e:
+            logger.error(f"Ошибка при удалении истёкшего ключа {record['client_id']}: {e}")
 
 
 async def process_key(record, bot, conn):
@@ -370,6 +436,8 @@ async def process_key(record, bot, conn):
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
     )
+
+    image_path = os.path.join("img", "notify_expired.jpg")
 
     try:
         if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
@@ -395,15 +463,33 @@ async def process_key(record, bot, conn):
             logger.info(f"Флаги notified сброшены для клиента {client_id}.")
 
             try:
-                await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+                if os.path.isfile(image_path):
+                    with open(image_path, "rb") as image_file:
+                        await bot.send_photo(
+                            tg_id,
+                            photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                            caption = KEY_RENEWED.format(email=email),
+                            reply_markup=keyboard,
+                        )
+                else:
+                    await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
                 logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о продлении клиенту {tg_id}: {e}")
 
         else:
-            message_expired = "Ваша подписка истекла. Пополните баланс для продления."
+            message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
             try:
-                await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
+                if os.path.isfile(image_path):
+                    with open(image_path, "rb") as image_file:
+                        await bot.send_photo(
+                            tg_id,
+                            photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                            caption=message_expired,
+                            reply_markup=keyboard,
+                        )
+                else:
+                    await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
                 logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
