@@ -1409,8 +1409,6 @@ async def update_coupon_usage_count(coupon_id: int, session: Any):
         raise
 
 
-
-
 async def get_last_payments(tg_id: int, session: Any):
     """
     Получает последние 3 платежа пользователя.
@@ -1434,13 +1432,10 @@ async def get_last_payments(tg_id: int, session: Any):
             ORDER BY created_at DESC
             LIMIT 3
             """,
-            tg_id
+            tg_id,
         )
         logger.info(f"Успешно получены последние платежи для пользователя {tg_id}")
         return records
     except Exception as e:
         logger.error(f"Ошибка при получении последних платежей для пользователя {tg_id}: {e}")
         raise
-
-
-
