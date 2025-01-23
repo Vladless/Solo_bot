@@ -9,7 +9,7 @@ from ping3 import ping
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL, PING_TIME
-from database import add_server_to_db, check_unique_server_name, get_servers_from_db
+from database import create_server, check_unique_server_name, get_servers
 from logger import logger
 
 try:
@@ -37,7 +37,7 @@ async def sync_servers_with_db():
                 exists = await check_unique_server_name(server_info["name"], conn, cluster_name)
 
                 if not exists:
-                    await add_server_to_db(
+                    await create_server(
                         cluster_name=cluster_name,
                         server_name=server_info["name"],
                         api_url=server_info["API_URL"],
@@ -117,7 +117,7 @@ async def check_servers():
     Периодическая проверка серверов с учетом извлечения хоста из `api_url`.
     """
     while True:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         current_time = datetime.now()
 
         logger.info(f"Начинаю проверку серверов: {current_time}")

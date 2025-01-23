@@ -7,7 +7,7 @@ import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
-from database import get_servers_from_db
+from database import get_servers
 from logger import logger
 
 
@@ -59,7 +59,7 @@ async def get_least_loaded_cluster() -> str:
     Returns:
         str: Идентификатор наименее загруженного кластера.
     """
-    servers = await get_servers_from_db()
+    servers = await get_servers()
 
     cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in servers.keys()}
 

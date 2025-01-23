@@ -86,15 +86,10 @@ async def check_unique_server_name(server_name: str, session: Any, cluster_name:
     """
     if cluster_name:
         result = await session.fetchrow(
-            "SELECT 1 FROM servers WHERE server_name = $1 AND cluster_name = $2 LIMIT 1",
-            server_name,
-            cluster_name
+            "SELECT 1 FROM servers WHERE server_name = $1 AND cluster_name = $2 LIMIT 1", server_name, cluster_name
         )
     else:
-        result = await session.fetchrow(
-            "SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1",
-            server_name
-        )
+        result = await session.fetchrow("SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name)
 
     return result is None
 
@@ -129,6 +124,7 @@ async def create_coupon(coupon_code: str, amount: float, usage_limit: int, sessi
     except Exception as e:
         logger.error(f"Ошибка при создании купона {coupon_code}: {e}")
         raise
+
 
 async def get_coupon_by_code(coupon_code: str, session: Any) -> dict | None:
     """
@@ -1101,34 +1097,37 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
             await conn.close()
 
 
-async def get_servers_from_db():
-    conn = await asyncpg.connect(DATABASE_URL)
+async def get_servers(session: Any = None):
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
 
-    result = await conn.fetch(
-        """
-        SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
-        FROM servers
-        """
-    )
-
-    await conn.close()
-
-    servers = {}
-    for row in result:
-        cluster_name = row["cluster_name"]
-        if cluster_name not in servers:
-            servers[cluster_name] = []
-
-        servers[cluster_name].append(
-            {
-                "server_name": row["server_name"],
-                "api_url": row["api_url"],
-                "subscription_url": row["subscription_url"],
-                "inbound_id": row["inbound_id"],
-            }
+        result = await conn.fetch(
+            """
+            SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
+            FROM servers
+            """
         )
+        servers = {}
+        for row in result:
+            cluster_name = row["cluster_name"]
+            if cluster_name not in servers:
+                servers[cluster_name] = []
 
-    return servers
+            servers[cluster_name].append(
+                {
+                    "server_name": row["server_name"],
+                    "api_url": row["api_url"],
+                    "subscription_url": row["subscription_url"],
+                    "inbound_id": row["inbound_id"],
+                }
+            )
+
+        return servers
+
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
 
 
 async def delete_user_data(session: Any, tg_id: int):
@@ -1267,7 +1266,7 @@ async def delete_key(identifier, session):
         logger.error(f"Ошибка при удалении ключа с идентификатором {identifier} из базы данных: {e}")
 
 
-async def add_server_to_db(
+async def create_server(
     cluster_name: str, server_name: str, api_url: str, subscription_url: str, inbound_id: int, session: Any
 ):
     """
@@ -1300,6 +1299,7 @@ async def add_server_to_db(
     except Exception as e:
         logger.error(f"Ошибка при добавлении сервера {server_name} в кластер {cluster_name}: {e}")
         raise
+
 
 async def delete_server(server_name: str, session: Any):
     """
@@ -1351,6 +1351,7 @@ async def create_coupon_usage(coupon_id: int, user_id: int, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при создании записи об использовании купона {coupon_id} пользователем {user_id}: {e}")
         raise
+
 
 async def check_coupon_usage(coupon_id: int, user_id: int, session: Any) -> bool:
     """
@@ -1406,4 +1407,3 @@ async def update_coupon_usage_count(coupon_id: int, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при обновлении счетчика использования купона {coupon_id}: {e}")
         raise
-

@@ -31,7 +31,7 @@ from database import (
     get_balance,
     get_key_details,
     get_keys_by_server,
-    get_servers_from_db,
+    get_servers,
     create_temporary_data,
     store_key,
     update_balance,
@@ -385,7 +385,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
                 reply_markup=keyboard,
             )
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(session)
 
             async def delete_key_from_servers():
                 try:
