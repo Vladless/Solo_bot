@@ -7,7 +7,7 @@ import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
-from database import get_servers
+from database import get_all_keys, get_servers
 from logger import logger
 
 
@@ -65,7 +65,7 @@ async def get_least_loaded_cluster() -> str:
 
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
-            keys = await conn.fetch("SELECT server_id FROM keys")
+            keys = await get_all_keys(conn)
             for key in keys:
                 cluster_id = key["server_id"]
                 if cluster_id in cluster_loads:

@@ -27,9 +27,11 @@ from config import (
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
+    check_server_name_by_cluster,
     delete_key,
     get_balance,
     get_key_details,
+    get_keys,
     get_keys_by_server,
     get_servers,
     create_temporary_data,
@@ -83,14 +85,7 @@ async def process_callback_or_message_view_keys(
         send_photo = callback_query_or_message.answer_photo
 
     try:
-        records = await session.fetch(
-            """
-            SELECT email, client_id, expiry_time 
-            FROM keys 
-            WHERE tg_id = $1
-            """,
-            chat_id,
-        )
+        records = await get_keys(chat_id, session)
 
         inline_keyboard, response_message = build_keys_response(records)
 
@@ -512,14 +507,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     server_id = key_info["server_id"]
 
     if USE_COUNTRY_SELECTION:
-        cluster_info = await conn.fetchrow(
-            """
-            SELECT cluster_name 
-            FROM servers 
-            WHERE server_name = $1
-            """,
-            server_id,
-        )
+        cluster_info = await check_server_name_by_cluster(server_id, conn)
 
         if not cluster_info:
             logger.error(f"[RENEW] Сервер {server_id} не найден в таблице servers.")
