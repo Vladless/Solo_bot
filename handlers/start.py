@@ -31,7 +31,7 @@ from database import (
     get_coupon_details,
     get_referral_by_referred_id,
     get_trial,
-    set_trial,
+    update_trial,
 )
 from handlers.buttons.add_subscribe import (
     DOWNLOAD_ANDROID_BUTTON,
@@ -212,7 +212,7 @@ async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
     if "error" in trial_key_info:
         await callback_query.message.answer(trial_key_info["error"])
     else:
-        await set_trial(user_id, 1, session)
+        await update_trial(user_id, 1, session)
 
         key_message = (
             f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
