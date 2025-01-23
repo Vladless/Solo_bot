@@ -193,8 +193,8 @@ async def create_key(
             builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
             logger.info(f"[Country Selection] Добавлена кнопка для страны: {country} с callback_data: {callback_data}")
 
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="profile"))
-        logger.info("[Country Selection] Добавлена кнопка '🔙 Назад'.")
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
+        logger.info("[Country Selection] Добавлена кнопка '⬅️ Назад'.")
 
         if isinstance(message_or_query, Message):
             logger.info("[Country Selection] Сообщение пользователя - тип Message.")

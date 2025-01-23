@@ -24,7 +24,7 @@ async def show_coupon_management_menu(callback_query: types.CallbackQuery, state
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon"))
     builder.row(InlineKeyboardButton(text="🎟️ Купоны", callback_data="coupons"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
     await callback_query.message.answer("🛠 Меню управления купонами:", reply_markup=builder.as_markup())
 
 
@@ -40,7 +40,7 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
 
         if not coupons:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
             await callback_query.message.answer(
                 "❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
                 reply_markup=builder.as_markup(),
@@ -68,7 +68,7 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
         if current_page < total_pages:
             builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page + 1}"))
 
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
         await callback_query.message.answer(coupon_list, reply_markup=builder.as_markup())
 
     except Exception as e:
@@ -98,7 +98,7 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any
 @router.callback_query(F.data == "create_coupon", IsAdminFilter())
 async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
 
     await callback_query.message.answer(
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
@@ -116,7 +116,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext, session
     parts = text.split()
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
 
     if len(parts) != 3:
         await message.answer(
@@ -149,7 +149,7 @@ async def process_coupon_data(message: types.Message, state: FSMContext, session
         )
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
 
         await message.answer(result_message, reply_markup=builder.as_markup())
         await state.clear()

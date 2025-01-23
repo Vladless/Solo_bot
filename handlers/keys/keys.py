@@ -218,7 +218,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 )
             else:
                 builder.row(InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"))
-            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
             builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             keyboard = builder.as_markup()
@@ -343,7 +343,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                     )
                 )
 
-            builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
 
             balance = await get_balance(tg_id)
 
