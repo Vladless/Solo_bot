@@ -97,6 +97,8 @@ def _cleanup_old_backups():
         logger.info("Старые бэкапы удалены.")
     except subprocess.CalledProcessError as e:
         logger.error(f"Ошибка при удалении старых бэкапов: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении старых бэкапов: {e}")
 
 
 async def create_backup_and_send_to_admins(xui):
