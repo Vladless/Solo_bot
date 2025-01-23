@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
+import pytz
 
 from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
@@ -57,7 +58,7 @@ async def remove_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
 
 
 async def init_db(file_path: str = "assets/schema.sql"):
-    with open(file_path, mode="r") as file:
+    with open(file_path) as file:
         sql_content = file.read()
 
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
@@ -843,39 +844,6 @@ async def update_key_expiry(client_id: str, new_expiry_time: int):
             logger.info("Закрытие подключения к базе данных")
 
 
-async def delete_key(client_id: str):
-    """
-    Удаление ключа из базы данных для указанного клиента.
-
-    Args:
-        client_id (str): Уникальный идентификатор клиента, ключ которого будет удален
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или удалении ключа
-    """
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(f"Установлено подключение к базе данных для удаления ключа клиента {client_id}")
-
-        await conn.execute(
-            """
-            DELETE FROM keys
-            WHERE client_id = $1
-            """,
-            client_id,
-        )
-        logger.info(f"Успешно удален ключ для клиента {client_id}")
-
-    except Exception as e:
-        logger.error(f"Ошибка при удалении ключа для клиента {client_id}: {e}")
-        raise
-    finally:
-        if conn:
-            await conn.close()
-            logger.info("Закрытие подключения к базе данных")
-
-
 async def add_balance_to_client(client_id: str, amount: float):
     """
     Добавление баланса клиенту по его идентификатору Telegram.
@@ -1202,7 +1170,7 @@ async def delete_user_data(session: Any, tg_id: int):
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM keys WHERE tg_id = $1", tg_id)
+    await delete_key(tg_id, session)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
 
@@ -1261,3 +1229,69 @@ async def store_gift_link(
     finally:
         if conn is not None and session is None:
             await conn.close()
+
+
+async def get_key_details(email, session):
+    record = await session.fetchrow(
+        """
+        SELECT k.key, k.expiry_time, k.server_id,k, k.client_id, k.created_at, c.tg_id, c.balance
+        FROM keys k
+        JOIN connections c ON k.tg_id = c.tg_id
+        WHERE k.email = $1
+        """,
+        email,
+    )
+
+    if not record:
+        return None
+
+    cluster_name = record["server_id"]
+
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
+    time_left = expiry_date - current_date
+
+    if time_left.total_seconds() <= 0:
+        days_left_message = "<b>Ключ истек.</b>"
+    elif time_left.days > 0:
+        days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
+    else:
+        hours_left = time_left.seconds // 3600
+        days_left_message = f"Осталось часов: <b>{hours_left}</b>"
+
+    return {
+        "key": record["key"],
+        "created_at": record["created_at"],
+        "expiry_time": record["expiry_time"],
+        "client_id": record["client_id"],
+        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
+        "days_left_message": days_left_message,
+        "server_name": cluster_name,
+        "balance": record["balance"],
+        "tg_id": record["tg_id"],
+    }
+
+
+async def delete_key(identifier, session):
+    """
+    Удаляет ключ из базы данных по client_id или tg_id
+
+    Args:
+        identifier (str): client_id или tg_id для удаления
+        session: Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при удалении ключа
+    """
+    try:
+        # Проверяем, является ли идентификатор числом (tg_id) или строкой (client_id)
+        if identifier.isdigit():
+            query = "DELETE FROM keys WHERE tg_id = $1"
+        else:
+            query = "DELETE FROM keys WHERE client_id = $1"
+
+        await session.execute(query, identifier)
+        logger.info(f"Ключ с идентификатором {identifier} успешно удалён")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении ключа с идентификатором {identifier} из базы данных: {e}")

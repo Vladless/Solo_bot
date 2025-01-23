@@ -25,6 +25,7 @@ from config import (
 )
 from database import (
     get_balance,
+    get_key_details,
     get_trial,
     save_temporary_data,
     store_key,
@@ -352,11 +353,7 @@ async def finalize_key_creation(
         key_name = generate_random_email()
         logger.info(f"Generated random key name for user {tg_id}: {key_name}")
 
-        existing_key = await session.fetchrow(
-            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
-            key_name,
-            tg_id,
-        )
+        existing_key = await get_key_details(key_name, session)
         if not existing_key:
             break
         logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")

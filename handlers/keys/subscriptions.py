@@ -7,7 +7,7 @@ import asyncpg
 from aiohttp import web
 
 from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR
-from database import get_servers_from_db
+from database import get_key_details, get_servers_from_db
 from logger import logger
 
 # Глобальная переменная для пула соединений
@@ -92,7 +92,7 @@ async def handle_old_subscription(request):
     await init_db_pool()
 
     async with db_pool.acquire() as conn:
-        key_info = await conn.fetchrow("SELECT created_at, server_id FROM keys WHERE email = $1", email)
+        key_info = await get_key_details(email, conn)
 
         if not key_info:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -161,7 +161,7 @@ async def handle_new_subscription(request):
     await init_db_pool()
 
     async with db_pool.acquire() as conn:
-        client_data = await conn.fetchrow("SELECT tg_id, server_id FROM keys WHERE email = $1", email)
+        client_data = await get_key_details(email, conn)
 
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")

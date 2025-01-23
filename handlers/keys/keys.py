@@ -29,6 +29,7 @@ from config import (
 from database import (
     delete_key,
     get_balance,
+    get_key_details,
     get_servers_from_db,
     save_temporary_data,
     store_key,
@@ -163,15 +164,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            """
-            SELECT k.expiry_time, k.server_id, k.key
-            FROM keys k
-            WHERE k.tg_id = $1 AND k.email = $2
-            """,
-            tg_id,
-            key_name,
-        )
+        record = await get_key_details(key_name, session)
 
         if record:
             key = record["key"]
@@ -264,15 +257,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            """
-            SELECT k.key, k.expiry_time, k.email, k.server_id, k.client_id
-            FROM keys k
-            WHERE k.tg_id = $1 AND k.email = $2
-            """,
-            tg_id,
-            email,
-        )
+        record = await get_key_details(email, session)
 
         if record:
             expiry_time = record["expiry_time"]
@@ -353,14 +338,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            """
-            SELECT client_id, expiry_time 
-            FROM keys 
-            WHERE email = $1
-            """,
-            key_name,
-        )
+        record = await get_key_details(key_name, session)
 
         if record:
             client_id = record["client_id"]
@@ -405,7 +383,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow("SELECT client_id FROM keys WHERE email = $1", email)
+        record = await get_key_details(email, session)
 
         if record:
             client_id = record["client_id"]
@@ -413,7 +391,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
             back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            await delete_key(client_id)
+            await delete_key(client_id, session)
             await callback_query.message.answer(
                 response_message,
                 reply_markup=keyboard,
