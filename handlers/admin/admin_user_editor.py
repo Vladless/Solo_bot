@@ -431,7 +431,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
 
         await update_key_on_all_servers()
 
-        await update_key_expiry(client_id, expiry_time)
+        await update_key_expiry(client_id, expiry_time, session)
 
         response_message = (
             f"✅ Время истечения ключа для клиента {client_id} ({email}) успешно обновлено на всех серверах."

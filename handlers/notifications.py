@@ -152,9 +152,9 @@ async def process_10h_record(record, bot, conn):
 
     if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
         try:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(record["client_id"], new_expiry_time)
+            await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
             servers = await get_servers_from_db()
             for cluster_id in servers:
@@ -241,9 +241,9 @@ async def process_24h_record(record, bot, conn):
 
     if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
         try:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(record["client_id"], new_expiry_time)
+            await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
             servers = await get_servers_from_db()
             for cluster_id in servers:
@@ -433,10 +433,10 @@ async def process_key(record, bot, conn):
 
     try:
         if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
 
             new_expiry_time = int((datetime.now(moscow_tz) + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(client_id, new_expiry_time)
+            await update_key_expiry(client_id, new_expiry_time, conn)
 
             servers = await get_servers_from_db()
 
