@@ -28,6 +28,8 @@ from database import (
     add_connection,
     add_referral,
     check_connection_exists,
+    get_coupon_details,
+    get_referral_by_referred_id,
     get_trial,
     set_trial,
 )
@@ -84,10 +86,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
                 recipient_tg_id = message.chat.id
 
-                gift_info = await session.fetchrow(
-                    "SELECT * FROM gifts WHERE gift_id = $1 AND is_used = FALSE",
-                    gift_id,
-                )
+                gift_info = await get_coupon_details(gift_id, session)
 
                 if gift_info is None:
                     logger.warning(f"Подарок с ID {gift_id} уже был использован или не существует.")
@@ -137,10 +136,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                         await message.answer("❌ Вы не можете быть рефералом самого себя.")
                         return await show_start_menu(message, admin, session)
 
-                    existing_referral = await session.fetchrow(
-                        "SELECT * FROM referrals WHERE referred_tg_id = $1",
-                        message.chat.id,
-                    )
+                    existing_referral = await get_referral_by_referred_id(message.chat.id, session)
 
                     if existing_referral:
                         logger.info(f"Реферал с ID {message.chat.id} уже существует.")

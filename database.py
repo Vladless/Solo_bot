@@ -94,6 +94,37 @@ async def check_unique_server_name(server_name: str, session: Any, cluster_name:
     return result is None
 
 
+async def check_server_name_by_cluster(server_name: str, session: Any) -> dict | None:
+    """
+    Проверяет принадлежность сервера к кластеру.
+
+    Args:
+        server_name (str): Имя сервера для проверки
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict | None: Словарь с информацией о кластере или None, если сервер не найден
+            - cluster_name (str): Название кластера
+    """
+    try:
+        cluster_info = await session.fetchrow(
+            """
+            SELECT cluster_name 
+            FROM servers 
+            WHERE server_name = $1
+            """,
+            server_name,
+        )
+        if cluster_info:
+            logger.info(f"Найден кластер для сервера {server_name}")
+            return dict(cluster_info)
+        logger.info(f"Кластер для сервера {server_name} не найден")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка при поиске кластера для сервера {server_name}: {e}")
+        raise
+
+
 async def create_coupon(coupon_code: str, amount: float, usage_limit: int, session: Any):
     """
     Создает новый купон в базе данных.
@@ -1409,8 +1440,6 @@ async def update_coupon_usage_count(coupon_id: int, session: Any):
         raise
 
 
-
-
 async def get_last_payments(tg_id: int, session: Any):
     """
     Получает последние 3 платежа пользователя.
@@ -1434,7 +1463,7 @@ async def get_last_payments(tg_id: int, session: Any):
             ORDER BY created_at DESC
             LIMIT 3
             """,
-            tg_id
+            tg_id,
         )
         logger.info(f"Успешно получены последние платежи для пользователя {tg_id}")
         return records
@@ -1443,4 +1472,99 @@ async def get_last_payments(tg_id: int, session: Any):
         raise
 
 
+async def get_coupon_details(coupon_id: str, session: Any):
+    """
+    Получает детали купона по его ID.
 
+    Args:
+        coupon_id (str): ID купона
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict: Словарь с деталями купона или None если купон не найден
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        record = await session.fetchrow(
+            """
+            SELECT id, code, discount, usage_count, usage_limit, is_used
+            FROM coupons
+            WHERE id = $1
+            """,
+            coupon_id,
+        )
+
+        if record:
+            logger.info(f"Успешно получены детали купона {coupon_id}")
+            return dict(record)
+
+        logger.warning(f"Купон {coupon_id} не найден")
+        return None
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении деталей купона {coupon_id}: {e}")
+        raise
+
+
+async def get_referral_by_referred_id(referred_tg_id: int, session: Any):
+    """
+    Получает информацию о реферале по ID приглашенного пользователя.
+
+    Args:
+        referred_tg_id (int): ID приглашенного пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict: Словарь с информацией о реферале или None если не найден
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        record = await session.fetchrow(
+            """
+            SELECT * FROM referrals 
+            WHERE referred_tg_id = $1
+            """,
+            referred_tg_id,
+        )
+
+        if record:
+            logger.info(f"Успешно получена информация о реферале для пользователя {referred_tg_id}")
+            return dict(record)
+
+        logger.info(f"Реферал для пользователя {referred_tg_id} не найден")
+        return None
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о реферале для пользователя {referred_tg_id}: {e}")
+        raise
+
+
+async def get_all_keys(session: Any = None):
+    """
+    Получает все записи из таблицы keys.
+
+    Args:
+        session (Any, optional): Сессия базы данных. По умолчанию None.
+
+    Returns:
+        list: Список всех записей из таблицы keys
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
+        keys = await conn.fetch("SELECT * FROM keys")
+        logger.info(f"Успешно получены все записи из таблицы keys. Количество: {len(keys)}")
+        return keys
+    except Exception as e:
+        logger.error(f"Ошибка при получении записей из таблицы keys: {e}")
+        raise
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
