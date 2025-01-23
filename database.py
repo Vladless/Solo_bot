@@ -75,18 +75,26 @@ async def init_db(file_path: str = "assets/schema.sql"):
         await conn.close()
 
 
-async def check_unique_server_name(server_name: str) -> bool:
+async def check_unique_server_name(server_name: str, session: Any, cluster_name: str | None = None) -> bool:
     """
     Проверяет уникальность имени сервера.
 
     :param server_name: Имя сервера.
+    :param session: Сессия базы данных.
+    :param cluster_name: Имя кластера (опционально).
     :return: True, если имя сервера уникально, False, если уже существует.
     """
-    conn = await asyncpg.connect(DATABASE_URL)
-
-    result = await conn.fetchrow("SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name)
-
-    await conn.close()
+    if cluster_name:
+        result = await session.fetchrow(
+            "SELECT 1 FROM servers WHERE server_name = $1 AND cluster_name = $2 LIMIT 1",
+            server_name,
+            cluster_name
+        )
+    else:
+        result = await session.fetchrow(
+            "SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1",
+            server_name
+        )
 
     return result is None
 
@@ -120,6 +128,39 @@ async def create_coupon(coupon_code: str, amount: float, usage_limit: int, sessi
         logger.info(f"Успешно создан купон с кодом {coupon_code} на сумму {amount}")
     except Exception as e:
         logger.error(f"Ошибка при создании купона {coupon_code}: {e}")
+        raise
+
+async def get_coupon_by_code(coupon_code: str, session: Any) -> dict | None:
+    """
+    Получает информацию о купоне по его коду.
+
+    Args:
+        coupon_code (str): Код купона для поиска
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict | None: Словарь с информацией о купоне или None, если купон не найден
+            - id (int): ID купона
+            - usage_limit (int): Лимит использований
+            - usage_count (int): Текущее количество использований
+            - is_used (bool): Флаг использования
+            - amount (float): Сумма купона
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        result = await session.fetchrow(
+            """
+            SELECT id, usage_limit, usage_count, is_used, amount
+            FROM coupons
+            WHERE code = $1 AND (usage_count < usage_limit OR usage_limit = 0) AND is_used = FALSE
+            """,
+            coupon_code,
+        )
+        return dict(result) if result else None
+    except Exception as e:
+        logger.error(f"Ошибка при получении купона {coupon_code}: {e}")
         raise
 
 
@@ -1259,3 +1300,110 @@ async def add_server_to_db(
     except Exception as e:
         logger.error(f"Ошибка при добавлении сервера {server_name} в кластер {cluster_name}: {e}")
         raise
+
+async def delete_server(server_name: str, session: Any):
+    """
+    Удаляет сервер из базы данных по его названию.
+
+    Args:
+        server_name (str): Название сервера для удаления
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при удалении сервера
+    """
+    try:
+        await session.execute(
+            """
+            DELETE FROM servers WHERE server_name = $1
+            """,
+            server_name,
+        )
+        logger.info(f"Сервер {server_name} успешно удалён из базы данных")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сервера {server_name} из базы данных: {e}")
+        raise
+
+
+async def create_coupon_usage(coupon_id: int, user_id: int, session: Any):
+    """
+    Создаёт запись об использовании купона в базе данных.
+
+    Args:
+        coupon_id (int): ID купона
+        user_id (int): ID пользователя
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при создании записи
+    """
+    try:
+        await session.execute(
+            """
+            INSERT INTO coupon_usages (coupon_id, user_id, used_at)
+            VALUES ($1, $2, $3)
+            """,
+            coupon_id,
+            user_id,
+            datetime.utcnow(),
+        )
+        logger.info(f"Создана запись об использовании купона {coupon_id} пользователем {user_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при создании записи об использовании купона {coupon_id} пользователем {user_id}: {e}")
+        raise
+
+async def check_coupon_usage(coupon_id: int, user_id: int, session: Any) -> bool:
+    """
+    Проверяет, использовал ли пользователь данный купон.
+
+    Args:
+        coupon_id (int): ID купона для проверки
+        user_id (int): ID пользователя для проверки
+        session (Any): Сессия базы данных
+
+    Returns:
+        bool: True если купон уже использован, False если нет
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        result = await session.fetchrow(
+            """
+            SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2
+            """,
+            coupon_id,
+            user_id,
+        )
+        return result is not None
+    except Exception as e:
+        logger.error(f"Ошибка при проверке использования купона {coupon_id} пользователем {user_id}: {e}")
+        raise
+
+
+async def update_coupon_usage_count(coupon_id: int, session: Any):
+    """
+    Обновляет счетчик использования купона и его статус.
+
+    Args:
+        coupon_id (int): ID купона для обновления
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при обновлении данных купона
+    """
+    try:
+        await session.execute(
+            """
+            UPDATE coupons
+            SET usage_count = usage_count + 1,
+                is_used = CASE WHEN usage_count + 1 >= usage_limit AND usage_limit > 0 THEN TRUE ELSE FALSE END
+            WHERE id = $1
+            """,
+            coupon_id,
+        )
+        logger.info(f"Успешно обновлен счетчик использования купона {coupon_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении счетчика использования купона {coupon_id}: {e}")
+        raise
+
