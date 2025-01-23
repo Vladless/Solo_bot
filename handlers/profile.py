@@ -1,9 +1,9 @@
 import os
 from typing import Any
 
+import aiofiles
 import asyncpg
 from aiogram import F, Router, types
-import aiofiles
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
