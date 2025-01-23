@@ -158,7 +158,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
 
     expiry_time = datetime.utcnow() + timedelta(days=duration_days)
     await create_key(tg_id, expiry_time, None, session, callback_query)
-    await update_balance(tg_id, -plan_price)
+    await update_balance(tg_id, -plan_price, session)
 
 
 async def create_key(

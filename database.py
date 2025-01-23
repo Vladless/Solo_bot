@@ -349,7 +349,7 @@ async def store_key(
         raise
 
 
-async def get_keys(tg_id: int):
+async def get_keys(tg_id: int, session: Any):
     """
     Получает список ключей для указанного пользователя.
 
@@ -362,10 +362,8 @@ async def get_keys(tg_id: int):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или выполнении запроса
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        records = await conn.fetch(
+        records = await session.fetch(
             """
             SELECT client_id, email, created_at, key
             FROM keys
@@ -378,17 +376,14 @@ async def get_keys(tg_id: int):
     except Exception as e:
         logger.error(f"Ошибка при получении ключей для пользователя {tg_id}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
 
 
-async def get_keys_by_server(tg_id: int, server_id: str):
+async def get_keys_by_server(tg_id: int | None, server_id: str, session: Any):
     """
-    Получает список ключей для указанного пользователя на определенном сервере.
+    Получает список ключей на определенном сервере. Если tg_id=None, возвращает все ключи на сервере.
 
     Args:
-        tg_id (int): Telegram ID пользователя
+        tg_id (int | None): Telegram ID пользователя или None для всех пользователей
         server_id (str): Идентификатор сервера
 
     Returns:
@@ -397,53 +392,36 @@ async def get_keys_by_server(tg_id: int, server_id: str):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или выполнении запроса
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        records = await conn.fetch(
-            """
-            SELECT client_id, email, created_at, key
-            FROM keys
-            WHERE tg_id = $1 AND server_id = $2
-            """,
-            tg_id,
-            server_id,
-        )
-        logger.info(f"Успешно получено {len(records)} ключей для пользователя {tg_id} на сервере {server_id}")
+        if tg_id is not None:
+            records = await session.fetch(
+                """
+                SELECT *
+                FROM keys
+                WHERE tg_id = $1 AND server_id = $2
+                """,
+                tg_id,
+                server_id,
+            )
+            logger.info(f"Успешно получено {len(records)} ключей для пользователя {tg_id} на сервере {server_id}")
+        else:
+            records = await session.fetch(
+                """
+                SELECT *
+                FROM keys
+                WHERE server_id = $1
+                """,
+                server_id,
+            )
+            logger.info(f"Успешно получено {len(records)} ключей на сервере {server_id}")
+
         return records
     except Exception as e:
-        logger.error(f"Ошибка при получении ключей для пользователя {tg_id} на сервере {server_id}: {e}")
+        error_msg = f"Ошибка при получении ключей на сервере {server_id}"
+        if tg_id is not None:
+            error_msg += f" для пользователя {tg_id}"
+        logger.error(f"{error_msg}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
-
-
-async def has_active_key(tg_id: int) -> bool:
-    """
-    Проверяет наличие активных ключей для указанного пользователя.
-
-    Args:
-        tg_id (int): Telegram ID пользователя
-
-    Returns:
-        bool: True, если у пользователя есть активные ключи, иначе False
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или выполнении запроса
-    """
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE tg_id = $1", tg_id)
-        logger.info(f"Проверка наличия ключей для пользователя {tg_id}. Найдено ключей: {count}")
-        return count > 0
-    except Exception as e:
-        logger.error(f"Ошибка при проверке наличия ключей для пользователя {tg_id}: {e}")
-        raise
-    finally:
-        if conn:
-            await conn.close()
 
 
 async def get_balance(tg_id: int) -> float:
@@ -473,21 +451,25 @@ async def get_balance(tg_id: int) -> float:
             await conn.close()
 
 
-async def update_balance(tg_id: int, amount: float):
+async def update_balance(tg_id: int, amount: float, session: Any = None):
     """
     Обновляет баланс пользователя в базе данных.
 
     Args:
         tg_id (int): Telegram ID пользователя
         amount (float): Сумма для обновления баланса
+        session (Any, optional): Сессия базы данных. Если не передана, создается новая.
 
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении баланса
     """
     conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute(
+        if session is None:
+            conn = await asyncpg.connect(DATABASE_URL)
+            session = conn
+
+        await session.execute(
             """
             UPDATE connections
             SET balance = balance + $1
@@ -504,7 +486,7 @@ async def update_balance(tg_id: int, amount: float):
         logger.error(f"Ошибка при обновлении баланса для пользователя {tg_id}: {e}")
         raise
     finally:
-        if conn:
+        if conn is not None:
             await conn.close()
 
 
@@ -553,28 +535,6 @@ async def get_key_count(tg_id: int) -> int:
     finally:
         if conn:
             await conn.close()
-
-
-async def get_all_users(conn):
-    """
-    Получает список всех пользователей из базы данных.
-
-    Args:
-        conn: Подключение к базе данных
-
-    Returns:
-        list: Список Telegram ID всех пользователей
-
-    Raises:
-        Exception: В случае ошибки при получении данных
-    """
-    try:
-        users = await conn.fetch("SELECT tg_id FROM connections")
-        logger.info(f"Получен список всех пользователей. Количество: {len(users)}")
-        return users
-    except Exception as e:
-        logger.error(f"Ошибка при получении списка пользователей: {e}")
-        raise
 
 
 async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
@@ -784,7 +744,7 @@ async def get_referral_stats(referrer_tg_id: int):
             logger.info("Закрытие подключения к базе данных")
 
 
-async def update_key_expiry(client_id: str, new_expiry_time: int):
+async def update_key_expiry(client_id: str, new_expiry_time: int, session: Any):
     """
     Обновление времени истечения ключа для указанного клиента.
 
@@ -795,12 +755,8 @@ async def update_key_expiry(client_id: str, new_expiry_time: int):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении ключа
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(f"Установлено подключение к базе данных для обновления времени истечения ключа клиента {client_id}")
-
-        await conn.execute(
+        await session.execute(
             """
             UPDATE keys
             SET expiry_time = $1, notified = FALSE, notified_24h = FALSE
@@ -814,10 +770,6 @@ async def update_key_expiry(client_id: str, new_expiry_time: int):
     except Exception as e:
         logger.error(f"Ошибка при обновлении времени истечения ключа для клиента {client_id}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
-            logger.info("Закрытие подключения к базе данных")
 
 
 async def add_balance_to_client(client_id: str, amount: float):

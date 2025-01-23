@@ -30,6 +30,7 @@ from database import (
     delete_key,
     get_balance,
     get_key_details,
+    get_keys_by_server,
     get_servers_from_db,
     create_temporary_data,
     store_key,
@@ -424,10 +425,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
     total_gb = TOTAL_GB * gb_multiplier.get(plan, 1) if TOTAL_GB > 0 else 0
 
     try:
-        record = await session.fetchrow(
-            "SELECT email, expiry_time FROM keys WHERE client_id = $1",
-            client_id,
-        )
+        record = await get_keys_by_server(tg_id, client_id, session)
 
         if record:
             email = record["email"]
@@ -545,8 +543,8 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
             total_gb,
         )
 
-        await update_key_expiry(client_id, new_expiry_time)
-        await update_balance(tg_id, -cost)
+        await update_key_expiry(client_id, new_expiry_time, conn)
+        await update_balance(tg_id, -cost, conn)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
 
     await renew_key_on_cluster()

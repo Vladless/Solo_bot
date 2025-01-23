@@ -11,7 +11,7 @@ from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import add_server_to_db, check_unique_server_name, get_servers_from_db
+from database import add_server_to_db, check_unique_server_name, get_keys_by_server, get_servers_from_db
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
 from logger import logger
@@ -294,19 +294,12 @@ async def handle_manage_cluster(callback_query: types.CallbackQuery, state: FSMC
 
 
 @router.callback_query(F.data.startswith("sync_cluster|"), IsAdminFilter())
-async def sync_cluster_handler(callback_query: types.CallbackQuery):
+async def sync_cluster_handler(callback_query: types.CallbackQuery, session: Any):
     """Обработчик для синхронизации ключей на всех серверах выбранного кластера."""
     cluster_name = callback_query.data.split("|")[1]
 
-    conn = await asyncpg.connect(DATABASE_URL)
     try:
-        # TODO
-        query_keys = """
-            SELECT tg_id, client_id, email, expiry_time
-            FROM keys
-            WHERE server_id = $1
-        """
-        keys_to_sync = await conn.fetch(query_keys, cluster_name)
+        keys_to_sync = await get_keys_by_server(None, cluster_name, session)
 
         if not keys_to_sync:
             await callback_query.message.answer(
@@ -348,8 +341,6 @@ async def sync_cluster_handler(callback_query: types.CallbackQuery):
             .row(InlineKeyboardButton(text="🔙 Назад", callback_data="servers_editor"))
             .as_markup(),
         )
-    finally:
-        await conn.close()
 
 
 @router.callback_query(F.data.startswith("server_availability|"), IsAdminFilter())

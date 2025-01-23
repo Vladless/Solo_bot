@@ -89,5 +89,5 @@ async def activate_coupon(user_id: int, coupon_code: str, session: Any):
             datetime.utcnow(),
         )
 
-    await update_balance(user_id, coupon_amount)
+    await update_balance(user_id, coupon_amount, session)
     return f"<b>✅ Купон успешно активирован! 🎉</b>\n\nНа ваш баланс добавлено <b>{coupon_amount} рублей</b> 💰."
