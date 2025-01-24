@@ -4,6 +4,8 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
+import asyncpg
+import pytz
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -13,6 +15,7 @@ from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
+    DATABASE_URL,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
     ENABLE_DELETE_KEY_BUTTON,
@@ -20,6 +23,7 @@ from config import (
     PUBLIC_LINK,
     RENEWAL_PLANS,
     TOTAL_GB,
+    USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
@@ -77,7 +81,9 @@ async def process_callback_or_message_view_keys(
     try:
         records = await session.fetch(
             """
-            SELECT email, client_id FROM keys WHERE tg_id = $1
+            SELECT email, client_id, expiry_time 
+            FROM keys 
+            WHERE tg_id = $1
             """,
             chat_id,
         )
@@ -95,30 +101,50 @@ async def process_callback_or_message_view_keys(
 
 def build_keys_response(records):
     """
-    Формирует сообщение и клавиатуру для устройств.
+    Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
     """
     builder = InlineKeyboardBuilder()
 
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
     if records:
+        response_message = "<b>🔑 Список ваших подписок:</b>\n\n"
         for record in records:
             key_name = record["email"]
+            expiry_time = record.get("expiry_time")
+
+            if expiry_time:
+                expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
+                formatted_date_full = expiry_date_full.strftime(
+                    "до %d %B %Y года, %H:%M"
+                ).lower()
+
+                formatted_date_short = expiry_date_full.strftime("до %d %B").lower()
+            else:
+                formatted_date_full = "без срока действия"
+                formatted_date_short = "без срока действия"
+
+            button_text = f"{key_name} ({formatted_date_short})"
             builder.row(
                 InlineKeyboardButton(
-                    text=f"🔑 {key_name}", callback_data=f"view_key|{key_name}"
+                    text=button_text, callback_data=f"view_key|{key_name}"
                 )
             )
+
+            response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
+
+    else:
+        response_message = (
+            "<b>🔑 У вас пока нет подписок.</b>\n\n"
+            "Вы можете создать новую подписку для подключения устройств."
+        )
 
     builder.row(
         InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key")
     )
-
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
-    response_message = (
-        "<b>🔑 Список ваших подписок</b>\n\n"
-        "<i>👇 Выберите подписку для управления или добавьте новую для подключения дополнительного устройства:</i>"
-    )
     return inline_keyboard, response_message
 
 
@@ -218,7 +244,6 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 ),
             )
 
-            # ✅ Добавлена проверка флага ENABLE_DELETE_KEY_BUTTON
             if ENABLE_DELETE_KEY_BUTTON:
                 builder.row(
                     InlineKeyboardButton(
@@ -331,37 +356,26 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
             builder = InlineKeyboardBuilder()
 
-            builder.row(
-                InlineKeyboardButton(
-                    text=f'📅 1 месяц ({RENEWAL_PLANS["1"]["price"]} руб.)',
-                    callback_data=f"renew_plan|1|{client_id}",
+            for plan_id, plan_details in RENEWAL_PLANS.items():
+                months = plan_details["months"]
+                price = plan_details["price"]
+                discount = DISCOUNTS.get(plan_id, 0)
+                button_text = (
+                    f'📅 {months} месяц{"а" if months > 1 else ""} ({price} руб.)'
+                    + (f' {discount}% скидка' if discount > 0 else "")
                 )
-            )
+                builder.row(
+                    InlineKeyboardButton(
+                        text=button_text,
+                        callback_data=f"renew_plan|{months}|{client_id}",
+                    )
+                )
 
             builder.row(
                 InlineKeyboardButton(
-                    text=f'📅 3 месяца ({RENEWAL_PLANS["3"]["price"]} руб.) {DISCOUNTS["3"]}% скидка',
-                    callback_data=f"renew_plan|3|{client_id}",
+                    text="🔙 Назад", callback_data="view_keys"
                 )
             )
-
-            builder.row(
-                InlineKeyboardButton(
-                    text=f'📅 6 месяцев ({RENEWAL_PLANS["6"]["price"]} руб.) {DISCOUNTS["6"]}% скидка',
-                    callback_data=f"renew_plan|6|{client_id}",
-                )
-            )
-
-            builder.row(
-                InlineKeyboardButton(
-                    text=f'📅 12 месяцев ({RENEWAL_PLANS["12"]["price"]} руб.) ({DISCOUNTS["12"]}% 🔥)',
-                    callback_data=f"renew_plan|12|{client_id}",
-                )
-            )
-            back_button = InlineKeyboardButton(
-                text="🔙 Назад", callback_data="view_keys"
-            )
-            builder.row(back_button)
 
             balance = await get_balance(tg_id)
 
@@ -528,28 +542,58 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     else:
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
-    servers = await get_servers_from_db()
+    conn = await asyncpg.connect(DATABASE_URL)
+    key_info = await conn.fetchrow(
+        """
+        SELECT server_id 
+        FROM keys 
+        WHERE tg_id = $1 AND client_id = $2
+        """,
+        tg_id,
+        client_id,
+    )
 
-    logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. на всех серверах.")
+    if not key_info:
+        logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")
+        await conn.close()
+        return
 
-    async def renew_key_on_servers():
-        tasks = []
-        for cluster_id in servers:
-            task = asyncio.create_task(
-                renew_key_in_cluster(
-                    cluster_id,
-                    email,
-                    client_id,
-                    new_expiry_time,
-                    total_gb,
-                )
-            )
-            tasks.append(task)
+    server_id = key_info["server_id"]
 
-        await asyncio.gather(*tasks)
+    if USE_COUNTRY_SELECTION:
+        cluster_info = await conn.fetchrow(
+            """
+            SELECT cluster_name 
+            FROM servers 
+            WHERE server_name = $1
+            """,
+            server_id,
+        )
 
-        await update_balance(tg_id, -cost)
+        if not cluster_info:
+            logger.error(f"[RENEW] Сервер {server_id} не найден в таблице servers.")
+            await conn.close()
+            return
+
+        cluster_id = cluster_info["cluster_name"]
+    else:
+        cluster_id = server_id
+
+    await conn.close()
+
+    logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. в кластере {cluster_id}.")
+
+    async def renew_key_on_cluster():
+        await renew_key_in_cluster(
+            cluster_id,
+            email,
+            client_id,
+            new_expiry_time,
+            total_gb,
+        )
+
         await update_key_expiry(client_id, new_expiry_time)
+        await update_balance(tg_id, -cost)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
 
-    await renew_key_on_servers()
+    await renew_key_on_cluster()
