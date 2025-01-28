@@ -1,10 +1,12 @@
 import asyncio
+from typing import Any
 
 from py3xui import AsyncApi
 
 from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB
-from database import get_servers_from_db
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB, PUBLIC_LINK
+from database import get_servers_from_db, store_key
+from handlers.utils import get_least_loaded_cluster
 from logger import logger
 
 
@@ -101,8 +103,6 @@ async def create_client_on_server(
 
         if SUPERNODE:
             await asyncio.sleep(0.7)
-
-
 
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
     try:
@@ -256,3 +256,53 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
             f"Ошибка при обновлении ключа на серверах кластера {cluster_id} для {client_id}: {e}"
         )
         raise e
+
+
+async def update_subscription(tg_id: int, email: str, session: Any) -> None:
+    record = await session.fetchrow(
+        """
+        SELECT k.key, k.expiry_time, k.email, k.server_id, k.client_id
+        FROM keys k
+        WHERE k.tg_id = $1 AND k.email = $2
+        """,
+        tg_id,
+        email,
+    )
+
+    if not record:
+        raise ValueError(f"The key {email} does not exist in database")
+
+    expiry_time = record["expiry_time"]
+    client_id = record["client_id"]
+    public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
+    await session.execute(
+        """
+        DELETE FROM keys
+        WHERE tg_id = $1 AND email = $2
+        """,
+        tg_id,
+        email,
+    )
+
+    least_loaded_cluster_id = await get_least_loaded_cluster()
+
+    await asyncio.gather(
+        update_key_on_cluster(
+            tg_id,
+            client_id,
+            email,
+            expiry_time,
+            least_loaded_cluster_id,
+        )
+    )
+
+    await store_key(
+        tg_id,
+        client_id,
+        email,
+        expiry_time,
+        public_link,
+        server_id=least_loaded_cluster_id,
+        session=session,
+    )
