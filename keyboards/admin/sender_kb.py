@@ -11,26 +11,9 @@ class AdminSenderCallback(CallbackData, prefix="admin_sender"):
 
 def build_sender_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="👥 Все пользователи",
-        callback_data=AdminSenderCallback(
-            type="all"
-        ).pack()
-    )
-    builder.button(
-        text="✅ Пользователи с подпиской",
-        callback_data=AdminSenderCallback(
-            type="subscribed"
-        ).pack()
-    )
-    builder.button(
-        text="❌ Пользователи без подписки",
-        callback_data=AdminSenderCallback(
-            type="unsubscribed"
-        ).pack()
-    )
-    builder.row(
-        build_admin_back_btn()
-    )
+    builder.button(text="👥 Все пользователи", callback_data=AdminSenderCallback(type="all").pack())
+    builder.button(text="✅ Пользователи с подпиской", callback_data=AdminSenderCallback(type="subscribed").pack())
+    builder.button(text="❌ Пользователи без подписки", callback_data=AdminSenderCallback(type="unsubscribed").pack())
+    builder.row(build_admin_back_btn())
     builder.adjust(1)
     return builder.as_markup()
