@@ -3,33 +3,124 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import create_coupon, delete_coupon, get_all_coupons
+from database import delete_coupon, get_all_coupons, create_coupon
 from filters.admin import IsAdminFilter
+from keyboards.admin.coupons_kb import build_coupons_kb, build_coupons_list_kb, AdminCouponDeleteCallback
+from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from logger import logger
+
+router = Router()
 
 
 class AdminCouponsState(StatesGroup):
     waiting_for_coupon_data = State()
 
 
-router = Router()
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "coupons"),
+    IsAdminFilter(),
+)
+async def handle_coupons(
+        callback_query: types.CallbackQuery,
+):
+    await callback_query.message.edit_text(
+        text="🛠 Меню управления купонами:",
+        reply_markup=build_coupons_kb()
+    )
 
 
-@router.callback_query(F.data == "coupons_editor", IsAdminFilter())
-async def show_coupon_management_menu(callback_query: types.CallbackQuery, state: FSMContext):
-    await state.clear()
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon"))
-    builder.row(InlineKeyboardButton(text="🎟️ Купоны", callback_data="coupons"))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="admin"))
-    await callback_query.message.answer("🛠 Меню управления купонами:", reply_markup=builder.as_markup())
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "coupons_create"),
+    IsAdminFilter(),
+)
+async def handle_coupons_create(
+        callback_query: types.CallbackQuery,
+        state: FSMContext
+):
+    text = (
+        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
+        "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
+        "Пример: <b>'COUPON1 50 5'</b> 👈\n\n"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_admin_back_kb("coupons"),
+    )
+    await state.set_state(AdminCouponsState.waiting_for_coupon_data)
 
 
-@router.callback_query(F.data.startswith("coupons"), IsAdminFilter())
-async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
+@router.message(
+    AdminCouponsState.waiting_for_coupon_data,
+    IsAdminFilter()
+)
+async def handle_coupon_data_input(
+        message: types.Message,
+        state: FSMContext,
+        session: Any
+):
+    text = message.text.strip()
+    parts = text.split()
+
+    kb = build_admin_back_kb("coupons")
+
+    if len(parts) != 3:
+        text = (
+            "❌ <b>Некорректный формат!</b> 📝 Пожалуйста, введите данные в формате:\n"
+            "🏷️ <b>код</b> 💰 <b>сумма</b> 🔢 <b>лимит</b>\n"
+            "Пример: <b>'COUPON1 50 5'</b> 👈"
+        )
+
+        await message.answer(
+            text=text,
+            reply_markup=kb,
+        )
+        return
+
+    try:
+        coupon_code = parts[0]
+        coupon_amount = float(parts[1])
+        usage_limit = int(parts[2])
+    except ValueError:
+        text = (
+            "⚠️ <b>Проверьте правильность введенных данных!</b>\n"
+            "💱 Сумма должна быть числом, а лимит — целым числом."
+        )
+
+        await message.answer(
+            text=text,
+            reply_markup=kb,
+        )
+        return
+
+    try:
+        await create_coupon(coupon_code, coupon_amount, usage_limit, session)
+
+        text = (
+            f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
+            f"💰 Сумма: <b>{coupon_amount} рублей</b> \n"
+            f"🔢 Лимит использования: <b>{usage_limit} раз</b>"
+        )
+
+        await message.answer(
+            text=text,
+            reply_markup=kb
+        )
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"Ошибка при создании купона: {e}")
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "coupons_list"),
+    IsAdminFilter(),
+)
+async def handle_coupons_list(
+        callback_query: types.CallbackQuery,
+        session: Any
+):
     try:
         page = int(callback_query.data.split(":")[1]) if ":" in callback_query.data else 1
         per_page = 10
@@ -39,16 +130,14 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
         current_page = result["current_page"]
 
         if not coupons:
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
-            await callback_query.message.answer(
-                "❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
-                reply_markup=builder.as_markup(),
+            await callback_query.message.edit_text(
+                text="❌ На данный момент нет доступных купонов!",
+                reply_markup=build_admin_back_kb("coupons"),
             )
             return
 
-        coupon_list = f"📜 Список купонов (страница {current_page} из {total_pages}):\n\n"
-        builder = InlineKeyboardBuilder()
+        kb = build_coupons_list_kb(coupons)
+        coupon_list = "📜 Список всех купонов:\n\n"
 
         for coupon in coupons:
             coupon_list += (
@@ -57,102 +146,38 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
                 f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"❌ Удалить {coupon['code']}", callback_data=f"delete_coupon_{coupon['code']}"
-                )
-            )
 
-        if current_page > 1:
-            builder.row(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"coupons:{current_page - 1}"))
-        if current_page < total_pages:
-            builder.row(InlineKeyboardButton(text="➡️ Следующая", callback_data=f"coupons:{current_page + 1}"))
-
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
-        await callback_query.message.answer(coupon_list, reply_markup=builder.as_markup())
+        await callback_query.message.edit_text(
+            text=coupon_list,
+            reply_markup=kb
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
         await callback_query.message.answer("Произошла ошибка при получении списка купонов.")
 
 
-@router.callback_query(F.data.startswith("delete_coupon_"), IsAdminFilter())
-async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any):
-    coupon_code = callback_query.data[len("delete_coupon_") :]
+@router.callback_query(
+    AdminCouponDeleteCallback.filter(),
+    IsAdminFilter(),
+)
+async def handle_coupon_delete(
+        callback_query: types.CallbackQuery,
+        callback_data: AdminCouponDeleteCallback,
+        session: Any
+):
+    coupon_code = callback_data.coupon_code
 
     try:
         result = await delete_coupon(coupon_code, session)
 
         if result:
-            await show_coupon_list(callback_query, session)
+            await handle_coupons_list(callback_query, session)
         else:
-            await callback_query.message.answer(
-                f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
+            await callback_query.message.edit_text(
+                text=f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
             )
-            await show_coupon_list(callback_query, session)
+            await handle_coupons_list(callback_query, session)
 
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
-
-
-@router.callback_query(F.data == "create_coupon", IsAdminFilter())
-async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
-
-    await callback_query.message.answer(
-        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-        "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'COUPON1 50 5'</b> 👈\n\n",
-        reply_markup=builder.as_markup(),
-    )
-    await state.set_state(AdminCouponsState.waiting_for_coupon_data)
-
-
-@router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
-async def process_coupon_data(message: types.Message, state: FSMContext, session: Any):
-    text = message.text.strip()
-
-    parts = text.split()
-
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
-
-    if len(parts) != 3:
-        await message.answer(
-            "❌ <b>Некорректный формат!</b> 📝 Пожалуйста, введите данные в формате:\n"
-            "🏷️ <b>код</b> 💰 <b>сумма</b> 🔢 <b>лимит</b>\n"
-            "Пример: <b>'COUPON1 50 5'</b> 👈",
-            reply_markup=builder.as_markup(),
-        )
-        return
-
-    try:
-        coupon_code = parts[0]
-        coupon_amount = float(parts[1])
-        usage_limit = int(parts[2])
-    except ValueError:
-        await message.answer(
-            "⚠️ <b>Проверьте правильность введенных данных!</b>\n"
-            "💱 Сумма должна быть числом, 🔢 а лимит — целым числом.",
-            reply_markup=builder.as_markup(),
-        )
-        return
-
-    try:
-        await create_coupon(coupon_code, coupon_amount, usage_limit, session)
-
-        result_message = (
-            f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан! 🎉\n"
-            f"Сумма: <b>{coupon_amount} рублей</b> 💰\n"
-            f"Лимит использования: <b>{usage_limit} раз</b> 🔢."
-        )
-
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="coupons_editor"))
-
-        await message.answer(result_message, reply_markup=builder.as_markup())
-        await state.clear()
-
-    except Exception as e:
-        logger.error(f"Ошибка при создании купона: {e}")
