@@ -10,6 +10,7 @@ import pytz
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.yookassa_pay import process_custom_amount_input
 
 from bot import bot
 from config import (
@@ -51,10 +52,9 @@ from handlers.keys.key_utils import (
     delete_key_from_cluster,
     delete_key_from_db,
     renew_key_in_cluster,
-    update_key_on_cluster,
+    update_subscription,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,
@@ -62,7 +62,7 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from handlers.utils import get_least_loaded_cluster, handle_error
+from handlers.utils import handle_error
 from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
@@ -73,7 +73,7 @@ router = Router()
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
 async def process_callback_or_message_view_keys(
-    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
+        callback_query_or_message: types.Message | types.CallbackQuery, session: Any
 ):
     if isinstance(callback_query_or_message, types.CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
@@ -252,43 +252,15 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 async def process_callback_update_subscription(callback_query: types.CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
+
     try:
-        record = await get_key_details(email, session)
-
-        if record:
-            expiry_time = record["expiry_time"]
-            client_id = record["client_id"]
-            public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
-
-            await delete_key(client_id, session)
-
-            least_loaded_cluster_id = await get_least_loaded_cluster()
-
-            await asyncio.gather(
-                update_key_on_cluster(
-                    tg_id,
-                    client_id,
-                    email,
-                    expiry_time,
-                    least_loaded_cluster_id,
-                )
-            )
-
-            await store_key(
-                tg_id,
-                client_id,
-                email,
-                expiry_time,
-                public_link,
-                server_id=least_loaded_cluster_id,
-                session=session,
-            )
-
-            await process_callback_view_key(callback_query, session)
-        else:
-            await callback_query.message.answer("<b>Ключ не найден в базе данных.</b>")
+        await update_subscription(tg_id, email, session)
+        await process_callback_view_key(callback_query, session)
     except Exception as e:
-        await handle_error(tg_id, callback_query, f"Ошибка при обновлении подписки: {e}")
+        logger.error(f"Ошибка при обновлении ключа {email} пользователем: {e}")
+        await handle_error(
+            tg_id, callback_query, f"Ошибка при обновлении подписки: {e}"
+        )
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
@@ -363,7 +335,9 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
 
 @router.callback_query(F.data.startswith("confirm_delete|"))
-async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_confirm_delete(
+        callback_query: types.CallbackQuery, session: Any
+):
     email = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(email, session)
@@ -439,8 +413,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
                 required_amount = cost - balance
 
                 logger.info(
-                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}"
-                )
+                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
 
                 await create_temporary_data(
                     session,
