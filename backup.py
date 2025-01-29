@@ -29,7 +29,7 @@ async def backup_database() -> Exception | None:
         return e
 
 
-def _create_database_backup() -> (str | None, Exception | None):
+def _create_database_backup() -> tuple[str | None, Exception | None]:
     date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
 
     if not os.path.exists(BACK_DIR):
