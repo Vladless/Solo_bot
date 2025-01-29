@@ -16,8 +16,8 @@ from database import (
     get_key_details,
     get_keys,
     get_servers,
-    update_trial,
     update_key_expiry,
+    update_trial,
 )
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (

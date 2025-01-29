@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List
+from typing import Any
+
 import py3xui
 
 from config import LIMIT_IP, SUPERNODE
@@ -22,7 +23,7 @@ class ClientConfig:
     sub_id: str
 
 
-async def add_client(xui: py3xui.API, config: ClientConfig) -> Dict[str, Any]:
+async def add_client(xui: py3xui.API, config: ClientConfig) -> dict[str, Any]:
     """
     Добавляет клиента на сервер через 3x-ui.
 
@@ -66,7 +67,7 @@ async def add_client(xui: py3xui.API, config: ClientConfig) -> Dict[str, Any]:
 
 async def extend_client_key(
     xui: py3xui.API, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str
-) -> Optional[bool]:
+) -> bool | None:
     """
     Обновляет срок действия ключа клиента.
 

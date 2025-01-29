@@ -9,7 +9,7 @@ from ping3 import ping
 
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL, PING_TIME
-from database import create_server, check_unique_server_name, get_servers
+from database import check_unique_server_name, create_server, get_servers
 from logger import logger
 
 try:
