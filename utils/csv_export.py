@@ -35,10 +35,7 @@ async def export_users_csv(session: Any) -> BufferedInputFile:
     # Перемещение указателя в начало для чтения
     buffer.seek(0)
 
-    return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"),
-        filename="users_export.csv"
-    )
+    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="users_export.csv")
 
 
 async def export_payments_csv(session: Any) -> BufferedInputFile:
@@ -95,7 +92,4 @@ def _export_payments_csv(payments: list, filename: str) -> BufferedInputFile:
     # Перемещение указателя в начало для чтения
     buffer.seek(0)
 
-    return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"),
-        filename=filename
-    )
+    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename=filename)

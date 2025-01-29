@@ -590,4 +590,3 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
         await callback_query.message.answer(
             f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
         )
-

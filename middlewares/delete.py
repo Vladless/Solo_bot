@@ -22,20 +22,15 @@ pass_callbacks = [
 
 class DeleteMessageMiddleware(BaseMiddleware):
     async def __call__(
-            self,
-            handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
-            event: TelegramObject,
-            data: dict[str, Any],
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
     ) -> Any:
         if isinstance(event, Message):
-            if (
-                    not event.text
-                    or not event.text.startswith("/start")
-            ):
+            if not event.text or not event.text.startswith("/start"):
                 try:
-                    await event.bot.delete_message(
-                        event.chat.id, event.message_id - 1
-                    )
+                    await event.bot.delete_message(event.chat.id, event.message_id - 1)
                 except Exception:
                     pass
                 await event.delete()

@@ -11,17 +11,9 @@ class AdminCouponDeleteCallback(CallbackData, prefix="admin_coupon_delete"):
 
 def build_coupons_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="➕ Создать купон",
-        callback_data=AdminPanelCallback(action="coupons_create").pack()
-    )
-    builder.button(
-        text="Купоны",
-        callback_data=AdminPanelCallback(action="coupons_list").pack()
-    )
-    builder.row(
-        build_admin_back_btn()
-    )
+    builder.button(text="➕ Создать купон", callback_data=AdminPanelCallback(action="coupons_create").pack())
+    builder.button(text="Купоны", callback_data=AdminPanelCallback(action="coupons_list").pack())
+    builder.row(build_admin_back_btn())
     return builder.as_markup()
 
 
@@ -32,12 +24,8 @@ def build_coupons_list_kb(coupons: list) -> InlineKeyboardMarkup:
         coupon_code = coupon["code"]
         builder.button(
             text=f"❌ Удалить {coupon_code}",
-            callback_data=AdminCouponDeleteCallback(
-                coupon_code=coupon_code
-            ).pack(),
+            callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code).pack(),
         )
 
-    builder.row(
-        build_admin_back_btn("coupons")
-    )
+    builder.row(build_admin_back_btn("coupons"))
     return builder.as_markup()

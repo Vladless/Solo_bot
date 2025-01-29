@@ -22,22 +22,16 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(
-        callback_query: types.CallbackQuery,
+    callback_query: types.CallbackQuery,
 ):
-    await callback_query.message.edit_text(
-        text="🛠 Меню управления купонами:",
-        reply_markup=build_coupons_kb()
-    )
+    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
 
 
 @router.callback_query(
     AdminPanelCallback.filter(F.action == "coupons_create"),
     IsAdminFilter(),
 )
-async def handle_coupons_create(
-        callback_query: types.CallbackQuery,
-        state: FSMContext
-):
+async def handle_coupons_create(callback_query: types.CallbackQuery, state: FSMContext):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
@@ -51,15 +45,8 @@ async def handle_coupons_create(
     await state.set_state(AdminCouponsState.waiting_for_coupon_data)
 
 
-@router.message(
-    AdminCouponsState.waiting_for_coupon_data,
-    IsAdminFilter()
-)
-async def handle_coupon_data_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+@router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
+async def handle_coupon_data_input(message: types.Message, state: FSMContext, session: Any):
     text = message.text.strip()
     parts = text.split()
 
@@ -83,10 +70,7 @@ async def handle_coupon_data_input(
         coupon_amount = float(parts[1])
         usage_limit = int(parts[2])
     except ValueError:
-        text = (
-            "⚠️ <b>Проверьте правильность введенных данных!</b>\n"
-            "💱 Сумма должна быть числом, а лимит — целым числом."
-        )
+        text = "⚠️ <b>Проверьте правильность введенных данных!</b>\n💱 Сумма должна быть числом, а лимит — целым числом."
 
         await message.answer(
             text=text,
@@ -103,10 +87,7 @@ async def handle_coupon_data_input(
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>"
         )
 
-        await message.answer(
-            text=text,
-            reply_markup=kb
-        )
+        await message.answer(text=text, reply_markup=kb)
         await state.clear()
 
     except Exception as e:
@@ -117,10 +98,7 @@ async def handle_coupon_data_input(
     AdminPanelCallback.filter(F.action == "coupons_list"),
     IsAdminFilter(),
 )
-async def handle_coupons_list(
-        callback_query: types.CallbackQuery,
-        session: Any
-):
+async def handle_coupons_list(callback_query: types.CallbackQuery, session: Any):
     try:
         page = int(callback_query.data.split(":")[1]) if ":" in callback_query.data else 1
         per_page = 10
@@ -147,10 +125,7 @@ async def handle_coupons_list(
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
 
-        await callback_query.message.edit_text(
-            text=coupon_list,
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=coupon_list, reply_markup=kb)
 
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
@@ -162,9 +137,7 @@ async def handle_coupons_list(
     IsAdminFilter(),
 )
 async def handle_coupon_delete(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminCouponDeleteCallback,
-        session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any
 ):
     coupon_code = callback_data.coupon_code
 

@@ -33,17 +33,8 @@ async def handle_restart_confirm(callback_query: CallbackQuery):
             capture_output=True,
             text=True,
         )
-        await callback_query.message.edit_text(
-            text="🔄 Бот успешно перезагружен!",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
     except subprocess.CalledProcessError:
-        await callback_query.message.edit_text(
-            text="🔄 Бот успешно перезагружен!",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
     except Exception as e:
-        await callback_query.message.edit_text(
-            text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}", reply_markup=kb)

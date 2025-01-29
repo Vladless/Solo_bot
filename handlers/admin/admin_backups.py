@@ -12,14 +12,11 @@ router = Router()
     AdminPanelCallback.filter(F.action == "backups"),
     IsAdminFilter(),
 )
-async def handle_backups(
-        callback_query: CallbackQuery
-):
+async def handle_backups(callback_query: CallbackQuery):
     kb = build_admin_back_kb("management")
 
     await callback_query.message.edit_text(
-        text="💾 Инициализация резервного копирования базы данных...",
-        reply_markup=kb
+        text="💾 Инициализация резервного копирования базы данных...", reply_markup=kb
     )
 
     exception = await backup_database()
@@ -29,7 +26,4 @@ async def handle_backups(
     else:
         text = "✅ Резервная копия успешно создана и отправлена администраторам."
 
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=kb
-    )
+    await callback_query.message.edit_text(text=text, reply_markup=kb)

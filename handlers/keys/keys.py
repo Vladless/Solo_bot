@@ -73,7 +73,7 @@ router = Router()
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
 async def process_callback_or_message_view_keys(
-        callback_query_or_message: types.Message | types.CallbackQuery, session: Any
+    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
 ):
     if isinstance(callback_query_or_message, types.CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
@@ -258,9 +258,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
         await process_callback_view_key(callback_query, session)
     except Exception as e:
         logger.error(f"Ошибка при обновлении ключа {email} пользователем: {e}")
-        await handle_error(
-            tg_id, callback_query, f"Ошибка при обновлении подписки: {e}"
-        )
+        await handle_error(tg_id, callback_query, f"Ошибка при обновлении подписки: {e}")
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
@@ -335,9 +333,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
 
 @router.callback_query(F.data.startswith("confirm_delete|"))
-async def process_callback_confirm_delete(
-        callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(email, session)
@@ -413,7 +409,8 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
                 required_amount = cost - balance
 
                 logger.info(
-                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
+                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}"
+                )
 
                 await create_temporary_data(
                     session,
