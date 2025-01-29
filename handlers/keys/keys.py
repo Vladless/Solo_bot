@@ -10,7 +10,6 @@ import pytz
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.yookassa_pay import process_custom_amount_input
 
 from bot import bot
 from config import (
@@ -29,14 +28,13 @@ from config import (
 )
 from database import (
     check_server_name_by_cluster,
+    create_temporary_data,
     delete_key,
     get_balance,
     get_key_details,
     get_keys,
     get_keys_by_server,
     get_servers,
-    create_temporary_data,
-    store_key,
     update_balance,
     update_key_expiry,
 )
@@ -55,6 +53,7 @@ from handlers.keys.key_utils import (
     update_subscription,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,

@@ -2,7 +2,6 @@ import os
 import subprocess
 from datetime import datetime
 
-import aiofiles
 from aiogram.types import BufferedInputFile
 
 from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
@@ -99,9 +98,11 @@ async def create_backup_and_send_to_admins(xui) -> None:
 async def _send_backup_to_admins(backup_file_path: str) -> None:
     try:
         from bot import bot
+        import aiofiles
 
-        with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(file=backup_file.read(), filename=os.path.basename(backup_file_path))
+        async with aiofiles.open(backup_file_path, "rb") as backup_file:
+            backup_data = await backup_file.read()
+            backup_input_file = BufferedInputFile(file=backup_data, filename=os.path.basename(backup_file_path))
             admin_ids = ADMIN_ID if isinstance(ADMIN_ID, list) else [ADMIN_ID]
             for admin_id in admin_ids:
                 await bot.send_document(chat_id=admin_id, document=backup_input_file)

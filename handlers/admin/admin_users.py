@@ -21,17 +21,17 @@ from handlers.keys.key_utils import (
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.users_kb import (
-    build_user_edit_kb,
-    build_key_edit_kb,
-    build_key_delete_kb,
-    build_user_delete_kb,
     AdminUserEditorCallback,
-    build_editor_kb,
-    build_users_balance_kb,
-    build_users_balance_change_kb,
-    build_user_key_kb,
-    build_users_key_expiry_kb,
     AdminUserKeyEditorCallback,
+    build_editor_kb,
+    build_key_delete_kb,
+    build_key_edit_kb,
+    build_user_delete_kb,
+    build_user_edit_kb,
+    build_user_key_kb,
+    build_users_balance_change_kb,
+    build_users_balance_kb,
+    build_users_key_expiry_kb,
     build_users_key_show_kb,
 )
 from logger import logger
@@ -428,7 +428,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
             text = f"✅ Время действия ключа изменено на <b>{message.text}</b>"
             await change_expiry_time(expiry_time, email, session)
         except ValueError:
-            text = f"🚫 Пожалуйста, используйте корректный формат даты!"
+            text = "🚫 Пожалуйста, используйте корректный формат даты!"
         except Exception as e:
             text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
 

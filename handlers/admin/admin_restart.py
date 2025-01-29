@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
-from keyboards.admin.panel_kb import build_restart_kb, AdminPanelCallback, build_admin_back_kb
+from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb, build_restart_kb
 
 router = Router()
 

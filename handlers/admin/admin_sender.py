@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.sender_kb import build_sender_kb, AdminSenderCallback
+from keyboards.admin.sender_kb import AdminSenderCallback, build_sender_kb
 from logger import logger
 
 router = Router()

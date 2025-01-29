@@ -143,7 +143,7 @@ def build_user_delete_kb(tg_id: int):
 def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text=f"🔙 Назад", callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack()
+        text="🔙 Назад", callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack()
     )
     builder.adjust(1)
     return builder.as_markup()

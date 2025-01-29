@@ -6,15 +6,15 @@ from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import create_server, check_unique_server_name, delete_server, get_keys_by_server, get_servers
+from database import check_unique_server_name, delete_server, get_servers
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.servers_kb import (
-    build_manage_server_kb,
+    AdminServerEditorCallback,
+    build_clusters_editor_kb,
     build_delete_server_kb,
     build_manage_cluster_kb,
-    build_clusters_editor_kb,
-    AdminServerEditorCallback,
+    build_manage_server_kb,
 )
 
 router = Router()

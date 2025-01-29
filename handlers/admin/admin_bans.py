@@ -1,7 +1,7 @@
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, BufferedInputFile
+from aiogram.types import BufferedInputFile, CallbackQuery
 
 from database import delete_user_data
 from filters.admin import IsAdminFilter
