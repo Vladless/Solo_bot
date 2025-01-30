@@ -27,5 +27,5 @@ router.include_routers(
     payments_router,
     keys_router,
     instructions_router,
-    admin_router
+    admin_router,
 )
