@@ -1,3 +1,5 @@
+from typing import Any
+
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
@@ -33,7 +35,7 @@ class AdminServersEditor(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_servers(callback_query: types.CallbackQuery):
-    servers = await get_servers_from_db()
+    servers = await get_servers()
 
     text = (
         "<b>🔧 Управление кластерами</b>\n\n"
@@ -227,8 +229,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext):
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_manage"), IsAdminFilter())
 async def handle_clusters_manage(
-    callback_query: types.CallbackQuery,
-    callback_data: AdminServerEditorCallback,
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -242,7 +243,9 @@ async def handle_clusters_manage(
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_availability"), IsAdminFilter())
-async def handle_servers_availability(callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback):
+async def handle_servers_availability(
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)
@@ -279,7 +282,7 @@ async def handle_servers_availability(callback_query: types.CallbackQuery, callb
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_manage"), IsAdminFilter())
 async def handle_servers_manage(callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback):
     server_name = callback_data.data
-    servers = await get_servers_from_db()
+    servers = await get_servers()
 
     cluster_name, server = next(
         ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name), (None, None)
@@ -316,7 +319,9 @@ async def handle_servers_delete(callback_query: types.CallbackQuery, callback_da
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_delete_confirm"), IsAdminFilter())
-async def handle_servers_delete_confirm(callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback):
+async def handle_servers_delete_confirm(
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+):
     server_name = callback_data.data
 
     await delete_server(server_name, session)
@@ -350,8 +355,7 @@ async def handle_servers_add(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_backup"), IsAdminFilter())
 async def handle_clusters_backup(
-    callback_query: types.CallbackQuery,
-    callback_data: AdminServerEditorCallback,
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 

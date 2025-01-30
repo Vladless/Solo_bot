@@ -1,6 +1,8 @@
 import json
 import random
 import re
+import secrets
+import string
 
 import aiohttp
 import asyncpg
@@ -49,7 +51,7 @@ def generate_random_email(length: int = 6) -> str:
     Returns:
         str: Сгенерированная случайная строка.
     """
-    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=length))
+    return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)) if length > 0 else ""
 
 
 async def get_least_loaded_cluster() -> str:

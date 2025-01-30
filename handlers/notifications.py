@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 
+import aiofiles
 import asyncpg
 import pytz
 from aiogram import Bot, Router, types
@@ -169,10 +170,11 @@ async def process_10h_record(record, bot, conn):
             )
 
             if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
+                async with aiofiles.open(image_path, "rb") as image_file:
+                    image_data = await image_file.read()
                     await bot.send_photo(
                         tg_id,
-                        photo=BufferedInputFile(image_file.read(), filename="notify_10h.jpg"),
+                        photo=BufferedInputFile(image_data, filename="notify_10h.jpg"),
                         caption=KEY_RENEWED.format(email=email),
                         reply_markup=keyboard,
                     )
@@ -258,10 +260,11 @@ async def process_24h_record(record, bot, conn):
             )
 
             if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
+                async with aiofiles.open(image_path, "rb") as image_file:
+                    image_data = await image_file.read()
                     await bot.send_photo(
                         tg_id,
-                        photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                        photo=BufferedInputFile(image_data, filename="notify_24h.jpg"),
                         caption=KEY_RENEWED.format(email=email),
                         reply_markup=keyboard,
                     )
@@ -286,10 +289,11 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
         image_path = os.path.join("img", "notify_24h.jpg")
 
         if os.path.isfile(image_path):
-            with open(image_path, "rb") as image_file:
+            async with aiofiles.open(image_path, "rb") as image_file:
+                image_data = await image_file.read()
                 await bot.send_photo(
                     tg_id,
-                    photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                    photo=BufferedInputFile(image_data, filename="notify_24h.jpg"),
                     caption=message,
                     reply_markup=keyboard.as_markup(),
                 )
@@ -298,7 +302,7 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
 
         logger.info(f"Уведомление отправлено пользователю {tg_id}.")
 
-        await conn.execute(f"UPDATE keys SET {flag} = TRUE WHERE client_id = $1", client_id)
+        await conn.execute("UPDATE keys SET notified_24h = $1 WHERE client_id = $2", flag, client_id)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
@@ -456,10 +460,11 @@ async def process_key(record, bot, conn):
 
             try:
                 if os.path.isfile(image_path):
-                    with open(image_path, "rb") as image_file:
+                    async with aiofiles.open(image_path, "rb") as image_file:
+                        image_data = await image_file.read()
                         await bot.send_photo(
                             tg_id,
-                            photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                            photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
                             caption=KEY_RENEWED.format(email=email),
                             reply_markup=keyboard,
                         )
@@ -473,10 +478,11 @@ async def process_key(record, bot, conn):
             message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
             try:
                 if os.path.isfile(image_path):
-                    with open(image_path, "rb") as image_file:
+                    async with aiofiles.open(image_path, "rb") as image_file:
+                        image_data = await image_file.read()
                         await bot.send_photo(
                             tg_id,
-                            photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                            photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
                             caption=message_expired,
                             reply_markup=keyboard,
                         )
@@ -511,7 +517,7 @@ async def process_key(record, bot, conn):
 async def check_online_users():
     servers = await get_servers()
 
-    for cluster_id, cluster in servers.items():
+    for _cluster_id, cluster in servers.items():
         for server_id, server in enumerate(cluster):
             xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
             await xui.login()

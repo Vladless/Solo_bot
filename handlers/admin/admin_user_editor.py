@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import TOTAL_GB
 from database import (
+    delete_key,
     delete_user_data,
     get_client_id_by_email,
     get_key_details,
@@ -22,7 +23,6 @@ from database import (
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
-    delete_key_from_db,
     renew_key_in_cluster,
 )
 from handlers.utils import sanitize_key_name
@@ -415,7 +415,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
         async def update_key_on_all_servers():
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
-                for server in cluster_servers:
+                for _server in cluster_servers:
                     tasks.append(
                         asyncio.create_task(
                             renew_key_in_cluster(
@@ -493,12 +493,12 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
         async def delete_key_from_servers(email, client_id):
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
-                for server in cluster_servers:
+                for _server in cluster_servers:
                     tasks.append(delete_key_from_cluster(cluster_name, email, client_id))
             await asyncio.gather(*tasks)
 
         await delete_key_from_servers(email, client_id)
-        await delete_key_from_db(client_id, session)
+        await delete_key(client_id, session)
 
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
@@ -570,7 +570,7 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
             tasks = []
             for email, client_id in key_records:
                 servers = await get_servers(session)
-                for cluster_id, cluster in servers.items():
+                for cluster_id, _cluster in servers.items():
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
             await asyncio.gather(*tasks)
         except Exception as e:

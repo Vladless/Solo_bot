@@ -33,7 +33,7 @@ async def sync_servers_with_db():
         logger.info("Подключение к базе данных для синхронизации серверов успешно.")
 
         for cluster_name, servers in CLUSTERS.items():
-            for server_key, server_info in servers.items():
+            for _server_key, server_info in servers.items():
                 exists = await check_unique_server_name(server_info["name"], conn, cluster_name)
 
                 if not exists:

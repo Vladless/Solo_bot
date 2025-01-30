@@ -1,4 +1,5 @@
 import random
+import secrets
 from typing import Any
 
 from aiogram import F, Router
@@ -7,7 +8,6 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CAPTCHA_EMOJIS
-from handlers.start import start_command
 from logger import logger
 
 router = Router()
@@ -27,7 +27,7 @@ async def generate_captcha(message: Message, state: FSMContext):
     }
     """
     # Выбираем случайный эмодзи и его описание из конфига
-    correct_emoji, correct_text = random.choice(list(CAPTCHA_EMOJIS.items()))
+    correct_emoji, correct_text = secrets.choice(list(CAPTCHA_EMOJIS.items()))
 
     # Получаем 3 случайных неправильных эмодзи
     wrong_emojis = random.sample([e for e in CAPTCHA_EMOJIS.keys() if e != correct_emoji], 3)
@@ -54,7 +54,8 @@ async def generate_captcha(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("captcha_"))
 async def check_captcha(callback: CallbackQuery, state: FSMContext, session: Any, admin: bool):
-    """Проверяет ответ пользователя на капчу"""
+    from handlers.start import start_command
+
     selected_emoji = callback.data.split("captcha_")[1]
     state_data = await state.get_data()
     correct_emoji = state_data.get("correct_emoji")

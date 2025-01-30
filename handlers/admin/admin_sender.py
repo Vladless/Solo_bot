@@ -85,8 +85,8 @@ async def handle_message_input(message: types.Message, state: FSMContext, sessio
             try:
                 await message.bot.send_message(chat_id=tg_id, text=text_message)
                 success_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(e)
 
         text = (
             f"📤 Рассылка завершена!"

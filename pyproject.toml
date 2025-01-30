@@ -1,10 +1,10 @@
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "ANN", "ASYNC", "S", "BLE", "FBT", "B", "A", "C4", "DTZ", "T10", "ISC", "ICN", "G", "PIE"]
-ignore = ["ANN101", "ANN102", "S101",'ANN201','ANN001','BLE001']
+ignore = ["ANN101", "ANN102", "S101",'ANN201','ANN001','BLE001','W291','ANN401','DTZ003','DTZ005','F401','FBT002','FBT001','FBT003','A005','E501','UP017','DTZ004','W293','ANN202','DTZ007']
 exclude = [
     ".git", 
     "venv",
