@@ -89,19 +89,6 @@ async def notify_expiring_keys(bot: Bot):
             logger.info("Соединение с базой данных закрыто.")
 
 
-async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
-    if DEV_MODE:
-        return False
-    try:
-        member = await bot.get_chat_member(chat_id, bot.id)
-        blocked = member.status == "left"
-        logger.info(f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}")
-        return blocked
-    except Exception as e:
-        logger.warning(f"Не удалось проверить статус бота для пользователя {chat_id}: {e}")
-        return False
-
-
 async def notify_10h_keys(
     bot: Bot,
     conn: asyncpg.Connection,
