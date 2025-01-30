@@ -36,7 +36,7 @@ async def fetch_url_content(url, tg_id):
                 else:
                     logger.error(f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}")
                     return []
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error(f"Таймаут при получении {url} для tg_id: {tg_id}")
         return []
     except Exception as e:

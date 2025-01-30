@@ -3,6 +3,7 @@ import random
 import re
 import secrets
 import string
+from datetime import datetime, timedelta
 
 import aiohttp
 import asyncpg
@@ -11,7 +12,6 @@ from bot import bot
 from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
-from datetime import datetime, timedelta
 
 
 async def get_usd_rate():
