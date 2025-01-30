@@ -10,19 +10,29 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
 
 from config import TOTAL_GB
-from database import delete_user_data, get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
+from database import delete_key, delete_user_data, get_client_id_by_email, get_servers, update_key_expiry, update_trial
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
-    delete_key_from_db,
-    renew_key_in_cluster, update_subscription,
+    renew_key_in_cluster,
+    update_subscription,
 )
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.users_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
-    build_user_delete_kb, AdminUserEditorCallback, build_editor_kb, build_users_balance_kb, \
-    build_users_balance_change_kb, build_user_key_kb, build_users_key_expiry_kb, AdminUserKeyEditorCallback, \
-    build_users_key_show_kb
+from keyboards.admin.users_kb import (
+    AdminUserEditorCallback,
+    AdminUserKeyEditorCallback,
+    build_editor_kb,
+    build_key_delete_kb,
+    build_key_edit_kb,
+    build_user_delete_kb,
+    build_user_edit_kb,
+    build_user_key_kb,
+    build_users_balance_change_kb,
+    build_users_balance_kb,
+    build_users_key_expiry_kb,
+    build_users_key_show_kb,
+)
 from logger import logger
 
 router = Router()
@@ -42,10 +52,7 @@ class UserEditorState(StatesGroup):
     AdminPanelCallback.filter(F.action == "search_user"),
     IsAdminFilter(),
 )
-async def handle_search_user(
-        callback_query: CallbackQuery,
-        state: FSMContext
-):
+async def handle_search_user(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "<b>🔍 Поиск пользователя</b>"
         "\n\n📌 Введите ID, Username или перешлите сообщение пользователя."
@@ -55,36 +62,20 @@ async def handle_search_user(
     )
 
     await state.set_state(UserEditorState.waiting_for_user_data)
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=build_admin_back_kb()
-    )
+    await callback_query.message.edit_text(text=text, reply_markup=build_admin_back_kb())
 
 
 @router.callback_query(
     AdminPanelCallback.filter(F.action == "search_key"),
     IsAdminFilter(),
 )
-async def handle_search_key(
-        callback_query: CallbackQuery,
-        state: FSMContext
-):
+async def handle_search_key(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(UserEditorState.waiting_for_key_name)
-    await callback_query.message.edit_text(
-        text="🔑 Введите имя ключа для поиска:",
-        reply_markup=build_admin_back_kb()
-    )
+    await callback_query.message.edit_text(text="🔑 Введите имя ключа для поиска:", reply_markup=build_admin_back_kb())
 
 
-@router.message(
-    UserEditorState.waiting_for_user_data,
-    IsAdminFilter()
-)
-async def handle_user_data_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+@router.message(UserEditorState.waiting_for_user_data, IsAdminFilter())
+async def handle_user_data_input(message: types.Message, state: FSMContext, session: Any):
     kb = build_admin_back_kb()
 
     if message.forward_from:
@@ -93,23 +84,18 @@ async def handle_user_data_input(
         return
 
     if not message.text:
-        await message.answer(
-            text="🚫 Пожалуйста, отправьте текстовое сообщение.",
-            reply_markup=kb
-        )
+        await message.answer(text="🚫 Пожалуйста, отправьте текстовое сообщение.", reply_markup=kb)
         return
 
     if message.text.isdigit():
         tg_id = int(message.text)
     else:
         # Удаление '@' символа в начале сообщения
-        username = message.text.strip().lstrip('@')
+        username = message.text.strip().lstrip("@")
         # Удаление начала ссылки на профиль
-        username = username.replace('https://t.me/', '')
+        username = username.replace("https://t.me/", "")
 
-        user = await session.fetchrow(
-            "SELECT tg_id FROM users WHERE username = $1", username
-        )
+        user = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
 
         if not user:
             await message.answer(
@@ -123,32 +109,19 @@ async def handle_user_data_input(
     await process_user_search(message, state, session, tg_id)
 
 
-@router.message(
-    UserEditorState.waiting_for_key_name,
-    IsAdminFilter()
-)
-async def handle_key_name_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+@router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
+async def handle_key_name_input(message: types.Message, state: FSMContext, session: Any):
     kb = build_admin_back_kb()
 
     if not message.text:
-        await message.answer(
-            text="🚫 Пожалуйста, отправьте текстовое сообщение.",
-            reply_markup=kb
-        )
+        await message.answer(text="🚫 Пожалуйста, отправьте текстовое сообщение.", reply_markup=kb)
         return
 
     key_name = sanitize_key_name(message.text)
     key_details = await get_key_details(key_name, session)
 
     if not key_details:
-        await message.answer(
-            text="🚫 Пользователь с указанным именем ключа не найден.",
-            reply_markup=kb
-        )
+        await message.answer(text="🚫 Пользователь с указанным именем ключа не найден.", reply_markup=kb)
         return
 
     await process_user_search(message, state, session, key_details["tg_id"])
@@ -159,46 +132,28 @@ async def handle_key_name_input(
     IsAdminFilter(),
 )
 async def handle_send_message(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext
 ):
     tg_id = callback_data.tg_id
 
     await callback_query.message.edit_text(
-        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:",
-        reply_markup=build_editor_kb(tg_id)
+        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:", reply_markup=build_editor_kb(tg_id)
     )
 
     await state.update_data(tg_id=tg_id)
     await state.set_state(UserEditorState.waiting_for_message_text)
 
 
-@router.message(
-    UserEditorState.waiting_for_message_text,
-    IsAdminFilter()
-)
-async def handle_message_text_input(
-        message: types.Message,
-        state: FSMContext
-):
+@router.message(UserEditorState.waiting_for_message_text, IsAdminFilter())
+async def handle_message_text_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
     tg_id = data.get("tg_id")
 
     try:
-        await message.bot.send_message(
-            chat_id=tg_id,
-            text=message.text
-        )
-        await message.answer(
-            text="✅ Сообщение успешно отправлено.",
-            reply_markup=build_editor_kb(tg_id)
-        )
+        await message.bot.send_message(chat_id=tg_id, text=message.text)
+        await message.answer(text="✅ Сообщение успешно отправлено.", reply_markup=build_editor_kb(tg_id))
     except Exception as e:
-        await message.answer(
-            text=f"❌ Не удалось отправить сообщение: {e}",
-            reply_markup=build_editor_kb(tg_id)
-        )
+        await message.answer(text=f"❌ Не удалось отправить сообщение: {e}", reply_markup=build_editor_kb(tg_id))
 
     await state.clear()
 
@@ -208,37 +163,28 @@ async def handle_message_text_input(
     IsAdminFilter(),
 )
 async def handle_trial_restore(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     tg_id = callback_data.tg_id
 
-    await restore_trial(tg_id, session)
-    await callback_query.message.edit_text(
-        text="✅ Триал успешно восстановлен!",
-        reply_markup=build_editor_kb(tg_id)
-    )
+    await update_trial(tg_id, 0, session)
+    await callback_query.message.edit_text(text="✅ Триал успешно восстановлен!", reply_markup=build_editor_kb(tg_id))
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_edit"),
-    IsAdminFilter()
-)
-async def handle_balance_change(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_edit"), IsAdminFilter())
+async def handle_balance_change(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
     tg_id = callback_data.tg_id
 
-    records = await session.fetch("""
+    records = await session.fetch(
+        """
        SELECT amount, payment_system, status, created_at
        FROM payments
        WHERE tg_id = $1
        ORDER BY created_at DESC
        LIMIT 5
-       """, tg_id)
+       """,
+        tg_id,
+    )
 
     balance = await get_user_balance(tg_id, session)
 
@@ -263,21 +209,12 @@ async def handle_balance_change(
     else:
         text += "\n <i>🚫 Отсутствуют</i>"
 
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=build_users_balance_kb(tg_id)
-    )
+    await callback_query.message.edit_text(text=text, reply_markup=build_users_balance_kb(tg_id))
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_add"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_add"), IsAdminFilter())
 async def handle_balance_add(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext,
-        session: Any
+    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
 ):
     tg_id = callback_data.tg_id
     amount = callback_data.data
@@ -292,19 +229,12 @@ async def handle_balance_add(
 
     await callback_query.message.edit_text(
         text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id)
+        reply_markup=build_users_balance_change_kb(tg_id),
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_take"),
-    IsAdminFilter()
-)
-async def handle_balance_take(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_take"), IsAdminFilter())
+async def handle_balance_take(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     tg_id = callback_data.tg_id
 
     await state.update_data(tg_id=tg_id, op_type="take")
@@ -312,19 +242,12 @@ async def handle_balance_take(
 
     await callback_query.message.edit_text(
         text="✍️ Введите сумму, которую хотите вычесть из баланса пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id)
+        reply_markup=build_users_balance_change_kb(tg_id),
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_set"),
-    IsAdminFilter()
-)
-async def handle_balance_set(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_set"), IsAdminFilter())
+async def handle_balance_set(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     tg_id = callback_data.tg_id
 
     await state.update_data(tg_id=tg_id, op_type="set")
@@ -332,27 +255,19 @@ async def handle_balance_set(
 
     await callback_query.message.edit_text(
         text="✍️ Введите баланс, который хотите установить пользователю:",
-        reply_markup=build_users_balance_change_kb(tg_id)
+        reply_markup=build_users_balance_change_kb(tg_id),
     )
 
 
-@router.message(
-    UserEditorState.waiting_for_balance,
-    IsAdminFilter()
-)
-async def handle_balance_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+@router.message(UserEditorState.waiting_for_balance, IsAdminFilter())
+async def handle_balance_input(message: types.Message, state: FSMContext, session: Any):
     data = await state.get_data()
     tg_id = data.get("tg_id")
     op_type = data.get("op_type")
 
     if not message.text.isdigit() or int(message.text) < 0:
         await message.answer(
-            text="🚫 Пожалуйста, введите корректную сумму!",
-            reply_markup=build_users_balance_change_kb(tg_id)
+            text="🚫 Пожалуйста, введите корректную сумму!", reply_markup=build_users_balance_change_kb(tg_id)
         )
         return
 
@@ -368,21 +283,12 @@ async def handle_balance_input(
         text = f"✅ Баланс пользователя изменен на <b>{amount}Р</b>"
         await set_user_balance(tg_id, amount, session)
 
-    await message.answer(
-        text=text,
-        reply_markup=build_users_balance_change_kb(tg_id)
-    )
+    await message.answer(text=text, reply_markup=build_users_balance_change_kb(tg_id))
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_key_edit"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_key_edit"), IsAdminFilter())
 async def handle_key_edit(
-        callback_query: CallbackQuery,
-        callback_data: CallbackData,
-        session: Any,
-        update: bool = False
+    callback_query: CallbackQuery, callback_data: CallbackData, session: Any, update: bool = False
 ):
     email = callback_data.data
     key_details = await get_key_details(email, session)
@@ -403,42 +309,24 @@ async def handle_key_edit(
     )
 
     if not update or not callback_data.edit:
-        await callback_query.message.edit_text(
-            text=text,
-            reply_markup=build_key_edit_kb(key_details, email)
-        )
+        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_details, email))
     else:
         await callback_query.message.edit_text(
-            text=text,
-            reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
+            text=text, reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
         )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_expiry_edit"),
-    IsAdminFilter()
-)
-async def handle_change_expiry(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_expiry_edit"), IsAdminFilter())
+async def handle_change_expiry(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback):
     tg_id = callback_data.tg_id
     email = callback_data.data
 
-    await callback_query.message.edit_reply_markup(
-        reply_markup=build_users_key_expiry_kb(tg_id, email)
-    )
+    await callback_query.message.edit_reply_markup(reply_markup=build_users_key_expiry_kb(tg_id, email))
 
 
-@router.callback_query(
-    AdminUserKeyEditorCallback.filter(F.action == "add"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "add"), IsAdminFilter())
 async def handle_expiry_add(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserKeyEditorCallback,
-        state: FSMContext,
-        session: Any
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext, session: Any
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -463,18 +351,13 @@ async def handle_expiry_add(
 
     await callback_query.message.edit_text(
         text="✍️ Введите количество дней, которое хотите добавить к времени действия ключа:",
-        reply_markup=build_users_key_show_kb(tg_id, email)
+        reply_markup=build_users_key_show_kb(tg_id, email),
     )
 
 
-@router.callback_query(
-    AdminUserKeyEditorCallback.filter(F.action == "take"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "take"), IsAdminFilter())
 async def handle_expiry_take(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserKeyEditorCallback,
-        state: FSMContext
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -484,18 +367,13 @@ async def handle_expiry_take(
 
     await callback_query.message.edit_text(
         text="✍️ Введите количество дней, которое хотите вычесть из времени действия ключа:",
-        reply_markup=build_users_key_show_kb(tg_id, email)
+        reply_markup=build_users_key_show_kb(tg_id, email),
     )
 
 
-@router.callback_query(
-    AdminUserKeyEditorCallback.filter(F.action == "set"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "set"), IsAdminFilter())
 async def handle_expiry_set(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserKeyEditorCallback,
-        state: FSMContext
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -509,21 +387,11 @@ async def handle_expiry_set(
         "\n Пример: 2025-02-09 09:01"
     )
 
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=build_users_key_show_kb(tg_id, email)
-    )
+    await callback_query.message.edit_text(text=text, reply_markup=build_users_key_show_kb(tg_id, email))
 
 
-@router.message(
-    UserEditorState.waiting_for_expiry_time,
-    IsAdminFilter()
-)
-async def handle_expiry_time_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+@router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
+async def handle_expiry_time_input(message: types.Message, state: FSMContext, session: Any):
     data = await state.get_data()
     tg_id = data.get("tg_id")
     email = data.get("email")
@@ -532,7 +400,7 @@ async def handle_expiry_time_input(
     if op_type != "set" and (not message.text.isdigit() or int(message.text) < 0):
         await message.answer(
             text="🚫 Пожалуйста, введите корректное количество дней!",
-            reply_markup=build_users_key_show_kb(tg_id, email)
+            reply_markup=build_users_key_show_kb(tg_id, email),
         )
         return
 
@@ -555,31 +423,19 @@ async def handle_expiry_time_input(
         await change_expiry_time(key_details["expiry_time"] - days * 24 * 3600 * 1000, email, session)
     else:
         try:
-            expiry_time = int(
-                datetime.strptime(message.text, "%Y-%m-%d %H:%M").timestamp() * 1000
-            )
+            expiry_time = int(datetime.strptime(message.text, "%Y-%m-%d %H:%M").timestamp() * 1000)
             text = f"✅ Время действия ключа изменено на <b>{message.text}</b>"
             await change_expiry_time(expiry_time, email, session)
         except ValueError:
-            text = f"🚫 Пожалуйста, используйте корректный формат даты!"
+            text = "🚫 Пожалуйста, используйте корректный формат даты!"
         except Exception as e:
             text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
 
-    await message.answer(
-        text=text,
-        reply_markup=build_users_key_show_kb(tg_id, email)
-    )
+    await message.answer(text=text, reply_markup=build_users_key_show_kb(tg_id, email))
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_update_key"),
-    IsAdminFilter()
-)
-async def handle_update_key(
-        callback_query: CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_update_key"), IsAdminFilter())
+async def handle_update_key(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
     tg_id = callback_data.tg_id
     email = callback_data.data
 
@@ -591,104 +447,65 @@ async def handle_update_key(
     except Exception as e:
         logger.error(f"Ошибка при обновлении ключа {email} администратором: {e}")
         await callback_query.message.answer(
-            text=f"❗ Произошла ошибка при обновлении ключа: {e}",
-            reply_markup=build_user_key_kb(tg_id, email)
+            text=f"❗ Произошла ошибка при обновлении ключа: {e}", reply_markup=build_user_key_kb(tg_id, email)
         )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_delete_key"),
-    IsAdminFilter()
-)
-async def handle_delete_key(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_key"), IsAdminFilter())
+async def handle_delete_key(callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
     email = callback_data.data
-    client_id = await session.fetchval(
-        "SELECT client_id FROM keys WHERE email = $1", email
-    )
+    client_id = await session.fetchval("SELECT client_id FROM keys WHERE email = $1", email)
 
     if client_id is None:
         await callback_query.message.edit_text(
-            text="🚫 Ключ не найден!",
-            reply_markup=build_editor_kb(callback_data.tg_id)
+            text="🚫 Ключ не найден!", reply_markup=build_editor_kb(callback_data.tg_id)
         )
         return
 
     await callback_query.message.edit_text(
-        text="❓ Вы уверены, что хотите удалить ключ?",
-        reply_markup=build_key_delete_kb(callback_data.tg_id, email)
+        text="❓ Вы уверены, что хотите удалить ключ?", reply_markup=build_key_delete_kb(callback_data.tg_id, email)
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"), IsAdminFilter())
 async def handle_delete_key_confirm(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     email = callback_data.data
-    record = await session.fetchrow(
-        "SELECT client_id FROM keys WHERE email = $1", email
-    )
+    record = await session.fetchrow("SELECT client_id FROM keys WHERE email = $1", email)
 
     kb = build_editor_kb(callback_data.tg_id)
 
     if record:
         client_id = record["client_id"]
-        clusters = await get_servers_from_db()
+        clusters = await get_servers()
 
         async def delete_key_from_servers():
             tasks = []
             for cluster_name, cluster_servers in clusters.items():
                 for _ in cluster_servers:
-                    tasks.append(
-                        delete_key_from_cluster(cluster_name, email, client_id)
-                    )
+                    tasks.append(delete_key_from_cluster(cluster_name, email, client_id))
             await asyncio.gather(*tasks)
 
         await delete_key_from_servers()
-        await delete_key_from_db(client_id, session)
+        await delete_key(client_id, session)
 
-        await callback_query.message.edit_text(
-            text="✅ Ключ успешно удален.",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="✅ Ключ успешно удален.", reply_markup=kb)
     else:
-        await callback_query.message.edit_text(
-            text="🚫 Ключ не найден или уже удален.",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="🚫 Ключ не найден или уже удален.", reply_markup=kb)
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_delete_user"),
-    IsAdminFilter()
-)
-async def handle_delete_user(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback
-):
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_user"), IsAdminFilter())
+async def handle_delete_user(callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback):
     tg_id = callback_data.tg_id
     await callback_query.message.edit_text(
-        text=f"❗️ Вы уверены, что хотите удалить пользователя с ID {tg_id}?",
-        reply_markup=build_user_delete_kb(tg_id)
+        text=f"❗️ Вы уверены, что хотите удалить пользователя с ID {tg_id}?", reply_markup=build_user_delete_kb(tg_id)
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_delete_user_confirm"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_user_confirm"), IsAdminFilter())
 async def handle_delete_user_confirm(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     tg_id = callback_data.tg_id
     key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)
@@ -697,8 +514,8 @@ async def handle_delete_user_confirm(
         try:
             tasks = []
             for email, client_id in key_records:
-                servers = await get_servers_from_db()
-                for cluster_id, cluster in servers.items():
+                servers = await get_servers()
+                for cluster_id, _cluster in servers.items():
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
             await asyncio.gather(*tasks)
         except Exception as e:
@@ -709,8 +526,7 @@ async def handle_delete_user_confirm(
     try:
         await delete_user_data(session, tg_id)
         await callback_query.message.edit_text(
-            text=f"🗑️ Пользователь с ID {tg_id} был удален.",
-            reply_markup=build_editor_kb(callback_data.tg_id)
+            text=f"🗑️ Пользователь с ID {tg_id} был удален.", reply_markup=build_editor_kb(callback_data.tg_id)
         )
     except Exception as e:
         logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
@@ -719,37 +535,19 @@ async def handle_delete_user_confirm(
         )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_editor"),
-    IsAdminFilter()
-)
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_editor"), IsAdminFilter())
 async def handle_editor(
-        callback_query: types.CallbackQuery,
-        callback_data: AdminUserEditorCallback,
-        state: FSMContext,
-        session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
 ):
-    await process_user_search(
-        callback_query.message,
-        state,
-        session,
-        callback_data.tg_id,
-        callback_data.edit
-    )
+    await process_user_search(callback_query.message, state, session, callback_data.tg_id, callback_data.edit)
 
 
 async def process_user_search(
-        message: types.Message,
-        state: FSMContext,
-        session: Any,
-        tg_id: int,
-        edit: bool = False
+    message: types.Message, state: FSMContext, session: Any, tg_id: int, edit: bool = False
 ) -> None:
     await state.clear()
 
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
+    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
 
     if balance is None:
         await message.answer(
@@ -758,15 +556,9 @@ async def process_user_search(
         )
         return
 
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    key_records = await session.fetch(
-        "SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id
-    )
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
+    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
+    key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
     text = (
         f"<b>📊 Информация о пользователе</b>"
@@ -780,17 +572,11 @@ async def process_user_search(
 
     if edit:
         try:
-            await message.edit_text(
-                text=text,
-                reply_markup=kb
-            )
+            await message.edit_text(text=text, reply_markup=kb)
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(
-            text=text,
-            reply_markup=kb
-        )
+        await message.answer(text=text, reply_markup=kb)
 
 
 async def get_key_details(email, session):
@@ -827,14 +613,12 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
     if client_id is None:
         return ValueError(f"User with email {email} was not found")
 
-    server_id = await session.fetchrow(
-        "SELECT server_id FROM keys WHERE client_id = $1", client_id
-    )
+    server_id = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
 
     if not server_id:
         return ValueError(f"User with client_id {server_id} was not found")
 
-    clusters = await get_servers_from_db()
+    clusters = await get_servers()
 
     async def update_key_on_all_servers():
         tasks = [
@@ -859,7 +643,8 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
 async def get_user_balance(tg_id: int, session: Any) -> float:
     try:
         return await session.fetchval(
-            "SELECT balance FROM connections WHERE tg_id = $1", tg_id,
+            "SELECT balance FROM connections WHERE tg_id = $1",
+            tg_id,
         )
     except Exception as e:
         logger.error(f"Ошибка при получении баланса для пользователя {tg_id}: {e}")
@@ -870,7 +655,8 @@ async def add_user_balance(tg_id: int, balance: int, session: Any) -> None:
     try:
         await session.execute(
             "UPDATE connections SET balance = balance + $1 WHERE tg_id = $2",
-            balance, tg_id,
+            balance,
+            tg_id,
         )
     except Exception as e:
         logger.error(f"Ошибка при добавлении баланса для пользователя {tg_id}: {e}")
@@ -880,7 +666,8 @@ async def set_user_balance(tg_id: int, balance: int, session: Any) -> None:
     try:
         await session.execute(
             "UPDATE connections SET balance = $1 WHERE tg_id = $2",
-            balance, tg_id,
+            balance,
+            tg_id,
         )
     except Exception as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")

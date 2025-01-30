@@ -24,9 +24,10 @@ from config import (
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
+    create_temporary_data,
     get_balance,
+    get_key_details,
     get_trial,
-    save_temporary_data,
     store_key,
     update_balance,
 )
@@ -56,16 +57,12 @@ class Form(StatesGroup):
 
 
 @router.callback_query(F.data == "create_key")
-async def confirm_create_new_key(
-    callback_query: CallbackQuery, state: FSMContext, session: Any
-):
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
 
     logger.info(f"User {tg_id} confirmed creation of a new key.")
 
-    logger.info(
-        f"Balance for user {tg_id} is sufficient. Proceeding with key creation."
-    )
+    logger.info(f"Balance for user {tg_id} is sufficient. Proceeding with key creation.")
 
     await handle_key_creation(tg_id, state, session, callback_query)
 
@@ -84,9 +81,7 @@ async def handle_key_creation(
         expiry_time = current_time + timedelta(days=TRIAL_TIME)
         logger.info(f"Assigned 1-day trial to user {tg_id}.")
 
-        await session.execute(
-            "UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id
-        )
+        await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
         await create_key(tg_id, expiry_time, state, session, message_or_query)
     else:
         builder = InlineKeyboardBuilder()
@@ -108,9 +103,7 @@ async def handle_key_creation(
                 )
             )
 
-        builder.row(
-            InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-        )
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
         await message_or_query.message.answer(
             "💳 Выберите тарифный план для создания нового ключа:",
@@ -136,7 +129,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     if balance < plan_price:
         required_amount = plan_price - balance
 
-        await save_temporary_data(
+        await create_temporary_data(
             session,
             tg_id,
             "waiting_for_payment",
@@ -154,12 +147,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             await handle_custom_amount_input(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay")
-            )
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
+            builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             await callback_query.message.answer(
                 f"💳 Недостаточно средств. Для продолжения необходимо пополнить баланс на {required_amount}₽.",
@@ -169,7 +158,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
 
     expiry_time = datetime.utcnow() + timedelta(days=duration_days)
     await create_key(tg_id, expiry_time, None, session, callback_query)
-    await update_balance(tg_id, -plan_price)
+    await update_balance(tg_id, -plan_price, session)
 
 
 async def create_key(
@@ -201,15 +190,11 @@ async def create_key(
         builder = InlineKeyboardBuilder()
         for country in countries:
             callback_data = f"select_country|{country}|{expiry_time.isoformat()}"
-            builder.row(
-                InlineKeyboardButton(
-                    text=country, callback_data=callback_data
-                )
-            )
+            builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
             logger.info(f"[Country Selection] Добавлена кнопка для страны: {country} с callback_data: {callback_data}")
 
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="profile"))
-        logger.info("[Country Selection] Добавлена кнопка '🔙 Назад'.")
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
+        logger.info("[Country Selection] Добавлена кнопка '⬅️ Назад'.")
 
         if isinstance(message_or_query, Message):
             logger.info("[Country Selection] Сообщение пользователя - тип Message.")
@@ -243,11 +228,7 @@ async def create_key(
         key_name = generate_random_email()
         logger.info(f"[Key Generation] Сгенерировано имя ключа: {key_name} для пользователя {tg_id}")
 
-        existing_key = await session.fetchrow(
-            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
-            key_name,
-            tg_id,
-        )
+        existing_key = await get_key_details(key_name, session)
         if not existing_key:
             break
         logger.warning(f"[Key Generation] Имя ключа {key_name} уже существует. Генерация нового.")
@@ -368,16 +349,10 @@ async def finalize_key_creation(
         key_name = generate_random_email()
         logger.info(f"Generated random key name for user {tg_id}: {key_name}")
 
-        existing_key = await session.fetchrow(
-            "SELECT * FROM keys WHERE email = $1 AND tg_id = $2",
-            key_name,
-            tg_id,
-        )
+        existing_key = await get_key_details(key_name, session)
         if not existing_key:
             break
-        logger.warning(
-            f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one."
-        )
+        logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()

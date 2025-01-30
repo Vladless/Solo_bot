@@ -3,9 +3,9 @@ from typing import Any
 
 from py3xui import AsyncApi
 
-from client import add_client, delete_client, extend_client_key
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, SUPERNODE, TOTAL_GB, PUBLIC_LINK
-from database import get_servers_from_db, store_key
+from client import ClientConfig, add_client, delete_client, extend_client_key
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB
+from database import get_servers, store_key
 from handlers.utils import get_least_loaded_cluster
 from logger import logger
 
@@ -15,7 +15,7 @@ async def create_key_on_cluster(cluster_id: str, tg_id: int, client_id: str, ema
     Создает ключ на всех серверах указанного кластера.
     """
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -75,9 +75,7 @@ async def create_client_on_server(
         server_name = server_info.get("server_name", "unknown")
 
         if not inbound_id:
-            logger.warning(
-                f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-            )
+            logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             return
 
         if SUPERNODE:
@@ -89,24 +87,27 @@ async def create_client_on_server(
 
         await add_client(
             xui,
-            client_id,
-            unique_email,
-            tg_id,
-            limit_ip=LIMIT_IP,
-            total_gb=TOTAL_GB,
-            expiry_time=expiry_timestamp,
-            enable=True,
-            flow="xtls-rprx-vision",
-            inbound_id=int(inbound_id),
-            sub_id=sub_id,
+            ClientConfig(
+                client_id=client_id,
+                email=unique_email,
+                tg_id=tg_id,
+                limit_ip=LIMIT_IP,
+                total_gb=TOTAL_GB,
+                expiry_time=expiry_timestamp,
+                enable=True,
+                flow="xtls-rprx-vision",
+                inbound_id=int(inbound_id),
+                sub_id=sub_id,
+            ),
         )
 
         if SUPERNODE:
             await asyncio.sleep(0.7)
 
+
 async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -124,9 +125,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
             server_name = server_info.get("server_name", "unknown")
 
             if not inbound_id:
-                logger.warning(
-                    f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-                )
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
             if SUPERNODE:
@@ -137,37 +136,20 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 sub_id = unique_email
 
             tasks.append(
-                extend_client_key(
-                    xui,
-                    int(inbound_id),
-                    unique_email,
-                    new_expiry_time,
-                    client_id,
-                    total_gb,
-                    sub_id
-                )
+                extend_client_key(xui, int(inbound_id), unique_email, new_expiry_time, client_id, total_gb, sub_id)
             )
 
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(
-            f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
-
-
-async def delete_key_from_db(client_id, session):
-    try:
-        await session.execute("DELETE FROM keys WHERE client_id = $1", client_id)
-    except Exception as e:
-        logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
 
 
 async def delete_key_from_cluster(cluster_id, email, client_id):
     """Удаление ключа с серверов в кластере"""
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -200,15 +182,13 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(
-            f"Не удалось удалить ключ {client_id} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"Не удалось удалить ключ {client_id} в кластере {cluster_id}: {e}")
         raise e
 
 
 async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id):
     try:
-        servers = await get_servers_from_db()
+        servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
@@ -232,29 +212,27 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
             tasks.append(
                 add_client(
                     xui,
-                    client_id,
-                    email,
-                    tg_id,
-                    limit_ip=LIMIT_IP,
-                    total_gb=TOTAL_GB,
-                    expiry_time=expiry_time,
-                    enable=True,
-                    flow="xtls-rprx-vision",
-                    inbound_id=int(inbound_id),
-                    sub_id=email
+                    ClientConfig(
+                        client_id=client_id,
+                        email=email,
+                        tg_id=tg_id,
+                        limit_ip=LIMIT_IP,
+                        total_gb=TOTAL_GB,
+                        expiry_time=expiry_time,
+                        enable=True,
+                        flow="xtls-rprx-vision",
+                        inbound_id=int(inbound_id),
+                        sub_id=email,
+                    ),
                 )
             )
 
         await asyncio.gather(*tasks)
 
-        logger.info(
-            f"Ключ успешно обновлен для {client_id} на всех серверах в кластере {cluster_id}"
-        )
+        logger.info(f"Ключ успешно обновлен для {client_id} на всех серверах в кластере {cluster_id}")
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при обновлении ключа на серверах кластера {cluster_id} для {client_id}: {e}"
-        )
+        logger.error(f"Ошибка при обновлении ключа на серверах кластера {cluster_id} для {client_id}: {e}")
         raise e
 
 

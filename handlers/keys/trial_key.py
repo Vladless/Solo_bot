@@ -6,9 +6,9 @@ from typing import Any
 import pytz
 from py3xui import AsyncApi
 
-from client import add_client
+from client import ClientConfig, add_client
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, TRIAL_TIME
-from database import get_servers_from_db, store_key, use_trial
+from database import get_servers, get_trial, store_key, update_trial
 from handlers.texts import INSTRUCTIONS
 from handlers.utils import generate_random_email, get_least_loaded_cluster
 from logger import logger
@@ -16,9 +16,7 @@ from logger import logger
 
 async def create_trial_key(tg_id: int, session: Any):
     try:
-        trial_status = await session.fetchval(
-            "SELECT trial FROM connections WHERE tg_id = $1", tg_id
-        )
+        trial_status = await get_trial(tg_id, session)
         if trial_status == 1:
             return {"error": "Вы уже использовали пробную версию."}
     except Exception as e:
@@ -35,7 +33,7 @@ async def create_trial_key(tg_id: int, session: Any):
     expiry_time = current_time + timedelta(days=TRIAL_TIME)
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
-    clusters = await get_servers_from_db()
+    clusters = await get_servers(session)
     least_loaded_cluster = await get_least_loaded_cluster()
     if least_loaded_cluster not in clusters:
         raise ValueError(f"Кластер {least_loaded_cluster} не найден в базе данных.")
@@ -58,16 +56,18 @@ async def create_trial_key(tg_id: int, session: Any):
                     username=ADMIN_USERNAME,
                     password=ADMIN_PASSWORD,
                 ),
-                client_id,
-                email,
-                tg_id,
-                limit_ip=LIMIT_IP,
-                total_gb=TOTAL_GB,
-                expiry_time=expiry_timestamp,
-                enable=True,
-                flow="xtls-rprx-vision",
-                inbound_id=int(server_info["inbound_id"]),
-                sub_id=base_email
+                ClientConfig(
+                    client_id=client_id,
+                    email=email,
+                    tg_id=tg_id,
+                    limit_ip=LIMIT_IP,
+                    total_gb=TOTAL_GB,
+                    expiry_time=expiry_timestamp,
+                    enable=True,
+                    flow="xtls-rprx-vision",
+                    inbound_id=int(server_info["inbound_id"]),
+                    sub_id=base_email,
+                ),
             )
         )
 
@@ -83,5 +83,5 @@ async def create_trial_key(tg_id: int, session: Any):
         session=session,
     )
 
-    await use_trial(tg_id, session)
+    await update_trial(tg_id, 1, session)
     return result

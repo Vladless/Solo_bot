@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime, timedelta
 
+import aiofiles
 import asyncpg
 import pytz
 from aiogram import Bot, Router, types
@@ -9,7 +10,6 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
-from .utils import format_time_until_deletion
 
 from config import (
     ADMIN_PASSWORD,
@@ -17,20 +17,20 @@ from config import (
     AUTO_DELETE_EXPIRED_KEYS,
     AUTO_RENEW_KEYS,
     DATABASE_URL,
+    DELETE_KEYS_DELAY,
     DEV_MODE,
     EXPIRED_KEYS_CHECK_INTERVAL,
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
-    DELETE_KEYS_DELAY,
 )
 from database import (
-    add_blocked_user,
     add_notification,
     check_notification_time,
+    create_blocked_user,
     delete_key,
     get_balance,
-    get_servers_from_db,
+    get_servers,
     update_balance,
     update_key_expiry,
 )
@@ -38,28 +38,9 @@ from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluste
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
 
+from .utils import format_time_until_deletion
+
 router = Router()
-
-async def check_users_and_update_blocked(bot: Bot):
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        users = await conn.fetch("SELECT tg_id FROM users")
-
-        for user in users:
-            try:
-                await bot.send_chat_action(user['tg_id'], "typing")
-            except (TelegramForbiddenError,Exception):
-                await conn.execute(
-                    "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
-                    user['tg_id']
-                )
-                logger.info(f"User {user['tg_id']} added to blocked_users")
-    except Exception as e:
-        logger.error(f"Error in check_users_and_update_blocked: {e}")
-    finally:
-        if conn:
-            await conn.close()
 
 
 async def periodic_expired_keys_check(bot: Bot):
@@ -80,7 +61,6 @@ async def periodic_expired_keys_check(bot: Bot):
         await asyncio.sleep(EXPIRED_KEYS_CHECK_INTERVAL)
 
 
-
 async def notify_expiring_keys(bot: Bot):
     conn = None
     try:
@@ -95,8 +75,6 @@ async def notify_expiring_keys(bot: Bot):
 
         await notify_inactive_trial_users(bot, conn)
         await asyncio.sleep(0.5)
-        await check_online_users()
-        await asyncio.sleep(0.5)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
         await asyncio.sleep(0.5)
         await notify_24h_keys(bot, conn, current_time, threshold_time_24h)
@@ -108,24 +86,6 @@ async def notify_expiring_keys(bot: Bot):
         if conn:
             await conn.close()
             logger.info("Соединение с базой данных закрыто.")
-
-
-
-async def is_bot_blocked(bot: Bot, chat_id: int) -> bool:
-    if DEV_MODE:
-        return False
-    try:
-        member = await bot.get_chat_member(chat_id, bot.id)
-        blocked = member.status == "left"
-        logger.info(
-            f"Статус бота для пользователя {chat_id}: {'заблокирован' if blocked else 'активен'}"
-        )
-        return blocked
-    except Exception as e:
-        logger.warning(
-            f"Не удалось проверить статус бота для пользователя {chat_id}: {e}"
-        )
-        return False
 
 
 async def notify_10h_keys(
@@ -163,7 +123,11 @@ async def process_10h_record(record, bot, conn):
     time_left = expiry_date - current_date
 
     days_left_message = (
-        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+        "Ключ истек"
+        if time_left.total_seconds() <= 0
+        else f"{time_left.days}"
+        if time_left.days > 0
+        else f"{time_left.seconds // 3600}"
     )
 
     message = KEY_EXPIRY_10H.format(
@@ -177,11 +141,11 @@ async def process_10h_record(record, bot, conn):
 
     if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
         try:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(record["client_id"], new_expiry_time)
+            await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
@@ -194,10 +158,11 @@ async def process_10h_record(record, bot, conn):
             )
 
             if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
+                async with aiofiles.open(image_path, "rb") as image_file:
+                    image_data = await image_file.read()
                     await bot.send_photo(
                         tg_id,
-                        photo=BufferedInputFile(image_file.read(), filename="notify_10h.jpg"),
+                        photo=BufferedInputFile(image_data, filename="notify_10h.jpg"),
                         caption=KEY_RENEWED.format(email=email),
                         reply_markup=keyboard,
                     )
@@ -210,7 +175,6 @@ async def process_10h_record(record, bot, conn):
             logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
     else:
         await send_renewal_notification(bot, tg_id, email, message, conn, record["client_id"], "notified")
-
 
 
 async def notify_24h_keys(
@@ -250,7 +214,11 @@ async def process_24h_record(record, bot, conn):
     time_left = expiry_date - current_date
 
     days_left_message = (
-        "Ключ истек" if time_left.total_seconds() <= 0 else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+        "Ключ истек"
+        if time_left.total_seconds() <= 0
+        else f"{time_left.days}"
+        if time_left.days > 0
+        else f"{time_left.seconds // 3600}"
     )
 
     message_24h = KEY_EXPIRY_24H.format(
@@ -263,11 +231,11 @@ async def process_24h_record(record, bot, conn):
 
     if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
         try:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
             new_expiry_time = int((datetime.utcnow() + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(record["client_id"], new_expiry_time)
+            await update_key_expiry(record["client_id"], new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
@@ -280,10 +248,11 @@ async def process_24h_record(record, bot, conn):
             )
 
             if os.path.isfile(image_path):
-                with open(image_path, "rb") as image_file:
+                async with aiofiles.open(image_path, "rb") as image_file:
+                    image_data = await image_file.read()
                     await bot.send_photo(
                         tg_id,
-                        photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                        photo=BufferedInputFile(image_data, filename="notify_24h.jpg"),
                         caption=KEY_RENEWED.format(email=email),
                         reply_markup=keyboard,
                     )
@@ -308,10 +277,11 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
         image_path = os.path.join("img", "notify_24h.jpg")
 
         if os.path.isfile(image_path):
-            with open(image_path, "rb") as image_file:
+            async with aiofiles.open(image_path, "rb") as image_file:
+                image_data = await image_file.read()
                 await bot.send_photo(
                     tg_id,
-                    photo=BufferedInputFile(image_file.read(), filename="notify_24h.jpg"),
+                    photo=BufferedInputFile(image_data, filename="notify_24h.jpg"),
                     caption=message,
                     reply_markup=keyboard.as_markup(),
                 )
@@ -320,7 +290,7 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
 
         logger.info(f"Уведомление отправлено пользователю {tg_id}.")
 
-        await conn.execute(f"UPDATE keys SET {flag} = TRUE WHERE client_id = $1", client_id)
+        await conn.execute("UPDATE keys SET notified_24h = $1 WHERE client_id = $2", flag, client_id)
 
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
@@ -348,17 +318,10 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user["username"]
         first_name = user["first_name"]
         last_name = user["last_name"]
-        display_name = (
-            username
-            or first_name
-            or last_name
-            or "Пользователь"
-        )
+        display_name = username or first_name or last_name or "Пользователь"
 
         try:
-            can_notify = await check_notification_time(
-                tg_id, "inactive_trial", hours=24, session=conn
-            )
+            can_notify = await check_notification_time(tg_id, "inactive_trial", hours=24, session=conn)
 
             if can_notify:
                 builder = InlineKeyboardBuilder()
@@ -368,11 +331,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                         callback_data="create_key",
                     )
                 )
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="👤 Личный кабинет", callback_data="profile"
-                    )
-                )
+                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
                 keyboard = builder.as_markup()
 
                 message = (
@@ -384,25 +343,20 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
                 try:
                     await bot.send_message(tg_id, message, reply_markup=keyboard)
-                    logger.info(
-                        f"Отправлено уведомление неактивному пользователю {tg_id}."
-                    )
+                    logger.info(f"Отправлено уведомление неактивному пользователю {tg_id}.")
                     await add_notification(tg_id, "inactive_trial", session=conn)
 
                 except TelegramForbiddenError:
-                    logger.warning(
-                        f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users."
-                    )
-                    await add_blocked_user(tg_id, conn)
+                    logger.warning(f"Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
+                    await create_blocked_user(tg_id, conn)
                 except Exception as e:
-                    logger.error(
-                        f"Ошибка при отправке уведомления пользователю {tg_id}: {e}"
-                    )
+                    logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 
         except Exception as e:
             logger.error(f"Ошибка при обработке пользователя {tg_id}: {e}")
 
         await asyncio.sleep(1)
+
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка подписок, срок действия которых скоро истекает...")
@@ -440,18 +394,16 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     for record in expired_keys:
         try:
             await delete_key_from_cluster(
-                cluster_id=record["server_id"],
-                email=record["email"],
-                client_id=record["client_id"]
+                cluster_id=record["server_id"], email=record["email"], client_id=record["client_id"]
             )
-            await conn.execute(
-                "DELETE FROM keys WHERE client_id = $1", 
-                record["client_id"]
+            await delete_key(record["client_id"], conn)
+            logger.info(
+                f"Ключ {record['client_id']} удалён"
+                + (f" после задержки {DELETE_KEYS_DELAY} сек." if DELETE_KEYS_DELAY > 0 else "")
             )
-            logger.info(f"Ключ {record['client_id']} удалён" + 
-                       (f" после задержки {DELETE_KEYS_DELAY} сек." if DELETE_KEYS_DELAY > 0 else ""))
         except Exception as e:
             logger.error(f"Ошибка при удалении ключа {record['client_id']}: {e}")
+
 
 async def process_key(record, bot, conn):
     tg_id = record["tg_id"]
@@ -474,26 +426,20 @@ async def process_key(record, bot, conn):
     keyboard = InlineKeyboardBuilder()
 
     if DELETE_KEYS_DELAY > 0:
-        keyboard.row(types.InlineKeyboardButton(
-            text="🔄 Продлить", 
-            callback_data=f"renew_key|{email}"
-        ))
-    
-    keyboard.row(types.InlineKeyboardButton(
-        text="👤 Личный кабинет", 
-        callback_data="profile"
-    ))
+        keyboard.row(types.InlineKeyboardButton(text="🔄 Продлить", callback_data=f"renew_key|{email}"))
+
+    keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     image_path = os.path.join("img", "notify_expired.jpg")
 
     try:
         if AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
-            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"])
+            await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
 
             new_expiry_time = int((datetime.now(moscow_tz) + timedelta(days=30)).timestamp() * 1000)
-            await update_key_expiry(client_id, new_expiry_time)
+            await update_key_expiry(client_id, new_expiry_time, conn)
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(conn)
 
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, TOTAL_GB)
@@ -511,10 +457,11 @@ async def process_key(record, bot, conn):
 
             try:
                 if os.path.isfile(image_path):
-                    with open(image_path, "rb") as image_file:
+                    async with aiofiles.open(image_path, "rb") as image_file:
+                        image_data = await image_file.read()
                         await bot.send_photo(
                             tg_id,
-                            photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                            photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
                             caption=KEY_RENEWED.format(email=email),
                             reply_markup=keyboard.as_markup(),
                         )
@@ -531,7 +478,7 @@ async def process_key(record, bot, conn):
                 time_since_expiry = current_time_utc - expiry_time
                 if time_since_expiry <= EXPIRED_KEYS_CHECK_INTERVAL * 1000:
                     message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
-                    
+
                     if DELETE_KEYS_DELAY > 0:
                         time_until_deletion = format_time_until_deletion(DELETE_KEYS_DELAY)
                         if time_until_deletion != "0 минут":
@@ -539,19 +486,16 @@ async def process_key(record, bot, conn):
 
                     try:
                         if os.path.isfile(image_path):
-                            with open(image_path, "rb") as image_file:
+                            async with aiofiles.open(image_path, "rb") as image_file:
+                                image_data = await image_file.read()
                                 await bot.send_photo(
                                     tg_id,
-                                    photo=BufferedInputFile(image_file.read(), filename="notify_expired.jpg"),
+                                    photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
                                     caption=message_expired,
                                     reply_markup=keyboard.as_markup(),
                                 )
                         else:
-                            await bot.send_message(
-                                tg_id, 
-                                text=message_expired, 
-                                reply_markup=keyboard.as_markup()
-                            )
+                            await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard.as_markup())
                         logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
@@ -560,9 +504,9 @@ async def process_key(record, bot, conn):
 
             if AUTO_DELETE_EXPIRED_KEYS:
                 current_time = int(datetime.utcnow().timestamp() * 1000)
-                
+
                 if DELETE_KEYS_DELAY == 0 or current_time >= expiry_time + (DELETE_KEYS_DELAY * 1000):
-                    servers = await get_servers_from_db()
+                    servers = await get_servers(conn)
 
                     for cluster_id in servers:
                         try:
@@ -592,22 +536,3 @@ async def process_key(record, bot, conn):
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
-
-async def check_online_users():
-    servers = await get_servers_from_db()
-
-    for cluster_id, cluster in servers.items():
-        for server_id, server in enumerate(cluster):
-            xui = AsyncApi(
-                server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD
-            )
-            await xui.login()
-            try:
-                online_users = len(await xui.client.online())
-                logger.info(
-                    f"Сервер '{server['server_name']}' доступен, текущее количество активных пользователей: {online_users}."
-                )
-            except Exception as e:
-                logger.error(
-                    f"Не удалось проверить пользователей на сервере {server_id}: {e}"
-                )

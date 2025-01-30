@@ -4,7 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
-from keyboards.admin.panel_kb import build_restart_kb, AdminPanelCallback, build_admin_back_kb
+from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb, build_restart_kb
 
 router = Router()
 
@@ -33,17 +33,8 @@ async def handle_restart_confirm(callback_query: CallbackQuery):
             capture_output=True,
             text=True,
         )
-        await callback_query.message.edit_text(
-            text="🔄 Бот успешно перезагружен!",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
     except subprocess.CalledProcessError:
-        await callback_query.message.edit_text(
-            text="🔄 Бот успешно перезагружен!",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
     except Exception as e:
-        await callback_query.message.edit_text(
-            text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
-            reply_markup=kb
-        )
+        await callback_query.message.edit_text(text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}", reply_markup=kb)

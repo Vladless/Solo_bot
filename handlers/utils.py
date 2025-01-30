@@ -1,23 +1,23 @@
 import json
 import random
 import re
+import secrets
+import string
+from datetime import datetime, timedelta
 
 import aiohttp
 import asyncpg
 
 from bot import bot
 from config import DATABASE_URL
-from database import get_servers_from_db
+from database import get_all_keys, get_servers
 from logger import logger
-from datetime import datetime, timedelta
 
 
 async def get_usd_rate():
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "https://www.cbr-xml-daily.ru/daily_json.js"
-            ) as response:
+            async with session.get("https://www.cbr-xml-daily.ru/daily_json.js") as response:
                 if response.status == 200:
                     data = await response.text()
                     usd = float(json.loads(data)["Valute"]["USD"]["Value"])
@@ -52,7 +52,7 @@ def generate_random_email(length: int = 6) -> str:
     Returns:
         str: Сгенерированная случайная строка.
     """
-    return "".join(random.choices("abcdefghijklmnopqrstuvwxyz0123456789", k=length))
+    return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)) if length > 0 else ""
 
 
 async def get_least_loaded_cluster() -> str:
@@ -62,13 +62,13 @@ async def get_least_loaded_cluster() -> str:
     Returns:
         str: Идентификатор наименее загруженного кластера.
     """
-    servers = await get_servers_from_db()
+    servers = await get_servers()
 
     cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in servers.keys()}
 
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
-            keys = await conn.fetch("SELECT server_id FROM keys")
+            keys = await get_all_keys(conn)
             for key in keys:
                 cluster_id = key["server_id"]
                 if cluster_id in cluster_loads:
@@ -87,9 +87,7 @@ async def get_least_loaded_cluster() -> str:
     return least_loaded_cluster
 
 
-async def handle_error(
-    tg_id: int, callback_query: object | None = None, message: str = ""
-) -> None:
+async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
 
@@ -101,27 +99,26 @@ async def handle_error(
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
-                await bot.delete_message(
-                    chat_id=tg_id, message_id=callback_query.message.message_id
-                )
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 
-        await bot.send_message(tg_id, message, parse_mode="HTML")
+        await bot.send_message(tg_id, message)
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ошибки: {e}")
 
+
 def format_time_until_deletion(seconds: int) -> str:
     if seconds <= 0:
         return "0 минут"
-    
+
     days = seconds // (3600 * 24)
     hours = (seconds % (3600 * 24)) // 3600
     minutes = (seconds % 3600 + 59) // 60
 
     parts = []
-    
+
     if days > 0:
         if days == 1:
             parts.append(f"{days} день")
@@ -129,7 +126,7 @@ def format_time_until_deletion(seconds: int) -> str:
             parts.append(f"{days} дня")
         else:
             parts.append(f"{days} дней")
-    
+
     if hours > 0:
         if hours == 1:
             parts.append(f"{hours} час")
@@ -137,7 +134,7 @@ def format_time_until_deletion(seconds: int) -> str:
             parts.append(f"{hours} часа")
         else:
             parts.append(f"{hours} часов")
-    
+
     if minutes > 0 and days == 0:
         if minutes == 1:
             parts.append("1 минута")

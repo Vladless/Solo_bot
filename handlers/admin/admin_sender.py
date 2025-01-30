@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.sender_kb import build_sender_kb, AdminSenderCallback
+from keyboards.admin.sender_kb import AdminSenderCallback, build_sender_kb
 from logger import logger
 
 router = Router()
@@ -22,9 +22,7 @@ class AdminSender(StatesGroup):
     AdminPanelCallback.filter(F.action == "sender"),
     IsAdminFilter(),
 )
-async def handle_sender(
-        callback_query: CallbackQuery
-):
+async def handle_sender(callback_query: CallbackQuery):
     await callback_query.message.edit_text(
         text="✍️ Выберите группу пользователей для рассылки:",
         reply_markup=build_sender_kb(),
@@ -35,11 +33,7 @@ async def handle_sender(
     AdminSenderCallback.filter(),
     IsAdminFilter(),
 )
-async def handle_sender_callback(
-        callback_query: CallbackQuery,
-        callback_data: AdminSenderCallback,
-        state: FSMContext
-):
+async def handle_sender_callback(callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext):
     await callback_query.message.edit_text(
         text="✍️ Введите текст сообщения для рассылки:",
         reply_markup=build_admin_back_kb("sender"),
@@ -52,11 +46,7 @@ async def handle_sender_callback(
     AdminSender.waiting_for_message,
     IsAdminFilter(),
 )
-async def handle_message_input(
-        message: types.Message,
-        state: FSMContext,
-        session: Any
-):
+async def handle_message_input(message: types.Message, state: FSMContext, session: Any):
     text_message = message.text
 
     try:
@@ -64,20 +54,26 @@ async def handle_message_input(
         send_to = state_data.get("type", "all")
 
         if send_to == "subscribed":
-            tg_ids = await session.fetch("""
+            tg_ids = await session.fetch(
+                """
                     SELECT DISTINCT c.tg_id 
                     FROM connections c
                     JOIN keys k ON c.tg_id = k.tg_id
                     WHERE k.expiry_time > $1
-                """, int(datetime.utcnow().timestamp() * 1000))
+                """,
+                int(datetime.utcnow().timestamp() * 1000),
+            )
         elif send_to == "unsubscribed":
-            tg_ids = await session.fetch("""
+            tg_ids = await session.fetch(
+                """
                     SELECT c.tg_id 
                     FROM connections c
                     LEFT JOIN keys k ON c.tg_id = k.tg_id
                     GROUP BY c.tg_id
                     HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
-                """, int(datetime.utcnow().timestamp() * 1000))
+                """,
+                int(datetime.utcnow().timestamp() * 1000),
+            )
         else:
             tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections")
 
@@ -87,13 +83,10 @@ async def handle_message_input(
         for record in tg_ids:
             tg_id = record["tg_id"]
             try:
-                await message.bot.send_message(
-                    chat_id=tg_id,
-                    text=text_message
-                )
+                await message.bot.send_message(chat_id=tg_id, text=text_message)
                 success_count += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(e)
 
         text = (
             f"📤 Рассылка завершена!"
@@ -102,10 +95,7 @@ async def handle_message_input(
             f"\n❌ Не доставлено: {total_users - success_count}"
         )
 
-        await message.answer(
-            text=text,
-            reply_markup=build_admin_back_kb("stats")
-        )
+        await message.answer(text=text, reply_markup=build_admin_back_kb("stats"))
     except Exception as e:
         logger.error(f"❗ Ошибка при подключении к базе данных: {e}")
 

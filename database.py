@@ -3,12 +3,13 @@ from datetime import datetime
 from typing import Any
 
 import asyncpg
+import pytz
 
 from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
-async def save_temporary_data(session, tg_id: int, state: str, data: dict):
+async def create_temporary_data(session, tg_id: int, state: str, data: dict):
     """Сохраняет временные данные пользователя."""
     await session.execute(
         """
@@ -26,27 +27,39 @@ async def save_temporary_data(session, tg_id: int, state: str, data: dict):
 
 async def get_temporary_data(session, tg_id: int) -> dict | None:
     """Извлекает временные данные пользователя."""
-    result = await session.fetchrow(
-        "SELECT state, data FROM temporary_data WHERE tg_id = $1", tg_id
-    )
+    result = await session.fetchrow("SELECT state, data FROM temporary_data WHERE tg_id = $1", tg_id)
     if result:
         return {"state": result["state"], "data": json.loads(result["data"])}
     return None
 
 
 async def clear_temporary_data(session, tg_id: int):
+    # TODO rename delete_temporary_data
     await session.execute("DELETE FROM temporary_data WHERE tg_id = $1", tg_id)
 
 
-async def add_blocked_user(tg_id: int, conn: asyncpg.Connection):
+async def create_blocked_user(tg_id: int, conn: asyncpg.Connection):
     await conn.execute(
         "INSERT INTO blocked_users (tg_id) VALUES ($1) ON CONFLICT (tg_id) DO NOTHING",
         tg_id,
     )
 
 
+async def delete_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
+    """
+    Удаляет пользователя или список пользователей из списка заблокированных.
+
+    :param tg_id: ID пользователя Telegram или список ID
+    :param conn: Подключение к базе данных
+    """
+    if isinstance(tg_id, list):
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", tg_id)
+    else:
+        await conn.execute("DELETE FROM blocked_users WHERE tg_id = $1", tg_id)
+
+
 async def init_db(file_path: str = "assets/schema.sql"):
-    with open(file_path, mode="r") as file:
+    with open(file_path) as file:
         sql_content = file.read()
 
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
@@ -62,27 +75,57 @@ async def init_db(file_path: str = "assets/schema.sql"):
         await conn.close()
 
 
-async def check_unique_server_name(server_name: str) -> bool:
+async def check_unique_server_name(server_name: str, session: Any, cluster_name: str | None = None) -> bool:
     """
     Проверяет уникальность имени сервера.
 
     :param server_name: Имя сервера.
+    :param session: Сессия базы данных.
+    :param cluster_name: Имя кластера (опционально).
     :return: True, если имя сервера уникально, False, если уже существует.
     """
-    conn = await asyncpg.connect(DATABASE_URL)
-
-    result = await conn.fetchrow(
-        "SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name
-    )
-
-    await conn.close()
+    if cluster_name:
+        result = await session.fetchrow(
+            "SELECT 1 FROM servers WHERE server_name = $1 AND cluster_name = $2 LIMIT 1", server_name, cluster_name
+        )
+    else:
+        result = await session.fetchrow("SELECT 1 FROM servers WHERE server_name = $1 LIMIT 1", server_name)
 
     return result is None
 
 
-async def create_coupon(
-    coupon_code: str, amount: float, usage_limit: int, session: Any
-):
+async def check_server_name_by_cluster(server_name: str, session: Any) -> dict | None:
+    """
+    Проверяет принадлежность сервера к кластеру.
+
+    Args:
+        server_name (str): Имя сервера для проверки
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict | None: Словарь с информацией о кластере или None, если сервер не найден
+            - cluster_name (str): Название кластера
+    """
+    try:
+        cluster_info = await session.fetchrow(
+            """
+            SELECT cluster_name 
+            FROM servers 
+            WHERE server_name = $1
+            """,
+            server_name,
+        )
+        if cluster_info:
+            logger.info(f"Найден кластер для сервера {server_name}")
+            return dict(cluster_info)
+        logger.info(f"Кластер для сервера {server_name} не найден")
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка при поиске кластера для сервера {server_name}: {e}")
+        raise
+
+
+async def create_coupon(coupon_code: str, amount: float, usage_limit: int, session: Any):
     """
     Создает новый купон в базе данных.
 
@@ -114,38 +157,85 @@ async def create_coupon(
         raise
 
 
-async def get_all_coupons(session: Any):
+async def get_coupon_by_code(coupon_code: str, session: Any) -> dict | None:
     """
-    Получает список всех купонов из базы данных.
+    Получает информацию о купоне по его коду.
+
+    Args:
+        coupon_code (str): Код купона для поиска
+        session (Any): Сессия базы данных
 
     Returns:
-        list: Список словарей с информацией о купонах, каждый словарь содержит:
-            - code (str): Код купона
-            - amount (int): Сумма купона
-            - usage_limit (int): Максимальное количество использований
-            - usage_count (int): Текущее количество использований купона
+        dict | None: Словарь с информацией о купоне или None, если купон не найден
+            - id (int): ID купона
+            - usage_limit (int): Лимит использований
+            - usage_count (int): Текущее количество использований
+            - is_used (bool): Флаг использования
+            - amount (float): Сумма купона
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        result = await session.fetchrow(
+            """
+            SELECT id, usage_limit, usage_count, is_used, amount
+            FROM coupons
+            WHERE code = $1 AND (usage_count < usage_limit OR usage_limit = 0) AND is_used = FALSE
+            """,
+            coupon_code,
+        )
+        return dict(result) if result else None
+    except Exception as e:
+        logger.error(f"Ошибка при получении купона {coupon_code}: {e}")
+        raise
+
+
+async def get_all_coupons(session: Any, page: int = 1, per_page: int = 10):
+    """
+    Получает список купонов из базы данных с пагинацией.
+
+    Args:
+        session (Any): Сессия базы данных для выполнения запроса
+        page (int): Номер страницы (по умолчанию 1)
+        per_page (int): Количество купонов на странице (по умолчанию 10)
+
+    Returns:
+        dict: Словарь с информацией о купонах и пагинации:
+            - coupons (list): Список словарей с информацией о купонах
+            - total (int): Общее количество купонов
+            - pages (int): Общее количество страниц
+            - current_page (int): Текущая страница
 
     Raises:
         Exception: В случае ошибки при получении данных из базы
     """
     try:
+        offset = (page - 1) * per_page
         coupons = await session.fetch(
             """
             SELECT code, amount, usage_limit, usage_count
             FROM coupons
-        """
+            ORDER BY id
+            LIMIT $1 OFFSET $2
+            """,
+            per_page,
+            offset,
         )
 
-        logger.info(f"Успешно получено {len(coupons)} купонов из базы данных")
+        total_count = await session.fetchval("SELECT COUNT(*) FROM coupons")
+        total_pages = -(-total_count // per_page)  # Округление вверх
 
-        return coupons
+        logger.info(f"Успешно получено {len(coupons)} купонов из базы данных (страница {page})")
+
+        return {"coupons": coupons, "total": total_count, "pages": total_pages, "current_page": page}
     except Exception as e:
         logger.error(f"Критическая ошибка при получении списка купонов: {e}")
         logger.exception("Трассировка стека ошибки получения купонов")
-        return []
+        return {"coupons": [], "total": 0, "pages": 0, "current_page": page}
 
 
-async def delete_coupon_from_db(coupon_code: str, session: Any):
+async def delete_coupon(coupon_code: str, session: Any):
     """
     Удаляет купон из базы данных по его коду.
 
@@ -160,7 +250,7 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
         Exception: В случае ошибки при выполнении запроса к базе данных
 
     Example:
-        result = await delete_coupon_from_db('SALE50', session)
+        result = await delete_coupon('SALE50', session)
     """
     try:
         coupon_record = await session.fetchrow(
@@ -189,67 +279,38 @@ async def delete_coupon_from_db(coupon_code: str, session: Any):
         return False
 
 
-async def restore_trial(tg_id: int, session: Any):
+async def update_trial(tg_id: int, status: int, session: Any):
     """
-    Восстанавливает возможность использования триального периода для пользователя.
+    Устанавливает статус триального периода для пользователя.
 
     Args:
         tg_id (int): Telegram ID пользователя
+        status (int): Статус триального периода (0 - доступен, 1 - использован)
         session (Any): Сессия базы данных
 
     Returns:
-        bool: True, если триал успешно восстановлен, False в случае ошибки
+        bool: True, если статус успешно установлен, False в случае ошибки
     """
     try:
         await session.execute(
             """
             INSERT INTO connections (tg_id, trial) 
-            VALUES ($1, 0) 
+            VALUES ($1, $2) 
             ON CONFLICT (tg_id) 
-            DO UPDATE SET trial = 0
+            DO UPDATE SET trial = $2
             """,
             tg_id,
+            status,
         )
-        logger.info(f"Триальный период успешно восстановлен для пользователя {tg_id}")
+        status_text = "восстановлен" if status == 0 else "использован"
+        logger.info(f"Триальный период успешно {status_text} для пользователя {tg_id}")
         return True
     except Exception as e:
-        logger.error(
-            f"Ошибка при восстановлении триального периода для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при установке статуса триального периода для пользователя {tg_id}: {e}")
         return False
 
 
-async def use_trial(tg_id: int, session: Any):
-    """
-    Отмечает использование триального периода для пользователя.
-
-    Args:
-        tg_id (int): Telegram ID пользователя
-        session (Any): Сессия базы данных
-
-    Returns:
-        bool: True, если триал успешно использован, False в случае ошибки
-    """
-    try:
-        await session.execute(
-            """
-            INSERT INTO connections (tg_id, trial) 
-            VALUES ($1, 1) 
-            ON CONFLICT (tg_id) 
-            DO UPDATE SET trial = 1
-            """,
-            tg_id,
-        )
-        logger.info(f"Триальный период успешно использован для пользователя {tg_id}")
-        return True
-    except Exception as e:
-        logger.error(f"Ошибка при использовании триала для пользователя {tg_id}: {e}")
-        return False
-
-
-async def add_connection(
-    tg_id: int, balance: float = 0.0, trial: int = 0, session: Any = None
-):
+async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0, session: Any = None):
     """
     Добавляет новое подключение для пользователя в базу данных.
 
@@ -276,9 +337,7 @@ async def add_connection(
             f"Успешно добавлено новое подключение для пользователя {tg_id} с балансом {balance} и статусом триала {trial}"
         )
     except Exception as e:
-        logger.error(
-            f"Не удалось добавить подключение для пользователя {tg_id}. Причина: {e}"
-        )
+        logger.error(f"Не удалось добавить подключение для пользователя {tg_id}. Причина: {e}")
         raise
 
 
@@ -352,15 +411,13 @@ async def store_key(
             key,
             server_id,
         )
-        logger.info(
-            f"Ключ успешно сохранен для пользователя {tg_id} на сервере {server_id}"
-        )
+        logger.info(f"Ключ успешно сохранен для пользователя {tg_id} на сервере {server_id}")
     except Exception as e:
         logger.error(f"Ошибка при сохранении ключа для пользователя {tg_id}: {e}")
         raise
 
 
-async def get_keys(tg_id: int):
+async def get_keys(tg_id: int, session: Any):
     """
     Получает список ключей для указанного пользователя.
 
@@ -373,10 +430,8 @@ async def get_keys(tg_id: int):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или выполнении запроса
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        records = await conn.fetch(
+        records = await session.fetch(
             """
             SELECT client_id, email, created_at, key
             FROM keys
@@ -389,17 +444,14 @@ async def get_keys(tg_id: int):
     except Exception as e:
         logger.error(f"Ошибка при получении ключей для пользователя {tg_id}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
 
 
-async def get_keys_by_server(tg_id: int, server_id: str):
+async def get_keys_by_server(tg_id: int | None, server_id: str, session: Any):
     """
-    Получает список ключей для указанного пользователя на определенном сервере.
+    Получает список ключей на определенном сервере. Если tg_id=None, возвращает все ключи на сервере.
 
     Args:
-        tg_id (int): Telegram ID пользователя
+        tg_id (int | None): Telegram ID пользователя или None для всех пользователей
         server_id (str): Идентификатор сервера
 
     Returns:
@@ -408,61 +460,36 @@ async def get_keys_by_server(tg_id: int, server_id: str):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или выполнении запроса
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        records = await conn.fetch(
-            """
-            SELECT client_id, email, created_at, key
-            FROM keys
-            WHERE tg_id = $1 AND server_id = $2
-            """,
-            tg_id,
-            server_id,
-        )
-        logger.info(
-            f"Успешно получено {len(records)} ключей для пользователя {tg_id} на сервере {server_id}"
-        )
+        if tg_id is not None:
+            records = await session.fetch(
+                """
+                SELECT *
+                FROM keys
+                WHERE tg_id = $1 AND server_id = $2
+                """,
+                tg_id,
+                server_id,
+            )
+            logger.info(f"Успешно получено {len(records)} ключей для пользователя {tg_id} на сервере {server_id}")
+        else:
+            records = await session.fetch(
+                """
+                SELECT *
+                FROM keys
+                WHERE server_id = $1
+                """,
+                server_id,
+            )
+            logger.info(f"Успешно получено {len(records)} ключей на сервере {server_id}")
+
         return records
     except Exception as e:
-        logger.error(
-            f"Ошибка при получении ключей для пользователя {tg_id} на сервере {server_id}: {e}"
-        )
+        error_msg = f"Ошибка при получении ключей на сервере {server_id}"
+        if tg_id is not None:
+            error_msg += f" для пользователя {tg_id}"
+        logger.error(f"{error_msg}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
-
-
-async def has_active_key(tg_id: int) -> bool:
-    """
-    Проверяет наличие активных ключей для указанного пользователя.
-
-    Args:
-        tg_id (int): Telegram ID пользователя
-
-    Returns:
-        bool: True, если у пользователя есть активные ключи, иначе False
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или выполнении запроса
-    """
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE tg_id = $1", tg_id)
-        logger.info(
-            f"Проверка наличия ключей для пользователя {tg_id}. Найдено ключей: {count}"
-        )
-        return count > 0
-    except Exception as e:
-        logger.error(
-            f"Ошибка при проверке наличия ключей для пользователя {tg_id}: {e}"
-        )
-        raise
-    finally:
-        if conn:
-            await conn.close()
 
 
 async def get_balance(tg_id: int) -> float:
@@ -481,11 +508,9 @@ async def get_balance(tg_id: int) -> float:
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        balance = await conn.fetchval(
-            "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-        )
+        balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
         logger.info(f"Получен баланс для пользователя {tg_id}: {balance}")
-        return balance if balance is not None else 0.0
+        return round(balance, 1) if balance is not None else 0.0
     except Exception as e:
         logger.error(f"Ошибка при получении баланса для пользователя {tg_id}: {e}")
         return 0.0
@@ -494,21 +519,25 @@ async def get_balance(tg_id: int) -> float:
             await conn.close()
 
 
-async def update_balance(tg_id: int, amount: float):
+async def update_balance(tg_id: int, amount: float, session: Any = None):
     """
     Обновляет баланс пользователя в базе данных.
 
     Args:
         tg_id (int): Telegram ID пользователя
         amount (float): Сумма для обновления баланса
+        session (Any, optional): Сессия базы данных. Если не передана, создается новая.
 
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении баланса
     """
     conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        await conn.execute(
+        if session is None:
+            conn = await asyncpg.connect(DATABASE_URL)
+            session = conn
+
+        await session.execute(
             """
             UPDATE connections
             SET balance = balance + $1
@@ -525,7 +554,7 @@ async def update_balance(tg_id: int, amount: float):
         logger.error(f"Ошибка при обновлении баланса для пользователя {tg_id}: {e}")
         raise
     finally:
-        if conn:
+        if conn is not None:
             await conn.close()
 
 
@@ -541,15 +570,11 @@ async def get_trial(tg_id: int, session: Any) -> int:
         int: Статус триала (0 - не использован, 1 - использован)
     """
     try:
-        trial = await session.fetchval(
-            "SELECT trial FROM connections WHERE tg_id = $1", tg_id
-        )
+        trial = await session.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
         logger.info(f"Получен статус триала для пользователя {tg_id}: {trial}")
         return trial if trial is not None else 0
     except Exception as e:
-        logger.error(
-            f"Ошибка при получении статуса триала для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при получении статуса триала для пользователя {tg_id}: {e}")
         return 0
 
 
@@ -573,44 +598,17 @@ async def get_key_count(tg_id: int) -> int:
         logger.info(f"Получено количество ключей для пользователя {tg_id}: {count}")
         return count if count is not None else 0
     except Exception as e:
-        logger.error(
-            f"Ошибка при получении количества ключей для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при получении количества ключей для пользователя {tg_id}: {e}")
         return 0
     finally:
         if conn:
             await conn.close()
 
 
-async def get_all_users(conn):
-    """
-    Получает список всех пользователей из базы данных.
-
-    Args:
-        conn: Подключение к базе данных
-
-    Returns:
-        list: Список Telegram ID всех пользователей
-
-    Raises:
-        Exception: В случае ошибки при получении данных
-    """
-    try:
-        users = await conn.fetch("SELECT tg_id FROM connections")
-        logger.info(f"Получен список всех пользователей. Количество: {len(users)}")
-        return users
-    except Exception as e:
-        logger.error(f"Ошибка при получении списка пользователей: {e}")
-        raise
-
-
 async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
     try:
-
         if referred_tg_id == referrer_tg_id:
-            logger.warning(
-                f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку."
-            )
+            logger.warning(f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку.")
             return
 
         await session.execute(
@@ -621,9 +619,7 @@ async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: Any):
             referred_tg_id,
             referrer_tg_id,
         )
-        logger.info(
-            f"Добавлена реферальная связь: приглашенный {referred_tg_id}, пригласивший {referrer_tg_id}"
-        )
+        logger.info(f"Добавлена реферальная связь: приглашенный {referred_tg_id}, пригласивший {referrer_tg_id}")
     except Exception as e:
         logger.error(f"Ошибка при добавлении реферала: {e}")
         raise
@@ -656,9 +652,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
         for level in range(1, MAX_REFERRAL_LEVELS + 1):
             if current_tg_id in visited_tg_ids:
-                logger.warning(
-                    f"Обнаружен цикл в реферальной цепочке для пользователя {current_tg_id}. Прекращение."
-                )
+                logger.warning(f"Обнаружен цикл в реферальной цепочке для пользователя {current_tg_id}. Прекращение.")
                 break
 
             visited_tg_ids.add(current_tg_id)
@@ -697,15 +691,11 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             bonus = round(amount * bonus_percent, 2)
 
             if bonus > 0:
-                logger.info(
-                    f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}."
-                )
+                logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}.")
                 await update_balance(referrer_tg_id, bonus)
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при обработке многоуровневой реферальной системы для {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при обработке многоуровневой реферальной системы для {tg_id}: {e}")
     finally:
         if conn:
             await conn.close()
@@ -804,9 +794,7 @@ async def get_referral_stats(referrer_tg_id: int):
             referrer_tg_id,
         )
 
-        logger.debug(
-            f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}"
-        )
+        logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
 
         return {
             "total_referrals": total_referrals,
@@ -816,9 +804,7 @@ async def get_referral_stats(referrer_tg_id: int):
         }
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при получении статистики рефералов для пользователя {referrer_tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при получении статистики рефералов для пользователя {referrer_tg_id}: {e}")
         raise
     finally:
         if conn:
@@ -826,7 +812,7 @@ async def get_referral_stats(referrer_tg_id: int):
             logger.info("Закрытие подключения к базе данных")
 
 
-async def update_key_expiry(client_id: str, new_expiry_time: int):
+async def update_key_expiry(client_id: str, new_expiry_time: int, session: Any):
     """
     Обновление времени истечения ключа для указанного клиента.
 
@@ -837,14 +823,8 @@ async def update_key_expiry(client_id: str, new_expiry_time: int):
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении ключа
     """
-    conn = None
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для обновления времени истечения ключа клиента {client_id}"
-        )
-
-        await conn.execute(
+        await session.execute(
             """
             UPDATE keys
             SET expiry_time = $1, notified = FALSE, notified_24h = FALSE
@@ -856,49 +836,8 @@ async def update_key_expiry(client_id: str, new_expiry_time: int):
         logger.info(f"Успешно обновлено время истечения ключа для клиента {client_id}")
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при обновлении времени истечения ключа для клиента {client_id}: {e}"
-        )
+        logger.error(f"Ошибка при обновлении времени истечения ключа для клиента {client_id}: {e}")
         raise
-    finally:
-        if conn:
-            await conn.close()
-            logger.info("Закрытие подключения к базе данных")
-
-
-async def delete_key(client_id: str):
-    """
-    Удаление ключа из базы данных для указанного клиента.
-
-    Args:
-        client_id (str): Уникальный идентификатор клиента, ключ которого будет удален
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или удалении ключа
-    """
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для удаления ключа клиента {client_id}"
-        )
-
-        await conn.execute(
-            """
-            DELETE FROM keys
-            WHERE client_id = $1
-            """,
-            client_id,
-        )
-        logger.info(f"Успешно удален ключ для клиента {client_id}")
-
-    except Exception as e:
-        logger.error(f"Ошибка при удалении ключа для клиента {client_id}: {e}")
-        raise
-    finally:
-        if conn:
-            await conn.close()
-            logger.info("Закрытие подключения к базе данных")
 
 
 async def add_balance_to_client(client_id: str, amount: float):
@@ -915,9 +854,7 @@ async def add_balance_to_client(client_id: str, amount: float):
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для пополнения баланса клиента {client_id}"
-        )
+        logger.info(f"Установлено подключение к базе данных для пополнения баланса клиента {client_id}")
 
         await conn.execute(
             """
@@ -955,9 +892,7 @@ async def get_client_id_by_email(email: str):
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для поиска client_id по email: {email}"
-        )
+        logger.info(f"Установлено подключение к базе данных для поиска client_id по email: {email}")
 
         client_id = await conn.fetchval(
             """
@@ -998,13 +933,9 @@ async def get_tg_id_by_client_id(client_id: str):
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для поиска Telegram ID по client_id: {client_id}"
-        )
+        logger.info(f"Установлено подключение к базе данных для поиска Telegram ID по client_id: {client_id}")
 
-        result = await conn.fetchrow(
-            "SELECT tg_id FROM keys WHERE client_id = $1", client_id
-        )
+        result = await conn.fetchrow("SELECT tg_id FROM keys WHERE client_id = $1", client_id)
 
         if result:
             logger.info(f"Найден Telegram ID для client_id: {client_id}")
@@ -1047,9 +978,7 @@ async def upsert_user(
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для обновления пользователя {tg_id}"
-        )
+        logger.info(f"Установлено подключение к базе данных для обновления пользователя {tg_id}")
 
         await conn.execute(
             """
@@ -1096,9 +1025,7 @@ async def add_payment(tg_id: int, amount: float, payment_system: str):
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для добавления платежа пользователя {tg_id}"
-        )
+        logger.info(f"Установлено подключение к базе данных для добавления платежа пользователя {tg_id}")
 
         await conn.execute(
             """
@@ -1109,9 +1036,7 @@ async def add_payment(tg_id: int, amount: float, payment_system: str):
             amount,
             payment_system,
         )
-        logger.info(
-            f"Успешно добавлен платеж для пользователя {tg_id} на сумму {amount}"
-        )
+        logger.info(f"Успешно добавлен платеж для пользователя {tg_id} на сумму {amount}")
     except Exception as e:
         logger.error(f"Ошибка при добавлении платежа для пользователя {tg_id}: {e}")
         raise
@@ -1144,19 +1069,13 @@ async def add_notification(tg_id: int, notification_type: str, session: Any):
             tg_id,
             notification_type,
         )
-        logger.info(
-            f"Успешно добавлено уведомление типа {notification_type} для пользователя {tg_id}"
-        )
+        logger.info(f"Успешно добавлено уведомление типа {notification_type} для пользователя {tg_id}")
     except Exception as e:
-        logger.error(
-            f"Ошибка при добавлении notification для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при добавлении notification для пользователя {tg_id}: {e}")
         raise
 
 
-async def check_notification_time(
-    tg_id: int, notification_type: str, hours: int = 12, session: Any = None
-) -> bool:
+async def check_notification_time(tg_id: int, notification_type: str, hours: int = 12, session: Any = None) -> bool:
     """
     Проверяет, прошло ли указанное количество часов с момента последнего уведомления.
 
@@ -1201,9 +1120,7 @@ async def check_notification_time(
         return can_notify
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
         return False
 
     finally:
@@ -1211,48 +1128,48 @@ async def check_notification_time(
             await conn.close()
 
 
-async def get_servers_from_db():
-    conn = await asyncpg.connect(DATABASE_URL)
+async def get_servers(session: Any = None):
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
 
-    result = await conn.fetch(
-        """
-        SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
-        FROM servers
-        """
-    )
-
-    await conn.close()
-
-    servers = {}
-    for row in result:
-        cluster_name = row["cluster_name"]
-        if cluster_name not in servers:
-            servers[cluster_name] = []
-
-        servers[cluster_name].append(
-            {
-                "server_name": row["server_name"],
-                "api_url": row["api_url"],
-                "subscription_url": row["subscription_url"],
-                "inbound_id": row["inbound_id"],
-            }
+        result = await conn.fetch(
+            """
+            SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
+            FROM servers
+            """
         )
+        servers = {}
+        for row in result:
+            cluster_name = row["cluster_name"]
+            if cluster_name not in servers:
+                servers[cluster_name] = []
 
-    return servers
+            servers[cluster_name].append(
+                {
+                    "server_name": row["server_name"],
+                    "api_url": row["api_url"],
+                    "subscription_url": row["subscription_url"],
+                    "inbound_id": row["inbound_id"],
+                }
+            )
+
+        return servers
+
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
 
 
 async def delete_user_data(session: Any, tg_id: int):
-
     try:
-        await session.execute(
-            "DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id
-        )
+        await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
     except Exception as e:
         logger.warning(f"У Вас версия без подарков для {tg_id}: {e}")
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM keys WHERE tg_id = $1", tg_id)
+    await delete_key(tg_id, session)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
 
@@ -1305,10 +1222,349 @@ async def store_gift_link(
             logger.error(f"Не удалось добавить подарок с ID {gift_id} в базу данных.")
             return False
     except Exception as e:
-
         logger.error(f"Ошибка при сохранении подарка с ID {gift_id} в базе данных: {e}")
         return False
 
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
+
+
+async def get_key_details(email, session):
+    record = await session.fetchrow(
+        """
+        SELECT k.key, k.email, k.expiry_time, k.server_id,k, k.client_id, k.created_at, c.tg_id, c.balance
+        FROM keys k
+        JOIN connections c ON k.tg_id = c.tg_id
+        WHERE k.email = $1
+        """,
+        email,
+    )
+
+    if not record:
+        return None
+
+    cluster_name = record["server_id"]
+
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
+    current_date = datetime.now(moscow_tz)
+    time_left = expiry_date - current_date
+
+    if time_left.total_seconds() <= 0:
+        days_left_message = "<b>Ключ истек.</b>"
+    elif time_left.days > 0:
+        days_left_message = f"Осталось дней: <b>{time_left.days}</b>"
+    else:
+        hours_left = time_left.seconds // 3600
+        days_left_message = f"Осталось часов: <b>{hours_left}</b>"
+
+    return {
+        "key": record["key"],
+        "created_at": record["created_at"],
+        "expiry_time": record["expiry_time"],
+        "client_id": record["client_id"],
+        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
+        "days_left_message": days_left_message,
+        "server_name": cluster_name,
+        "balance": record["balance"],
+        "tg_id": record["tg_id"],
+        "email": record["email"],
+    }
+
+
+async def delete_key(identifier, session):
+    """
+    Удаляет ключ из базы данных по client_id или tg_id
+
+    Args:
+        identifier (str): client_id или tg_id для удаления
+        session: Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при удалении ключа
+    """
+    try:
+        # Проверяем, является ли идентификатор числом (tg_id) или строкой (client_id)
+        if identifier.isdigit():
+            query = "DELETE FROM keys WHERE tg_id = $1"
+        else:
+            query = "DELETE FROM keys WHERE client_id = $1"
+
+        await session.execute(query, identifier)
+        logger.info(f"Ключ с идентификатором {identifier} успешно удалён")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении ключа с идентификатором {identifier} из базы данных: {e}")
+
+
+async def create_server(
+    cluster_name: str, server_name: str, api_url: str, subscription_url: str, inbound_id: int, session: Any
+):
+    """
+    Добавляет новый сервер в базу данных.
+
+    Args:
+        cluster_name (str): Название кластера
+        server_name (str): Название сервера
+        api_url (str): URL API сервера
+        subscription_url (str): URL подписки
+        inbound_id (int): ID входящего подключения
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при добавлении сервера
+    """
+    try:
+        await session.execute(
+            """
+            INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            cluster_name,
+            server_name,
+            api_url,
+            subscription_url,
+            inbound_id,
+        )
+        logger.info(f"Сервер {server_name} успешно добавлен в кластер {cluster_name}")
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении сервера {server_name} в кластер {cluster_name}: {e}")
+        raise
+
+
+async def delete_server(server_name: str, session: Any):
+    """
+    Удаляет сервер из базы данных по его названию.
+
+    Args:
+        server_name (str): Название сервера для удаления
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при удалении сервера
+    """
+    try:
+        await session.execute(
+            """
+            DELETE FROM servers WHERE server_name = $1
+            """,
+            server_name,
+        )
+        logger.info(f"Сервер {server_name} успешно удалён из базы данных")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении сервера {server_name} из базы данных: {e}")
+        raise
+
+
+async def create_coupon_usage(coupon_id: int, user_id: int, session: Any):
+    """
+    Создаёт запись об использовании купона в базе данных.
+
+    Args:
+        coupon_id (int): ID купона
+        user_id (int): ID пользователя
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при создании записи
+    """
+    try:
+        await session.execute(
+            """
+            INSERT INTO coupon_usages (coupon_id, user_id, used_at)
+            VALUES ($1, $2, $3)
+            """,
+            coupon_id,
+            user_id,
+            datetime.utcnow(),
+        )
+        logger.info(f"Создана запись об использовании купона {coupon_id} пользователем {user_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при создании записи об использовании купона {coupon_id} пользователем {user_id}: {e}")
+        raise
+
+
+async def check_coupon_usage(coupon_id: int, user_id: int, session: Any) -> bool:
+    """
+    Проверяет, использовал ли пользователь данный купон.
+
+    Args:
+        coupon_id (int): ID купона для проверки
+        user_id (int): ID пользователя для проверки
+        session (Any): Сессия базы данных
+
+    Returns:
+        bool: True если купон уже использован, False если нет
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        result = await session.fetchrow(
+            """
+            SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2
+            """,
+            coupon_id,
+            user_id,
+        )
+        return result is not None
+    except Exception as e:
+        logger.error(f"Ошибка при проверке использования купона {coupon_id} пользователем {user_id}: {e}")
+        raise
+
+
+async def update_coupon_usage_count(coupon_id: int, session: Any):
+    """
+    Обновляет счетчик использования купона и его статус.
+
+    Args:
+        coupon_id (int): ID купона для обновления
+        session (Any): Сессия базы данных
+
+    Raises:
+        Exception: В случае ошибки при обновлении данных купона
+    """
+    try:
+        await session.execute(
+            """
+            UPDATE coupons
+            SET usage_count = usage_count + 1,
+                is_used = CASE WHEN usage_count + 1 >= usage_limit AND usage_limit > 0 THEN TRUE ELSE FALSE END
+            WHERE id = $1
+            """,
+            coupon_id,
+        )
+        logger.info(f"Успешно обновлен счетчик использования купона {coupon_id}")
+    except Exception as e:
+        logger.error(f"Ошибка при обновлении счетчика использования купона {coupon_id}: {e}")
+        raise
+
+
+async def get_last_payments(tg_id: int, session: Any):
+    """
+    Получает последние 3 платежа пользователя.
+
+    Args:
+        tg_id (int): Telegram ID пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        list: Список последних платежей пользователя
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        records = await session.fetch(
+            """
+            SELECT amount, payment_system, status, created_at
+            FROM payments 
+            WHERE tg_id = $1
+            ORDER BY created_at DESC
+            LIMIT 3
+            """,
+            tg_id,
+        )
+        logger.info(f"Успешно получены последние платежи для пользователя {tg_id}")
+        return records
+    except Exception as e:
+        logger.error(f"Ошибка при получении последних платежей для пользователя {tg_id}: {e}")
+        raise
+
+
+async def get_coupon_details(coupon_id: str, session: Any):
+    """
+    Получает детали купона по его ID.
+
+    Args:
+        coupon_id (str): ID купона
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict: Словарь с деталями купона или None если купон не найден
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        record = await session.fetchrow(
+            """
+            SELECT id, code, discount, usage_count, usage_limit, is_used
+            FROM coupons
+            WHERE id = $1
+            """,
+            coupon_id,
+        )
+
+        if record:
+            logger.info(f"Успешно получены детали купона {coupon_id}")
+            return dict(record)
+
+        logger.warning(f"Купон {coupon_id} не найден")
+        return None
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении деталей купона {coupon_id}: {e}")
+        raise
+
+
+async def get_referral_by_referred_id(referred_tg_id: int, session: Any):
+    """
+    Получает информацию о реферале по ID приглашенного пользователя.
+
+    Args:
+        referred_tg_id (int): ID приглашенного пользователя
+        session (Any): Сессия базы данных
+
+    Returns:
+        dict: Словарь с информацией о реферале или None если не найден
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    try:
+        record = await session.fetchrow(
+            """
+            SELECT * FROM referrals 
+            WHERE referred_tg_id = $1
+            """,
+            referred_tg_id,
+        )
+
+        if record:
+            logger.info(f"Успешно получена информация о реферале для пользователя {referred_tg_id}")
+            return dict(record)
+
+        logger.info(f"Реферал для пользователя {referred_tg_id} не найден")
+        return None
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении информации о реферале для пользователя {referred_tg_id}: {e}")
+        raise
+
+
+async def get_all_keys(session: Any = None):
+    """
+    Получает все записи из таблицы keys.
+
+    Args:
+        session (Any, optional): Сессия базы данных. По умолчанию None.
+
+    Returns:
+        list: Список всех записей из таблицы keys
+
+    Raises:
+        Exception: В случае ошибки при выполнении запроса
+    """
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
+        keys = await conn.fetch("SELECT * FROM keys")
+        logger.info(f"Успешно получены все записи из таблицы keys. Количество: {len(keys)}")
+        return keys
+    except Exception as e:
+        logger.error(f"Ошибка при получении записей из таблицы keys: {e}")
+        raise
     finally:
         if conn is not None and session is None:
             await conn.close()
