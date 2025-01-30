@@ -11,6 +11,7 @@ from bot import bot
 from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
+from datetime import datetime, timedelta
 
 
 async def get_usd_rate():
@@ -106,3 +107,39 @@ async def handle_error(tg_id: int, callback_query: object | None = None, message
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ошибки: {e}")
+
+def format_time_until_deletion(seconds: int) -> str:
+    if seconds <= 0:
+        return "0 минут"
+    
+    days = seconds // (3600 * 24)
+    hours = (seconds % (3600 * 24)) // 3600
+    minutes = (seconds % 3600 + 59) // 60
+
+    parts = []
+    
+    if days > 0:
+        if days == 1:
+            parts.append(f"{days} день")
+        elif 2 <= days <= 4:
+            parts.append(f"{days} дня")
+        else:
+            parts.append(f"{days} дней")
+    
+    if hours > 0:
+        if hours == 1:
+            parts.append(f"{hours} час")
+        elif 2 <= hours <= 4:
+            parts.append(f"{hours} часа")
+        else:
+            parts.append(f"{hours} часов")
+    
+    if minutes > 0 and days == 0:
+        if minutes == 1:
+            parts.append("1 минута")
+        elif 2 <= minutes <= 4:
+            parts.append(f"{minutes} минуты")
+        else:
+            parts.append(f"{minutes} минут")
+
+    return " и ".join(parts) if parts else "менее минуты"
