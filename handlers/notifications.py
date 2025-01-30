@@ -358,6 +358,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
         await asyncio.sleep(1)
 
+
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка подписок, срок действия которых скоро истекает...")
 
@@ -394,15 +395,16 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     for record in expired_keys:
         try:
             await delete_key_from_cluster(
-                cluster_id=record["server_id"],
-                email=record["email"],
-                client_id=record["client_id"]
+                cluster_id=record["server_id"], email=record["email"], client_id=record["client_id"]
             )
             await delete_key(record["client_id"], conn)
-            logger.info(f"Ключ {record['client_id']} удалён" + 
-                       (f" после задержки {DELETE_KEYS_DELAY} сек." if DELETE_KEYS_DELAY > 0 else ""))
+            logger.info(
+                f"Ключ {record['client_id']} удалён"
+                + (f" после задержки {DELETE_KEYS_DELAY} сек." if DELETE_KEYS_DELAY > 0 else "")
+            )
         except Exception as e:
             logger.error(f"Ошибка при удалении ключа {record['client_id']}: {e}")
+
 
 async def process_key(record, bot, conn):
     tg_id = record["tg_id"]
@@ -425,15 +427,9 @@ async def process_key(record, bot, conn):
     keyboard = InlineKeyboardBuilder()
 
     if DELETE_KEYS_DELAY > 0:
-        keyboard.row(types.InlineKeyboardButton(
-            text="🔄 Продлить", 
-            callback_data=f"renew_key|{email}"
-        ))
-    
-    keyboard.row(types.InlineKeyboardButton(
-        text="👤 Личный кабинет", 
-        callback_data="profile"
-    ))
+        keyboard.row(types.InlineKeyboardButton(text="🔄 Продлить", callback_data=f"renew_key|{email}"))
+
+    keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     image_path = os.path.join("img", "notify_expired.jpg")
 
@@ -483,7 +479,7 @@ async def process_key(record, bot, conn):
                 time_since_expiry = current_time_utc - expiry_time
                 if time_since_expiry <= EXPIRED_KEYS_CHECK_INTERVAL * 1000:
                     message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
-                    
+
                     if DELETE_KEYS_DELAY > 0:
                         time_until_deletion = format_time_until_deletion(DELETE_KEYS_DELAY)
                         if time_until_deletion != "0 минут":
@@ -500,11 +496,7 @@ async def process_key(record, bot, conn):
                                     reply_markup=keyboard.as_markup(),
                                 )
                         else:
-                            await bot.send_message(
-                                tg_id, 
-                                text=message_expired, 
-                                reply_markup=keyboard.as_markup()
-                            )
+                            await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard.as_markup())
                         logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
@@ -513,7 +505,7 @@ async def process_key(record, bot, conn):
 
             if AUTO_DELETE_EXPIRED_KEYS:
                 current_time = int(datetime.utcnow().timestamp() * 1000)
-                
+
                 if DELETE_KEYS_DELAY == 0 or current_time >= expiry_time + (DELETE_KEYS_DELAY * 1000):
                     servers = await get_servers(conn)
 
@@ -545,6 +537,7 @@ async def process_key(record, bot, conn):
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
+
 
 async def check_online_users():
     servers = await get_servers()
