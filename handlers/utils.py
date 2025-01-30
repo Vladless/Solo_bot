@@ -108,16 +108,17 @@ async def handle_error(tg_id: int, callback_query: object | None = None, message
     except Exception as e:
         logger.error(f"Ошибка при обработке ошибки: {e}")
 
+
 def format_time_until_deletion(seconds: int) -> str:
     if seconds <= 0:
         return "0 минут"
-    
+
     days = seconds // (3600 * 24)
     hours = (seconds % (3600 * 24)) // 3600
     minutes = (seconds % 3600 + 59) // 60
 
     parts = []
-    
+
     if days > 0:
         if days == 1:
             parts.append(f"{days} день")
@@ -125,7 +126,7 @@ def format_time_until_deletion(seconds: int) -> str:
             parts.append(f"{days} дня")
         else:
             parts.append(f"{days} дней")
-    
+
     if hours > 0:
         if hours == 1:
             parts.append(f"{hours} час")
@@ -133,7 +134,7 @@ def format_time_until_deletion(seconds: int) -> str:
             parts.append(f"{hours} часа")
         else:
             parts.append(f"{hours} часов")
-    
+
     if minutes > 0 and days == 0:
         if minutes == 1:
             parts.append("1 минута")
