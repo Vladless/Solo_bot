@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
 from bot import version
 from filters.admin import IsAdminFilter
@@ -24,7 +24,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 
 
 @router.message(Command("admin"), IsAdminFilter())
-async def handle_admin_message(message: types.Message, state: FSMContext):
+async def handle_admin_message(message: Message, state: FSMContext):
     text = f"🤖 Панель администратора\n📌 Версия бота: {version}"
 
     await state.clear()
