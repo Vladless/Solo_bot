@@ -3,7 +3,7 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-
+from aiogram.types import Message, CallbackQuery
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from keyboards.admin.coupons_kb import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
@@ -22,7 +22,7 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(
-    callback_query: types.CallbackQuery,
+    callback_query: CallbackQuery,
 ):
     await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
 
@@ -31,7 +31,7 @@ async def handle_coupons(
     AdminPanelCallback.filter(F.action == "coupons_create"),
     IsAdminFilter(),
 )
-async def handle_coupons_create(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
@@ -46,7 +46,7 @@ async def handle_coupons_create(callback_query: types.CallbackQuery, state: FSMC
 
 
 @router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
-async def handle_coupon_data_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_coupon_data_input(message: Message, state: FSMContext, session: Any):
     text = message.text.strip()
     parts = text.split()
 
@@ -98,7 +98,7 @@ async def handle_coupon_data_input(message: types.Message, state: FSMContext, se
     AdminPanelCallback.filter(F.action == "coupons_list"),
     IsAdminFilter(),
 )
-async def handle_coupons_list(callback_query: types.CallbackQuery, session: Any):
+async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
     try:
         page = int(callback_query.data.split(":")[1]) if ":" in callback_query.data else 1
         per_page = 10
@@ -137,7 +137,7 @@ async def handle_coupons_list(callback_query: types.CallbackQuery, session: Any)
     IsAdminFilter(),
 )
 async def handle_coupon_delete(
-    callback_query: types.CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any
+    callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any
 ):
     coupon_code = callback_data.coupon_code
 

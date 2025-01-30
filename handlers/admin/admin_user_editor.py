@@ -6,7 +6,7 @@ import pytz
 from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import TOTAL_GB
@@ -58,7 +58,7 @@ async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
 
 
 @router.message(UserEditorState.waiting_for_username, IsAdminFilter())
-async def handle_username_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_username_input(message: Message, state: FSMContext, session: Any):
     username = message.text.strip().lstrip("@").replace("https://t.me/", "")
     user_record = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
 
@@ -124,7 +124,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
 
 
 @router.callback_query(F.data.startswith("send_message_"))
-async def handle_send_message(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_send_message(callback_query: CallbackQuery, state: FSMContext):
     tg_id = callback_query.data.split("_")[2]
     await state.update_data(target_tg_id=tg_id)
     await callback_query.message.answer("✉️ Введите текст сообщения, которое вы хотите отправить пользователю.")
@@ -132,7 +132,7 @@ async def handle_send_message(callback_query: types.CallbackQuery, state: FSMCon
 
 
 @router.message(UserEditorState.waiting_for_message_text, IsAdminFilter())
-async def process_send_message(message: types.Message, state: FSMContext, bot: Bot):
+async def process_send_message(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     target_tg_id = data.get("target_tg_id")
 
@@ -151,7 +151,7 @@ async def process_send_message(message: types.Message, state: FSMContext, bot: B
 
 
 @router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
-async def handle_tg_id_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_tg_id_input(message: Message, state: FSMContext, session: Any):
     tg_id = int(message.text)
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
@@ -204,7 +204,7 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
 
 
 @router.callback_query(F.data.startswith("restore_trial_"), IsAdminFilter())
-async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any):
+async def handle_restore_trial(callback_query: CallbackQuery, session: Any):
     tg_id = int(callback_query.data.split("_")[2])
 
     await update_trial(tg_id, 0, session)
@@ -226,7 +226,7 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
 
 
 @router.message(UserEditorState.waiting_for_new_balance, IsAdminFilter())
-async def handle_new_balance_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_new_balance_input(message: Message, state: FSMContext, session: Any):
     if not message.text.isdigit() or int(message.text) < 0:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="user_editor"))
@@ -313,7 +313,7 @@ async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
 
 
 @router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
-async def handle_key_name_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_key_name_input(message: Message, state: FSMContext, session: Any):
     key_name = sanitize_key_name(message.text)
     key_details = await get_key_details(key_name, session)
 
@@ -370,7 +370,7 @@ async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext)
 
 
 @router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
-async def handle_expiry_time_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_expiry_time_input(message: Message, state: FSMContext, session: Any):
     user_data = await state.get_data()
     email = user_data.get("email")
 
@@ -453,7 +453,7 @@ async def handle_expiry_time_input(message: types.Message, state: FSMContext, se
 
 
 @router.callback_query(F.data.startswith("delete_key_admin|"), IsAdminFilter())
-async def process_callback_delete_key(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_delete_key(callback_query: CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
     key_details = await get_key_details(email, session)
 
@@ -478,7 +478,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery, sessi
 
 
 @router.callback_query(F.data.startswith("confirm_delete_admin|"), IsAdminFilter())
-async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_confirm_delete(callback_query: CallbackQuery, session: Any):
     client_id = callback_query.data.split("|")[1]
     record = await session.fetchrow("SELECT email FROM keys WHERE client_id = $1", client_id)
 
@@ -509,7 +509,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
 
 
 @router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())
-async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+async def handle_user_info(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = int(callback_query.data.split("|")[1])
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
@@ -542,7 +542,7 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
 
 
 @router.callback_query(F.data.startswith("confirm_delete_user_"), IsAdminFilter())
-async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
+async def confirm_delete_user(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = int(callback_query.data.split("_")[3])
 
     confirmation_markup = InlineKeyboardMarkup(
@@ -560,7 +560,7 @@ async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMCon
 
 
 @router.callback_query(F.data.startswith("delete_user_"), IsAdminFilter())
-async def delete_user(callback_query: types.CallbackQuery, session: Any):
+async def delete_user(callback_query: CallbackQuery, session: Any):
     tg_id = int(callback_query.data.split("_")[2])
 
     key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)

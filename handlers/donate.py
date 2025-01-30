@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery
+from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery, Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR
@@ -18,7 +18,7 @@ router = Router()
 
 
 @router.callback_query(F.data == "donate")
-async def process_donate(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_donate(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
 
     builder = InlineKeyboardBuilder()
@@ -40,7 +40,7 @@ async def process_donate(callback_query: types.CallbackQuery, state: FSMContext)
 
 
 @router.callback_query(F.data == "enter_custom_donate_amount")
-async def process_enter_donate_amount(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_enter_donate_amount(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
     await callback_query.message.answer("💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup())
@@ -48,7 +48,7 @@ async def process_enter_donate_amount(callback_query: types.CallbackQuery, state
 
 
 @router.message(DonateState.entering_donate_amount)
-async def process_donate_amount_input(message: types.Message, state: FSMContext):
+async def process_donate_amount_input(message: Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
         if amount // RUB_TO_XTR <= 0:
@@ -85,7 +85,7 @@ async def on_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
 
 
 @router.message(F.successful_payment, DonateState.waiting_for_donate_payment)
-async def on_successful_donate(message: types.Message, state: FSMContext):
+async def on_successful_donate(message: Message, state: FSMContext):
     try:
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         builder = InlineKeyboardBuilder()

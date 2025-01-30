@@ -5,7 +5,7 @@ import aiofiles
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
@@ -29,15 +29,15 @@ router = Router()
 @router.callback_query(F.data == "profile")
 @router.message(F.text == "/profile")
 async def process_callback_view_profile(
-    callback_query_or_message: types.Message | types.CallbackQuery,
+    callback_query_or_message: Message | CallbackQuery,
     state: FSMContext,
     admin: bool,
 ):
-    if isinstance(callback_query_or_message, types.CallbackQuery):
+    if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
         username = callback_query_or_message.from_user.full_name
         is_callback = True
-    elif isinstance(callback_query_or_message, types.Message):
+    elif isinstance(callback_query_or_message, Message):
         chat_id = callback_query_or_message.chat.id
         username = callback_query_or_message.from_user.full_name
         is_callback = False
@@ -114,7 +114,7 @@ async def process_callback_view_profile(
 
 
 @router.callback_query(F.data == "balance")
-async def balance_handler(callback_query: types.CallbackQuery):
+async def balance_handler(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
@@ -124,7 +124,7 @@ async def balance_handler(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "balance_history")
-async def balance_history_handler(callback_query: types.CallbackQuery, session: Any):
+async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -152,7 +152,7 @@ async def balance_history_handler(callback_query: types.CallbackQuery, session: 
 
 @router.message(F.text == "/tariffs")
 @router.callback_query(F.data == "view_tariffs")
-async def view_tariffs_handler(callback_query: types.CallbackQuery):
+async def view_tariffs_handler(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
@@ -183,7 +183,7 @@ async def view_tariffs_handler(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data == "invite")
-async def invite_handler(callback_query: types.CallbackQuery):
+async def invite_handler(callback_query: CallbackQuery):
     chat_id = callback_query.message.chat.id
     referral_link = get_referral_link(chat_id)
 
