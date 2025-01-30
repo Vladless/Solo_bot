@@ -10,7 +10,6 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
-from .utils import format_time_until_deletion
 
 from config import (
     ADMIN_PASSWORD,
@@ -18,12 +17,12 @@ from config import (
     AUTO_DELETE_EXPIRED_KEYS,
     AUTO_RENEW_KEYS,
     DATABASE_URL,
+    DELETE_KEYS_DELAY,
     DEV_MODE,
     EXPIRED_KEYS_CHECK_INTERVAL,
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
-    DELETE_KEYS_DELAY,
 )
 from database import (
     add_notification,
@@ -38,6 +37,8 @@ from database import (
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
 from logger import logger
+
+from .utils import format_time_until_deletion
 
 router = Router()
 
@@ -73,8 +74,6 @@ async def notify_expiring_keys(bot: Bot):
         logger.info("Начало обработки уведомлений.")
 
         await notify_inactive_trial_users(bot, conn)
-        await asyncio.sleep(0.5)
-        await check_online_users()
         await asyncio.sleep(0.5)
         await notify_10h_keys(bot, conn, current_time, threshold_time_10h)
         await asyncio.sleep(0.5)
@@ -537,19 +536,3 @@ async def process_key(record, bot, conn):
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
-
-
-async def check_online_users():
-    servers = await get_servers()
-
-    for _cluster_id, cluster in servers.items():
-        for server_id, server in enumerate(cluster):
-            xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
-            await xui.login()
-            try:
-                online_users = len(await xui.client.online())
-                logger.info(
-                    f"Сервер '{server['server_name']}' доступен, текущее количество активных пользователей: {online_users}."
-                )
-            except Exception as e:
-                logger.error(f"Не удалось проверить пользователей на сервере {server_id}: {e}")
