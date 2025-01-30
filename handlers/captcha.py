@@ -47,7 +47,7 @@ async def generate_captcha(message: Message, state: FSMContext):
     builder.adjust(2, 2)
 
     return {
-        "text": f"🔒 Для подтверждения что вы не робот,\nвыберите кнопку с {correct_text}",
+        "text": f"🔒 Для подтверждения что вы не робот, выберите кнопку с {correct_text}",
         "markup": builder.as_markup(),
     }
 
