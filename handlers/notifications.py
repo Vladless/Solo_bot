@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
+from .utils import format_time_until_deletion
 
 from config import (
     ADMIN_PASSWORD,
@@ -22,6 +23,7 @@ from config import (
     RENEWAL_PLANS,
     TOTAL_GB,
     TRIAL_TIME,
+    DELETE_KEYS_DELAY,
 )
 from database import (
     add_notification,
@@ -369,11 +371,10 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
         await asyncio.sleep(1)
 
-
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     logger.info("Проверка подписок, срок действия которых скоро истекает...")
 
-    threshold_time = int((datetime.utcnow() + timedelta(minutes=45)).timestamp() * 1000)
+    threshold_time = int((datetime.utcnow() + timedelta(seconds=EXPIRED_KEYS_CHECK_INTERVAL * 1.5)).timestamp() * 1000)
 
     expiring_keys = await conn.fetch(
         """
@@ -381,35 +382,40 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         WHERE expiry_time <= $1 AND expiry_time > $2
         """,
         threshold_time,
-        current_time,
+        current_time - DELETE_KEYS_DELAY * 1000,
     )
 
     logger.info(f"Найдено {len(expiring_keys)} подписок, срок действия которых скоро истекает.")
 
-    for record in expiring_keys:
-        try:
-            await process_key(record, bot, conn)
-        except Exception as e:
-            logger.error(f"Ошибка при обработке подписки {record['client_id']}: {e}")
-
-    expired_keys = await conn.fetch(
+    if DELETE_KEYS_DELAY > 0:
+        expired_keys_query = """
+            SELECT tg_id, client_id, email, server_id FROM keys 
+            WHERE expiry_time <= (CAST($1 AS bigint) - $2 * 1000)
         """
-        SELECT tg_id, client_id, email, server_id FROM keys 
-        WHERE expiry_time <= $1
-        """,
-        current_time,
-    )
+        params = (current_time, DELETE_KEYS_DELAY)
+    else:
+        expired_keys_query = """
+            SELECT tg_id, client_id, email, server_id FROM keys 
+            WHERE expiry_time <= $1
+        """
+        params = (current_time,)
+
+    expired_keys = await conn.fetch(expired_keys_query, *params)
 
     logger.info(f"Найдено {len(expired_keys)} истёкших ключей.")
 
     for record in expired_keys:
         try:
-            await delete_key_from_cluster(record["server_id"], record["email"], record["email"])
+            await delete_key_from_cluster(
+                cluster_id=record["server_id"],
+                email=record["email"],
+                client_id=record["client_id"]
+            )
             await delete_key(record["client_id"], conn)
-            logger.info(f"Удалён истёкший ключ {record['client_id']} пользователя {record['tg_id']}.")
+            logger.info(f"Ключ {record['client_id']} удалён" + 
+                       (f" после задержки {DELETE_KEYS_DELAY} сек." if DELETE_KEYS_DELAY > 0 else ""))
         except Exception as e:
-            logger.error(f"Ошибка при удалении истёкшего ключа {record['client_id']}: {e}")
-
+            logger.error(f"Ошибка при удалении ключа {record['client_id']}: {e}")
 
 async def process_key(record, bot, conn):
     tg_id = record["tg_id"]
@@ -429,9 +435,18 @@ async def process_key(record, bot, conn):
         f"Оставшееся время: {time_left}"
     )
 
-    keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
-    )
+    keyboard = InlineKeyboardBuilder()
+
+    if DELETE_KEYS_DELAY > 0:
+        keyboard.row(types.InlineKeyboardButton(
+            text="🔄 Продлить", 
+            callback_data=f"renew_key|{email}"
+        ))
+    
+    keyboard.row(types.InlineKeyboardButton(
+        text="👤 Личный кабинет", 
+        callback_data="profile"
+    ))
 
     image_path = os.path.join("img", "notify_expired.jpg")
 
@@ -466,53 +481,83 @@ async def process_key(record, bot, conn):
                             tg_id,
                             photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
                             caption=KEY_RENEWED.format(email=email),
-                            reply_markup=keyboard,
+                            reply_markup=keyboard.as_markup(),
                         )
                 else:
-                    await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard)
+                    await bot.send_message(tg_id, text=KEY_RENEWED, reply_markup=keyboard.as_markup())
                 logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о продлении клиенту {tg_id}: {e}")
 
         else:
-            message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
-            try:
-                if os.path.isfile(image_path):
-                    async with aiofiles.open(image_path, "rb") as image_file:
-                        image_data = await image_file.read()
-                        await bot.send_photo(
-                            tg_id,
-                            photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
-                            caption=message_expired,
-                            reply_markup=keyboard,
-                        )
+            current_time_utc = int(datetime.utcnow().timestamp() * 1000)
+
+            if current_time_utc >= expiry_time:
+                time_since_expiry = current_time_utc - expiry_time
+                if time_since_expiry <= EXPIRED_KEYS_CHECK_INTERVAL * 1000:
+                    message_expired = f"Ваша подписка {email} истекла. Пополните баланс для продления."
+                    
+                    if DELETE_KEYS_DELAY > 0:
+                        time_until_deletion = format_time_until_deletion(DELETE_KEYS_DELAY)
+                        if time_until_deletion != "0 минут":
+                            message_expired += f"\n\n⏳ Ключ будет удалён через {time_until_deletion}."
+
+                    try:
+                        if os.path.isfile(image_path):
+                            async with aiofiles.open(image_path, "rb") as image_file:
+                                image_data = await image_file.read()
+                                await bot.send_photo(
+                                    tg_id,
+                                    photo=BufferedInputFile(image_data, filename="notify_expired.jpg"),
+                                    caption=message_expired,
+                                    reply_markup=keyboard.as_markup(),
+                                )
+                        else:
+                            await bot.send_message(
+                                tg_id, 
+                                text=message_expired, 
+                                reply_markup=keyboard.as_markup()
+                            )
+                        logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
+                    except Exception as e:
+                        logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
                 else:
-                    await bot.send_message(tg_id, text=message_expired, reply_markup=keyboard)
-                logger.info(f"Уведомление об истечении подписки отправлено пользователю {tg_id}.")
-            except Exception as e:
-                logger.error(f"Не удалось отправить уведомление об истечении клиенту {tg_id}: {e}")
+                    logger.info(f"Пропуск {client_id}: просрочено {time_since_expiry // 1000} сек назад.")
 
             if AUTO_DELETE_EXPIRED_KEYS:
-                servers = await get_servers(conn)
+                current_time = int(datetime.utcnow().timestamp() * 1000)
+                
+                if DELETE_KEYS_DELAY == 0 or current_time >= expiry_time + (DELETE_KEYS_DELAY * 1000):
+                    servers = await get_servers(conn)
 
-                for cluster_id in servers:
+                    for cluster_id in servers:
+                        try:
+                            await delete_key_from_cluster(cluster_id, email, client_id)
+                            logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
+                        except Exception as e:
+                            logger.error(f"Ошибка при удалении клиента {client_id} из кластера {cluster_id}: {e}")
+
                     try:
-                        await delete_key_from_cluster(cluster_id, email, client_id)
-                        logger.info(f"Клиент {client_id} удален из кластера {cluster_id}.")
+                        await delete_key(client_id)
+                        log_msg = f"Ключ {client_id} удалён из базы данных"
+                        if DELETE_KEYS_DELAY > 0:
+                            log_msg += f" после задержки {DELETE_KEYS_DELAY} сек."
+                        logger.info(log_msg)
                     except Exception as e:
-                        logger.error(f"Ошибка при удалении клиента {client_id} из кластера {cluster_id}: {e}")
+                        logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
+                else:
+                    remaining_time = (expiry_time + (DELETE_KEYS_DELAY * 1000) - current_time) // 1000
+                    logger.info(
+                        f"Ключ {client_id} не удалён. "
+                        f"Осталось времени до удаления: {remaining_time} сек. "
+                        f"(Удаление через {DELETE_KEYS_DELAY} сек после истечения)"
+                    )
 
-                try:
-                    await delete_key(client_id, conn)
-                    logger.info(f"Ключ {client_id} удалён из базы данных.")
-                except Exception as e:
-                    logger.error(f"Ошибка при удалении ключа {client_id} из базы данных: {e}")
             else:
-                logger.info(f"Ключ {client_id} НЕ был удалён (AUTO_DELETE_EXPIRED_KEYS=False).")
+                logger.info(f"Ключ {client_id} не был удалён (AUTO_DELETE_EXPIRED_KEYS=False).")
 
     except Exception as e:
         logger.error(f"Ошибка при обработке ключа для клиента {tg_id}: {e}")
-
 
 async def check_online_users():
     servers = await get_servers()
