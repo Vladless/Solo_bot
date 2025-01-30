@@ -4,12 +4,12 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
+import aiofiles
 import asyncpg
 import pytz
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.yookassa_pay import process_custom_amount_input
 
 from bot import bot
 from config import (
@@ -27,10 +27,14 @@ from config import (
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
+    check_server_name_by_cluster,
+    create_temporary_data,
     delete_key,
     get_balance,
-    get_servers_from_db,
-    save_temporary_data,
+    get_key_details,
+    get_keys,
+    get_keys_by_server,
+    get_servers,
     update_balance,
     update_key_expiry,
 )
@@ -44,11 +48,11 @@ from handlers.buttons.add_subscribe import (
 )
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
-    delete_key_from_db,
     renew_key_in_cluster,
     update_subscription,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,
@@ -67,7 +71,7 @@ router = Router()
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
 async def process_callback_or_message_view_keys(
-        callback_query_or_message: types.Message | types.CallbackQuery, session: Any
+    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
 ):
     if isinstance(callback_query_or_message, types.CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
@@ -79,21 +83,12 @@ async def process_callback_or_message_view_keys(
         send_photo = callback_query_or_message.answer_photo
 
     try:
-        records = await session.fetch(
-            """
-            SELECT email, client_id, expiry_time 
-            FROM keys 
-            WHERE tg_id = $1
-            """,
-            chat_id,
-        )
+        records = await get_keys(chat_id, session)
 
         inline_keyboard, response_message = build_keys_response(records)
 
         image_path = os.path.join("img", "pic_keys.jpg")
-        await send_with_optional_image(
-            send_message, send_photo, image_path, response_message, inline_keyboard
-        )
+        await send_with_optional_image(send_message, send_photo, image_path, response_message, inline_keyboard)
     except Exception as e:
         error_message = f"Ошибка при получении ключей: {e}"
         await send_message(text=error_message)
@@ -115,9 +110,7 @@ def build_keys_response(records):
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
-                formatted_date_full = expiry_date_full.strftime(
-                    "до %d %B %Y года, %H:%M"
-                ).lower()
+                formatted_date_full = expiry_date_full.strftime("до %d %B %Y года, %H:%M").lower()
 
                 formatted_date_short = expiry_date_full.strftime("до %d %B").lower()
             else:
@@ -125,41 +118,31 @@ def build_keys_response(records):
                 formatted_date_short = "без срока действия"
 
             button_text = f"{key_name} ({formatted_date_short})"
-            builder.row(
-                InlineKeyboardButton(
-                    text=button_text, callback_data=f"view_key|{key_name}"
-                )
-            )
+            builder.row(InlineKeyboardButton(text=button_text, callback_data=f"view_key|{key_name}"))
 
             response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
 
     else:
         response_message = (
-            "<b>🔑 У вас пока нет подписок.</b>\n\n"
-            "Вы можете создать новую подписку для подключения устройств."
+            "<b>🔑 У вас пока нет подписок.</b>\n\nВы можете создать новую подписку для подключения устройств."
         )
 
-    builder.row(
-        InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key")
-    )
+    builder.row(InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
     return inline_keyboard, response_message
 
 
-async def send_with_optional_image(
-        send_message, send_photo, image_path, text, keyboard
-):
+async def send_with_optional_image(send_message, send_photo, image_path, text, keyboard):
     """
     Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
     """
     if os.path.isfile(image_path):
-        with open(image_path, "rb") as image_file:
+        async with aiofiles.open(image_path, "rb") as image_file:
+            image_data = await image_file.read()
             await send_photo(
-                photo=BufferedInputFile(
-                    image_file.read(), filename=os.path.basename(image_path)
-                ),
+                photo=BufferedInputFile(image_data, filename=os.path.basename(image_path)),
                 caption=text,
                 reply_markup=keyboard,
             )
@@ -175,15 +158,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            """
-            SELECT k.expiry_time, k.server_id, k.key
-            FROM keys k
-            WHERE k.tg_id = $1 AND k.email = $2
-            """,
-            tg_id,
-            key_name,
-        )
+        record = await get_key_details(key_name, session)
 
         if record:
             key = record["key"]
@@ -207,9 +182,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 )
 
             formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
-            response_message = key_message(
-                key, formatted_expiry_date, days_left_message, server_name
-            )
+            response_message = key_message(key, formatted_expiry_date, days_left_message, server_name)
 
             builder = InlineKeyboardBuilder()
 
@@ -223,46 +196,28 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
             builder.row(
                 InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-                InlineKeyboardButton(
-                    text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID
-                ),
+                InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
             )
 
             builder.row(
                 InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
-                InlineKeyboardButton(
-                    text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"
-                ),
+                InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
             )
 
             builder.row(
-                InlineKeyboardButton(
-                    text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"
-                ),
-                InlineKeyboardButton(
-                    text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"
-                ),
+                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
             )
 
             if ENABLE_DELETE_KEY_BUTTON:
                 builder.row(
-                    InlineKeyboardButton(
-                        text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Удалить", callback_data=f"delete_key|{key_name}"
-                    ),
+                    InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
+                    InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
                 )
             else:
-                builder.row(
-                    InlineKeyboardButton(
-                        text="⏳ Продлить", callback_data=f"renew_key|{key_name}"
-                    )
-                )
-
-            builder.row(
-                InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-            )
+                builder.row(InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"))
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             keyboard = builder.as_markup()
 
@@ -272,9 +227,10 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
                 await callback_query.message.answer("Файл изображения не найден.")
                 return
 
-            with open(image_path, "rb") as image_file:
+            async with aiofiles.open(image_path, "rb") as image_file:
+                image_data = await image_file.read()
                 await callback_query.message.answer_photo(
-                    photo=BufferedInputFile(image_file.read(), filename="pic_view.jpg"),
+                    photo=BufferedInputFile(image_data, filename="pic_view.jpg"),
                     caption=response_message,
                     reply_markup=keyboard,
                 )
@@ -291,9 +247,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
 
 @router.callback_query(F.data.startswith("update_subscription|"))
-async def process_callback_update_subscription(
-        callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_update_subscription(callback_query: types.CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
 
@@ -302,9 +256,7 @@ async def process_callback_update_subscription(
         await process_callback_view_key(callback_query, session)
     except Exception as e:
         logger.error(f"Ошибка при обновлении ключа {email} пользователем: {e}")
-        await handle_error(
-            tg_id, callback_query, f"Ошибка при обновлении подписки: {e}"
-        )
+        await handle_error(tg_id, callback_query, f"Ошибка при обновлении подписки: {e}")
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
@@ -319,11 +271,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
                         callback_data=f"confirm_delete|{client_id}",
                     )
                 ],
-                [
-                    types.InlineKeyboardButton(
-                        text="❌ Нет, отменить", callback_data="view_keys"
-                    )
-                ],
+                [types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="view_keys")],
             ]
         )
 
@@ -341,14 +289,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            """
-            SELECT client_id, expiry_time 
-            FROM keys 
-            WHERE email = $1
-            """,
-            key_name,
-        )
+        record = await get_key_details(key_name, session)
 
         if record:
             client_id = record["client_id"]
@@ -360,9 +301,8 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                 months = plan_details["months"]
                 price = plan_details["price"]
                 discount = DISCOUNTS.get(plan_id, 0)
-                button_text = (
-                    f'📅 {months} месяц{"а" if months > 1 else ""} ({price} руб.)'
-                    + (f' {discount}% скидка' if discount > 0 else "")
+                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)" + (
+                    f" {discount}% скидка" if discount > 0 else ""
                 )
                 builder.row(
                     InlineKeyboardButton(
@@ -371,19 +311,13 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
                     )
                 )
 
-            builder.row(
-                InlineKeyboardButton(
-                    text="🔙 Назад", callback_data="view_keys"
-                )
-            )
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
 
             balance = await get_balance(tg_id)
 
             response_message = PLAN_SELECTION_MSG.format(
                 balance=balance,
-                expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
+                expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
             )
 
             await callback_query.message.answer(
@@ -397,38 +331,30 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
 
 @router.callback_query(F.data.startswith("confirm_delete|"))
-async def process_callback_confirm_delete(
-        callback_query: types.CallbackQuery, session: Any
-):
+async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
     try:
-        record = await session.fetchrow(
-            "SELECT client_id FROM keys WHERE email = $1", email
-        )
+        record = await get_key_details(email, session)
 
         if record:
             client_id = record["client_id"]
             response_message = "Ключ успешно удален."
-            back_button = types.InlineKeyboardButton(
-                text="Назад", callback_data="view_keys"
-            )
+            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
-            await delete_key(client_id)
+            await delete_key(client_id, session)
             await callback_query.message.answer(
                 response_message,
                 reply_markup=keyboard,
             )
 
-            servers = await get_servers_from_db()
+            servers = await get_servers(session)
 
             async def delete_key_from_servers():
                 try:
                     tasks = []
-                    for cluster_id, cluster in servers.items():
-                        tasks.append(
-                            delete_key_from_cluster(cluster_id, email, client_id)
-                        )
+                    for cluster_id, _cluster in servers.items():
+                        tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
 
                     await asyncio.gather(*tasks)
 
@@ -437,13 +363,11 @@ async def process_callback_confirm_delete(
 
             asyncio.create_task(delete_key_from_servers())
 
-            await delete_key_from_db(client_id, session)
+            await delete_key(client_id, session)
 
         else:
             response_message = "Ключ не найден или уже удален."
-            back_button = types.InlineKeyboardButton(
-                text="Назад", callback_data="view_keys"
-            )
+            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
             await callback_query.message.answer(
@@ -464,10 +388,7 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
     total_gb = TOTAL_GB * gb_multiplier.get(plan, 1) if TOTAL_GB > 0 else 0
 
     try:
-        record = await session.fetchrow(
-            "SELECT email, expiry_time FROM keys WHERE client_id = $1",
-            client_id,
-        )
+        record = await get_keys_by_server(tg_id, client_id, session)
 
         if record:
             email = record["email"]
@@ -486,9 +407,10 @@ async def process_callback_renew_plan(callback_query: types.CallbackQuery, sessi
                 required_amount = cost - balance
 
                 logger.info(
-                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}")
+                    f"[RENEW] Пользователю {tg_id} не хватает {required_amount}₽. Запуск доплаты через {USE_NEW_PAYMENT_FLOW}"
+                )
 
-                await save_temporary_data(
+                await create_temporary_data(
                     session,
                     tg_id,
                     "waiting_for_renewal_payment",
@@ -543,15 +465,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
     conn = await asyncpg.connect(DATABASE_URL)
-    key_info = await conn.fetchrow(
-        """
-        SELECT server_id 
-        FROM keys 
-        WHERE tg_id = $1 AND client_id = $2
-        """,
-        tg_id,
-        client_id,
-    )
+    key_info = await get_key_details(email, conn)
 
     if not key_info:
         logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")
@@ -561,14 +475,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     server_id = key_info["server_id"]
 
     if USE_COUNTRY_SELECTION:
-        cluster_info = await conn.fetchrow(
-            """
-            SELECT cluster_name 
-            FROM servers 
-            WHERE server_name = $1
-            """,
-            server_id,
-        )
+        cluster_info = await check_server_name_by_cluster(server_id, conn)
 
         if not cluster_info:
             logger.error(f"[RENEW] Сервер {server_id} не найден в таблице servers.")
@@ -592,8 +499,8 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
             total_gb,
         )
 
-        await update_key_expiry(client_id, new_expiry_time)
-        await update_balance(tg_id, -cost)
+        await update_key_expiry(client_id, new_expiry_time, conn)
+        await update_balance(tg_id, -cost, conn)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
 
     await renew_key_on_cluster()

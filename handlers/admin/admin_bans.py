@@ -1,7 +1,7 @@
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, BufferedInputFile
+from aiogram.types import BufferedInputFile, CallbackQuery
 
 from database import delete_user_data
 from filters.admin import IsAdminFilter
@@ -15,13 +15,8 @@ router = Router()
     AdminPanelCallback.filter(F.action == "bans"),
     IsAdminFilter(),
 )
-async def handle_bans(
-        callback_query: CallbackQuery
-):
-    text = (
-        "🚫 Заблокировавшие бота"
-        "\n\nЗдесь можно просматривать и удалять пользователей, которые забанили вашего бота!"
-    )
+async def handle_bans(callback_query: CallbackQuery):
+    text = "🚫 Заблокировавшие бота\n\nЗдесь можно просматривать и удалять пользователей, которые забанили вашего бота!"
 
     await callback_query.message.edit_text(
         text=text,
@@ -33,10 +28,7 @@ async def handle_bans(
     AdminPanelCallback.filter(F.action == "bans_export"),
     IsAdminFilter(),
 )
-async def handle_bans_export(
-        callback_query: CallbackQuery,
-        session: Any
-):
+async def handle_bans_export(callback_query: CallbackQuery, session: Any):
     kb = build_admin_back_kb("management")
 
     try:
@@ -53,9 +45,7 @@ async def handle_bans_export(
 
         csv_output.seek(0)
 
-        document = BufferedInputFile(
-            file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv"
-        )
+        document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv")
 
         await callback_query.message.answer_document(
             document=document,
@@ -72,10 +62,7 @@ async def handle_bans_export(
     AdminPanelCallback.filter(F.action == "bans_delete_banned"),
     IsAdminFilter(),
 )
-async def handle_bans_delete_banned(
-        callback_query: CallbackQuery,
-        session: Any
-):
+async def handle_bans_delete_banned(callback_query: CallbackQuery, session: Any):
     kb = build_admin_back_kb("bans")
 
     try:
@@ -92,9 +79,7 @@ async def handle_bans_delete_banned(
         for tg_id in blocked_ids:
             await delete_user_data(session, tg_id)
 
-        await session.execute(
-            "DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids
-        )
+        await session.execute("DELETE FROM blocked_users WHERE tg_id = ANY($1)", blocked_ids)
 
         await callback_query.message.answer(
             text=f"🗑️ Удалены данные о {len(blocked_ids)} пользователях и связанных записях.",

@@ -1,6 +1,7 @@
 formatting:
-	@echo "Running Ruff..." && ruff check . --fix
-	@echo "Running Ruff format..." && ruff format .
+	@echo "Running Ruff format..." && ruff format . --config pyproject.toml --exclude main.py,handlers/payments
+
+	@echo "Running Ruff..." && ruff check . --config pyproject.toml --exclude main.py,handlers/payments --fix
 
 lint:
-	@echo "Running Ruff checks..." && ruff check .
+	@echo "Running Ruff checks..." && ruff check . --config pyproject.toml --exclude main.py,handlers/payments

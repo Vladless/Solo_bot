@@ -29,8 +29,12 @@ async def backup_database() -> Exception | None:
         return e
 
 
-def _create_database_backup() -> (str | None, Exception | None):
+def _create_database_backup() -> tuple[str | None, Exception | None]:
     date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+
+    if not os.path.exists(BACK_DIR):
+        os.makedirs(BACK_DIR)
+
     filename = os.path.join(BACK_DIR, f"{DB_NAME}-backup-{date_formatted}.sql")
 
     try:
@@ -93,18 +97,16 @@ async def create_backup_and_send_to_admins(xui) -> None:
 
 async def _send_backup_to_admins(backup_file_path: str) -> None:
     try:
+        import aiofiles
+
         from bot import bot
-        with open(backup_file_path, "rb") as backup_file:
-            backup_input_file = BufferedInputFile(
-                file=backup_file.read(),
-                filename=os.path.basename(backup_file_path)
-            )
+
+        async with aiofiles.open(backup_file_path, "rb") as backup_file:
+            backup_data = await backup_file.read()
+            backup_input_file = BufferedInputFile(file=backup_data, filename=os.path.basename(backup_file_path))
             admin_ids = ADMIN_ID if isinstance(ADMIN_ID, list) else [ADMIN_ID]
             for admin_id in admin_ids:
-                await bot.send_document(
-                    chat_id=admin_id,
-                    document=backup_input_file
-                )
+                await bot.send_document(chat_id=admin_id, document=backup_input_file)
             logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
     except Exception as e:
         logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")

@@ -52,9 +52,7 @@ if ROBOKASSA_ENABLE:
 
 def generate_payment_link(amount, inv_id, description, tg_id):
     """Генерация ссылки на оплату."""
-    logger.debug(
-        f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}"
-    )
+    logger.debug(f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}")
     payment_link = robokassa._payment.link.generate_by_script(
         out_sum=amount,
         inv_id=inv_id,
@@ -66,9 +64,7 @@ def generate_payment_link(amount, inv_id, description, tg_id):
 
 
 @router.callback_query(F.data == "pay_robokassa")
-async def process_callback_pay_robokassa(
-    callback_query: types.CallbackQuery, state: FSMContext, session: Any
-):
+async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} initiated Robokassa payment.")
 
@@ -78,18 +74,18 @@ async def process_callback_pay_robokassa(
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
+                    callback_data=f"robokassa_amount|{PAYMENT_OPTIONS[i]['callback_data']}",
                 ),
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
+                    callback_data=f"robokassa_amount|{PAYMENT_OPTIONS[i + 1]['callback_data']}",
                 ),
             )
         else:
             builder.row(
                 InlineKeyboardButton(
                     text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
+                    callback_data=f"robokassa_amount|{PAYMENT_OPTIONS[i]['callback_data']}",
                 )
             )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
@@ -111,9 +107,7 @@ async def process_callback_pay_robokassa(
 
 
 @router.callback_query(F.data.startswith("robokassa_amount|"))
-async def process_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     logger.info(f"Получены данные callback_data: {callback_query.data}")
 
     data = callback_query.data.split("|")
@@ -167,9 +161,7 @@ async def robokassa_webhook(request):
         shp_id = params.get("shp_id")
         signature_value = params.get("SignatureValue")
 
-        logger.info(
-            f"OutSum: {amount}, InvId: {inv_id}, shp_id: {shp_id}, SignatureValue: {signature_value}"
-        )
+        logger.info(f"OutSum: {amount}, InvId: {inv_id}, shp_id: {shp_id}, SignatureValue: {signature_value}")
 
         if not check_payment_signature(params):
             logger.error("Неверная подпись или данные запроса.")
@@ -208,9 +200,7 @@ def check_payment_signature(params):
 
     logger.info(f"Signature string before hashing: {signature_string}")
 
-    expected_signature = (
-        hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
-    )
+    expected_signature = hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
 
     logger.info(f"Expected signature: {expected_signature}")
     logger.info(f"Received signature: {signature_value}")
@@ -219,27 +209,25 @@ def check_payment_signature(params):
 
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
-async def process_custom_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
-):
+async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_robokassa"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa"))
 
     await callback_query.message.answer(
         "Пожалуйста, введите сумму пополнения.",
         reply_markup=builder.as_markup(),
     )
 
-    await state.set_state(
-        ReplenishBalanceState.waiting_for_payment_confirmation_robokassa
-    )
+    await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
 
 
 @router.message(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
-async def handle_custom_amount_input(message: types.Message | types.CallbackQuery, state: FSMContext = None, session: Any = None):
+async def handle_custom_amount_input(
+    message: types.Message | types.CallbackQuery, state: FSMContext = None, session: Any = None
+):
     if isinstance(message, types.CallbackQuery):
         tg_id = message.message.chat.id
     else:
@@ -249,7 +237,6 @@ async def handle_custom_amount_input(message: types.Message | types.CallbackQuer
     inv_id = 0
 
     try:
-
         conn = await asyncpg.connect(DATABASE_URL)
         user_data = await get_temporary_data(conn, tg_id)
         await conn.close()
@@ -277,9 +264,13 @@ async def handle_custom_amount_input(message: types.Message | types.CallbackQuer
         )
 
         if state_type == "waiting_for_payment":
-            message_text = f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"
+            message_text = (
+                f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"
+            )
         elif state_type == "waiting_for_renewal_payment":
-            message_text = f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
+            message_text = (
+                f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
+            )
         else:
             await message.answer("Некорректное состояние данных. Попробуйте снова.")
             return
