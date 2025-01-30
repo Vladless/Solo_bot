@@ -72,7 +72,7 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
         await state.clear()
         return
 
-    tg_id = user_record["tg_id"]
+    tg_id = int(user_record["tg_id"])
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
     key_records = await get_keys(tg_id, session)
@@ -90,8 +90,8 @@ async def handle_username_input(message: types.Message, state: FSMContext, sessi
 
     builder = InlineKeyboardBuilder()
 
-    for (email,) in key_records:
-        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
+    for key in key_records:
+        builder.row(InlineKeyboardButton(text=f"🔑 {key['email']}", callback_data=f"edit_key_{key['email']}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -170,8 +170,8 @@ async def handle_tg_id_input(message: types.Message, state: FSMContext, session:
 
     builder = InlineKeyboardBuilder()
 
-    for (email,) in key_records:
-        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
+    for key in key_records:
+        builder.row(InlineKeyboardButton(text=f"🔑 {key['email']}", callback_data=f"edit_key_{key['email']}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -518,8 +518,8 @@ async def handle_user_info(callback_query: types.CallbackQuery, state: FSMContex
 
     builder = InlineKeyboardBuilder()
 
-    for (email,) in key_records:
-        builder.row(InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}"))
+    for key in key_records:
+        builder.row(InlineKeyboardButton(text=f"🔑 {key['email']}", callback_data=f"edit_key_{key['email']}"))
 
     builder.row(InlineKeyboardButton(text="📝 Изменить баланс", callback_data=f"change_balance_{tg_id}"))
     builder.row(InlineKeyboardButton(text="🔄 Восстановить пробник", callback_data=f"restore_trial_{tg_id}"))
