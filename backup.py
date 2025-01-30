@@ -97,8 +97,9 @@ async def create_backup_and_send_to_admins(xui) -> None:
 
 async def _send_backup_to_admins(backup_file_path: str) -> None:
     try:
-        from bot import bot
         import aiofiles
+
+        from bot import bot
 
         async with aiofiles.open(backup_file_path, "rb") as backup_file:
             backup_data = await backup_file.read()

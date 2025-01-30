@@ -9,6 +9,7 @@ from keyboards.admin.panel_kb import AdminPanelCallback
 from keyboards.admin.sender_kb import AdminSenderCallback
 from keyboards.admin.servers_kb import AdminServerEditorCallback
 from keyboards.admin.users_kb import AdminUserEditorCallback, AdminUserKeyEditorCallback
+from logger import logger
 
 pass_callbacks = [
     AdminPanelCallback,
@@ -31,8 +32,8 @@ class DeleteMessageMiddleware(BaseMiddleware):
             if not event.text or not event.text.startswith("/start"):
                 try:
                     await event.bot.delete_message(event.chat.id, event.message_id - 1)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(e)
                 await event.delete()
 
         if isinstance(event, CallbackQuery):

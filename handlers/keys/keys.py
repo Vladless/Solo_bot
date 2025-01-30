@@ -48,7 +48,6 @@ from handlers.buttons.add_subscribe import (
 )
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
-    delete_key_from_db,
     renew_key_in_cluster,
     update_subscription,
 )
@@ -354,7 +353,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
             async def delete_key_from_servers():
                 try:
                     tasks = []
-                    for cluster_id, cluster in servers.items():
+                    for cluster_id, _cluster in servers.items():
                         tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
 
                     await asyncio.gather(*tasks)
@@ -364,7 +363,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
 
             asyncio.create_task(delete_key_from_servers())
 
-            await delete_key_from_db(client_id, session)
+            await delete_key(client_id, session)
 
         else:
             response_message = "Ключ не найден или уже удален."

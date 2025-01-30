@@ -10,11 +10,10 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery
 
 from config import TOTAL_GB
-from database import delete_user_data, get_client_id_by_email, get_servers_from_db, restore_trial, update_key_expiry
+from database import delete_key, delete_user_data, get_client_id_by_email, get_servers, update_key_expiry, update_trial
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
-    delete_key_from_db,
     renew_key_in_cluster,
     update_subscription,
 )
@@ -168,7 +167,7 @@ async def handle_trial_restore(
 ):
     tg_id = callback_data.tg_id
 
-    await restore_trial(tg_id, session)
+    await update_trial(tg_id, 0, session)
     await callback_query.message.edit_text(text="✅ Триал успешно восстановлен!", reply_markup=build_editor_kb(tg_id))
 
 
@@ -479,7 +478,7 @@ async def handle_delete_key_confirm(
 
     if record:
         client_id = record["client_id"]
-        clusters = await get_servers_from_db()
+        clusters = await get_servers()
 
         async def delete_key_from_servers():
             tasks = []
@@ -489,7 +488,7 @@ async def handle_delete_key_confirm(
             await asyncio.gather(*tasks)
 
         await delete_key_from_servers()
-        await delete_key_from_db(client_id, session)
+        await delete_key(client_id, session)
 
         await callback_query.message.edit_text(text="✅ Ключ успешно удален.", reply_markup=kb)
     else:
@@ -515,8 +514,8 @@ async def handle_delete_user_confirm(
         try:
             tasks = []
             for email, client_id in key_records:
-                servers = await get_servers_from_db()
-                for cluster_id, cluster in servers.items():
+                servers = await get_servers()
+                for cluster_id, _cluster in servers.items():
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
             await asyncio.gather(*tasks)
         except Exception as e:
@@ -619,7 +618,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
     if not server_id:
         return ValueError(f"User with client_id {server_id} was not found")
 
-    clusters = await get_servers_from_db()
+    clusters = await get_servers()
 
     async def update_key_on_all_servers():
         tasks = [

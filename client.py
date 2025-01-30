@@ -23,7 +23,7 @@ class ClientConfig:
     sub_id: str
 
 
-async def add_client(xui: py3xui.API, config: ClientConfig) -> dict[str, Any]:
+async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, Any]:
     """
     Добавляет клиента на сервер через 3x-ui.
 
@@ -66,7 +66,7 @@ async def add_client(xui: py3xui.API, config: ClientConfig) -> dict[str, Any]:
 
 
 async def extend_client_key(
-    xui: py3xui.API, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str
+    xui: py3xui.AsyncApi, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str
 ) -> bool | None:
     """
     Обновляет срок действия ключа клиента.
@@ -117,7 +117,7 @@ async def extend_client_key(
 
 
 async def delete_client(
-    xui: py3xui.API,
+    xui: py3xui.AsyncApi,
     inbound_id: int,
     email: str,
     client_id: str,

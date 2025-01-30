@@ -57,7 +57,6 @@ async def send_instructions(
 
 @router.callback_query(F.data.startswith("connect_pc|"))
 async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
-    tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
     record = await get_key_details(key_name, session)
