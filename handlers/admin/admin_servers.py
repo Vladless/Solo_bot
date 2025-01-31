@@ -94,7 +94,7 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 
 
 @router.message(AdminServersEditor.waiting_for_server_name, IsAdminFilter())
-async def handle_server_name_input(message: Message, state: FSMContext):
+async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
             text="❌ Имя сервера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
@@ -103,15 +103,16 @@ async def handle_server_name_input(message: Message, state: FSMContext):
 
     server_name = message.text.strip()
 
-    if not await check_unique_server_name(server_name):
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    if not await check_unique_server_name(server_name, session, cluster_name):
         await message.answer(
             text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.",
             reply_markup=build_admin_back_kb("servers"),
         )
         return
 
-    user_data = await state.get_data()
-    cluster_name = user_data.get("cluster_name")
     await state.update_data(server_name=server_name)
 
     text = (
@@ -130,7 +131,7 @@ async def handle_server_name_input(message: Message, state: FSMContext):
 
 
 @router.message(AdminServersEditor.waiting_for_api_url, IsAdminFilter())
-async def handle_api_url_input(message: Message, state: FSMContext):
+async def handle_api_url_input(message: Message, state: FSMContext, session: Any):
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
