@@ -5,7 +5,7 @@ import aiofiles
 import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS

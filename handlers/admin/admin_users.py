@@ -131,9 +131,7 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     AdminUserEditorCallback.filter(F.action == "users_send_message"),
     IsAdminFilter(),
 )
-async def handle_send_message(
-    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext
-):
+async def handle_send_message(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     tg_id = callback_data.tg_id
 
     await callback_query.message.edit_text(
@@ -162,9 +160,7 @@ async def handle_message_text_input(message: Message, state: FSMContext):
     AdminUserEditorCallback.filter(F.action == "users_trial_restore"),
     IsAdminFilter(),
 )
-async def handle_trial_restore(
-    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
-):
+async def handle_trial_restore(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
     tg_id = callback_data.tg_id
 
     await update_trial(tg_id, 0, session)

@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, LabeledPrice, PreCheckoutQuery, Message, CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardButton, LabeledPrice, Message, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR

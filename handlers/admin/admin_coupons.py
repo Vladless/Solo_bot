@@ -3,7 +3,8 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery, Message
+
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from keyboards.admin.coupons_kb import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
@@ -136,9 +137,7 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
     AdminCouponDeleteCallback.filter(),
     IsAdminFilter(),
 )
-async def handle_coupon_delete(
-    callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any
-):
+async def handle_coupon_delete(callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any):
     coupon_code = callback_data.coupon_code
 
     try:
