@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.sender_kb import AdminSenderCallback, build_sender_kb
+from keyboards.admin.sender_kb import AdminSenderCallback, build_sender_kb, build_clusters_kb
 from logger import logger
 
 router = Router()
@@ -38,8 +38,20 @@ async def handle_sender_callback(callback_query: CallbackQuery, callback_data: A
         text="✍️ Введите текст сообщения для рассылки:",
         reply_markup=build_admin_back_kb("sender"),
     )
-    await state.update_data(type=callback_data.type)
+    await state.update_data(type=callback_data.type, data=callback_data.data)
     await state.set_state(AdminSender.waiting_for_message)
+
+
+@router.callback_query(
+    AdminSenderCallback.filter(F.type == "cluster-select"),
+    IsAdminFilter(),
+)
+async def handle_sender_callback(callback_query: CallbackQuery, session: Any):
+    clusters = await session.fetch("SELECT DISTINCT cluster_name FROM servers")
+    await callback_query.message.answer(
+        "✍️ Выберите кластер для рассылки сообщений:",
+        reply_markup=build_clusters_kb(clusters),
+    )
 
 
 @router.message(
@@ -73,6 +85,18 @@ async def handle_message_input(message: types.Message, state: FSMContext, sessio
                     HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
                 """,
                 int(datetime.utcnow().timestamp() * 1000),
+            )
+        elif send_to == "cluster":
+            cluster_name = state_data.get("data")
+            tg_ids = await session.fetch(
+                """
+                SELECT DISTINCT c.tg_id
+                FROM connections c
+                JOIN keys k ON c.tg_id = k.tg_id
+                JOIN servers s ON k.server_id = s.cluster_name
+                WHERE s.cluster_name = $1
+            """,
+                cluster_name,
             )
         else:
             tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections")
