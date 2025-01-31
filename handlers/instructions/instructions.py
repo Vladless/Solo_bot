@@ -3,7 +3,7 @@ from typing import Any
 
 import aiofiles
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
@@ -23,13 +23,13 @@ router = Router()
 @router.callback_query(F.data == "instructions")
 @router.message(F.text == "/instructions")
 async def send_instructions(
-    callback_query_or_message: types.CallbackQuery | types.Message,
+    callback_query_or_message: CallbackQuery | Message,
 ):
     instructions_message = INSTRUCTIONS
     image_path = os.path.join("img", "instructions.jpg")
 
     if not os.path.isfile(image_path):
-        if isinstance(callback_query_or_message, types.CallbackQuery):
+        if isinstance(callback_query_or_message, CallbackQuery):
             await callback_query_or_message.message.answer("Файл изображения не найден.")
         else:
             await callback_query_or_message.answer("Файл изображения не найден.")
@@ -41,7 +41,7 @@ async def send_instructions(
         InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"),
     )
 
-    if isinstance(callback_query_or_message, types.CallbackQuery):
+    if isinstance(callback_query_or_message, CallbackQuery):
         send_photo = callback_query_or_message.message.answer_photo
     else:
         send_photo = callback_query_or_message.answer_photo
@@ -56,7 +56,7 @@ async def send_instructions(
 
 
 @router.callback_query(F.data.startswith("connect_pc|"))
-async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
+async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
 
     record = await get_key_details(key_name, session)
@@ -83,7 +83,7 @@ async def process_connect_pc(callback_query: types.CallbackQuery, session: Any):
 
 
 @router.callback_query(F.data.startswith("connect_tv|"))
-async def process_connect_tv(callback_query: types.CallbackQuery):
+async def process_connect_tv(callback_query: CallbackQuery):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
@@ -98,7 +98,7 @@ async def process_connect_tv(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("continue_tv|"))
-async def process_continue_tv(callback_query: types.CallbackQuery, session: Any):
+async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     tg_id = callback_query.from_user.id
 
