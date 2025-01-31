@@ -498,7 +498,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         await update_key_expiry(client_id, new_expiry_time, conn)
         await update_balance(tg_id, -cost, conn)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
-    
+
     await conn.close()
 
     await renew_key_on_cluster()
