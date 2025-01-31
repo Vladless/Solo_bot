@@ -53,7 +53,7 @@ def build_admin_singleton_kb(text: str, action: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_admin_back_btn(action: str = "admin") -> InlineKeyboardMarkup:
+def build_admin_back_btn(action: str = "admin") -> InlineKeyboardButton:
     return build_admin_btn("🔙 Назад", action)
 
 
