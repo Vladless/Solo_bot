@@ -4,6 +4,7 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
@@ -34,7 +35,7 @@ class AdminServersEditor(StatesGroup):
     AdminPanelCallback.filter(F.action == "servers"),
     IsAdminFilter(),
 )
-async def handle_servers(callback_query: types.CallbackQuery):
+async def handle_servers(callback_query: CallbackQuery):
     servers = await get_servers()
 
     text = (
@@ -55,7 +56,7 @@ async def handle_servers(callback_query: types.CallbackQuery):
     AdminPanelCallback.filter(F.action == "clusters_add"),
     IsAdminFilter(),
 )
-async def handle_clusters_add(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🔧 <b>Введите имя нового кластера:</b>\n\n"
         "<b>Имя кластера должно быть уникальным!</b>\n"
@@ -68,7 +69,7 @@ async def handle_clusters_add(callback_query: types.CallbackQuery, state: FSMCon
 
 
 @router.message(AdminServersEditor.waiting_for_cluster_name, IsAdminFilter())
-async def handle_cluster_name_input(message: types.Message, state: FSMContext):
+async def handle_cluster_name_input(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
             text="❌ Имя кластера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
@@ -93,7 +94,7 @@ async def handle_cluster_name_input(message: types.Message, state: FSMContext):
 
 
 @router.message(AdminServersEditor.waiting_for_server_name, IsAdminFilter())
-async def handle_server_name_input(message: types.Message, state: FSMContext):
+async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
             text="❌ Имя сервера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
@@ -102,15 +103,16 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
 
     server_name = message.text.strip()
 
-    if not await check_unique_server_name(server_name):
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    if not await check_unique_server_name(server_name, session, cluster_name):
         await message.answer(
             text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.",
             reply_markup=build_admin_back_kb("servers"),
         )
         return
 
-    user_data = await state.get_data()
-    cluster_name = user_data.get("cluster_name")
     await state.update_data(server_name=server_name)
 
     text = (
@@ -129,7 +131,7 @@ async def handle_server_name_input(message: types.Message, state: FSMContext):
 
 
 @router.message(AdminServersEditor.waiting_for_api_url, IsAdminFilter())
-async def handle_api_url_input(message: types.Message, state: FSMContext):
+async def handle_api_url_input(message: Message, state: FSMContext, session: Any):
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
@@ -161,7 +163,7 @@ async def handle_api_url_input(message: types.Message, state: FSMContext):
 
 
 @router.message(AdminServersEditor.waiting_for_subscription_url, IsAdminFilter())
-async def handle_subscription_url_input(message: types.Message, state: FSMContext):
+async def handle_subscription_url_input(message: Message, state: FSMContext):
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ subscription_url должен начинаться с <code>https://</code>. Попробуйте снова.",
@@ -189,7 +191,7 @@ async def handle_subscription_url_input(message: types.Message, state: FSMContex
 
 
 @router.message(AdminServersEditor.waiting_for_inbound_id, IsAdminFilter())
-async def handle_inbound_id_input(message: types.Message, state: FSMContext):
+async def handle_inbound_id_input(message: Message, state: FSMContext):
     inbound_id = message.text.strip()
 
     if not inbound_id.isdigit():
@@ -228,9 +230,7 @@ async def handle_inbound_id_input(message: types.Message, state: FSMContext):
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_manage"), IsAdminFilter())
-async def handle_clusters_manage(
-    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
-):
+async def handle_clusters_manage(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)
@@ -244,7 +244,7 @@ async def handle_clusters_manage(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_availability"), IsAdminFilter())
 async def handle_servers_availability(
-    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -280,7 +280,7 @@ async def handle_servers_availability(
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_manage"), IsAdminFilter())
-async def handle_servers_manage(callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback):
+async def handle_servers_manage(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback):
     server_name = callback_data.data
     servers = await get_servers()
 
@@ -309,7 +309,7 @@ async def handle_servers_manage(callback_query: types.CallbackQuery, callback_da
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_delete"), IsAdminFilter())
-async def handle_servers_delete(callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback):
+async def handle_servers_delete(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback):
     server_name = callback_data.data
 
     await callback_query.message.edit_text(
@@ -320,7 +320,7 @@ async def handle_servers_delete(callback_query: types.CallbackQuery, callback_da
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_delete_confirm"), IsAdminFilter())
 async def handle_servers_delete_confirm(
-    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     server_name = callback_data.data
 
@@ -333,7 +333,7 @@ async def handle_servers_delete_confirm(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_add"), IsAdminFilter())
 async def handle_servers_add(
-    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, state: FSMContext
+    callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, state: FSMContext
 ):
     cluster_name = callback_data.data
 
@@ -354,9 +354,7 @@ async def handle_servers_add(
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_backup"), IsAdminFilter())
-async def handle_clusters_backup(
-    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
-):
+async def handle_clusters_backup(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)

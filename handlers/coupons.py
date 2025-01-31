@@ -3,7 +3,7 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import (
@@ -23,7 +23,7 @@ router = Router()
 
 
 @router.callback_query(F.data == "activate_coupon")
-async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSMContext):
+async def handle_activate_coupon(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
@@ -36,7 +36,7 @@ async def handle_activate_coupon(callback_query: types.CallbackQuery, state: FSM
 
 
 @router.message(CouponActivationState.waiting_for_coupon_code)
-async def process_coupon_code(message: types.Message, state: FSMContext, session: Any):
+async def process_coupon_code(message: Message, state: FSMContext, session: Any):
     coupon_code = message.text.strip()
     activation_result = await activate_coupon(message.chat.id, coupon_code, session)
 

@@ -433,7 +433,7 @@ async def get_keys(tg_id: int, session: Any):
     try:
         records = await session.fetch(
             """
-            SELECT client_id, email, created_at, key
+            SELECT *
             FROM keys
             WHERE tg_id = $1
             """,
