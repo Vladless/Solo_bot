@@ -8,7 +8,7 @@ import aiofiles
 import asyncpg
 import pytz
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, Message, CallbackQuery
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
@@ -70,9 +70,7 @@ router = Router()
 
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
-async def process_callback_or_message_view_keys(
-    callback_query_or_message: Message | CallbackQuery, session: Any
-):
+async def process_callback_or_message_view_keys(callback_query_or_message: Message | CallbackQuery, session: Any):
     if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
         send_message = callback_query_or_message.message.answer

@@ -4,8 +4,9 @@ import asyncpg
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from py3xui import AsyncApi
 from aiogram.types import CallbackQuery, Message
+from py3xui import AsyncApi
+
 from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, delete_server, get_servers
@@ -228,9 +229,7 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_manage"), IsAdminFilter())
-async def handle_clusters_manage(
-    callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
-):
+async def handle_clusters_manage(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)
@@ -354,9 +353,7 @@ async def handle_servers_add(
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_backup"), IsAdminFilter())
-async def handle_clusters_backup(
-    callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
-):
+async def handle_clusters_backup(callback_query: CallbackQuery, callback_data: AdminServerEditorCallback, session: Any):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)
