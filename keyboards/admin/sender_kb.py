@@ -1,5 +1,3 @@
-from typing import Union
-
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -9,7 +7,7 @@ from keyboards.admin.panel_kb import build_admin_back_btn
 
 class AdminSenderCallback(CallbackData, prefix="admin_sender"):
     type: str
-    data: Union[str, None] = None
+    data: str | None = None
 
 
 def build_sender_kb() -> InlineKeyboardMarkup:
