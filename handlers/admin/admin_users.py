@@ -633,7 +633,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
         await asyncio.gather(*tasks)
 
     await update_key_on_all_servers()
-    await update_key_expiry(client_id, expiry_time)
+    await update_key_expiry(client_id, expiry_time, session)
 
 
 async def get_user_balance(tg_id: int, session: Any) -> float:
