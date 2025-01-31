@@ -819,6 +819,7 @@ async def update_key_expiry(client_id: str, new_expiry_time: int, session: Any):
     Args:
         client_id (str): Уникальный идентификатор клиента
         new_expiry_time (int): Новое время истечения ключа
+        session (Any): Сессия подключения к базе данных
 
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении ключа
