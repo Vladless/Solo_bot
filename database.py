@@ -1233,7 +1233,7 @@ async def store_gift_link(
 async def get_key_details(email, session):
     record = await session.fetchrow(
         """
-        SELECT k.key, k.email, k.expiry_time, k.server_id,k, k.client_id, k.created_at, c.tg_id, c.balance
+        SELECT k.server_id, k.key, k.email, k.expiry_time, k.client_id, k.created_at, c.tg_id, c.balance
         FROM keys k
         JOIN connections c ON k.tg_id = c.tg_id
         WHERE k.email = $1
@@ -1261,6 +1261,7 @@ async def get_key_details(email, session):
 
     return {
         "key": record["key"],
+        "server_id": record["server_id"],
         "created_at": record["created_at"],
         "expiry_time": record["expiry_time"],
         "client_id": record["client_id"],
