@@ -46,6 +46,10 @@ def build_manage_cluster_kb(cluster_servers, cluster_name) -> InlineKeyboardMark
         text="💾 Создать бэкап кластера",
         callback_data=AdminServerEditorCallback(action="clusters_backup", data=cluster_name).pack(),
     )
+    builder.button(
+        text="🔄 Синхронизировать",
+        callback_data=AdminServerEditorCallback(action="clusters_sync", data=cluster_name).pack(),
+    )
     builder.row(build_admin_back_btn("servers"))
     builder.adjust(1)
     return builder.as_markup()
