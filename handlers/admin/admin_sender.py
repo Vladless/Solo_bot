@@ -30,7 +30,7 @@ async def handle_sender(callback_query: CallbackQuery):
 
 
 @router.callback_query(
-    AdminSenderCallback.filter(),
+    AdminSenderCallback.filter(F.type != "cluster-select"),
     IsAdminFilter(),
 )
 async def handle_sender_callback(callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext):
@@ -38,7 +38,7 @@ async def handle_sender_callback(callback_query: CallbackQuery, callback_data: A
         text="✍️ Введите текст сообщения для рассылки:",
         reply_markup=build_admin_back_kb("sender"),
     )
-    await state.update_data(type=callback_data.type, data=callback_data.data)
+    await state.update_data(type=callback_data.type, cluster_name=callback_data.data)
     await state.set_state(AdminSender.waiting_for_message)
 
 
@@ -87,7 +87,7 @@ async def handle_message_input(message: types.Message, state: FSMContext, sessio
                 int(datetime.utcnow().timestamp() * 1000),
             )
         elif send_to == "cluster":
-            cluster_name = state_data.get("data")
+            cluster_name = state_data.get("cluster_name")
             tg_ids = await session.fetch(
                 """
                 SELECT DISTINCT c.tg_id
