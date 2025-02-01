@@ -20,6 +20,7 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
     tg_id: int
     data: str
     month: int | None = None
+    edit: bool = False
 
 
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
