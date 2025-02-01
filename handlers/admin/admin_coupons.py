@@ -101,7 +101,15 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
 )
 async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
     try:
-        page = int(callback_query.data.split(":")[1]) if ":" in callback_query.data else 1
+        if ":" in callback_query.data:
+            parts = callback_query.data.split(":")
+            if len(parts) > 1 and parts[1].isdigit():
+                page = int(parts[1])
+            else:
+                page = 1
+        else:
+            page = 1
+
         per_page = 10
         result = await get_all_coupons(session, page, per_page)
         coupons = result["coupons"]
