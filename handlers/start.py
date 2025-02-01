@@ -13,15 +13,14 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
+    CHANNEL_ID,
+    CHANNEL_REQUIRED,
     CHANNEL_URL,
-    CONNECT_ANDROID,
-    CONNECT_IOS,
     DONATIONS_ENABLE,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
     SUPPORT_CHAT_URL,
 )
 from database import (
@@ -31,20 +30,11 @@ from database import (
     get_coupon_details,
     get_referral_by_referred_id,
     get_trial,
-    update_trial,
-)
-from handlers.buttons.add_subscribe import (
-    DOWNLOAD_ANDROID_BUTTON,
-    DOWNLOAD_IOS_BUTTON,
-    IMPORT_ANDROID,
-    IMPORT_IOS,
-    PC_BUTTON,
-    TV_BUTTON,
+    update_balance,
 )
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
-from handlers.keys.trial_key import create_trial_key
-from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
+from handlers.texts import WELCOME_TEXT, get_about_vpn
 from logger import logger
 
 router = Router()
@@ -59,17 +49,42 @@ async def handle_start_callback_query(
 
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True):
-    """Обрабатывает команду /start, включает логику рефералов и подарков."""
+    """Обрабатывает команду /start, включая логику проверки подписки, рефералов и подарков."""
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     await state.clear()
 
-    # Проверка капчи, если включена
     if CAPTCHA_ENABLE and captcha:
-        captcha = await generate_captcha(message, state)
-        await message.answer(text=captcha["text"], reply_markup=captcha["markup"])
+        captcha_data = await generate_captcha(message, state)
+        await message.answer(text=captcha_data["text"], reply_markup=captcha_data["markup"])
         return
 
+    if CHANNEL_EXISTS and CHANNEL_REQUIRED:
+        try:
+            member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
+            if member.status not in ["member", "administrator", "creator"]:
+                await state.update_data(start_text=message.text)
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+                await message.answer(
+                    f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                    reply_markup=builder.as_markup(),
+                )
+                return
+        except Exception as e:
+            logger.error(f"Ошибка проверки подписки пользователя {message.chat.id}: {e}")
+            await state.update_data(start_text=message.text)
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+            await message.answer(
+                f"Пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}", reply_markup=builder.as_markup()
+            )
+            return
+
+    await process_start_logic(message, state, session, admin)
+
+
+async def process_start_logic(message: Message, state: FSMContext, session: Any, admin: bool):
     if message.text:
         try:
             connection_exists = await check_connection_exists(message.chat.id)
@@ -79,13 +94,49 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 await add_connection(tg_id=message.chat.id, session=session)
                 logger.info(f"Пользователь {message.chat.id} успешно добавлен в базу данных.")
 
+            if "coupons_" in message.text:
+                logger.info(f"Обнаружена ссылка на купон: {message.text}")
+                coupon_code = message.text.split("coupons_")[1].strip()
+                logger.info(f"Пользователь {message.chat.id} ввёл купон: {coupon_code}")
+
+                coupon = await session.fetchrow(
+                    "SELECT id, code, amount, usage_limit, usage_count, is_used FROM coupons WHERE code = $1",
+                    coupon_code,
+                )
+
+                if coupon is None:
+                    logger.warning(f"Купон {coupon_code} не найден.")
+                    await message.answer("❌ Купон не найден!")
+                    return await show_start_menu(message, admin, session)
+
+                if coupon["is_used"] or coupon["usage_count"] >= coupon["usage_limit"]:
+                    logger.info(f"Купон {coupon_code} уже использован или исчерпан.")
+                    await message.answer("❌ Этот купон уже использован!")
+                    return await show_start_menu(message, admin, session)
+
+                await update_balance(message.chat.id, coupon["amount"])
+                logger.info(f"Начислено {coupon['amount']} единиц для пользователя {message.chat.id}")
+
+                new_usage_count = coupon["usage_count"] + 1
+                is_used = new_usage_count >= coupon["usage_limit"]
+
+                await session.execute(
+                    "UPDATE coupons SET usage_count = $1, is_used = $2 WHERE code = $3",
+                    new_usage_count,
+                    is_used,
+                    coupon_code,
+                )
+
+                logger.info(f"Купон {coupon_code} успешно использован, начислено {coupon['amount']} RUB.")
+                await message.answer(f"🎉 Ваш баланс пополнен на {coupon['amount']} RUB по купону!")
+                return await show_start_menu(message, admin, session)
+
             if "gift_" in message.text:
                 logger.info(f"Обнаружена ссылка на подарок: {message.text}")
                 parts = message.text.split("gift_")[1].split("_")
                 gift_id = parts[0]
 
                 recipient_tg_id = message.chat.id
-
                 gift_info = await get_coupon_details(gift_id, session)
 
                 if gift_info is None:
@@ -100,7 +151,13 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                     await message.answer("❌ Вы не можете получить подарок от самого себя.")
                     return await show_start_menu(message, admin, session)
 
-                await add_connection(tg_id=recipient_tg_id, session=session)
+                if not connection_exists:
+                    await add_referral(recipient_tg_id, gift_info["sender_tg_id"], session)
+                    logger.info(
+                        f"Пользователь {recipient_tg_id} теперь является рефералом отправителя подарка {gift_info['sender_tg_id']}."
+                    )
+                else:
+                    logger.info(f"Пользователь {recipient_tg_id} уже зарегистрирован, реферал не добавляется.")
 
                 selected_months = gift_info["selected_months"]
                 expiry_time = gift_info["expiry_time"]
@@ -117,7 +174,8 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 )
 
                 await message.answer(
-                    f"🎉 Ваш подарок на {selected_months} {'месяц' if selected_months == 1 else 'месяца' if selected_months in [2, 3, 4] else 'месяцев'} активирован!"
+                    f"🎉 Ваш подарок на {selected_months} "
+                    f"{'месяц' if selected_months == 1 else 'месяца' if selected_months in [2, 3, 4] else 'месяцев'} активирован!"
                 )
                 logger.info(f"Подарок на {selected_months} месяцев активирован для пользователя {recipient_tg_id}.")
                 return
@@ -137,7 +195,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                         return await show_start_menu(message, admin, session)
 
                     existing_referral = await get_referral_by_referred_id(message.chat.id, session)
-
                     if existing_referral:
                         logger.info(f"Реферал с ID {message.chat.id} уже существует.")
                         return await show_start_menu(message, admin, session)
@@ -151,7 +208,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 return
 
             else:
-                logger.info(f"Пользователь {message.chat.id} зашел без реферальной ссылки или подарка.")
+                logger.info(f"Пользователь {message.chat.id} зашел без реферальной ссылки, подарка или купона.")
 
             await show_start_menu(message, admin, session)
 
@@ -160,6 +217,20 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
             await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте снова.")
     else:
         await show_start_menu(message, admin, session)
+
+
+@router.callback_query(F.data == "check_subscription")
+async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, callback_query.from_user.id)
+        if member.status not in ["member", "administrator", "creator"]:
+            await callback_query.answer("Вы еще не подписаны на канал!", show_alert=True)
+        else:
+            await callback_query.answer("Подписка подтверждена!")
+            await process_start_logic(callback_query.message, state, session, admin)
+    except Exception as e:
+        logger.error(f"Ошибка проверки подписки (callback) для пользователя {callback_query.from_user.id}: {e}")
+        await callback_query.answer("Ошибка проверки подписки, повторите попытку", show_alert=True)
 
 
 async def show_start_menu(message: Message, admin: bool, session: Any):
@@ -171,7 +242,7 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
     builder = InlineKeyboardBuilder()
 
     if trial_status == 0:
-        builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="connect_vpn"))
+        builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="create_key"))
 
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
@@ -201,50 +272,6 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
             text=WELCOME_TEXT,
             reply_markup=builder.as_markup(),
         )
-
-
-@router.callback_query(F.data == "connect_vpn")
-async def handle_connect_vpn(callback_query: CallbackQuery, session: Any):
-    user_id = callback_query.message.chat.id
-
-    trial_key_info = await create_trial_key(user_id, session)
-
-    if "error" in trial_key_info:
-        await callback_query.message.answer(trial_key_info["error"])
-    else:
-        await update_trial(user_id, 1, session)
-
-        key_message = (
-            f"🔑 <b>Ваш персональный ключ доступа:</b>\n"
-            f"<code>{trial_key_info['key']}</code>\n\n"
-            f"📋 <b>Быстрая инструкция по подключению:</b>\n{INSTRUCTIONS_TRIAL}"
-        )
-
-        email = trial_key_info["email"]
-
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
-        builder.row(
-            InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-            InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text=IMPORT_IOS,
-                url=f"{CONNECT_IOS}{trial_key_info['key']}",
-            ),
-            InlineKeyboardButton(
-                text=IMPORT_ANDROID,
-                url=f"{CONNECT_ANDROID}{trial_key_info['key']}",
-            ),
-        )
-        builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-        )
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-
-        await callback_query.message.answer(key_message, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "about_vpn")

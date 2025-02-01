@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
+from config import USERNAME_BOT
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from keyboards.admin.coupons_kb import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
@@ -131,7 +132,8 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
                 f"🏷️ <b>Код:</b> {coupon['code']}\n"
                 f"💰 <b>Сумма:</b> {coupon['amount']} рублей\n"
                 f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
-                f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
+                f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n"
+                f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon['code']}</code>\n"
             )
 
         await callback_query.message.edit_text(text=coupon_list, reply_markup=kb)

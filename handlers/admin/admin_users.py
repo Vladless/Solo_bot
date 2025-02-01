@@ -9,8 +9,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from config import TOTAL_GB
-from database import delete_key, delete_user_data, get_client_id_by_email, get_servers, update_key_expiry, update_trial, \
-    get_balance, update_balance
+from database import (
+    delete_key,
+    delete_user_data,
+    get_balance,
+    get_client_id_by_email,
+    get_servers,
+    update_balance,
+    update_key_expiry,
+    update_trial,
+)
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
@@ -132,13 +140,12 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
     IsAdminFilter(),
 )
 async def handle_send_message(
-        callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext
 ):
     tg_id = callback_data.tg_id
 
     await callback_query.message.edit_text(
-        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:",
-        reply_markup=build_editor_kb(tg_id)
+        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:", reply_markup=build_editor_kb(tg_id)
     )
 
     await state.update_data(tg_id=tg_id)
@@ -164,7 +171,7 @@ async def handle_message_text_input(message: Message, state: FSMContext):
     IsAdminFilter(),
 )
 async def handle_trial_restore(
-        callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     tg_id = callback_data.tg_id
 
@@ -215,7 +222,7 @@ async def handle_balance_change(callback_query: CallbackQuery, callback_data: Ad
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_add"), IsAdminFilter())
 async def handle_balance_add(
-        callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
+    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
 ):
     tg_id = callback_data.tg_id
     amount = callback_data.data
@@ -289,8 +296,10 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Any
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_key_edit"), IsAdminFilter())
 async def handle_key_edit(
-        callback_query: CallbackQuery, callback_data: AdminUserEditorCallback | AdminUserKeyEditorCallback,
-        session: Any, update: bool = False
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback | AdminUserKeyEditorCallback,
+    session: Any,
+    update: bool = False,
 ):
     email = callback_data.data
     key_details = await get_key_details(email, session)
@@ -328,7 +337,7 @@ async def handle_change_expiry(callback_query: CallbackQuery, callback_data: Adm
 
 @router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "add"), IsAdminFilter())
 async def handle_expiry_add(
-        callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext, session: Any
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext, session: Any
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -359,7 +368,7 @@ async def handle_expiry_add(
 
 @router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "take"), IsAdminFilter())
 async def handle_expiry_take(
-        callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -375,7 +384,7 @@ async def handle_expiry_take(
 
 @router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "set"), IsAdminFilter())
 async def handle_expiry_set(
-        callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext, session: Any
+    callback_query: CallbackQuery, callback_data: AdminUserKeyEditorCallback, state: FSMContext, session: Any
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
@@ -480,7 +489,7 @@ async def handle_delete_key(callback_query: CallbackQuery, callback_data: AdminU
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"), IsAdminFilter())
 async def handle_delete_key_confirm(
-        callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     email = callback_data.data
     record = await session.fetchrow("SELECT client_id FROM keys WHERE email = $1", email)
@@ -516,7 +525,7 @@ async def handle_delete_user(callback_query: CallbackQuery, callback_data: Admin
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_user_confirm"), IsAdminFilter())
 async def handle_delete_user_confirm(
-        callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     tg_id = callback_data.tg_id
     key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)
@@ -548,13 +557,13 @@ async def handle_delete_user_confirm(
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_editor"), IsAdminFilter())
 async def handle_editor(
-        callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
 ):
     await process_user_search(callback_query.message, state, session, callback_data.tg_id, callback_data.edit)
 
 
 async def process_user_search(
-        message: types.Message, state: FSMContext, session: Any, tg_id: int, edit: bool = False
+    message: types.Message, state: FSMContext, session: Any, tg_id: int, edit: bool = False
 ) -> None:
     await state.clear()
 

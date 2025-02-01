@@ -106,6 +106,13 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     server_name = message.text.strip()
 
+    if len(server_name) > 14:
+        await message.answer(
+            text="❌ Имя сервера не должно превышать 10 символов. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers"),
+        )
+        return
+
     user_data = await state.get_data()
     cluster_name = user_data.get("cluster_name")
 
@@ -234,7 +241,7 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_manage"), IsAdminFilter())
 async def handle_clusters_manage(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -249,7 +256,7 @@ async def handle_clusters_manage(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_availability"), IsAdminFilter())
 async def handle_servers_availability(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -325,7 +332,7 @@ async def handle_servers_delete(callback_query: CallbackQuery, callback_data: Ad
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_delete_confirm"), IsAdminFilter())
 async def handle_servers_delete_confirm(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     server_name = callback_data.data
 
@@ -338,7 +345,7 @@ async def handle_servers_delete_confirm(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_add"), IsAdminFilter())
 async def handle_servers_add(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, state: FSMContext
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, state: FSMContext
 ):
     cluster_name = callback_data.data
 
@@ -360,7 +367,7 @@ async def handle_servers_add(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_backup"), IsAdminFilter())
 async def handle_clusters_backup(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -388,7 +395,7 @@ async def handle_clusters_backup(
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_sync"), IsAdminFilter())
 async def handle_clusters_backup(
-        callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -426,11 +433,10 @@ async def handle_clusters_backup(
 
         await callback_query.message.answer(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
-            reply_markup=build_admin_back_kb("servers")
+            reply_markup=build_admin_back_kb("servers"),
         )
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
         await callback_query.message.answer(
-            text=f"❌ Произошла ошибка при синхронизации: {e}",
-            reply_markup=build_admin_back_kb("servers")
+            text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("servers")
         )

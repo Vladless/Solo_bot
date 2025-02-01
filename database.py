@@ -5,7 +5,7 @@ from typing import Any
 import asyncpg
 import pytz
 
-from config import DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+from config import CASHBACK, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -492,6 +492,25 @@ async def get_keys_by_server(tg_id: int | None, server_id: str, session: Any):
         raise
 
 
+async def get_key_by_server(tg_id: int, client_id: str, session: Any):
+    query = """
+        SELECT 
+            tg_id, 
+            client_id, 
+            email, 
+            created_at, 
+            expiry_time, 
+            key, 
+            server_id, 
+            notified, 
+            notified_24h
+        FROM keys
+        WHERE tg_id = $1 AND client_id = $2
+    """
+    record = await session.fetchrow(query, tg_id, client_id)
+    return record
+
+
 async def get_balance(tg_id: int) -> float:
     """
     Получает баланс пользователя из базы данных.
@@ -521,15 +540,15 @@ async def get_balance(tg_id: int) -> float:
 
 async def update_balance(tg_id: int, amount: float, session: Any = None):
     """
-    Обновляет баланс пользователя в базе данных.
+    Обновляет баланс пользователя в базе данных с учетом кэшбека.
 
     Args:
-        tg_id (int): Telegram ID пользователя
-        amount (float): Сумма для обновления баланса
+        tg_id (int): Telegram ID пользователя.
+        amount (float): Сумма для обновления баланса.
         session (Any, optional): Сессия базы данных. Если не передана, создается новая.
 
     Raises:
-        Exception: В случае ошибки при подключении к базе данных или обновлении баланса
+        Exception: В случае ошибки при подключении к базе данных или обновлении баланса.
     """
     conn = None
     try:
@@ -537,16 +556,21 @@ async def update_balance(tg_id: int, amount: float, session: Any = None):
             conn = await asyncpg.connect(DATABASE_URL)
             session = conn
 
+        extra = amount * (CASHBACK / 100.0) if CASHBACK > 0 else 0
+        total_amount = amount + extra
+
         await session.execute(
             """
             UPDATE connections
             SET balance = balance + $1
             WHERE tg_id = $2
             """,
-            amount,
+            total_amount,
             tg_id,
         )
-        logger.info(f"Баланс пользователя {tg_id} обновлен на сумму {amount}")
+        logger.info(
+            f"Баланс пользователя {tg_id} обновлен на сумму {total_amount} (исходная сумма {amount}, кэшбек {extra})"
+        )
 
         await handle_referral_on_balance_update(tg_id, amount)
 

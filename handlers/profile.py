@@ -3,12 +3,12 @@ from typing import Any
 
 import aiofiles
 import asyncpg
-from aiogram import F, Router, types
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import DATABASE_URL, NEWS_MESSAGE, RENEWAL_PLANS
+from config import DATABASE_URL, INSTRUCTIONS_BUTTON, NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
@@ -76,9 +76,10 @@ async def process_callback_view_profile(
             InlineKeyboardButton(text=INVITE, callback_data="invite"),
             InlineKeyboardButton(text=GIFTS, callback_data="gifts"),
         )
-        builder.row(
-            InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
-        )
+        if INSTRUCTIONS_BUTTON:
+            builder.row(
+                InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"),
+            )
         if admin:
             builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))

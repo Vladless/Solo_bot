@@ -4,7 +4,8 @@
 {
     "distutils": {
         "extra_compile_args": [
-            "-O2"
+            "-O2",
+            "-static-libgcc"
         ],
         "name": "handlers.payments.stars_pay",
         "sources": [
