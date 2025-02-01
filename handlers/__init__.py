@@ -13,7 +13,6 @@ from .pay import router as pay_router
 from .payments import router as payments_router
 from .profile import router as profile_router
 from .start import router as start_router
-from .user import router as user_router
 
 router = Router(name="handlers_main_router")
 
@@ -29,5 +28,4 @@ router.include_routers(
     keys_router,
     instructions_router,
     admin_router,
-    user_router,
 )

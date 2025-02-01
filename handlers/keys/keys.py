@@ -8,7 +8,7 @@ import aiofiles
 import asyncpg
 import pytz
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, InlineKeyboardButton
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
@@ -70,10 +70,8 @@ router = Router()
 
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
-async def process_callback_or_message_view_keys(
-    callback_query_or_message: types.Message | types.CallbackQuery, session: Any
-):
-    if isinstance(callback_query_or_message, types.CallbackQuery):
+async def process_callback_or_message_view_keys(callback_query_or_message: Message | CallbackQuery, session: Any):
+    if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
         send_message = callback_query_or_message.message.answer
         send_photo = callback_query_or_message.message.answer_photo
@@ -154,7 +152,7 @@ async def send_with_optional_image(send_message, send_photo, image_path, text, k
 
 
 @router.callback_query(F.data.startswith("view_key|"))
-async def process_callback_view_key(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_view_key(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
@@ -247,7 +245,7 @@ async def process_callback_view_key(callback_query: types.CallbackQuery, session
 
 
 @router.callback_query(F.data.startswith("update_subscription|"))
-async def process_callback_update_subscription(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_update_subscription(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
 
@@ -260,7 +258,7 @@ async def process_callback_update_subscription(callback_query: types.CallbackQue
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
-async def process_callback_delete_key(callback_query: types.CallbackQuery):
+async def process_callback_delete_key(callback_query: CallbackQuery):
     client_id = callback_query.data.split("|")[1]
     try:
         confirmation_keyboard = types.InlineKeyboardMarkup(
@@ -285,7 +283,7 @@ async def process_callback_delete_key(callback_query: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
-async def process_callback_renew_key(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_renew_key(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
@@ -331,7 +329,7 @@ async def process_callback_renew_key(callback_query: types.CallbackQuery, sessio
 
 
 @router.callback_query(F.data.startswith("confirm_delete|"))
-async def process_callback_confirm_delete(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_confirm_delete(callback_query: CallbackQuery, session: Any):
     email = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(email, session)
@@ -379,7 +377,7 @@ async def process_callback_confirm_delete(callback_query: types.CallbackQuery, s
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))
-async def process_callback_renew_plan(callback_query: types.CallbackQuery, session: Any):
+async def process_callback_renew_plan(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     plan, client_id = callback_query.data.split("|")[1], callback_query.data.split("|")[2]
     days_to_extend = 30 * int(plan)
@@ -486,8 +484,6 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     else:
         cluster_id = server_id
 
-    await conn.close()
-
     logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. в кластере {cluster_id}.")
 
     async def renew_key_on_cluster():
@@ -502,5 +498,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         await update_key_expiry(client_id, new_expiry_time, conn)
         await update_balance(tg_id, -cost, conn)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
+
+    await conn.close()
 
     await renew_key_on_cluster()

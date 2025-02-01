@@ -4,7 +4,7 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
@@ -58,7 +58,7 @@ async def handle_sender_callback(callback_query: CallbackQuery, session: Any):
     AdminSender.waiting_for_message,
     IsAdminFilter(),
 )
-async def handle_message_input(message: types.Message, state: FSMContext, session: Any):
+async def handle_message_input(message: Message, state: FSMContext, session: Any):
     text_message = message.text
 
     try:
