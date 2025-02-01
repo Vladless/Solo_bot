@@ -160,7 +160,7 @@ async def create_key(
 ):
     """Создаёт ключ с заданным сроком действия."""
 
-    if USE_COUNTRY_SELECTION and message_or_query is not None:
+    if USE_COUNTRY_SELECTION:
         logger.info("[Country Selection] USE_COUNTRY_SELECTION включен.")
         logger.info("[Country Selection] Получение наименее загруженного кластера.")
         least_loaded_cluster = await get_least_loaded_cluster()

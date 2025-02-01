@@ -211,7 +211,6 @@ async def process_24h_record(record, bot, conn):
     client_id = record["client_id"]
 
     moscow_tz = pytz.timezone("Europe/Moscow")
-
     expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
     current_date = datetime.now(moscow_tz)
     time_left = expiry_date - current_date
@@ -219,9 +218,7 @@ async def process_24h_record(record, bot, conn):
     days_left_message = (
         "Ключ истек"
         if time_left.total_seconds() <= 0
-        else f"{time_left.days}"
-        if time_left.days > 0
-        else f"{time_left.seconds // 3600}"
+        else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
     )
 
     message_24h = KEY_EXPIRY_24H.format(
@@ -242,12 +239,6 @@ async def process_24h_record(record, bot, conn):
             for cluster_id in servers:
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
-
-            if flag == "notified":
-                await conn.execute("UPDATE keys SET notified = TRUE WHERE client_id = $1", client_id)
-
-            elif flag == "notified_24h":
-                await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", client_id)
 
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
@@ -296,14 +287,19 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
                     reply_markup=keyboard.as_markup(),
                 )
         else:
-            await bot.send_message(tg_id, message, reply_markup=keyboard.as_markup())
+            await bot.send_message(tg_id, text=message, reply_markup=keyboard.as_markup())
 
         logger.info(f"Уведомление отправлено пользователю {tg_id}.")
 
-        await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", client_id)
-
+        if flag == "notified_24h":
+            await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", client_id)
+        elif flag == "notified":
+            await conn.execute("UPDATE keys SET notified = TRUE WHERE client_id = $1", client_id)
+        else:
+            logger.warning(f"Неизвестный флаг обновления уведомления: {flag}")
     except Exception as e:
         logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+
 
 
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
