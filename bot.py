@@ -47,6 +47,15 @@ async def errors_handler(
                 ),
                 caption=f"{hbold(type(event.exception).__name__)}: {str(event.exception)[:1021]}...",
             )
+        try:
+            from handlers.start import start_command, handle_start_callback_query
+            
+            if event.update.message:
+                await start_command(event.update.message, state=dp.storage, session=None, admin=False, captcha=False)
+            elif event.update.callback_query:
+                await handle_start_callback_query(event.update.callback_query, state=dp.storage, session=None, admin=False, captcha=False)
+        except Exception as e:
+            logger.error(f"Ошибка при показе стартового меню после ошибки: {e}")
     except TelegramBadRequest as exception:
         logger.warning(f"Failed to send error details: {exception}")
     except Exception as exception:
