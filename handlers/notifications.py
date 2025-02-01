@@ -545,7 +545,7 @@ async def send_notification(bot, tg_id, message, image_name, email):
         keyboard.row(types.InlineKeyboardButton(text="🔄 Продлить", callback_data=f"renew_key|{email}"))
     keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
     
-    image_path = os.path.join("img", image_name)
+    image_path = os.path.join("img", "notify_expired.jpg")
     
     try:
         if os.path.isfile(image_path):
