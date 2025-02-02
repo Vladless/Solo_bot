@@ -112,6 +112,17 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                     await message.answer("❌ Купон не найден!")
                     return await show_start_menu(message, admin, session)
 
+                usage_exists = await session.fetchval(
+                    "SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
+                    coupon["id"],
+                    message.chat.id,
+                )
+
+                if usage_exists:
+                    logger.info(f"Пользователь {message.chat.id} уже активировал купон {coupon_code}.")
+                    await message.answer("❌ Вы уже использовали этот купон!")
+                    return await show_start_menu(message, admin, session)
+
                 if coupon["is_used"] or coupon["usage_count"] >= coupon["usage_limit"]:
                     logger.info(f"Купон {coupon_code} уже использован или исчерпан.")
                     await message.answer("❌ Этот купон уже использован!")
@@ -130,7 +141,15 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                     coupon_code,
                 )
 
-                logger.info(f"Купон {coupon_code} успешно использован, начислено {coupon['amount']} RUB.")
+                await session.execute(
+                    "INSERT INTO coupon_usages (coupon_id, user_id, used_at) VALUES ($1, $2, NOW())",
+                    coupon["id"],
+                    message.chat.id,
+                )
+
+                logger.info(
+                    f"Купон {coupon_code} успешно использован пользователем {message.chat.id}, начислено {coupon['amount']} RUB."
+                )
                 await message.answer(f"🎉 Ваш баланс пополнен на {coupon['amount']} RUB по купону!")
                 return await show_start_menu(message, admin, session)
 
