@@ -221,15 +221,33 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
 
 @router.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
+    user_id = callback_query.from_user.id
+    logger.info(f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}")
+    
     try:
-        member = await bot.get_chat_member(CHANNEL_ID, callback_query.from_user.id)
+        logger.info(f"[CALLBACK] Запрос информации о подписке для пользователя {user_id} на канал {CHANNEL_ID}")
+        member = await bot.get_chat_member(CHANNEL_ID, user_id)
+        logger.info(f"[CALLBACK] Статус подписки пользователя {user_id}: {member.status}")
+
         if member.status not in ["member", "administrator", "creator"]:
+            logger.info(f"[CALLBACK] Пользователь {user_id} НЕ подписан на канал {CHANNEL_ID}. Текущий статус: {member.status}")
             await callback_query.answer("Вы еще не подписаны на канал!", show_alert=True)
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+            await callback_query.message.answer(
+                f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                reply_markup=builder.as_markup()
+            )
+            logger.info(f"[CALLBACK] Обновлено сообщение с приглашением подписаться для пользователя {user_id}")
         else:
+            logger.info(f"[CALLBACK] Пользователь {user_id} подписан на канал {CHANNEL_ID} - подписка подтверждена")
             await callback_query.answer("Подписка подтверждена!")
+            logger.info(f"[CALLBACK] Перед вызовом process_start_logic для пользователя {user_id}. Текущее сообщение: {callback_query.message.text}")
             await process_start_logic(callback_query.message, state, session, admin)
+            logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
+            
     except Exception as e:
-        logger.error(f"Ошибка проверки подписки (callback) для пользователя {callback_query.from_user.id}: {e}")
+        logger.error(f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}", exc_info=True)
         await callback_query.answer("Ошибка проверки подписки, повторите попытку", show_alert=True)
 
 
