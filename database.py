@@ -541,12 +541,11 @@ async def get_balance(tg_id: int) -> float:
 async def update_balance(tg_id: int, amount: float, session: Any = None):
     """
     Обновляет баланс пользователя в базе данных с учетом кэшбека.
-
+    Кэшбек применяется только для положительных сумм.
     Args:
         tg_id (int): Telegram ID пользователя.
         amount (float): Сумма для обновления баланса.
-        session (Any, optional): Сессия базы данных. Если не передана, создается новая.
-
+        session (Any, optional): Сессия базы данных. Если не передана, создается новая.  
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении баланса.
     """
@@ -556,7 +555,7 @@ async def update_balance(tg_id: int, amount: float, session: Any = None):
             conn = await asyncpg.connect(DATABASE_URL)
             session = conn
 
-        extra = amount * (CASHBACK / 100.0) if CASHBACK > 0 else 0
+        extra = amount * (CASHBACK / 100.0) if (CASHBACK > 0 and amount > 0) else 0
         total_amount = amount + extra
 
         await session.execute(
