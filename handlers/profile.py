@@ -42,7 +42,7 @@ async def process_callback_view_profile(
         username = callback_query_or_message.from_user.full_name
         is_callback = False
 
-    image_path = os.path.join("img", "pic.jpg")
+    image_path = os.path.join("img", "profile.jpg")
     key_count = await get_key_count(chat_id)
     balance = await get_balance(chat_id)
     if balance is None:
@@ -89,13 +89,13 @@ async def process_callback_view_profile(
                 image_data = await image_file.read()
                 if is_callback:
                     await callback_query_or_message.message.answer_photo(
-                        photo=BufferedInputFile(image_data, filename="pic.jpg"),
+                        photo=BufferedInputFile(image_data, filename="profile.jpg"),
                         caption=profile_message,
                         reply_markup=builder.as_markup(),
                     )
                 else:
                     await callback_query_or_message.answer_photo(
-                        photo=BufferedInputFile(image_data, filename="pic.jpg"),
+                        photo=BufferedInputFile(image_data, filename="profile.jpg"),
                         caption=profile_message,
                         reply_markup=builder.as_markup(),
                     )

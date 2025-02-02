@@ -52,7 +52,10 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     """Обрабатывает команду /start, включая логику проверки подписки, рефералов и подарков."""
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
-    await state.clear()
+    try:
+        await state.clear()
+    except Exception as e:
+        logger.warning(f"Не удалось очистить состояние для пользователя {message.chat.id}: {e}")
 
     if CAPTCHA_ENABLE and captcha:
         captcha_data = await generate_captcha(message, state)
@@ -254,13 +257,17 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
 async def show_start_menu(message: Message, admin: bool, session: Any):
     """Функция для отображения стандартного меню"""
     logger.info(f"Показываю главное меню для пользователя {message.chat.id}")
-    trial_status = await get_trial(message.chat.id, session)
-    image_path = os.path.join("img", "pic.jpg")
 
+    image_path = os.path.join("img", "pic.jpg")
     builder = InlineKeyboardBuilder()
 
-    if trial_status == 0:
-        builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="create_key"))
+    if session is not None:
+        trial_status = await get_trial(message.chat.id, session)
+        logger.info(f"Trial status для {message.chat.id}: {trial_status}")
+        if trial_status == 0:
+            builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="create_key"))
+    else:
+        logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
