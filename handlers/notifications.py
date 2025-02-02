@@ -16,12 +16,12 @@ from config import (
     ADMIN_USERNAME,
     AUTO_DELETE_EXPIRED_KEYS,
     AUTO_RENEW_KEYS,
-    SUPPORT_CHAT_URL,
     DATABASE_URL,
     DELETE_KEYS_DELAY,
     DEV_MODE,
     EXPIRED_KEYS_CHECK_INTERVAL,
     RENEWAL_PLANS,
+    SUPPORT_CHAT_URL,
     TOTAL_GB,
     TRIAL_TIME,
 )
@@ -218,7 +218,9 @@ async def process_24h_record(record, bot, conn):
     days_left_message = (
         "Ключ истек"
         if time_left.total_seconds() <= 0
-        else f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
+        else f"{time_left.days}"
+        if time_left.days > 0
+        else f"{time_left.seconds // 3600}"
     )
 
     message_24h = KEY_EXPIRY_24H.format(
@@ -301,7 +303,6 @@ async def send_renewal_notification(bot, tg_id, email, message, conn, client_id,
         logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
 
 
-
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     logger.info("Проверка пользователей, не активировавших пробный период...")
 
@@ -368,7 +369,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     logger.info("Проверка подписок, срок действия которых скоро истекает...")
 
     threshold_time = int((datetime.utcnow() + timedelta(seconds=EXPIRED_KEYS_CHECK_INTERVAL * 1.5)).timestamp() * 1000)
-    
+
     expiring_keys = await conn.fetch(
         """
         SELECT tg_id, client_id, expiry_time, email, server_id FROM keys 
@@ -404,9 +405,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 await process_key(record, bot, conn, current_time)
                 if time_since_expiry >= DELETE_KEYS_DELAY * 1000:
                     await delete_key_from_cluster(
-                        cluster_id=record["server_id"], 
-                        email=record["email"], 
-                        client_id=record["client_id"]
+                        cluster_id=record["server_id"], email=record["email"], client_id=record["client_id"]
                     )
                     await delete_key(record["client_id"], conn)
                     logger.info(f"Подписка {record['client_id']} удалена")
@@ -435,22 +434,21 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                                 reply_markup=keyboard.as_markup(),
                             )
                     else:
-                        await bot.send_message(
-                            record["tg_id"], 
-                            text=message, 
-                            reply_markup=keyboard.as_markup()
-                        )
-    
+                        await bot.send_message(record["tg_id"], text=message, reply_markup=keyboard.as_markup())
+
                     logger.info(f"Уведомление об удалении отправлено пользователю {record['tg_id']}")
 
                 else:
                     remaining_time = (DELETE_KEYS_DELAY * 1000 - time_since_expiry) // 1000
-                    logger.info(f"Подписка {record['client_id']} не удалена. Осталось времени до удаления: {remaining_time} сек. (Удаление через {DELETE_KEYS_DELAY} сек после истечения)")
+                    logger.info(
+                        f"Подписка {record['client_id']} не удалена. Осталось времени до удаления: {remaining_time} сек. (Удаление через {DELETE_KEYS_DELAY} сек после истечения)"
+                    )
 
         except TelegramForbiddenError:
             logger.warning(f"Бот заблокирован пользователем {record['tg_id']}. Уведомление не отправлено.")
         except Exception as e:
             logger.error(f"Ошибка при удалении подписки {record['client_id']}: {e}")
+
 
 async def process_key(record, bot, conn, current_time, renew=False):
     tg_id = record["tg_id"]
@@ -464,8 +462,7 @@ async def process_key(record, bot, conn, current_time, renew=False):
     current_date = datetime.now(moscow_tz)
 
     logger.info(
-        f"Время истечения подписки: {expiry_time_value} (МСК: {expiry_date}), "
-        f"Текущее время (МСК): {current_date}"
+        f"Время истечения подписки: {expiry_time_value} (МСК: {expiry_date}), Текущее время (МСК): {current_date}"
     )
 
     current_time_utc = int(datetime.utcnow().timestamp() * 1000)
@@ -480,25 +477,27 @@ async def process_key(record, bot, conn, current_time, renew=False):
                         f"📅 Ваша подписка: {record['email']} истекла. Пополните баланс для продления.\n\n"
                     )
                     remaining_time = (expiry_time_value + DELETE_KEYS_DELAY * 1000) - current_time_utc
-                    
+
                     if remaining_time > 0:
-                        message += f"⏳ Подписка будет удалена через {format_time_until_deletion(remaining_time//1000)}."
-                    
+                        message += (
+                            f"⏳ Подписка будет удалена через {format_time_until_deletion(remaining_time // 1000)}."
+                        )
+
                     await send_notification(bot, tg_id, message, "notify_expired.jpg", email)
             else:
                 if (expiry_time_value - current_time_utc) <= (EXPIRED_KEYS_CHECK_INTERVAL * 1000):
                     await send_notification(
-                        bot, 
+                        bot,
                         tg_id,
                         f"Ваша подписка {email} скоро истечет. Пополните баланс для продления.",
                         "notify_expiring.jpg",
-                        email
+                        email,
                     )
 
         elif renew and AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
             new_expiry_time = int((datetime.now(moscow_tz) + timedelta(days=30)).timestamp() * 1000)
-            
+
             await update_key_expiry(client_id, new_expiry_time, conn)
             servers = await get_servers(conn)
 
@@ -509,34 +508,35 @@ async def process_key(record, bot, conn, current_time, renew=False):
             try:
                 image_path = os.path.join("img", "notify_expired.jpg")
                 caption = KEY_RENEWED.format(email=email)
-                
+
                 if os.path.isfile(image_path):
                     async with aiofiles.open(image_path, "rb") as f:
                         await bot.send_photo(
                             tg_id,
                             photo=BufferedInputFile(await f.read(), filename="notify_expired.jpg"),
                             caption=caption,
-                            reply_markup=InlineKeyboardBuilder().as_markup()
+                            reply_markup=InlineKeyboardBuilder().as_markup(),
                         )
                 else:
                     await bot.send_message(tg_id, text=caption)
-                
+
                 logger.info(f"Уведомление о продлении отправлено {tg_id}")
-                
+
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления {tg_id}: {e}")
 
     except Exception as e:
         logger.error(f"Ошибка обработки подписки {tg_id}: {e}")
 
+
 async def send_notification(bot, tg_id, message, image_name, email):
     keyboard = InlineKeyboardBuilder()
     if DELETE_KEYS_DELAY > 0:
         keyboard.row(types.InlineKeyboardButton(text="🔄 Продлить", callback_data=f"renew_key|{email}"))
     keyboard.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-    
+
     image_path = os.path.join("img", "notify_expired.jpg")
-    
+
     try:
         if os.path.isfile(image_path):
             async with aiofiles.open(image_path, "rb") as f:
@@ -544,10 +544,10 @@ async def send_notification(bot, tg_id, message, image_name, email):
                     tg_id,
                     photo=BufferedInputFile(await f.read(), filename="notify_expired.jpg"),
                     caption=message,
-                    reply_markup=keyboard.as_markup()
+                    reply_markup=keyboard.as_markup(),
                 )
         else:
             await bot.send_message(tg_id, text=message, reply_markup=keyboard.as_markup())
-            
+
     except TelegramForbiddenError:
         logger.warning(f"Пользователь {tg_id} заблокировал бота")

@@ -545,7 +545,7 @@ async def update_balance(tg_id: int, amount: float, session: Any = None):
     Args:
         tg_id (int): Telegram ID пользователя.
         amount (float): Сумма для обновления баланса.
-        session (Any, optional): Сессия базы данных. Если не передана, создается новая.  
+        session (Any, optional): Сессия базы данных. Если не передана, создается новая.
     Raises:
         Exception: В случае ошибки при подключении к базе данных или обновлении баланса.
     """
