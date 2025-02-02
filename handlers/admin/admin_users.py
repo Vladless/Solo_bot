@@ -196,6 +196,8 @@ async def handle_balance_change(callback_query: CallbackQuery, callback_data: Ad
 
     balance = await get_balance(tg_id)
 
+    balance = int(balance)
+
     text = (
         f"<b>💵 Изменение баланса</b>"
         f"\n\n🆔 ID: <b>{tg_id}</b>"
@@ -575,6 +577,8 @@ async def process_user_search(
             reply_markup=build_admin_back_kb(),
         )
         return
+
+    balance = int(balance)
 
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)

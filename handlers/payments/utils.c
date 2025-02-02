@@ -4255,7 +4255,7 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  *                                 await clear_temporary_data(conn, user_id)
  *                                 return             # <<<<<<<<<<<<<<
  * 
- *                     if state == "waiting_for_payment":
+ *                         if state == "waiting_for_payment":
  */
                   __Pyx_XDECREF(__pyx_r);
                   __pyx_r = NULL;
@@ -4278,176 +4278,52 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
  * 
  */
               }
-            }
-            __pyx_L17:;
 
-            /* "handlers/payments/utils.py":57
+              /* "handlers/payments/utils.py":57
  *                                 return
  * 
- *                     if state == "waiting_for_payment":             # <<<<<<<<<<<<<<
- *                         plan_price = data["plan_price"]
- *                         duration_days = data["duration_days"]
+ *                         if state == "waiting_for_payment":             # <<<<<<<<<<<<<<
+ *                             plan_price = data["plan_price"]
+ *                             duration_days = data["duration_days"]
  */
-            __pyx_t_13 = (__Pyx_PyUnicode_Equals(__pyx_cur_scope->__pyx_v_state, __pyx_n_u_waiting_for_payment, Py_EQ)); if (unlikely((__pyx_t_13 < 0))) __PYX_ERR(0, 57, __pyx_L13_error)
-            if (__pyx_t_13) {
-
-              /* "handlers/payments/utils.py":58
- * 
- *                     if state == "waiting_for_payment":
- *                         plan_price = data["plan_price"]             # <<<<<<<<<<<<<<
- *                         duration_days = data["duration_days"]
- * 
- */
-              __pyx_t_4 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_data, __pyx_n_u_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 58, __pyx_L13_error)
-              __Pyx_GOTREF(__pyx_t_4);
-              __Pyx_GIVEREF(__pyx_t_4);
-              __pyx_cur_scope->__pyx_v_plan_price = __pyx_t_4;
-              __pyx_t_4 = 0;
-
-              /* "handlers/payments/utils.py":59
- *                     if state == "waiting_for_payment":
- *                         plan_price = data["plan_price"]
- *                         duration_days = data["duration_days"]             # <<<<<<<<<<<<<<
- * 
- *                         balance = await get_balance(user_id)
- */
-              __pyx_t_4 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_data, __pyx_n_u_duration_days); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 59, __pyx_L13_error)
-              __Pyx_GOTREF(__pyx_t_4);
-              __Pyx_GIVEREF(__pyx_t_4);
-              __pyx_cur_scope->__pyx_v_duration_days = __pyx_t_4;
-              __pyx_t_4 = 0;
-
-              /* "handlers/payments/utils.py":61
- *                         duration_days = data["duration_days"]
- * 
- *                         balance = await get_balance(user_id)             # <<<<<<<<<<<<<<
- *                         if balance >= plan_price:
- *                             moscow_tz = pytz.timezone("Europe/Moscow")
- */
-              __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 61, __pyx_L13_error)
-              __Pyx_GOTREF(__pyx_t_6);
-              __pyx_t_5 = NULL;
-              __pyx_t_7 = 0;
-              #if CYTHON_UNPACK_METHODS
-              if (unlikely(PyMethod_Check(__pyx_t_6))) {
-                __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_6);
-                if (likely(__pyx_t_5)) {
-                  PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_6);
-                  __Pyx_INCREF(__pyx_t_5);
-                  __Pyx_INCREF(function);
-                  __Pyx_DECREF_SET(__pyx_t_6, function);
-                  __pyx_t_7 = 1;
-                }
-              }
-              #endif
-              {
-                PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_user_id};
-                __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
-                __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-                if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 61, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_4);
-                __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-              }
-              __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_4);
-              __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-              __Pyx_XGOTREF(__pyx_r);
-              if (likely(__pyx_r)) {
-                __Pyx_XGIVEREF(__pyx_t_1);
-                __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
-                __Pyx_XGIVEREF(__pyx_t_2);
-                __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
-                __Pyx_XGIVEREF(__pyx_t_3);
-                __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
-                __Pyx_XGIVEREF(__pyx_r);
-                __Pyx_RefNannyFinishContext();
-                __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
-                /* return from generator, awaiting value */
-                __pyx_generator->resume_label = 6;
-                return __pyx_r;
-                __pyx_L25_resume_from_await:;
-                __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
-                __pyx_cur_scope->__pyx_t_0 = 0;
-                __Pyx_XGOTREF(__pyx_t_1);
-                __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
-                __pyx_cur_scope->__pyx_t_1 = 0;
-                __Pyx_XGOTREF(__pyx_t_2);
-                __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
-                __pyx_cur_scope->__pyx_t_2 = 0;
-                __Pyx_XGOTREF(__pyx_t_3);
-                if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 61, __pyx_L13_error)
-                __pyx_t_4 = __pyx_sent_value; __Pyx_INCREF(__pyx_t_4);
-              } else {
-                __pyx_t_4 = NULL;
-                if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_4) < 0) __PYX_ERR(0, 61, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_4);
-              }
-              __Pyx_XGOTREF(__pyx_cur_scope->__pyx_v_balance);
-              __Pyx_XDECREF_SET(__pyx_cur_scope->__pyx_v_balance, __pyx_t_4);
-              __Pyx_GIVEREF(__pyx_t_4);
-              __pyx_t_4 = 0;
-
-              /* "handlers/payments/utils.py":62
- * 
- *                         balance = await get_balance(user_id)
- *                         if balance >= plan_price:             # <<<<<<<<<<<<<<
- *                             moscow_tz = pytz.timezone("Europe/Moscow")
- *                             expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
- */
-              __pyx_t_4 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_balance, __pyx_cur_scope->__pyx_v_plan_price, Py_GE); __Pyx_XGOTREF(__pyx_t_4); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 62, __pyx_L13_error)
-              __pyx_t_13 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_13 < 0))) __PYX_ERR(0, 62, __pyx_L13_error)
-              __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+              __pyx_t_13 = (__Pyx_PyUnicode_Equals(__pyx_cur_scope->__pyx_v_state, __pyx_n_u_waiting_for_payment, Py_EQ)); if (unlikely((__pyx_t_13 < 0))) __PYX_ERR(0, 57, __pyx_L13_error)
               if (__pyx_t_13) {
 
-                /* "handlers/payments/utils.py":63
- *                         balance = await get_balance(user_id)
- *                         if balance >= plan_price:
- *                             moscow_tz = pytz.timezone("Europe/Moscow")             # <<<<<<<<<<<<<<
- *                             expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
- *                             await create_key(user_id, expiry_time, None, conn, None)
- */
-                __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_pytz); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 63, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_6);
-                __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_timezone); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 63, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_5);
-                __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-                __pyx_t_6 = NULL;
-                __pyx_t_7 = 0;
-                #if CYTHON_UNPACK_METHODS
-                if (unlikely(PyMethod_Check(__pyx_t_5))) {
-                  __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_5);
-                  if (likely(__pyx_t_6)) {
-                    PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_5);
-                    __Pyx_INCREF(__pyx_t_6);
-                    __Pyx_INCREF(function);
-                    __Pyx_DECREF_SET(__pyx_t_5, function);
-                    __pyx_t_7 = 1;
-                  }
-                }
-                #endif
-                {
-                  PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_kp_u_Europe_Moscow};
-                  __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
-                  __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-                  if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 63, __pyx_L13_error)
-                  __Pyx_GOTREF(__pyx_t_4);
-                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                }
-                __Pyx_GIVEREF(__pyx_t_4);
-                __pyx_cur_scope->__pyx_v_moscow_tz = __pyx_t_4;
-                __pyx_t_4 = 0;
-
-                /* "handlers/payments/utils.py":64
- *                         if balance >= plan_price:
- *                             moscow_tz = pytz.timezone("Europe/Moscow")
- *                             expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)             # <<<<<<<<<<<<<<
- *                             await create_key(user_id, expiry_time, None, conn, None)
+                /* "handlers/payments/utils.py":58
+ * 
+ *                         if state == "waiting_for_payment":
+ *                             plan_price = data["plan_price"]             # <<<<<<<<<<<<<<
+ *                             duration_days = data["duration_days"]
  * 
  */
-                __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_datetime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_5);
-                __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L13_error)
+                __pyx_t_4 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_data, __pyx_n_u_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 58, __pyx_L13_error)
+                __Pyx_GOTREF(__pyx_t_4);
+                __Pyx_GIVEREF(__pyx_t_4);
+                __pyx_cur_scope->__pyx_v_plan_price = __pyx_t_4;
+                __pyx_t_4 = 0;
+
+                /* "handlers/payments/utils.py":59
+ *                         if state == "waiting_for_payment":
+ *                             plan_price = data["plan_price"]
+ *                             duration_days = data["duration_days"]             # <<<<<<<<<<<<<<
+ * 
+ *                             balance = await get_balance(user_id)
+ */
+                __pyx_t_4 = __Pyx_PyObject_Dict_GetItem(__pyx_cur_scope->__pyx_v_data, __pyx_n_u_duration_days); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 59, __pyx_L13_error)
+                __Pyx_GOTREF(__pyx_t_4);
+                __Pyx_GIVEREF(__pyx_t_4);
+                __pyx_cur_scope->__pyx_v_duration_days = __pyx_t_4;
+                __pyx_t_4 = 0;
+
+                /* "handlers/payments/utils.py":61
+ *                             duration_days = data["duration_days"]
+ * 
+ *                             balance = await get_balance(user_id)             # <<<<<<<<<<<<<<
+ *                             if balance >= plan_price:
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")
+ */
+                __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_get_balance); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 61, __pyx_L13_error)
                 __Pyx_GOTREF(__pyx_t_6);
-                __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
                 __pyx_t_5 = NULL;
                 __pyx_t_7 = 0;
                 #if CYTHON_UNPACK_METHODS
@@ -4463,62 +4339,15 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                 }
                 #endif
                 {
-                  PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_moscow_tz};
+                  PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_user_id};
                   __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
                   __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
-                  if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 61, __pyx_L13_error)
                   __Pyx_GOTREF(__pyx_t_4);
                   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
                 }
-                __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_timedelta); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_6);
-                __pyx_t_5 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_5);
-                if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_days, __pyx_cur_scope->__pyx_v_duration_days) < 0) __PYX_ERR(0, 64, __pyx_L13_error)
-                __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 64, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_9);
-                __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
-                __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                __pyx_t_5 = PyNumber_Add(__pyx_t_4, __pyx_t_9); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_5);
+                __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_4);
                 __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-                __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-                __Pyx_GIVEREF(__pyx_t_5);
-                __pyx_cur_scope->__pyx_v_expiry_time = __pyx_t_5;
-                __pyx_t_5 = 0;
-
-                /* "handlers/payments/utils.py":65
- *                             moscow_tz = pytz.timezone("Europe/Moscow")
- *                             expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
- *                             await create_key(user_id, expiry_time, None, conn, None)             # <<<<<<<<<<<<<<
- * 
- *                             await update_balance(user_id, -plan_price)
- */
-                __Pyx_INCREF(__pyx_cur_scope->__pyx_v_create_key);
-                __pyx_t_9 = __pyx_cur_scope->__pyx_v_create_key; __pyx_t_4 = NULL;
-                __pyx_t_7 = 0;
-                #if CYTHON_UNPACK_METHODS
-                if (unlikely(PyMethod_Check(__pyx_t_9))) {
-                  __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_9);
-                  if (likely(__pyx_t_4)) {
-                    PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
-                    __Pyx_INCREF(__pyx_t_4);
-                    __Pyx_INCREF(function);
-                    __Pyx_DECREF_SET(__pyx_t_9, function);
-                    __pyx_t_7 = 1;
-                  }
-                }
-                #endif
-                {
-                  PyObject *__pyx_callargs[6] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_user_id, __pyx_cur_scope->__pyx_v_expiry_time, Py_None, __pyx_cur_scope->__pyx_v_conn, Py_None};
-                  __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 5+__pyx_t_7);
-                  __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 65, __pyx_L13_error)
-                  __Pyx_GOTREF(__pyx_t_5);
-                  __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-                }
-                __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
-                __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
                 __Pyx_XGOTREF(__pyx_r);
                 if (likely(__pyx_r)) {
                   __Pyx_XGIVEREF(__pyx_t_1);
@@ -4531,9 +4360,9 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                   __Pyx_RefNannyFinishContext();
                   __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
                   /* return from generator, awaiting value */
-                  __pyx_generator->resume_label = 7;
+                  __pyx_generator->resume_label = 6;
                   return __pyx_r;
-                  __pyx_L27_resume_from_await:;
+                  __pyx_L25_resume_from_await:;
                   __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
                   __pyx_cur_scope->__pyx_t_0 = 0;
                   __Pyx_XGOTREF(__pyx_t_1);
@@ -4543,178 +4372,349 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                   __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
                   __pyx_cur_scope->__pyx_t_2 = 0;
                   __Pyx_XGOTREF(__pyx_t_3);
-                  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 65, __pyx_L13_error)
+                  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 61, __pyx_L13_error)
+                  __pyx_t_4 = __pyx_sent_value; __Pyx_INCREF(__pyx_t_4);
                 } else {
-                  PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
-                  if (exc_type) {
-                    if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                    else __PYX_ERR(0, 65, __pyx_L13_error)
-                  }
+                  __pyx_t_4 = NULL;
+                  if (__Pyx_PyGen_FetchStopIterationValue(&__pyx_t_4) < 0) __PYX_ERR(0, 61, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_4);
                 }
-
-                /* "handlers/payments/utils.py":67
- *                             await create_key(user_id, expiry_time, None, conn, None)
- * 
- *                             await update_balance(user_id, -plan_price)             # <<<<<<<<<<<<<<
- *                             await clear_temporary_data(conn, user_id)
- *                             return
- */
-                __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 67, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_9);
-                __pyx_t_4 = PyNumber_Negative(__pyx_cur_scope->__pyx_v_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 67, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_4);
-                __pyx_t_6 = NULL;
-                __pyx_t_7 = 0;
-                #if CYTHON_UNPACK_METHODS
-                if (unlikely(PyMethod_Check(__pyx_t_9))) {
-                  __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_9);
-                  if (likely(__pyx_t_6)) {
-                    PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
-                    __Pyx_INCREF(__pyx_t_6);
-                    __Pyx_INCREF(function);
-                    __Pyx_DECREF_SET(__pyx_t_9, function);
-                    __pyx_t_7 = 1;
-                  }
-                }
-                #endif
-                {
-                  PyObject *__pyx_callargs[3] = {__pyx_t_6, __pyx_cur_scope->__pyx_v_user_id, __pyx_t_4};
-                  __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
-                  __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
-                  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
-                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 67, __pyx_L13_error)
-                  __Pyx_GOTREF(__pyx_t_5);
-                  __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-                }
-                __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
-                __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                __Pyx_XGOTREF(__pyx_r);
-                if (likely(__pyx_r)) {
-                  __Pyx_XGIVEREF(__pyx_t_1);
-                  __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
-                  __Pyx_XGIVEREF(__pyx_t_2);
-                  __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
-                  __Pyx_XGIVEREF(__pyx_t_3);
-                  __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
-                  __Pyx_XGIVEREF(__pyx_r);
-                  __Pyx_RefNannyFinishContext();
-                  __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
-                  /* return from generator, awaiting value */
-                  __pyx_generator->resume_label = 8;
-                  return __pyx_r;
-                  __pyx_L28_resume_from_await:;
-                  __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
-                  __pyx_cur_scope->__pyx_t_0 = 0;
-                  __Pyx_XGOTREF(__pyx_t_1);
-                  __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
-                  __pyx_cur_scope->__pyx_t_1 = 0;
-                  __Pyx_XGOTREF(__pyx_t_2);
-                  __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
-                  __pyx_cur_scope->__pyx_t_2 = 0;
-                  __Pyx_XGOTREF(__pyx_t_3);
-                  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 67, __pyx_L13_error)
-                } else {
-                  PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
-                  if (exc_type) {
-                    if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                    else __PYX_ERR(0, 67, __pyx_L13_error)
-                  }
-                }
-
-                /* "handlers/payments/utils.py":68
- * 
- *                             await update_balance(user_id, -plan_price)
- *                             await clear_temporary_data(conn, user_id)             # <<<<<<<<<<<<<<
- *                             return
- * 
- */
-                __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 68, __pyx_L13_error)
-                __Pyx_GOTREF(__pyx_t_9);
-                __pyx_t_4 = NULL;
-                __pyx_t_7 = 0;
-                #if CYTHON_UNPACK_METHODS
-                if (unlikely(PyMethod_Check(__pyx_t_9))) {
-                  __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_9);
-                  if (likely(__pyx_t_4)) {
-                    PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
-                    __Pyx_INCREF(__pyx_t_4);
-                    __Pyx_INCREF(function);
-                    __Pyx_DECREF_SET(__pyx_t_9, function);
-                    __pyx_t_7 = 1;
-                  }
-                }
-                #endif
-                {
-                  PyObject *__pyx_callargs[3] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_conn, __pyx_cur_scope->__pyx_v_user_id};
-                  __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
-                  __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
-                  if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 68, __pyx_L13_error)
-                  __Pyx_GOTREF(__pyx_t_5);
-                  __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
-                }
-                __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
-                __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
-                __Pyx_XGOTREF(__pyx_r);
-                if (likely(__pyx_r)) {
-                  __Pyx_XGIVEREF(__pyx_t_1);
-                  __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
-                  __Pyx_XGIVEREF(__pyx_t_2);
-                  __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
-                  __Pyx_XGIVEREF(__pyx_t_3);
-                  __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
-                  __Pyx_XGIVEREF(__pyx_r);
-                  __Pyx_RefNannyFinishContext();
-                  __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
-                  /* return from generator, awaiting value */
-                  __pyx_generator->resume_label = 9;
-                  return __pyx_r;
-                  __pyx_L29_resume_from_await:;
-                  __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
-                  __pyx_cur_scope->__pyx_t_0 = 0;
-                  __Pyx_XGOTREF(__pyx_t_1);
-                  __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
-                  __pyx_cur_scope->__pyx_t_1 = 0;
-                  __Pyx_XGOTREF(__pyx_t_2);
-                  __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
-                  __pyx_cur_scope->__pyx_t_2 = 0;
-                  __Pyx_XGOTREF(__pyx_t_3);
-                  if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 68, __pyx_L13_error)
-                } else {
-                  PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
-                  if (exc_type) {
-                    if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
-                    else __PYX_ERR(0, 68, __pyx_L13_error)
-                  }
-                }
-
-                /* "handlers/payments/utils.py":69
- *                             await update_balance(user_id, -plan_price)
- *                             await clear_temporary_data(conn, user_id)
- *                             return             # <<<<<<<<<<<<<<
- * 
- * 
- */
-                __Pyx_XDECREF(__pyx_r);
-                __pyx_r = NULL;
-                goto __pyx_L12_return;
+                __Pyx_XGOTREF(__pyx_cur_scope->__pyx_v_balance);
+                __Pyx_XDECREF_SET(__pyx_cur_scope->__pyx_v_balance, __pyx_t_4);
+                __Pyx_GIVEREF(__pyx_t_4);
+                __pyx_t_4 = 0;
 
                 /* "handlers/payments/utils.py":62
  * 
- *                         balance = await get_balance(user_id)
- *                         if balance >= plan_price:             # <<<<<<<<<<<<<<
- *                             moscow_tz = pytz.timezone("Europe/Moscow")
- *                             expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
+ *                             balance = await get_balance(user_id)
+ *                             if balance >= plan_price:             # <<<<<<<<<<<<<<
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")
+ *                                 expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
  */
-              }
+                __pyx_t_4 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_balance, __pyx_cur_scope->__pyx_v_plan_price, Py_GE); __Pyx_XGOTREF(__pyx_t_4); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 62, __pyx_L13_error)
+                __pyx_t_13 = __Pyx_PyObject_IsTrue(__pyx_t_4); if (unlikely((__pyx_t_13 < 0))) __PYX_ERR(0, 62, __pyx_L13_error)
+                __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+                if (__pyx_t_13) {
 
-              /* "handlers/payments/utils.py":57
+                  /* "handlers/payments/utils.py":63
+ *                             balance = await get_balance(user_id)
+ *                             if balance >= plan_price:
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")             # <<<<<<<<<<<<<<
+ *                                 expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
+ *                                 await create_key(user_id, expiry_time, None, conn, None)
+ */
+                  __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_pytz); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 63, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_6);
+                  __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_t_6, __pyx_n_s_timezone); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 63, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_5);
+                  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+                  __pyx_t_6 = NULL;
+                  __pyx_t_7 = 0;
+                  #if CYTHON_UNPACK_METHODS
+                  if (unlikely(PyMethod_Check(__pyx_t_5))) {
+                    __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_5);
+                    if (likely(__pyx_t_6)) {
+                      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_5);
+                      __Pyx_INCREF(__pyx_t_6);
+                      __Pyx_INCREF(function);
+                      __Pyx_DECREF_SET(__pyx_t_5, function);
+                      __pyx_t_7 = 1;
+                    }
+                  }
+                  #endif
+                  {
+                    PyObject *__pyx_callargs[2] = {__pyx_t_6, __pyx_kp_u_Europe_Moscow};
+                    __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_5, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
+                    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+                    if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 63, __pyx_L13_error)
+                    __Pyx_GOTREF(__pyx_t_4);
+                    __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  }
+                  __Pyx_GIVEREF(__pyx_t_4);
+                  __pyx_cur_scope->__pyx_v_moscow_tz = __pyx_t_4;
+                  __pyx_t_4 = 0;
+
+                  /* "handlers/payments/utils.py":64
+ *                             if balance >= plan_price:
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")
+ *                                 expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)             # <<<<<<<<<<<<<<
+ *                                 await create_key(user_id, expiry_time, None, conn, None)
+ * 
+ */
+                  __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_datetime); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_5);
+                  __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_now); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_6);
+                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  __pyx_t_5 = NULL;
+                  __pyx_t_7 = 0;
+                  #if CYTHON_UNPACK_METHODS
+                  if (unlikely(PyMethod_Check(__pyx_t_6))) {
+                    __pyx_t_5 = PyMethod_GET_SELF(__pyx_t_6);
+                    if (likely(__pyx_t_5)) {
+                      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_6);
+                      __Pyx_INCREF(__pyx_t_5);
+                      __Pyx_INCREF(function);
+                      __Pyx_DECREF_SET(__pyx_t_6, function);
+                      __pyx_t_7 = 1;
+                    }
+                  }
+                  #endif
+                  {
+                    PyObject *__pyx_callargs[2] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_moscow_tz};
+                    __pyx_t_4 = __Pyx_PyObject_FastCall(__pyx_t_6, __pyx_callargs+1-__pyx_t_7, 1+__pyx_t_7);
+                    __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
+                    if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 64, __pyx_L13_error)
+                    __Pyx_GOTREF(__pyx_t_4);
+                    __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+                  }
+                  __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_timedelta); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_6);
+                  __pyx_t_5 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_5);
+                  if (PyDict_SetItem(__pyx_t_5, __pyx_n_s_days, __pyx_cur_scope->__pyx_v_duration_days) < 0) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_6, __pyx_empty_tuple, __pyx_t_5); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_9);
+                  __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
+                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  __pyx_t_5 = PyNumber_Add(__pyx_t_4, __pyx_t_9); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 64, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_5);
+                  __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+                  __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+                  __Pyx_GIVEREF(__pyx_t_5);
+                  __pyx_cur_scope->__pyx_v_expiry_time = __pyx_t_5;
+                  __pyx_t_5 = 0;
+
+                  /* "handlers/payments/utils.py":65
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")
+ *                                 expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
+ *                                 await create_key(user_id, expiry_time, None, conn, None)             # <<<<<<<<<<<<<<
+ * 
+ *                                 await update_balance(user_id, -plan_price)
+ */
+                  __Pyx_INCREF(__pyx_cur_scope->__pyx_v_create_key);
+                  __pyx_t_9 = __pyx_cur_scope->__pyx_v_create_key; __pyx_t_4 = NULL;
+                  __pyx_t_7 = 0;
+                  #if CYTHON_UNPACK_METHODS
+                  if (unlikely(PyMethod_Check(__pyx_t_9))) {
+                    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_9);
+                    if (likely(__pyx_t_4)) {
+                      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
+                      __Pyx_INCREF(__pyx_t_4);
+                      __Pyx_INCREF(function);
+                      __Pyx_DECREF_SET(__pyx_t_9, function);
+                      __pyx_t_7 = 1;
+                    }
+                  }
+                  #endif
+                  {
+                    PyObject *__pyx_callargs[6] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_user_id, __pyx_cur_scope->__pyx_v_expiry_time, Py_None, __pyx_cur_scope->__pyx_v_conn, Py_None};
+                    __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 5+__pyx_t_7);
+                    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+                    if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 65, __pyx_L13_error)
+                    __Pyx_GOTREF(__pyx_t_5);
+                    __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+                  }
+                  __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
+                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  __Pyx_XGOTREF(__pyx_r);
+                  if (likely(__pyx_r)) {
+                    __Pyx_XGIVEREF(__pyx_t_1);
+                    __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
+                    __Pyx_XGIVEREF(__pyx_t_2);
+                    __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
+                    __Pyx_XGIVEREF(__pyx_t_3);
+                    __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
+                    __Pyx_XGIVEREF(__pyx_r);
+                    __Pyx_RefNannyFinishContext();
+                    __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
+                    /* return from generator, awaiting value */
+                    __pyx_generator->resume_label = 7;
+                    return __pyx_r;
+                    __pyx_L27_resume_from_await:;
+                    __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
+                    __pyx_cur_scope->__pyx_t_0 = 0;
+                    __Pyx_XGOTREF(__pyx_t_1);
+                    __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
+                    __pyx_cur_scope->__pyx_t_1 = 0;
+                    __Pyx_XGOTREF(__pyx_t_2);
+                    __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
+                    __pyx_cur_scope->__pyx_t_2 = 0;
+                    __Pyx_XGOTREF(__pyx_t_3);
+                    if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 65, __pyx_L13_error)
+                  } else {
+                    PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
+                    if (exc_type) {
+                      if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
+                      else __PYX_ERR(0, 65, __pyx_L13_error)
+                    }
+                  }
+
+                  /* "handlers/payments/utils.py":67
+ *                                 await create_key(user_id, expiry_time, None, conn, None)
+ * 
+ *                                 await update_balance(user_id, -plan_price)             # <<<<<<<<<<<<<<
+ *                                 await clear_temporary_data(conn, user_id)
+ *                                 return
+ */
+                  __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 67, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_9);
+                  __pyx_t_4 = PyNumber_Negative(__pyx_cur_scope->__pyx_v_plan_price); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 67, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_4);
+                  __pyx_t_6 = NULL;
+                  __pyx_t_7 = 0;
+                  #if CYTHON_UNPACK_METHODS
+                  if (unlikely(PyMethod_Check(__pyx_t_9))) {
+                    __pyx_t_6 = PyMethod_GET_SELF(__pyx_t_9);
+                    if (likely(__pyx_t_6)) {
+                      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
+                      __Pyx_INCREF(__pyx_t_6);
+                      __Pyx_INCREF(function);
+                      __Pyx_DECREF_SET(__pyx_t_9, function);
+                      __pyx_t_7 = 1;
+                    }
+                  }
+                  #endif
+                  {
+                    PyObject *__pyx_callargs[3] = {__pyx_t_6, __pyx_cur_scope->__pyx_v_user_id, __pyx_t_4};
+                    __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
+                    __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
+                    __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
+                    if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 67, __pyx_L13_error)
+                    __Pyx_GOTREF(__pyx_t_5);
+                    __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+                  }
+                  __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
+                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  __Pyx_XGOTREF(__pyx_r);
+                  if (likely(__pyx_r)) {
+                    __Pyx_XGIVEREF(__pyx_t_1);
+                    __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
+                    __Pyx_XGIVEREF(__pyx_t_2);
+                    __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
+                    __Pyx_XGIVEREF(__pyx_t_3);
+                    __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
+                    __Pyx_XGIVEREF(__pyx_r);
+                    __Pyx_RefNannyFinishContext();
+                    __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
+                    /* return from generator, awaiting value */
+                    __pyx_generator->resume_label = 8;
+                    return __pyx_r;
+                    __pyx_L28_resume_from_await:;
+                    __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
+                    __pyx_cur_scope->__pyx_t_0 = 0;
+                    __Pyx_XGOTREF(__pyx_t_1);
+                    __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
+                    __pyx_cur_scope->__pyx_t_1 = 0;
+                    __Pyx_XGOTREF(__pyx_t_2);
+                    __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
+                    __pyx_cur_scope->__pyx_t_2 = 0;
+                    __Pyx_XGOTREF(__pyx_t_3);
+                    if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 67, __pyx_L13_error)
+                  } else {
+                    PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
+                    if (exc_type) {
+                      if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
+                      else __PYX_ERR(0, 67, __pyx_L13_error)
+                    }
+                  }
+
+                  /* "handlers/payments/utils.py":68
+ * 
+ *                                 await update_balance(user_id, -plan_price)
+ *                                 await clear_temporary_data(conn, user_id)             # <<<<<<<<<<<<<<
  *                                 return
  * 
- *                     if state == "waiting_for_payment":             # <<<<<<<<<<<<<<
- *                         plan_price = data["plan_price"]
- *                         duration_days = data["duration_days"]
  */
+                  __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_clear_temporary_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 68, __pyx_L13_error)
+                  __Pyx_GOTREF(__pyx_t_9);
+                  __pyx_t_4 = NULL;
+                  __pyx_t_7 = 0;
+                  #if CYTHON_UNPACK_METHODS
+                  if (unlikely(PyMethod_Check(__pyx_t_9))) {
+                    __pyx_t_4 = PyMethod_GET_SELF(__pyx_t_9);
+                    if (likely(__pyx_t_4)) {
+                      PyObject* function = PyMethod_GET_FUNCTION(__pyx_t_9);
+                      __Pyx_INCREF(__pyx_t_4);
+                      __Pyx_INCREF(function);
+                      __Pyx_DECREF_SET(__pyx_t_9, function);
+                      __pyx_t_7 = 1;
+                    }
+                  }
+                  #endif
+                  {
+                    PyObject *__pyx_callargs[3] = {__pyx_t_4, __pyx_cur_scope->__pyx_v_conn, __pyx_cur_scope->__pyx_v_user_id};
+                    __pyx_t_5 = __Pyx_PyObject_FastCall(__pyx_t_9, __pyx_callargs+1-__pyx_t_7, 2+__pyx_t_7);
+                    __Pyx_XDECREF(__pyx_t_4); __pyx_t_4 = 0;
+                    if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 68, __pyx_L13_error)
+                    __Pyx_GOTREF(__pyx_t_5);
+                    __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
+                  }
+                  __pyx_r = __Pyx_Coroutine_Yield_From(__pyx_generator, __pyx_t_5);
+                  __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
+                  __Pyx_XGOTREF(__pyx_r);
+                  if (likely(__pyx_r)) {
+                    __Pyx_XGIVEREF(__pyx_t_1);
+                    __pyx_cur_scope->__pyx_t_0 = __pyx_t_1;
+                    __Pyx_XGIVEREF(__pyx_t_2);
+                    __pyx_cur_scope->__pyx_t_1 = __pyx_t_2;
+                    __Pyx_XGIVEREF(__pyx_t_3);
+                    __pyx_cur_scope->__pyx_t_2 = __pyx_t_3;
+                    __Pyx_XGIVEREF(__pyx_r);
+                    __Pyx_RefNannyFinishContext();
+                    __Pyx_Coroutine_ResetAndClearException(__pyx_generator);
+                    /* return from generator, awaiting value */
+                    __pyx_generator->resume_label = 9;
+                    return __pyx_r;
+                    __pyx_L29_resume_from_await:;
+                    __pyx_t_1 = __pyx_cur_scope->__pyx_t_0;
+                    __pyx_cur_scope->__pyx_t_0 = 0;
+                    __Pyx_XGOTREF(__pyx_t_1);
+                    __pyx_t_2 = __pyx_cur_scope->__pyx_t_1;
+                    __pyx_cur_scope->__pyx_t_1 = 0;
+                    __Pyx_XGOTREF(__pyx_t_2);
+                    __pyx_t_3 = __pyx_cur_scope->__pyx_t_2;
+                    __pyx_cur_scope->__pyx_t_2 = 0;
+                    __Pyx_XGOTREF(__pyx_t_3);
+                    if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 68, __pyx_L13_error)
+                  } else {
+                    PyObject* exc_type = __Pyx_PyErr_CurrentExceptionType();
+                    if (exc_type) {
+                      if (likely(exc_type == PyExc_StopIteration || (exc_type != PyExc_GeneratorExit && __Pyx_PyErr_GivenExceptionMatches(exc_type, PyExc_StopIteration)))) PyErr_Clear();
+                      else __PYX_ERR(0, 68, __pyx_L13_error)
+                    }
+                  }
+
+                  /* "handlers/payments/utils.py":69
+ *                                 await update_balance(user_id, -plan_price)
+ *                                 await clear_temporary_data(conn, user_id)
+ *                                 return             # <<<<<<<<<<<<<<
+ * 
+ * 
+ */
+                  __Pyx_XDECREF(__pyx_r);
+                  __pyx_r = NULL;
+                  goto __pyx_L12_return;
+
+                  /* "handlers/payments/utils.py":62
+ * 
+ *                             balance = await get_balance(user_id)
+ *                             if balance >= plan_price:             # <<<<<<<<<<<<<<
+ *                                 moscow_tz = pytz.timezone("Europe/Moscow")
+ *                                 expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
+ */
+                }
+
+                /* "handlers/payments/utils.py":57
+ *                                 return
+ * 
+ *                         if state == "waiting_for_payment":             # <<<<<<<<<<<<<<
+ *                             plan_price = data["plan_price"]
+ *                             duration_days = data["duration_days"]
+ */
+              }
             }
+            __pyx_L17:;
 
             /* "handlers/payments/utils.py":28
  *             try:

@@ -159,38 +159,52 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                 gift_id = parts[0]
 
                 recipient_tg_id = message.chat.id
-                gift_info = await get_coupon_details(gift_id, session)
+
+                gift_info = await session.fetchrow(
+                    """
+                    SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id 
+                    FROM gifts WHERE gift_id = $1
+                    """,
+                    gift_id,
+                )
 
                 if gift_info is None:
                     logger.warning(f"Подарок с ID {gift_id} уже был использован или не существует.")
                     await message.answer("Этот подарок уже был использован или не существует.")
                     return await show_start_menu(message, admin, session)
 
+                if gift_info["is_used"]:
+                    logger.warning(f"Подарок с ID {gift_id} уже был активирован ранее.")
+                    await message.answer("Этот подарок уже был использован.")
+                    return await show_start_menu(message, admin, session)
+
                 if gift_info["sender_tg_id"] == recipient_tg_id:
-                    logger.warning(
-                        f"Пользователь {recipient_tg_id} попытался активировать подарок, который был отправлен им самим."
-                    )
+                    logger.warning(f"Пользователь {recipient_tg_id} попытался активировать свой же подарок.")
                     await message.answer("❌ Вы не можете получить подарок от самого себя.")
+                    return await show_start_menu(message, admin, session)
+
+                if gift_info["recipient_tg_id"] is not None:
+                    logger.warning(f"Подарок {gift_id} уже привязан к другому пользователю ({gift_info['recipient_tg_id']}).")
+                    await message.answer("❌ Этот подарок уже был активирован другим пользователем.")
                     return await show_start_menu(message, admin, session)
 
                 if not connection_exists:
                     await add_referral(recipient_tg_id, gift_info["sender_tg_id"], session)
-                    logger.info(
-                        f"Пользователь {recipient_tg_id} теперь является рефералом отправителя подарка {gift_info['sender_tg_id']}."
-                    )
-                else:
-                    logger.info(f"Пользователь {recipient_tg_id} уже зарегистрирован, реферал не добавляется.")
+                    logger.info(f"Пользователь {recipient_tg_id} теперь является рефералом отправителя {gift_info['sender_tg_id']}.")
 
                 selected_months = gift_info["selected_months"]
-                expiry_time = gift_info["expiry_time"]
-                expiry_time_naive = expiry_time.replace(tzinfo=None)
+                expiry_time = gift_info["expiry_time"].replace(tzinfo=None)
+
                 logger.info(f"Подарок с ID {gift_id} успешно найден для пользователя {recipient_tg_id}.")
 
-                await create_key(recipient_tg_id, expiry_time_naive, state, session, message)
+                await create_key(recipient_tg_id, expiry_time, state, session, message)
                 logger.info(f"Ключ создан для пользователя {recipient_tg_id} на срок {selected_months} месяцев.")
 
                 await session.execute(
-                    "UPDATE gifts SET is_used = TRUE, recipient_tg_id = $1 WHERE gift_id = $2",
+                    """
+                    UPDATE gifts SET is_used = TRUE, recipient_tg_id = $1 
+                    WHERE gift_id = $2
+                    """,
                     recipient_tg_id,
                     gift_id,
                 )

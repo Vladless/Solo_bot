@@ -278,6 +278,8 @@ async def create_key(
     )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
+    expiry_time = expiry_time.replace(tzinfo=None).astimezone(moscow_tz)
+
     remaining_time = expiry_time - datetime.now(moscow_tz)
     days = remaining_time.days
     key_message_text = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
