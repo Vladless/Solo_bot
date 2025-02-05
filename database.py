@@ -1303,15 +1303,16 @@ async def delete_key(identifier, session):
     Удаляет ключ из базы данных по client_id или tg_id
 
     Args:
-        identifier (str): client_id или tg_id для удаления
+        identifier (int | str): client_id или tg_id для удаления
         session: Сессия базы данных
 
     Raises:
         Exception: В случае ошибки при удалении ключа
     """
     try:
-        # Проверяем, является ли идентификатор числом (tg_id) или строкой (client_id)
-        if identifier.isdigit():
+        identifier_str = str(identifier)
+
+        if identifier_str.isdigit():
             query = "DELETE FROM keys WHERE tg_id = $1"
         else:
             query = "DELETE FROM keys WHERE client_id = $1"

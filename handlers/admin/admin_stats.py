@@ -23,16 +23,20 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
         total_referrals = await session.fetchval("SELECT COUNT(*) FROM referrals")
 
-        total_payments_today = await session.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE"
+        total_payments_today = int(
+            await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE")
         )
-        total_payments_week = await session.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+        total_payments_week = int(
+            await session.fetchval(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+            )
         )
-        total_payments_month = await session.fetchval(
-            "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+        total_payments_month = int(
+            await session.fetchval(
+                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+            )
         )
-        total_payments_all_time = await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments")
+        total_payments_all_time = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments"))
 
         registrations_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
         registrations_week = await session.fetchval(

@@ -66,7 +66,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
         try:
             member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
             if member.status not in ["member", "administrator", "creator"]:
-                await state.update_data(start_text=message.text)
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
                 await message.answer(
@@ -184,13 +183,17 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                     return await show_start_menu(message, admin, session)
 
                 if gift_info["recipient_tg_id"] is not None:
-                    logger.warning(f"Подарок {gift_id} уже привязан к другому пользователю ({gift_info['recipient_tg_id']}).")
+                    logger.warning(
+                        f"Подарок {gift_id} уже привязан к другому пользователю ({gift_info['recipient_tg_id']})."
+                    )
                     await message.answer("❌ Этот подарок уже был активирован другим пользователем.")
                     return await show_start_menu(message, admin, session)
 
                 if not connection_exists:
                     await add_referral(recipient_tg_id, gift_info["sender_tg_id"], session)
-                    logger.info(f"Пользователь {recipient_tg_id} теперь является рефералом отправителя {gift_info['sender_tg_id']}.")
+                    logger.info(
+                        f"Пользователь {recipient_tg_id} теперь является рефералом отправителя {gift_info['sender_tg_id']}."
+                    )
 
                 selected_months = gift_info["selected_months"]
                 expiry_time = gift_info["expiry_time"].replace(tzinfo=None)

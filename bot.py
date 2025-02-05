@@ -32,8 +32,33 @@ async def errors_handler(
     bot: Bot,
 ) -> bool:
     if isinstance(event.exception, TelegramForbiddenError):
-        logger.info(f"User {event.update.message.from_user.id} blocked the bot.")
+        logger.info(f"User {event.update.message.from_user.id} заблокировал бота.")
         return True
+
+    if isinstance(event.exception, TelegramBadRequest):
+        error_message = str(event.exception)
+
+        if (
+            "query is too old and response timeout expired or query ID is invalid" in error_message
+            or "message can't be deleted for everyone" in error_message
+        ):
+            logger.warning("Отправляем стартовое меню.")
+
+            try:
+                from handlers.start import handle_start_callback_query, start_command
+
+                if event.update.message:
+                    await start_command(
+                        event.update.message, state=dp.storage, session=None, admin=False, captcha=False
+                    )
+                elif event.update.callback_query:
+                    await handle_start_callback_query(
+                        event.update.callback_query, state=dp.storage, session=None, admin=False, captcha=False
+                    )
+            except Exception as e:
+                logger.error(f"Ошибка при показе стартового меню после ошибки: {e}")
+
+            return True
     logger.exception(f"Update: {event.update}\nException: {event.exception}")
     if not ADMIN_ID:
         return True
