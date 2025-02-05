@@ -97,28 +97,28 @@ def build_keys_response(records):
     Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
     """
     builder = InlineKeyboardBuilder()
-
     moscow_tz = pytz.timezone("Europe/Moscow")
 
     if records:
-        response_message = "<b>🔑 Список ваших подписок:</b>\n\n"
+        response_message = "<b>🔑 Список ваших подписок:</b>\n\n<blockquote>"
         for record in records:
             key_name = record["email"]
             expiry_time = record.get("expiry_time")
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
-                formatted_date_full = expiry_date_full.strftime("до %d %B %Y года, %H:%M").lower()
-
-                formatted_date_short = expiry_date_full.strftime("до %d %B").lower()
+                formatted_date_full = expiry_date_full.strftime("до %d.%m.%y, %H:%M")
+                formatted_date_short = expiry_date_full.strftime("до %d.%m.%y")
             else:
                 formatted_date_full = "без срока действия"
                 formatted_date_short = "без срока действия"
 
-            button_text = f"{key_name} ({formatted_date_short})"
+            button_text = f"🔑{key_name} ({formatted_date_short})"
             builder.row(InlineKeyboardButton(text=button_text, callback_data=f"view_key|{key_name}"))
 
             response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
+
+        response_message += "</blockquote>\n"
 
     else:
         response_message = (
@@ -463,70 +463,70 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
 
 async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_gb, cost, callback_query, plan):
     logger.info(
-        f"[RENEW] Starting complete_key_renewal with parameters: "
+        f"[RENEW] Начинаю процесс продления ключа с параметрами: "
         f"tg_id={tg_id}, client_id={client_id}, email={email}, "
         f"new_expiry_time={new_expiry_time}, total_gb={total_gb}, cost={cost}, "
-        f"callback_query={'present' if callback_query else 'None'}, plan={plan}"
+        f"callback_query={'есть' if callback_query else 'отсутствует'}, plan={plan}"
     )
 
     response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
-    logger.info(f"[RENEW] Constructed response message: {response_message}")
+    logger.info(f"[RENEW] Сформировано сообщение: {response_message}")
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     if callback_query:
-        logger.info("[RENEW] Sending response via callback_query.message.answer()")
+        logger.info("[RENEW] Отправка ответа через callback_query.message.answer()")
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
-        logger.info("[RENEW] Sending response via bot.send_message()")
+        logger.info("[RENEW] Отправка ответа через bot.send_message()")
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
-    logger.info("[RENEW] Connecting to database...")
+    logger.info("[RENEW] Подключение к базе данных...")
     conn = await asyncpg.connect(DATABASE_URL)
-    logger.info("[RENEW] Connected to database.")
+    logger.info("[RENEW] Подключение к базе данных установлено.")
 
-    logger.info(f"[RENEW] Retrieving key details for email: {email}")
+    logger.info(f"[RENEW] Получение данных о ключе для email: {email}")
     key_info = await get_key_details(email, conn)
     if not key_info:
         logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")
         await conn.close()
         return
-    logger.info(f"[RENEW] Retrieved key_info: {key_info}")
+    logger.info(f"[RENEW] Данные о ключе получены: {key_info}")
 
     server_id = key_info["server_id"]
-    logger.info(f"[RENEW] Using server_id: {server_id}")
+    logger.info(f"[RENEW] Используется server_id: {server_id}")
 
     if USE_COUNTRY_SELECTION:
-        logger.info(f"[RENEW] USE_COUNTRY_SELECTION is enabled. Checking cluster info for server_id: {server_id}")
+        logger.info(f"[RENEW] USE_COUNTRY_SELECTION включён. Проверяю информацию о сервере {server_id}")
         cluster_info = await check_server_name_by_cluster(server_id, conn)
         if not cluster_info:
             logger.error(f"[RENEW] Сервер {server_id} не найден в таблице servers.")
             await conn.close()
             return
         cluster_id = cluster_info["cluster_name"]
-        logger.info(f"[RENEW] Retrieved cluster info: {cluster_info}. Using cluster_id: {cluster_id}")
+        logger.info(f"[RENEW] Информация о сервере получена: {cluster_info}. Использую cluster_id: {cluster_id}")
     else:
         cluster_id = server_id
-        logger.info(f"[RENEW] USE_COUNTRY_SELECTION is disabled. Using server_id as cluster_id: {cluster_id}")
+        logger.info(f"[RENEW] USE_COUNTRY_SELECTION выключен. Использую server_id в качестве cluster_id: {cluster_id}")
 
     logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. в кластере {cluster_id}.")
 
     async def renew_key_on_cluster():
         logger.info(
-            f"[RENEW] Starting renew_key_on_cluster with parameters: "
+            f"[RENEW] Запуск renew_key_on_cluster с параметрами: "
             f"cluster_id={cluster_id}, email={email}, client_id={client_id}, "
             f"new_expiry_time={new_expiry_time}, total_gb={total_gb}"
         )
         await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb)
-        logger.info("[RENEW] renew_key_in_cluster completed. Now updating key expiry in DB.")
+        logger.info("[RENEW] Продление ключа на сервере завершено. Обновляю срок действия в базе данных.")
         await update_key_expiry(client_id, new_expiry_time, conn)
-        logger.info("[RENEW] Key expiry updated. Now updating balance.")
+        logger.info("[RENEW] Срок действия ключа обновлён. Обновляю баланс пользователя.")
         await update_balance(tg_id, -cost, conn)
         logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
 
-    logger.info("[RENEW] Initiating key renewal process on cluster.")
+    logger.info("[RENEW] Инициализация процесса продления ключа в кластере.")
     await renew_key_on_cluster()
 
-    logger.info("[RENEW] Key renewal process completed. Closing database connection.")
+    logger.info("[RENEW] Процесс продления ключа завершён. Закрываю соединение с базой данных.")
     await conn.close()

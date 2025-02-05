@@ -146,7 +146,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             )
         return
     expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
-    await create_key(tg_id, expiry_time, None, session, callback_query)
+    await create_key(tg_id, expiry_time, None, session, callback_query, None, plan_id)
     await update_balance(tg_id, -plan_price, session)
 
 
@@ -157,6 +157,7 @@ async def create_key(
     session: Any,
     message_or_query: Message | CallbackQuery | None = None,
     old_key_name: str = None,
+    plan: int = None,
 ):
     """Создаёт ключ с заданным сроком действия."""
 
@@ -230,13 +231,7 @@ async def create_key(
         least_loaded_cluster = await get_least_loaded_cluster()
         tasks = [
             asyncio.create_task(
-                create_key_on_cluster(
-                    least_loaded_cluster,
-                    tg_id,
-                    client_id,
-                    email,
-                    expiry_timestamp,
-                )
+                create_key_on_cluster(least_loaded_cluster, tg_id, client_id, email, expiry_timestamp, plan)
             )
         ]
         await asyncio.gather(*tasks)

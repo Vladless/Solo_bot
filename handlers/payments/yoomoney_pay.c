@@ -7,6 +7,9 @@
             "-O2",
             "-static-libgcc"
         ],
+        "extra_link_args": [
+            "-s"
+        ],
         "name": "handlers.payments.yoomoney_pay",
         "sources": [
             "handlers/payments/yoomoney_pay.py"
@@ -1497,13 +1500,6 @@ struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_2_yoomone
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_3_process_enter_custom_amount;
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_4_process_custom_amount_input;
 
-/* "handlers/payments/yoomoney_pay.py":38
- * 
- * 
- * @router.callback_query(F.data == "pay_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_callback_pay_yoomoney(
- *     callback_query: types.CallbackQuery, state: FSMContext, session: Any
- */
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct__process_callback_pay_yoomoney {
   PyObject_HEAD
   PyObject *__pyx_v_builder;
@@ -1518,13 +1514,6 @@ struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct__process_
 };
 
 
-/* "handlers/payments/yoomoney_pay.py":98
- * 
- * 
- * @router.callback_query(F.data.startswith("yoomoney_amount"))             # <<<<<<<<<<<<<<
- * async def process_amount_selection(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_1_process_amount_selection {
   PyObject_HEAD
   PyObject *__pyx_v_account_id;
@@ -1539,13 +1528,6 @@ struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_1_process
 };
 
 
-/* "handlers/payments/yoomoney_pay.py":135
- * 
- * 
- * async def yoomoney_webhook(request: web.Request):             # <<<<<<<<<<<<<<
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")
- */
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_2_yoomoney_webhook {
   PyObject_HEAD
   double __pyx_v_amount;
@@ -1565,13 +1547,6 @@ struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_2_yoomone
 };
 
 
-/* "handlers/payments/yoomoney_pay.py":166
- * 
- * 
- * @router.callback_query(F.data == "enter_custom_amount_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_enter_custom_amount(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_3_process_enter_custom_amount {
   PyObject_HEAD
   PyObject *__pyx_v_builder;
@@ -1580,13 +1555,6 @@ struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_3_process
 };
 
 
-/* "handlers/payments/yoomoney_pay.py":181
- * 
- * 
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- */
 struct __pyx_obj_8handlers_8payments_12yoomoney_pay___pyx_scope_struct_4_process_custom_amount_input {
   PyObject_HEAD
   PyObject *__pyx_v_account_id;
@@ -3754,13 +3722,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 /* #### Code section: module_code ### */
 static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yoomoney_pay.py":38
- * 
- * 
- * @router.callback_query(F.data == "pay_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_callback_pay_yoomoney(
- *     callback_query: types.CallbackQuery, state: FSMContext, session: Any
- */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8handlers_8payments_12yoomoney_pay_1process_callback_pay_yoomoney(PyObject *__pyx_self, 
@@ -3969,37 +3930,16 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   __pyx_L3_first_run:;
   if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 38, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":43
- * ):
- * 
- *     expected_hash = "HASHHASHYOOKASSA"             # <<<<<<<<<<<<<<
- *     if YOOKASSA_HASH != expected_hash:
- *         logger.error("  !     !")
- */
   __Pyx_INCREF(__pyx_n_u_HASHHASHYOOKASSA);
   __Pyx_GIVEREF(__pyx_n_u_HASHHASHYOOKASSA);
   __pyx_cur_scope->__pyx_v_expected_hash = __pyx_n_u_HASHHASHYOOKASSA;
 
-  /* "handlers/payments/yoomoney_pay.py":44
- * 
- *     expected_hash = "HASHHASHYOOKASSA"
- *     if YOOKASSA_HASH != expected_hash:             # <<<<<<<<<<<<<<
- *         logger.error("  !     !")
- *         await callback_query.message.answer(
- */
   __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_YOOKASSA_HASH); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 44, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_2 = (__Pyx_PyUnicode_Equals(__pyx_t_1, __pyx_cur_scope->__pyx_v_expected_hash, Py_NE)); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 44, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_2) {
 
-    /* "handlers/payments/yoomoney_pay.py":45
- *     expected_hash = "HASHHASHYOOKASSA"
- *     if YOOKASSA_HASH != expected_hash:
- *         logger.error("  !     !")             # <<<<<<<<<<<<<<
- *         await callback_query.message.answer(
- *             text="  ,    @solonet_sup."
- */
     __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_logger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 45, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_error); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 45, __pyx_L1_error)
@@ -4029,37 +3969,16 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     }
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":46
- *     if YOOKASSA_HASH != expected_hash:
- *         logger.error("  !     !")
- *         await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *             text="  ,    @solonet_sup."
- *         )
- */
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 46, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_answer); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 46, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_4);
     __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":47
- *         logger.error("  !     !")
- *         await callback_query.message.answer(
- *             text="  ,    @solonet_sup."             # <<<<<<<<<<<<<<
- *         )
- *         return
- */
     __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 47, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_text, __pyx_kp_u_solonet_sup) < 0) __PYX_ERR(0, 47, __pyx_L1_error)
 
-    /* "handlers/payments/yoomoney_pay.py":46
- *     if YOOKASSA_HASH != expected_hash:
- *         logger.error("  !     !")
- *         await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *             text="  ,    @solonet_sup."
- *         )
- */
     __pyx_t_3 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 46, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -4084,33 +4003,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       }
     }
 
-    /* "handlers/payments/yoomoney_pay.py":49
- *             text="  ,    @solonet_sup."
- *         )
- *         return             # <<<<<<<<<<<<<<
- * 
- *     tg_id = callback_query.message.chat.id
- */
     __Pyx_XDECREF(__pyx_r);
     __pyx_r = NULL;
     goto __pyx_L0;
 
-    /* "handlers/payments/yoomoney_pay.py":44
- * 
- *     expected_hash = "HASHHASHYOOKASSA"
- *     if YOOKASSA_HASH != expected_hash:             # <<<<<<<<<<<<<<
- *         logger.error("  !     !")
- *         await callback_query.message.answer(
- */
   }
 
-  /* "handlers/payments/yoomoney_pay.py":51
- *         return
- * 
- *     tg_id = callback_query.message.chat.id             # <<<<<<<<<<<<<<
- * 
- *     builder = InlineKeyboardBuilder()
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 51, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_chat); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 51, __pyx_L1_error)
@@ -4123,13 +4021,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   __pyx_cur_scope->__pyx_v_tg_id = __pyx_t_3;
   __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":53
- *     tg_id = callback_query.message.chat.id
- * 
- *     builder = InlineKeyboardBuilder()             # <<<<<<<<<<<<<<
- * 
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):
- */
   __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_InlineKeyboardBuilder); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 53, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_4 = NULL;
@@ -4158,13 +4049,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   __pyx_cur_scope->__pyx_v_builder = __pyx_t_3;
   __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":55
- *     builder = InlineKeyboardBuilder()
- * 
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):             # <<<<<<<<<<<<<<
- *         if i + 1 < len(PAYMENT_OPTIONS):
- *             builder.row(
- */
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 55, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_6 = PyObject_Length(__pyx_t_3); if (unlikely(__pyx_t_6 == ((Py_ssize_t)-1))) __PYX_ERR(0, 55, __pyx_L1_error)
@@ -4243,13 +4127,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     __Pyx_GIVEREF(__pyx_t_3);
     __pyx_t_3 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":56
- * 
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):
- *         if i + 1 < len(PAYMENT_OPTIONS):             # <<<<<<<<<<<<<<
- *             builder.row(
- *                 InlineKeyboardButton(
- */
     __pyx_t_3 = __Pyx_PyInt_AddObjC(__pyx_cur_scope->__pyx_v_i, __pyx_int_1, 1, 0, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 56, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 56, __pyx_L1_error)
@@ -4265,33 +4142,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
     if (__pyx_t_2) {
 
-      /* "handlers/payments/yoomoney_pay.py":57
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):
- *         if i + 1 < len(PAYMENT_OPTIONS):
- *             builder.row(             # <<<<<<<<<<<<<<
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],
- */
       __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 57, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_4);
 
-      /* "handlers/payments/yoomoney_pay.py":58
- *         if i + 1 < len(PAYMENT_OPTIONS):
- *             builder.row(
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- */
       __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 58, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
 
-      /* "handlers/payments/yoomoney_pay.py":59
- *             builder.row(
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],             # <<<<<<<<<<<<<<
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- *                 ),
- */
       __pyx_t_10 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 59, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_10);
       __Pyx_GetModuleGlobalName(__pyx_t_11, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 59, __pyx_L1_error)
@@ -4305,13 +4161,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_10, __pyx_n_s_text, __pyx_t_11) < 0) __PYX_ERR(0, 59, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_11); __pyx_t_11 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":60
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',             # <<<<<<<<<<<<<<
- *                 ),
- *                 InlineKeyboardButton(
- */
       __Pyx_GetModuleGlobalName(__pyx_t_11, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 60, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_11);
       __pyx_t_12 = __Pyx_PyObject_GetItem(__pyx_t_11, __pyx_cur_scope->__pyx_v_i); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 60, __pyx_L1_error)
@@ -4329,35 +4178,14 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_10, __pyx_n_s_callback_data, __pyx_t_11) < 0) __PYX_ERR(0, 59, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_11); __pyx_t_11 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":58
- *         if i + 1 < len(PAYMENT_OPTIONS):
- *             builder.row(
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- */
       __pyx_t_11 = __Pyx_PyObject_Call(__pyx_t_3, __pyx_empty_tuple, __pyx_t_10); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 58, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_11);
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
       __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":62
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- *                 ),
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i + 1]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
- */
       __Pyx_GetModuleGlobalName(__pyx_t_10, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 62, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_10);
 
-      /* "handlers/payments/yoomoney_pay.py":63
- *                 ),
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i + 1]["text"],             # <<<<<<<<<<<<<<
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
- *                 ),
- */
       __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 63, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
       __Pyx_GetModuleGlobalName(__pyx_t_12, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_12)) __PYX_ERR(0, 63, __pyx_L1_error)
@@ -4374,13 +4202,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_t_13) < 0) __PYX_ERR(0, 63, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_13); __pyx_t_13 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":64
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i + 1]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',             # <<<<<<<<<<<<<<
- *                 ),
- *             )
- */
       __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 64, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_13);
       __pyx_t_14 = __Pyx_PyInt_AddObjC(__pyx_cur_scope->__pyx_v_i, __pyx_int_1, 1, 0, 0); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 64, __pyx_L1_error)
@@ -4401,13 +4222,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_callback_data, __pyx_t_14) < 0) __PYX_ERR(0, 63, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":62
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- *                 ),
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i + 1]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
- */
       __pyx_t_14 = __Pyx_PyObject_Call(__pyx_t_10, __pyx_empty_tuple, __pyx_t_3); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 62, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_14);
       __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
@@ -4438,44 +4252,16 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       }
       __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":56
- * 
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):
- *         if i + 1 < len(PAYMENT_OPTIONS):             # <<<<<<<<<<<<<<
- *             builder.row(
- *                 InlineKeyboardButton(
- */
       goto __pyx_L8;
     }
 
-    /* "handlers/payments/yoomoney_pay.py":68
- *             )
- *         else:
- *             builder.row(             # <<<<<<<<<<<<<<
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],
- */
     /*else*/ {
       __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 68, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_4);
 
-      /* "handlers/payments/yoomoney_pay.py":69
- *         else:
- *             builder.row(
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- */
       __Pyx_GetModuleGlobalName(__pyx_t_14, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 69, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_14);
 
-      /* "handlers/payments/yoomoney_pay.py":70
- *             builder.row(
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],             # <<<<<<<<<<<<<<
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- *                 )
- */
       __pyx_t_11 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 70, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_11);
       __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 70, __pyx_L1_error)
@@ -4489,13 +4275,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_11, __pyx_n_s_text, __pyx_t_3) < 0) __PYX_ERR(0, 70, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":71
- *                 InlineKeyboardButton(
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',             # <<<<<<<<<<<<<<
- *                 )
- *             )
- */
       __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_PAYMENT_OPTIONS); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 71, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
       __pyx_t_10 = __Pyx_PyObject_GetItem(__pyx_t_3, __pyx_cur_scope->__pyx_v_i); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 71, __pyx_L1_error)
@@ -4513,13 +4292,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
       if (PyDict_SetItem(__pyx_t_11, __pyx_n_s_callback_data, __pyx_t_3) < 0) __PYX_ERR(0, 70, __pyx_L1_error)
       __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":69
- *         else:
- *             builder.row(
- *                 InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *                     text=PAYMENT_OPTIONS[i]["text"],
- *                     callback_data=f'yoomoney_{PAYMENT_OPTIONS[i]["callback_data"]}',
- */
       __pyx_t_3 = __Pyx_PyObject_Call(__pyx_t_14, __pyx_empty_tuple, __pyx_t_11); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 69, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_3);
       __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
@@ -4551,55 +4323,20 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     }
     __pyx_L8:;
 
-    /* "handlers/payments/yoomoney_pay.py":55
- *     builder = InlineKeyboardBuilder()
- * 
- *     for i in range(0, len(PAYMENT_OPTIONS), 2):             # <<<<<<<<<<<<<<
- *         if i + 1 < len(PAYMENT_OPTIONS):
- *             builder.row(
- */
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":74
- *                 )
- *             )
- *     builder.row(             # <<<<<<<<<<<<<<
- *         InlineKeyboardButton(
- *             text="   ",
- */
   __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 74, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
 
-  /* "handlers/payments/yoomoney_pay.py":75
- *             )
- *     builder.row(
- *         InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *             text="   ",
- *             callback_data="enter_custom_amount_yoomoney",
- */
   __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 75, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
 
-  /* "handlers/payments/yoomoney_pay.py":76
- *     builder.row(
- *         InlineKeyboardButton(
- *             text="   ",             # <<<<<<<<<<<<<<
- *             callback_data="enter_custom_amount_yoomoney",
- *         )
- */
   __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 76, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_kp_u__3) < 0) __PYX_ERR(0, 76, __pyx_L1_error)
   if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_callback_data, __pyx_n_u_enter_custom_amount_yoomoney) < 0) __PYX_ERR(0, 76, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":75
- *             )
- *     builder.row(
- *         InlineKeyboardButton(             # <<<<<<<<<<<<<<
- *             text="   ",
- *             callback_data="enter_custom_amount_yoomoney",
- */
   __pyx_t_11 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_3); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 75, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_11);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -4629,13 +4366,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":80
- *         )
- *     )
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay"))             # <<<<<<<<<<<<<<
- * 
- *     key_count = await get_key_count(tg_id)
- */
   __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 80, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
   __Pyx_GetModuleGlobalName(__pyx_t_11, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_11)) __PYX_ERR(0, 80, __pyx_L1_error)
@@ -4673,13 +4403,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":82
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay"))
- * 
- *     key_count = await get_key_count(tg_id)             # <<<<<<<<<<<<<<
- * 
- *     if key_count == 0:
- */
   __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_get_key_count); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 82, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
   __pyx_t_4 = NULL;
@@ -4726,23 +4449,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   __pyx_cur_scope->__pyx_v_key_count = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":84
- *     key_count = await get_key_count(tg_id)
- * 
- *     if key_count == 0:             # <<<<<<<<<<<<<<
- *         exists = await check_connection_exists(tg_id)
- *         if not exists:
- */
   __pyx_t_2 = (__Pyx_PyInt_BoolEqObjC(__pyx_cur_scope->__pyx_v_key_count, __pyx_int_0, 0, 0)); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 84, __pyx_L1_error)
   if (__pyx_t_2) {
 
-    /* "handlers/payments/yoomoney_pay.py":85
- * 
- *     if key_count == 0:
- *         exists = await check_connection_exists(tg_id)             # <<<<<<<<<<<<<<
- *         if not exists:
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)
- */
     __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_check_connection_exists); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 85, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_9);
     __pyx_t_4 = NULL;
@@ -4789,24 +4498,10 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     __pyx_cur_scope->__pyx_v_exists = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":86
- *     if key_count == 0:
- *         exists = await check_connection_exists(tg_id)
- *         if not exists:             # <<<<<<<<<<<<<<
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)
- * 
- */
     __pyx_t_2 = __Pyx_PyObject_IsTrue(__pyx_cur_scope->__pyx_v_exists); if (unlikely((__pyx_t_2 < 0))) __PYX_ERR(0, 86, __pyx_L1_error)
     __pyx_t_15 = (!__pyx_t_2);
     if (__pyx_t_15) {
 
-      /* "handlers/payments/yoomoney_pay.py":87
- *         exists = await check_connection_exists(tg_id)
- *         if not exists:
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)             # <<<<<<<<<<<<<<
- * 
- *     await callback_query.message.answer(
- */
       __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_add_connection); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 87, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __pyx_t_9 = PyTuple_New(1); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 87, __pyx_L1_error)
@@ -4844,55 +4539,20 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
         }
       }
 
-      /* "handlers/payments/yoomoney_pay.py":86
- *     if key_count == 0:
- *         exists = await check_connection_exists(tg_id)
- *         if not exists:             # <<<<<<<<<<<<<<
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)
- * 
- */
     }
 
-    /* "handlers/payments/yoomoney_pay.py":84
- *     key_count = await get_key_count(tg_id)
- * 
- *     if key_count == 0:             # <<<<<<<<<<<<<<
- *         exists = await check_connection_exists(tg_id)
- *         if not exists:
- */
   }
 
-  /* "handlers/payments/yoomoney_pay.py":89
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *         text="  :",
- *         reply_markup=builder.as_markup(),
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 89, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_4 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_answer); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 89, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_4);
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":90
- * 
- *     await callback_query.message.answer(
- *         text="  :",             # <<<<<<<<<<<<<<
- *         reply_markup=builder.as_markup(),
- *     )
- */
   __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 90, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_text, __pyx_kp_u__5) < 0) __PYX_ERR(0, 90, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":91
- *     await callback_query.message.answer(
- *         text="  :",
- *         reply_markup=builder.as_markup(),             # <<<<<<<<<<<<<<
- *     )
- * 
- */
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 91, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_11 = NULL;
@@ -4920,13 +4580,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   if (PyDict_SetItem(__pyx_t_3, __pyx_n_s_reply_markup, __pyx_t_9) < 0) __PYX_ERR(0, 90, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_9); __pyx_t_9 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":89
- *             await add_connection(tg_id, balance=0.0, trial=0, session=session)
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *         text="  :",
- *         reply_markup=builder.as_markup(),
- */
   __pyx_t_9 = __Pyx_PyObject_Call(__pyx_t_4, __pyx_empty_tuple, __pyx_t_3); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 89, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
   __Pyx_DECREF(__pyx_t_4); __pyx_t_4 = 0;
@@ -4951,13 +4604,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
     }
   }
 
-  /* "handlers/payments/yoomoney_pay.py":94
- *     )
- * 
- *     await state.set_state(ReplenishBalanceState.choosing_amount_yoomoney)             # <<<<<<<<<<<<<<
- * 
- * 
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_set_state); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 94, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_GetModuleGlobalName(__pyx_t_4, __pyx_n_s_ReplenishBalanceState); if (unlikely(!__pyx_t_4)) __PYX_ERR(0, 94, __pyx_L1_error)
@@ -5009,13 +4655,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
   }
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yoomoney_pay.py":38
- * 
- * 
- * @router.callback_query(F.data == "pay_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_callback_pay_yoomoney(
- *     callback_query: types.CallbackQuery, state: FSMContext, session: Any
- */
 
   /* function exit code */
   PyErr_SetNone(PyExc_StopIteration);
@@ -5044,13 +4683,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_2generator(__pyx_Co
 }
 static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yoomoney_pay.py":98
- * 
- * 
- * @router.callback_query(F.data.startswith("yoomoney_amount"))             # <<<<<<<<<<<<<<
- * async def process_amount_selection(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8handlers_8payments_12yoomoney_pay_4process_amount_selection(PyObject *__pyx_self, 
@@ -5237,13 +4869,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   __pyx_L3_first_run:;
   if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 98, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":102
- *     callback_query: types.CallbackQuery, state: FSMContext
- * ):
- *     data = callback_query.data.split("|", 1)             # <<<<<<<<<<<<<<
- * 
- *     if len(data) != 2:
- */
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_data); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 102, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_split); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 102, __pyx_L1_error)
@@ -5256,57 +4881,22 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   __pyx_cur_scope->__pyx_v_data = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":104
- *     data = callback_query.data.split("|", 1)
- * 
- *     if len(data) != 2:             # <<<<<<<<<<<<<<
- *         return
- * 
- */
   __pyx_t_3 = PyObject_Length(__pyx_cur_scope->__pyx_v_data); if (unlikely(__pyx_t_3 == ((Py_ssize_t)-1))) __PYX_ERR(0, 104, __pyx_L1_error)
   __pyx_t_4 = (__pyx_t_3 != 2);
   if (__pyx_t_4) {
 
-    /* "handlers/payments/yoomoney_pay.py":105
- * 
- *     if len(data) != 2:
- *         return             # <<<<<<<<<<<<<<
- * 
- *     amount_str = data[1]
- */
     __Pyx_XDECREF(__pyx_r);
     __pyx_r = NULL;
     goto __pyx_L0;
 
-    /* "handlers/payments/yoomoney_pay.py":104
- *     data = callback_query.data.split("|", 1)
- * 
- *     if len(data) != 2:             # <<<<<<<<<<<<<<
- *         return
- * 
- */
   }
 
-  /* "handlers/payments/yoomoney_pay.py":107
- *         return
- * 
- *     amount_str = data[1]             # <<<<<<<<<<<<<<
- *     try:
- *         amount = int(amount_str)
- */
   __pyx_t_1 = __Pyx_GetItemInt(__pyx_cur_scope->__pyx_v_data, 1, long, 1, __Pyx_PyInt_From_long, 0, 0, 1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 107, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_GIVEREF(__pyx_t_1);
   __pyx_cur_scope->__pyx_v_amount_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":108
- * 
- *     amount_str = data[1]
- *     try:             # <<<<<<<<<<<<<<
- *         amount = int(amount_str)
- *     except ValueError:
- */
   {
     __Pyx_ExceptionSave(&__pyx_t_5, &__pyx_t_6, &__pyx_t_7);
     __Pyx_XGOTREF(__pyx_t_5);
@@ -5314,26 +4904,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     __Pyx_XGOTREF(__pyx_t_7);
     /*try:*/ {
 
-      /* "handlers/payments/yoomoney_pay.py":109
- *     amount_str = data[1]
- *     try:
- *         amount = int(amount_str)             # <<<<<<<<<<<<<<
- *     except ValueError:
- *         return
- */
       __pyx_t_1 = __Pyx_PyNumber_Int(__pyx_cur_scope->__pyx_v_amount_str); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 109, __pyx_L5_error)
       __Pyx_GOTREF(__pyx_t_1);
       __Pyx_GIVEREF(__pyx_t_1);
       __pyx_cur_scope->__pyx_v_amount = __pyx_t_1;
       __pyx_t_1 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":108
- * 
- *     amount_str = data[1]
- *     try:             # <<<<<<<<<<<<<<
- *         amount = int(amount_str)
- *     except ValueError:
- */
     }
     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_XDECREF(__pyx_t_6); __pyx_t_6 = 0;
@@ -5343,13 +4919,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
     __Pyx_XDECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":110
- *     try:
- *         amount = int(amount_str)
- *     except ValueError:             # <<<<<<<<<<<<<<
- *         return
- * 
- */
     __pyx_t_8 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_ValueError);
     if (__pyx_t_8) {
       __Pyx_AddTraceback("handlers.payments.yoomoney_pay.process_amount_selection", __pyx_clineno, __pyx_lineno, __pyx_filename);
@@ -5358,13 +4927,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
       __Pyx_XGOTREF(__pyx_t_2);
       __Pyx_XGOTREF(__pyx_t_9);
 
-      /* "handlers/payments/yoomoney_pay.py":111
- *         amount = int(amount_str)
- *     except ValueError:
- *         return             # <<<<<<<<<<<<<<
- * 
- *     await state.update_data(amount=amount)
- */
       __Pyx_XDECREF(__pyx_r);
       __pyx_r = NULL;
       __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -5374,13 +4936,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     }
     goto __pyx_L7_except_error;
 
-    /* "handlers/payments/yoomoney_pay.py":108
- * 
- *     amount_str = data[1]
- *     try:             # <<<<<<<<<<<<<<
- *         amount = int(amount_str)
- *     except ValueError:
- */
     __pyx_L7_except_error:;
     __Pyx_XGIVEREF(__pyx_t_5);
     __Pyx_XGIVEREF(__pyx_t_6);
@@ -5396,13 +4951,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     __pyx_L10_try_end:;
   }
 
-  /* "handlers/payments/yoomoney_pay.py":113
- *         return
- * 
- *     await state.update_data(amount=amount)             # <<<<<<<<<<<<<<
- *     await state.set_state(
- *         ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney
- */
   __pyx_t_9 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_update_data); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 113, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
   __pyx_t_2 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 113, __pyx_L1_error)
@@ -5432,23 +4980,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     }
   }
 
-  /* "handlers/payments/yoomoney_pay.py":114
- * 
- *     await state.update_data(amount=amount)
- *     await state.set_state(             # <<<<<<<<<<<<<<
- *         ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney
- *     )
- */
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_set_state); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 114, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
 
-  /* "handlers/payments/yoomoney_pay.py":115
- *     await state.update_data(amount=amount)
- *     await state.set_state(
- *         ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney             # <<<<<<<<<<<<<<
- *     )
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_ReplenishBalanceState); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 115, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_9);
   __pyx_t_10 = __Pyx_PyObject_GetAttrStr(__pyx_t_9, __pyx_n_s_waiting_for_payment_confirmation); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 115, __pyx_L1_error)
@@ -5497,13 +5031,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
     }
   }
 
-  /* "handlers/payments/yoomoney_pay.py":118
- *     )
- * 
- *     customer_id = callback_query.message.chat.id             # <<<<<<<<<<<<<<
- *     account_id = YOOMONEY_ID
- *     payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- */
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 118, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_chat); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 118, __pyx_L1_error)
@@ -5516,26 +5043,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   __pyx_cur_scope->__pyx_v_customer_id = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":119
- * 
- *     customer_id = callback_query.message.chat.id
- *     account_id = YOOMONEY_ID             # <<<<<<<<<<<<<<
- *     payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_YOOMONEY_ID); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 119, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_GIVEREF(__pyx_t_1);
   __pyx_cur_scope->__pyx_v_account_id = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":120
- *     customer_id = callback_query.message.chat.id
- *     account_id = YOOMONEY_ID
- *     payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"             # <<<<<<<<<<<<<<
- * 
- *     confirm_keyboard = InlineKeyboardMarkup(
- */
   __pyx_t_1 = PyTuple_New(6); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 120, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_3 = 0;
@@ -5581,33 +5094,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   __pyx_cur_scope->__pyx_v_payment_url = ((PyObject*)__pyx_t_2);
   __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":122
- *     payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- *     confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
- *             inline_keyboard=[
- *                 [InlineKeyboardButton(text="", url=payment_url)],
- */
   __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_InlineKeyboardMarkup); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 122, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
 
-  /* "handlers/payments/yoomoney_pay.py":123
- * 
- *     confirm_keyboard = InlineKeyboardMarkup(
- *             inline_keyboard=[             # <<<<<<<<<<<<<<
- *                 [InlineKeyboardButton(text="", url=payment_url)],
- *                 [InlineKeyboardButton(text=" ", callback_data="pay")],
- */
   __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 123, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
 
-  /* "handlers/payments/yoomoney_pay.py":124
- *     confirm_keyboard = InlineKeyboardMarkup(
- *             inline_keyboard=[
- *                 [InlineKeyboardButton(text="", url=payment_url)],             # <<<<<<<<<<<<<<
- *                 [InlineKeyboardButton(text=" ", callback_data="pay")],
- *             ]
- */
   __Pyx_GetModuleGlobalName(__pyx_t_10, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 124, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_10);
   __pyx_t_9 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 124, __pyx_L1_error)
@@ -5624,13 +5116,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   if (__Pyx_PyList_SET_ITEM(__pyx_t_9, 0, __pyx_t_13)) __PYX_ERR(0, 124, __pyx_L1_error);
   __pyx_t_13 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":125
- *             inline_keyboard=[
- *                 [InlineKeyboardButton(text="", url=payment_url)],
- *                 [InlineKeyboardButton(text=" ", callback_data="pay")],             # <<<<<<<<<<<<<<
- *             ]
- *         )
- */
   __Pyx_GetModuleGlobalName(__pyx_t_13, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_13)) __PYX_ERR(0, 125, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_13);
   __pyx_t_10 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 125, __pyx_L1_error)
@@ -5647,13 +5132,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   if (__Pyx_PyList_SET_ITEM(__pyx_t_10, 0, __pyx_t_14)) __PYX_ERR(0, 125, __pyx_L1_error);
   __pyx_t_14 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":123
- * 
- *     confirm_keyboard = InlineKeyboardMarkup(
- *             inline_keyboard=[             # <<<<<<<<<<<<<<
- *                 [InlineKeyboardButton(text="", url=payment_url)],
- *                 [InlineKeyboardButton(text=" ", callback_data="pay")],
- */
   __pyx_t_14 = PyList_New(2); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 123, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_14);
   __Pyx_GIVEREF(__pyx_t_9);
@@ -5665,13 +5143,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_inline_keyboard, __pyx_t_14) < 0) __PYX_ERR(0, 123, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":122
- *     payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- *     confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
- *             inline_keyboard=[
- *                 [InlineKeyboardButton(text="", url=payment_url)],
- */
   __pyx_t_14 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 122, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_14);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -5680,26 +5151,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   __pyx_cur_scope->__pyx_v_confirm_keyboard = __pyx_t_14;
   __pyx_t_14 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":129
- *         )
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *             text=f"    {amount} .",
- *             reply_markup=confirm_keyboard,
- */
   __pyx_t_14 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 129, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_14);
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_14, __pyx_n_s_answer); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 129, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_DECREF(__pyx_t_14); __pyx_t_14 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":130
- * 
- *     await callback_query.message.answer(
- *             text=f"    {amount} .",             # <<<<<<<<<<<<<<
- *             reply_markup=confirm_keyboard,
- *         )
- */
   __pyx_t_14 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_14)) __PYX_ERR(0, 130, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_14);
   __pyx_t_2 = PyTuple_New(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 130, __pyx_L1_error)
@@ -5729,22 +5186,8 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   if (PyDict_SetItem(__pyx_t_14, __pyx_n_s_text, __pyx_t_10) < 0) __PYX_ERR(0, 130, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":131
- *     await callback_query.message.answer(
- *             text=f"    {amount} .",
- *             reply_markup=confirm_keyboard,             # <<<<<<<<<<<<<<
- *         )
- * 
- */
   if (PyDict_SetItem(__pyx_t_14, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_confirm_keyboard) < 0) __PYX_ERR(0, 130, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":129
- *         )
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *             text=f"    {amount} .",
- *             reply_markup=confirm_keyboard,
- */
   __pyx_t_10 = __Pyx_PyObject_Call(__pyx_t_1, __pyx_empty_tuple, __pyx_t_14); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 129, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_10);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
@@ -5770,13 +5213,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
   }
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yoomoney_pay.py":98
- * 
- * 
- * @router.callback_query(F.data.startswith("yoomoney_amount"))             # <<<<<<<<<<<<<<
- * async def process_amount_selection(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 
   /* function exit code */
   PyErr_SetNone(PyExc_StopIteration);
@@ -5802,13 +5238,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_5generator1(__pyx_C
 }
 static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yoomoney_pay.py":135
- * 
- * 
- * async def yoomoney_webhook(request: web.Request):             # <<<<<<<<<<<<<<
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")
- */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8handlers_8payments_12yoomoney_pay_7yoomoney_webhook(PyObject *__pyx_self, 
@@ -5989,13 +5418,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_L3_first_run:;
   if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 135, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":136
- * 
- * async def yoomoney_webhook(request: web.Request):
- *     data = await request.post()             # <<<<<<<<<<<<<<
- *     logger.debug(f"Webhook event received: {data}")
- * 
- */
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_request, __pyx_n_s_post); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 136, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_3 = NULL;
@@ -6042,13 +5464,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_data = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":137
- * async def yoomoney_webhook(request: web.Request):
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")             # <<<<<<<<<<<<<<
- * 
- *     user_id_str = data.get("label")
- */
   __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_logger); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 137, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_debug); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 137, __pyx_L1_error)
@@ -6084,13 +5499,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":139
- *     logger.debug(f"Webhook event received: {data}")
- * 
- *     user_id_str = data.get("label")             # <<<<<<<<<<<<<<
- *     amount_str = data.get("withdraw_amount")
- *     notification_secret = YOOMONEY_SECRET_KEY
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_data, __pyx_n_s_get); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 139, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_5 = NULL;
@@ -6119,13 +5527,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_user_id_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":140
- * 
- *     user_id_str = data.get("label")
- *     amount_str = data.get("withdraw_amount")             # <<<<<<<<<<<<<<
- *     notification_secret = YOOMONEY_SECRET_KEY
- *     sha1_hash = data.get("sha1_hash")
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_data, __pyx_n_s_get); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 140, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_5 = NULL;
@@ -6154,26 +5555,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_amount_str = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":141
- *     user_id_str = data.get("label")
- *     amount_str = data.get("withdraw_amount")
- *     notification_secret = YOOMONEY_SECRET_KEY             # <<<<<<<<<<<<<<
- *     sha1_hash = data.get("sha1_hash")
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_YOOMONEY_SECRET_KEY); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 141, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_GIVEREF(__pyx_t_1);
   __pyx_cur_scope->__pyx_v_notification_secret = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":142
- *     amount_str = data.get("withdraw_amount")
- *     notification_secret = YOOMONEY_SECRET_KEY
- *     sha1_hash = data.get("sha1_hash")             # <<<<<<<<<<<<<<
- * 
- *     string_to_hash = f"{data.get('notification_type')}&{data.get('operation_id')}&{data.get('amount')}&{data.get('currency')}&{data.get('datetime')}&{data.get('sender')}&{data.get('codepro')}&{notification_secret}&{user_id_str}"
- */
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_data, __pyx_n_s_get); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 142, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_5 = NULL;
@@ -6202,13 +5589,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_sha1_hash = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":144
- *     sha1_hash = data.get("sha1_hash")
- * 
- *     string_to_hash = f"{data.get('notification_type')}&{data.get('operation_id')}&{data.get('amount')}&{data.get('currency')}&{data.get('datetime')}&{data.get('sender')}&{data.get('codepro')}&{notification_secret}&{user_id_str}"             # <<<<<<<<<<<<<<
- * 
- *     calculated_hash = hashlib.sha1(string_to_hash.encode('utf-8')).hexdigest()
- */
   __pyx_t_1 = PyTuple_New(17); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 144, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_6 = 0;
@@ -6490,13 +5870,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_string_to_hash = ((PyObject*)__pyx_t_5);
   __pyx_t_5 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":146
- *     string_to_hash = f"{data.get('notification_type')}&{data.get('operation_id')}&{data.get('amount')}&{data.get('currency')}&{data.get('datetime')}&{data.get('sender')}&{data.get('codepro')}&{notification_secret}&{user_id_str}"
- * 
- *     calculated_hash = hashlib.sha1(string_to_hash.encode('utf-8')).hexdigest()             # <<<<<<<<<<<<<<
- * 
- *     if calculated_hash != sha1_hash:
- */
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_hashlib); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 146, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_sha1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 146, __pyx_L1_error)
@@ -6556,25 +5929,11 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   __pyx_cur_scope->__pyx_v_calculated_hash = __pyx_t_5;
   __pyx_t_5 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":148
- *     calculated_hash = hashlib.sha1(string_to_hash.encode('utf-8')).hexdigest()
- * 
- *     if calculated_hash != sha1_hash:             # <<<<<<<<<<<<<<
- *         logger.error("   ")
- *         return web.Response(status=400)
- */
   __pyx_t_5 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_calculated_hash, __pyx_cur_scope->__pyx_v_sha1_hash, Py_NE); __Pyx_XGOTREF(__pyx_t_5); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 148, __pyx_L1_error)
   __pyx_t_9 = __Pyx_PyObject_IsTrue(__pyx_t_5); if (unlikely((__pyx_t_9 < 0))) __PYX_ERR(0, 148, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
   if (__pyx_t_9) {
 
-    /* "handlers/payments/yoomoney_pay.py":149
- * 
- *     if calculated_hash != sha1_hash:
- *         logger.error("   ")             # <<<<<<<<<<<<<<
- *         return web.Response(status=400)
- * 
- */
     __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_logger); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 149, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_error); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 149, __pyx_L1_error)
@@ -6604,13 +5963,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     }
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":150
- *     if calculated_hash != sha1_hash:
- *         logger.error("   ")
- *         return web.Response(status=400)             # <<<<<<<<<<<<<<
- * 
- *     try:
- */
     __Pyx_XDECREF(__pyx_r);
     __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_web); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 150, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_5);
@@ -6628,22 +5980,8 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     goto __pyx_L0;
 
-    /* "handlers/payments/yoomoney_pay.py":148
- *     calculated_hash = hashlib.sha1(string_to_hash.encode('utf-8')).hexdigest()
- * 
- *     if calculated_hash != sha1_hash:             # <<<<<<<<<<<<<<
- *         logger.error("   ")
- *         return web.Response(status=400)
- */
   }
 
-  /* "handlers/payments/yoomoney_pay.py":152
- *         return web.Response(status=400)
- * 
- *     try:             # <<<<<<<<<<<<<<
- *         user_id = int(user_id_str)
- *         amount = float(amount_str)
- */
   {
     __Pyx_ExceptionSave(&__pyx_t_10, &__pyx_t_11, &__pyx_t_12);
     __Pyx_XGOTREF(__pyx_t_10);
@@ -6651,36 +5989,15 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     __Pyx_XGOTREF(__pyx_t_12);
     /*try:*/ {
 
-      /* "handlers/payments/yoomoney_pay.py":153
- * 
- *     try:
- *         user_id = int(user_id_str)             # <<<<<<<<<<<<<<
- *         amount = float(amount_str)
- *         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
- */
       __pyx_t_2 = __Pyx_PyNumber_Int(__pyx_cur_scope->__pyx_v_user_id_str); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 153, __pyx_L6_error)
       __Pyx_GOTREF(__pyx_t_2);
       __Pyx_GIVEREF(__pyx_t_2);
       __pyx_cur_scope->__pyx_v_user_id = __pyx_t_2;
       __pyx_t_2 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":154
- *     try:
- *         user_id = int(user_id_str)
- *         amount = float(amount_str)             # <<<<<<<<<<<<<<
- *         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
- *         await add_payment(user_id, amount, "yoomoney")
- */
       __pyx_t_13 = __Pyx_PyObject_AsDouble(__pyx_cur_scope->__pyx_v_amount_str); if (unlikely(__pyx_t_13 == ((double)((double)-1)) && PyErr_Occurred())) __PYX_ERR(0, 154, __pyx_L6_error)
       __pyx_cur_scope->__pyx_v_amount = __pyx_t_13;
 
-      /* "handlers/payments/yoomoney_pay.py":155
- *         user_id = int(user_id_str)
- *         amount = float(amount_str)
- *         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")             # <<<<<<<<<<<<<<
- *         await add_payment(user_id, amount, "yoomoney")
- *         await update_balance(user_id, amount)
- */
       __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_logger); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 155, __pyx_L6_error)
       __Pyx_GOTREF(__pyx_t_5);
       __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_debug); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 155, __pyx_L6_error)
@@ -6743,13 +6060,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
       }
       __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-      /* "handlers/payments/yoomoney_pay.py":156
- *         amount = float(amount_str)
- *         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
- *         await add_payment(user_id, amount, "yoomoney")             # <<<<<<<<<<<<<<
- *         await update_balance(user_id, amount)
- *         await send_payment_success_notification(user_id, amount)
- */
       __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_add_payment); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 156, __pyx_L6_error)
       __Pyx_GOTREF(__pyx_t_1);
       __pyx_t_8 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 156, __pyx_L6_error)
@@ -6812,13 +6122,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
         }
       }
 
-      /* "handlers/payments/yoomoney_pay.py":157
- *         logger.debug(f"Payment succeeded for user_id: {user_id}, amount: {amount}")
- *         await add_payment(user_id, amount, "yoomoney")
- *         await update_balance(user_id, amount)             # <<<<<<<<<<<<<<
- *         await send_payment_success_notification(user_id, amount)
- *     except ValueError as e:
- */
       __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_update_balance); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 157, __pyx_L6_error)
       __Pyx_GOTREF(__pyx_t_1);
       __pyx_t_8 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 157, __pyx_L6_error)
@@ -6881,13 +6184,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
         }
       }
 
-      /* "handlers/payments/yoomoney_pay.py":158
- *         await add_payment(user_id, amount, "yoomoney")
- *         await update_balance(user_id, amount)
- *         await send_payment_success_notification(user_id, amount)             # <<<<<<<<<<<<<<
- *     except ValueError as e:
- *         logger.error(f"  user_id  amount: {e}")
- */
       __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_send_payment_success_notificatio); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 158, __pyx_L6_error)
       __Pyx_GOTREF(__pyx_t_1);
       __pyx_t_8 = PyFloat_FromDouble(__pyx_cur_scope->__pyx_v_amount); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 158, __pyx_L6_error)
@@ -6950,13 +6246,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
         }
       }
 
-      /* "handlers/payments/yoomoney_pay.py":152
- *         return web.Response(status=400)
- * 
- *     try:             # <<<<<<<<<<<<<<
- *         user_id = int(user_id_str)
- *         amount = float(amount_str)
- */
     }
     __Pyx_XDECREF(__pyx_t_10); __pyx_t_10 = 0;
     __Pyx_XDECREF(__pyx_t_11); __pyx_t_11 = 0;
@@ -6969,13 +6258,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
     __Pyx_XDECREF(__pyx_t_8); __pyx_t_8 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":159
- *         await update_balance(user_id, amount)
- *         await send_payment_success_notification(user_id, amount)
- *     except ValueError as e:             # <<<<<<<<<<<<<<
- *         logger.error(f"  user_id  amount: {e}")
- *         return web.Response(status=400)
- */
     __pyx_t_14 = __Pyx_PyErr_ExceptionMatches(__pyx_builtin_ValueError);
     if (__pyx_t_14) {
       __Pyx_AddTraceback("handlers.payments.yoomoney_pay.yoomoney_webhook", __pyx_clineno, __pyx_lineno, __pyx_filename);
@@ -6988,13 +6270,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
       __pyx_cur_scope->__pyx_v_e = __pyx_t_1;
       /*try:*/ {
 
-        /* "handlers/payments/yoomoney_pay.py":160
- *         await send_payment_success_notification(user_id, amount)
- *     except ValueError as e:
- *         logger.error(f"  user_id  amount: {e}")             # <<<<<<<<<<<<<<
- *         return web.Response(status=400)
- * 
- */
         __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_logger); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 160, __pyx_L20_error)
         __Pyx_GOTREF(__pyx_t_3);
         __pyx_t_15 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_error); if (unlikely(!__pyx_t_15)) __PYX_ERR(0, 160, __pyx_L20_error)
@@ -7030,13 +6305,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
         }
         __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-        /* "handlers/payments/yoomoney_pay.py":161
- *     except ValueError as e:
- *         logger.error(f"  user_id  amount: {e}")
- *         return web.Response(status=400)             # <<<<<<<<<<<<<<
- * 
- *     return web.Response(status=200)
- */
         __Pyx_XDECREF(__pyx_r);
         __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_web); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 161, __pyx_L20_error)
         __Pyx_GOTREF(__pyx_t_5);
@@ -7058,13 +6326,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
         goto __pyx_L19_return;
       }
 
-      /* "handlers/payments/yoomoney_pay.py":159
- *         await update_balance(user_id, amount)
- *         await send_payment_success_notification(user_id, amount)
- *     except ValueError as e:             # <<<<<<<<<<<<<<
- *         logger.error(f"  user_id  amount: {e}")
- *         return web.Response(status=400)
- */
       /*finally:*/ {
         __pyx_L20_error:;
         /*exception exit:*/{
@@ -7135,13 +6396,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     }
     goto __pyx_L8_except_error;
 
-    /* "handlers/payments/yoomoney_pay.py":152
- *         return web.Response(status=400)
- * 
- *     try:             # <<<<<<<<<<<<<<
- *         user_id = int(user_id_str)
- *         amount = float(amount_str)
- */
     __pyx_L8_except_error:;
     __Pyx_XGIVEREF(__pyx_t_10);
     __Pyx_XGIVEREF(__pyx_t_11);
@@ -7157,13 +6411,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
     __pyx_L11_try_end:;
   }
 
-  /* "handlers/payments/yoomoney_pay.py":163
- *         return web.Response(status=400)
- * 
- *     return web.Response(status=200)             # <<<<<<<<<<<<<<
- * 
- * 
- */
   __Pyx_XDECREF(__pyx_r);
   __Pyx_GetModuleGlobalName(__pyx_t_8, __pyx_n_s_web); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 163, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_8);
@@ -7182,13 +6429,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
   goto __pyx_L0;
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yoomoney_pay.py":135
- * 
- * 
- * async def yoomoney_webhook(request: web.Request):             # <<<<<<<<<<<<<<
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")
- */
 
   /* function exit code */
   __pyx_L1_error:;
@@ -7213,13 +6453,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_8generator2(__pyx_C
 }
 static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yoomoney_pay.py":166
- * 
- * 
- * @router.callback_query(F.data == "enter_custom_amount_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_enter_custom_amount(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8handlers_8payments_12yoomoney_pay_10process_enter_custom_amount(PyObject *__pyx_self, 
@@ -7397,13 +6630,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
   __pyx_L3_first_run:;
   if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 166, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":170
- *     callback_query: types.CallbackQuery, state: FSMContext
- * ):
- *     builder = InlineKeyboardBuilder()             # <<<<<<<<<<<<<<
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay_yoomoney"))
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_InlineKeyboardBuilder); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 170, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_3 = NULL;
@@ -7432,13 +6658,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
   __pyx_cur_scope->__pyx_v_builder = __pyx_t_1;
   __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":171
- * ):
- *     builder = InlineKeyboardBuilder()
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay_yoomoney"))             # <<<<<<<<<<<<<<
- * 
- *     await callback_query.message.answer(
- */
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_row); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 171, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 171, __pyx_L1_error)
@@ -7476,26 +6695,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
   }
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":173
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay_yoomoney"))
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *         ",   .",
- *         reply_markup=builder.as_markup(),
- */
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_callback_query, __pyx_n_s_message); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 173, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_t_1, __pyx_n_s_answer); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 173, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":175
- *     await callback_query.message.answer(
- *         ",   .",
- *         reply_markup=builder.as_markup(),             # <<<<<<<<<<<<<<
- *     )
- * 
- */
   __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 175, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_t_5 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_builder, __pyx_n_s_as_markup); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 175, __pyx_L1_error)
@@ -7525,13 +6730,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
   if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_reply_markup, __pyx_t_6) < 0) __PYX_ERR(0, 175, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":173
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay_yoomoney"))
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *         ",   .",
- *         reply_markup=builder.as_markup(),
- */
   __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_tuple__18, __pyx_t_1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 173, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_6);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -7556,13 +6754,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
     }
   }
 
-  /* "handlers/payments/yoomoney_pay.py":178
- *     )
- * 
- *     await state.set_state(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * 
- * 
- */
   __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_set_state); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 178, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_ReplenishBalanceState); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 178, __pyx_L1_error)
@@ -7614,13 +6805,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
   }
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yoomoney_pay.py":166
- * 
- * 
- * @router.callback_query(F.data == "enter_custom_amount_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_enter_custom_amount(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
 
   /* function exit code */
   PyErr_SetNone(PyExc_StopIteration);
@@ -7645,13 +6829,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_11generator3(__pyx_
 }
 static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_CoroutineObject *__pyx_generator, CYTHON_UNUSED PyThreadState *__pyx_tstate, PyObject *__pyx_sent_value); /* proto */
 
-/* "handlers/payments/yoomoney_pay.py":181
- * 
- * 
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- */
 
 /* Python wrapper */
 static PyObject *__pyx_pw_8handlers_8payments_12yoomoney_pay_13process_custom_amount_input(PyObject *__pyx_self, 
@@ -7836,13 +7013,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
   __pyx_L3_first_run:;
   if (unlikely(!__pyx_sent_value)) __PYX_ERR(0, 181, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":183
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():             # <<<<<<<<<<<<<<
- *         amount = int(message.text)
- *         if amount <= 0:
- */
   __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_text); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 183, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_isdigit); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 183, __pyx_L1_error)
@@ -7874,13 +7044,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
   __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
   if (__pyx_t_5) {
 
-    /* "handlers/payments/yoomoney_pay.py":184
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- *         amount = int(message.text)             # <<<<<<<<<<<<<<
- *         if amount <= 0:
- *             await message.answer(
- */
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_text); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 184, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __pyx_t_3 = __Pyx_PyNumber_Int(__pyx_t_1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 184, __pyx_L1_error)
@@ -7890,25 +7053,11 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     __pyx_cur_scope->__pyx_v_amount = __pyx_t_3;
     __pyx_t_3 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":185
- *     if message.text.isdigit():
- *         amount = int(message.text)
- *         if amount <= 0:             # <<<<<<<<<<<<<<
- *             await message.answer(
- *                 "    . ,    :"
- */
     __pyx_t_3 = PyObject_RichCompare(__pyx_cur_scope->__pyx_v_amount, __pyx_int_0, Py_LE); __Pyx_XGOTREF(__pyx_t_3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 185, __pyx_L1_error)
     __pyx_t_5 = __Pyx_PyObject_IsTrue(__pyx_t_3); if (unlikely((__pyx_t_5 < 0))) __PYX_ERR(0, 185, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
     if (__pyx_t_5) {
 
-      /* "handlers/payments/yoomoney_pay.py":186
- *         amount = int(message.text)
- *         if amount <= 0:
- *             await message.answer(             # <<<<<<<<<<<<<<
- *                 "    . ,    :"
- *             )
- */
       __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_answer); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 186, __pyx_L1_error)
       __Pyx_GOTREF(__pyx_t_1);
       __pyx_t_2 = NULL;
@@ -7953,33 +7102,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
         }
       }
 
-      /* "handlers/payments/yoomoney_pay.py":189
- *                 "    . ,    :"
- *             )
- *             return             # <<<<<<<<<<<<<<
- * 
- *         await state.update_data(amount=amount)
- */
       __Pyx_XDECREF(__pyx_r);
       __pyx_r = NULL;
       goto __pyx_L0;
 
-      /* "handlers/payments/yoomoney_pay.py":185
- *     if message.text.isdigit():
- *         amount = int(message.text)
- *         if amount <= 0:             # <<<<<<<<<<<<<<
- *             await message.answer(
- *                 "    . ,    :"
- */
     }
 
-    /* "handlers/payments/yoomoney_pay.py":191
- *             return
- * 
- *         await state.update_data(amount=amount)             # <<<<<<<<<<<<<<
- *         await state.set_state(
- *             ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney
- */
     __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_update_data); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 191, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 191, __pyx_L1_error)
@@ -8009,23 +7137,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
       }
     }
 
-    /* "handlers/payments/yoomoney_pay.py":192
- * 
- *         await state.update_data(amount=amount)
- *         await state.set_state(             # <<<<<<<<<<<<<<
- *             ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney
- *         )
- */
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_state, __pyx_n_s_set_state); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 192, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
 
-    /* "handlers/payments/yoomoney_pay.py":193
- *         await state.update_data(amount=amount)
- *         await state.set_state(
- *             ReplenishBalanceState.waiting_for_payment_confirmation_yoomoney             # <<<<<<<<<<<<<<
- *         )
- * 
- */
     __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_ReplenishBalanceState); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 193, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_3);
     __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_waiting_for_payment_confirmation); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 193, __pyx_L1_error)
@@ -8074,13 +7188,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
       }
     }
 
-    /* "handlers/payments/yoomoney_pay.py":196
- *         )
- * 
- *         customer_id = message.chat.id             # <<<<<<<<<<<<<<
- *         account_id = YOOMONEY_ID
- *         payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- */
     __pyx_t_2 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_chat); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 196, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_id); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 196, __pyx_L1_error)
@@ -8090,26 +7197,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     __pyx_cur_scope->__pyx_v_customer_id = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":197
- * 
- *         customer_id = message.chat.id
- *         account_id = YOOMONEY_ID             # <<<<<<<<<<<<<<
- *         payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- */
     __Pyx_GetModuleGlobalName(__pyx_t_1, __pyx_n_s_YOOMONEY_ID); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 197, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __Pyx_GIVEREF(__pyx_t_1);
     __pyx_cur_scope->__pyx_v_account_id = __pyx_t_1;
     __pyx_t_1 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":198
- *         customer_id = message.chat.id
- *         account_id = YOOMONEY_ID
- *         payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"             # <<<<<<<<<<<<<<
- * 
- *         confirm_keyboard = InlineKeyboardMarkup(
- */
     __pyx_t_1 = PyTuple_New(6); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 198, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __pyx_t_7 = 0;
@@ -8155,33 +7248,12 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     __pyx_cur_scope->__pyx_v_payment_url = ((PyObject*)__pyx_t_2);
     __pyx_t_2 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":200
- *         payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- *         confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
- *                 inline_keyboard=[
- *                     [InlineKeyboardButton(text="", url=payment_url)],
- */
     __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_InlineKeyboardMarkup); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
 
-    /* "handlers/payments/yoomoney_pay.py":201
- * 
- *         confirm_keyboard = InlineKeyboardMarkup(
- *                 inline_keyboard=[             # <<<<<<<<<<<<<<
- *                     [InlineKeyboardButton(text="", url=payment_url)],
- *                     [InlineKeyboardButton(text=" ", callback_data="pay")],
- */
     __pyx_t_1 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 201, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
 
-    /* "handlers/payments/yoomoney_pay.py":202
- *         confirm_keyboard = InlineKeyboardMarkup(
- *                 inline_keyboard=[
- *                     [InlineKeyboardButton(text="", url=payment_url)],             # <<<<<<<<<<<<<<
- *                     [InlineKeyboardButton(text=" ", callback_data="pay")],
- *                 ]
- */
     __Pyx_GetModuleGlobalName(__pyx_t_6, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 202, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
     __pyx_t_3 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 202, __pyx_L1_error)
@@ -8198,13 +7270,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     if (__Pyx_PyList_SET_ITEM(__pyx_t_3, 0, __pyx_t_9)) __PYX_ERR(0, 202, __pyx_L1_error);
     __pyx_t_9 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":203
- *                 inline_keyboard=[
- *                     [InlineKeyboardButton(text="", url=payment_url)],
- *                     [InlineKeyboardButton(text=" ", callback_data="pay")],             # <<<<<<<<<<<<<<
- *                 ]
- *             )
- */
     __Pyx_GetModuleGlobalName(__pyx_t_9, __pyx_n_s_InlineKeyboardButton); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 203, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_9);
     __pyx_t_6 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 203, __pyx_L1_error)
@@ -8221,13 +7286,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     if (__Pyx_PyList_SET_ITEM(__pyx_t_6, 0, __pyx_t_10)) __PYX_ERR(0, 203, __pyx_L1_error);
     __pyx_t_10 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":201
- * 
- *         confirm_keyboard = InlineKeyboardMarkup(
- *                 inline_keyboard=[             # <<<<<<<<<<<<<<
- *                     [InlineKeyboardButton(text="", url=payment_url)],
- *                     [InlineKeyboardButton(text=" ", callback_data="pay")],
- */
     __pyx_t_10 = PyList_New(2); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 201, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_10);
     __Pyx_GIVEREF(__pyx_t_3);
@@ -8239,13 +7297,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_inline_keyboard, __pyx_t_10) < 0) __PYX_ERR(0, 201, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":200
- *         payment_url = f"https://yoomoney.ru/quickpay/confirm.xml?receiver={account_id}&quickpay-form=shop&targets=&sum={amount}&paymentType=PC&comment= &label={customer_id}"
- * 
- *         confirm_keyboard = InlineKeyboardMarkup(             # <<<<<<<<<<<<<<
- *                 inline_keyboard=[
- *                     [InlineKeyboardButton(text="", url=payment_url)],
- */
     __pyx_t_10 = __Pyx_PyObject_Call(__pyx_t_2, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 200, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_10);
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -8254,23 +7305,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     __pyx_cur_scope->__pyx_v_confirm_keyboard = __pyx_t_10;
     __pyx_t_10 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":207
- *             )
- * 
- *         await message.answer(             # <<<<<<<<<<<<<<
- *                 text=f"    {amount} .",
- *                 reply_markup=confirm_keyboard,
- */
     __pyx_t_10 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_answer); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 207, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_10);
 
-    /* "handlers/payments/yoomoney_pay.py":208
- * 
- *         await message.answer(
- *                 text=f"    {amount} .",             # <<<<<<<<<<<<<<
- *                 reply_markup=confirm_keyboard,
- *         )
- */
     __pyx_t_1 = __Pyx_PyDict_NewPresized(2); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 208, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
     __pyx_t_2 = PyTuple_New(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 208, __pyx_L1_error)
@@ -8300,22 +7337,8 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
     if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_text, __pyx_t_6) < 0) __PYX_ERR(0, 208, __pyx_L1_error)
     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":209
- *         await message.answer(
- *                 text=f"    {amount} .",
- *                 reply_markup=confirm_keyboard,             # <<<<<<<<<<<<<<
- *         )
- * 
- */
     if (PyDict_SetItem(__pyx_t_1, __pyx_n_s_reply_markup, __pyx_cur_scope->__pyx_v_confirm_keyboard) < 0) __PYX_ERR(0, 208, __pyx_L1_error)
 
-    /* "handlers/payments/yoomoney_pay.py":207
- *             )
- * 
- *         await message.answer(             # <<<<<<<<<<<<<<
- *                 text=f"    {amount} .",
- *                 reply_markup=confirm_keyboard,
- */
     __pyx_t_6 = __Pyx_PyObject_Call(__pyx_t_10, __pyx_empty_tuple, __pyx_t_1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 207, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_6);
     __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
@@ -8340,21 +7363,9 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
       }
     }
 
-    /* "handlers/payments/yoomoney_pay.py":183
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():             # <<<<<<<<<<<<<<
- *         amount = int(message.text)
- *         if amount <= 0:
- */
     goto __pyx_L4;
   }
 
-  /* "handlers/payments/yoomoney_pay.py":213
- * 
- *     else:
- *         await message.answer(" . ,    :")             # <<<<<<<<<<<<<<
- */
   /*else*/ {
     __pyx_t_1 = __Pyx_PyObject_GetAttrStr(__pyx_cur_scope->__pyx_v_message, __pyx_n_s_answer); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 213, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_1);
@@ -8403,13 +7414,6 @@ static PyObject *__pyx_gb_8handlers_8payments_12yoomoney_pay_14generator4(__pyx_
   __pyx_L4:;
   CYTHON_MAYBE_UNUSED_VAR(__pyx_cur_scope);
 
-  /* "handlers/payments/yoomoney_pay.py":181
- * 
- * 
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- */
 
   /* function exit code */
   PyErr_SetNone(PyExc_StopIteration);
@@ -9597,47 +8601,19 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("__Pyx_InitCachedConstants", 0);
 
-  /* "handlers/payments/yoomoney_pay.py":102
- *     callback_query: types.CallbackQuery, state: FSMContext
- * ):
- *     data = callback_query.data.split("|", 1)             # <<<<<<<<<<<<<<
- * 
- *     if len(data) != 2:
- */
   __pyx_tuple__8 = PyTuple_Pack(2, __pyx_kp_u__7, __pyx_int_1); if (unlikely(!__pyx_tuple__8)) __PYX_ERR(0, 102, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__8);
   __Pyx_GIVEREF(__pyx_tuple__8);
 
-  /* "handlers/payments/yoomoney_pay.py":173
- *     builder.row(InlineKeyboardButton(text=" ", callback_data="pay_yoomoney"))
- * 
- *     await callback_query.message.answer(             # <<<<<<<<<<<<<<
- *         ",   .",
- *         reply_markup=builder.as_markup(),
- */
   __pyx_tuple__18 = PyTuple_Pack(1, __pyx_kp_u__17); if (unlikely(!__pyx_tuple__18)) __PYX_ERR(0, 173, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__18);
   __Pyx_GIVEREF(__pyx_tuple__18);
 
-  /* "handlers/payments/yoomoney_pay.py":38
- * 
- * 
- * @router.callback_query(F.data == "pay_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_callback_pay_yoomoney(
- *     callback_query: types.CallbackQuery, state: FSMContext, session: Any
- */
   __pyx_tuple__24 = PyTuple_Pack(9, __pyx_n_s_callback_query, __pyx_n_s_state, __pyx_n_s_session, __pyx_n_s_expected_hash, __pyx_n_s_tg_id, __pyx_n_s_builder, __pyx_n_s_i, __pyx_n_s_key_count, __pyx_n_s_exists); if (unlikely(!__pyx_tuple__24)) __PYX_ERR(0, 38, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__24);
   __Pyx_GIVEREF(__pyx_tuple__24);
   __pyx_codeobj_ = (PyObject*)__Pyx_PyCode_New(3, 0, 0, 9, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__24, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yoomoney_pay_p, __pyx_n_s_process_callback_pay_yoomoney, 38, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj_)) __PYX_ERR(0, 38, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":98
- * 
- * 
- * @router.callback_query(F.data.startswith("yoomoney_amount"))             # <<<<<<<<<<<<<<
- * async def process_amount_selection(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
   __pyx_tuple__25 = PyTuple_Pack(1, __pyx_n_u_yoomoney_amount); if (unlikely(!__pyx_tuple__25)) __PYX_ERR(0, 98, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__25);
   __Pyx_GIVEREF(__pyx_tuple__25);
@@ -9646,37 +8622,16 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
   __Pyx_GIVEREF(__pyx_tuple__26);
   __pyx_codeobj__6 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 9, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__26, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yoomoney_pay_p, __pyx_n_s_process_amount_selection, 98, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__6)) __PYX_ERR(0, 98, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":135
- * 
- * 
- * async def yoomoney_webhook(request: web.Request):             # <<<<<<<<<<<<<<
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")
- */
   __pyx_tuple__27 = PyTuple_Pack(11, __pyx_n_s_request, __pyx_n_s_data, __pyx_n_s_user_id_str, __pyx_n_s_amount_str, __pyx_n_s_notification_secret, __pyx_n_s_sha1_hash, __pyx_n_s_string_to_hash, __pyx_n_s_calculated_hash, __pyx_n_s_user_id, __pyx_n_s_amount, __pyx_n_s_e); if (unlikely(!__pyx_tuple__27)) __PYX_ERR(0, 135, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__27);
   __Pyx_GIVEREF(__pyx_tuple__27);
   __pyx_codeobj__12 = (PyObject*)__Pyx_PyCode_New(1, 0, 0, 11, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__27, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yoomoney_pay_p, __pyx_n_s_yoomoney_webhook, 135, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__12)) __PYX_ERR(0, 135, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":166
- * 
- * 
- * @router.callback_query(F.data == "enter_custom_amount_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_enter_custom_amount(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
   __pyx_tuple__28 = PyTuple_Pack(3, __pyx_n_s_callback_query, __pyx_n_s_state, __pyx_n_s_builder); if (unlikely(!__pyx_tuple__28)) __PYX_ERR(0, 166, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__28);
   __Pyx_GIVEREF(__pyx_tuple__28);
   __pyx_codeobj__15 = (PyObject*)__Pyx_PyCode_New(2, 0, 0, 3, 0, CO_OPTIMIZED|CO_NEWLOCALS|CO_COROUTINE, __pyx_empty_bytes, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_tuple__28, __pyx_empty_tuple, __pyx_empty_tuple, __pyx_kp_s_handlers_payments_yoomoney_pay_p, __pyx_n_s_process_enter_custom_amount, 166, __pyx_empty_bytes); if (unlikely(!__pyx_codeobj__15)) __PYX_ERR(0, 166, __pyx_L1_error)
 
-  /* "handlers/payments/yoomoney_pay.py":181
- * 
- * 
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- */
   __pyx_tuple__29 = PyTuple_Pack(7, __pyx_n_s_message, __pyx_n_s_state, __pyx_n_s_amount, __pyx_n_s_customer_id, __pyx_n_s_account_id, __pyx_n_s_payment_url, __pyx_n_s_confirm_keyboard); if (unlikely(!__pyx_tuple__29)) __PYX_ERR(0, 181, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_tuple__29);
   __Pyx_GIVEREF(__pyx_tuple__29);
@@ -10158,22 +9113,11 @@ if (!__Pyx_RefNanny) {
   if (__Pyx_patch_abc() < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   #endif
 
-  /* "handlers/payments/yoomoney_pay.py":1
- * import hashlib             # <<<<<<<<<<<<<<
- * from typing import Any
- * 
- */
   __pyx_t_2 = __Pyx_ImportDottedModule(__pyx_n_s_hashlib, NULL); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_hashlib, __pyx_t_2) < 0) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":2
- * import hashlib
- * from typing import Any             # <<<<<<<<<<<<<<
- * 
- * from aiogram import F, Router, types
- */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 2, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_Any);
@@ -10188,13 +9132,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":4
- * from typing import Any
- * 
- * from aiogram import F, Router, types             # <<<<<<<<<<<<<<
- * from aiogram.fsm.context import FSMContext
- * from aiogram.fsm.state import State, StatesGroup
- */
   __pyx_t_3 = PyList_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 4, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_F);
@@ -10223,13 +9160,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":5
- * 
- * from aiogram import F, Router, types
- * from aiogram.fsm.context import FSMContext             # <<<<<<<<<<<<<<
- * from aiogram.fsm.state import State, StatesGroup
- * from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
- */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 5, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_FSMContext);
@@ -10244,13 +9174,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":6
- * from aiogram import F, Router, types
- * from aiogram.fsm.context import FSMContext
- * from aiogram.fsm.state import State, StatesGroup             # <<<<<<<<<<<<<<
- * from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
- * from aiogram.utils.keyboard import InlineKeyboardBuilder
- */
   __pyx_t_3 = PyList_New(2); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 6, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_State);
@@ -10272,13 +9195,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":7
- * from aiogram.fsm.context import FSMContext
- * from aiogram.fsm.state import State, StatesGroup
- * from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup             # <<<<<<<<<<<<<<
- * from aiogram.utils.keyboard import InlineKeyboardBuilder
- * from aiohttp import web
- */
   __pyx_t_2 = PyList_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 7, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_InlineKeyboardButton);
@@ -10300,13 +9216,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":8
- * from aiogram.fsm.state import State, StatesGroup
- * from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
- * from aiogram.utils.keyboard import InlineKeyboardBuilder             # <<<<<<<<<<<<<<
- * from aiohttp import web
- * 
- */
   __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_InlineKeyboardBuilder);
@@ -10321,13 +9230,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":9
- * from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
- * from aiogram.utils.keyboard import InlineKeyboardBuilder
- * from aiohttp import web             # <<<<<<<<<<<<<<
- * 
- * from config import YOOMONEY_ENABLE, YOOMONEY_ID, YOOMONEY_SECRET_KEY
- */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 9, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_web);
@@ -10342,13 +9244,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":11
- * from aiohttp import web
- * 
- * from config import YOOMONEY_ENABLE, YOOMONEY_ID, YOOMONEY_SECRET_KEY             # <<<<<<<<<<<<<<
- * from database import (
- *     add_connection,
- */
   __pyx_t_3 = PyList_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_YOOMONEY_ENABLE);
@@ -10377,13 +9272,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":13
- * from config import YOOMONEY_ENABLE, YOOMONEY_ID, YOOMONEY_SECRET_KEY
- * from database import (
- *     add_connection,             # <<<<<<<<<<<<<<
- *     add_payment,
- *     check_connection_exists,
- */
   __pyx_t_2 = PyList_New(5); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 13, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_add_connection);
@@ -10402,13 +9290,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_GIVEREF(__pyx_n_s_update_balance);
   if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 4, __pyx_n_s_update_balance)) __PYX_ERR(0, 13, __pyx_L1_error);
 
-  /* "handlers/payments/yoomoney_pay.py":12
- * 
- * from config import YOOMONEY_ENABLE, YOOMONEY_ID, YOOMONEY_SECRET_KEY
- * from database import (             # <<<<<<<<<<<<<<
- *     add_connection,
- *     add_payment,
- */
   __pyx_t_3 = __Pyx_Import(__pyx_n_s_database, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 12, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -10434,13 +9315,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":19
- *     update_balance,
- * )
- * from handlers.payments.gift import YOOKASSA_HASH             # <<<<<<<<<<<<<<
- * from handlers.payments.utils import send_payment_success_notification
- * from handlers.texts import PAYMENT_OPTIONS
- */
   __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 19, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_YOOKASSA_HASH);
@@ -10455,13 +9329,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":20
- * )
- * from handlers.payments.gift import YOOKASSA_HASH
- * from handlers.payments.utils import send_payment_success_notification             # <<<<<<<<<<<<<<
- * from handlers.texts import PAYMENT_OPTIONS
- * from logger import logger
- */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 20, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_send_payment_success_notificatio);
@@ -10476,13 +9343,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":21
- * from handlers.payments.gift import YOOKASSA_HASH
- * from handlers.payments.utils import send_payment_success_notification
- * from handlers.texts import PAYMENT_OPTIONS             # <<<<<<<<<<<<<<
- * from logger import logger
- * 
- */
   __pyx_t_3 = PyList_New(1); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 21, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_INCREF(__pyx_n_s_PAYMENT_OPTIONS);
@@ -10497,13 +9357,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":22
- * from handlers.payments.utils import send_payment_success_notification
- * from handlers.texts import PAYMENT_OPTIONS
- * from logger import logger             # <<<<<<<<<<<<<<
- * 
- * router = Router()
- */
   __pyx_t_2 = PyList_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 22, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_logger);
@@ -10518,13 +9371,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":24
- * from logger import logger
- * 
- * router = Router()             # <<<<<<<<<<<<<<
- * 
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_Router); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 24, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_2 = __Pyx_PyObject_CallNoArg(__pyx_t_3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 24, __pyx_L1_error)
@@ -10533,26 +9379,12 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_router, __pyx_t_2) < 0) __PYX_ERR(0, 24, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":28
- * 
- * 
- * if YOOMONEY_ENABLE:             # <<<<<<<<<<<<<<
- *     logger.debug(f"Account ID: {YOOMONEY_ID}")
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_YOOMONEY_ENABLE); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 28, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __pyx_t_4 = __Pyx_PyObject_IsTrue(__pyx_t_2); if (unlikely((__pyx_t_4 < 0))) __PYX_ERR(0, 28, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   if (__pyx_t_4) {
 
-    /* "handlers/payments/yoomoney_pay.py":29
- * 
- * if YOOMONEY_ENABLE:
- *     logger.debug(f"Account ID: {YOOMONEY_ID}")             # <<<<<<<<<<<<<<
- * 
- * 
- */
     __Pyx_GetModuleGlobalName(__pyx_t_2, __pyx_n_s_logger); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 29, __pyx_L1_error)
     __Pyx_GOTREF(__pyx_t_2);
     __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_2, __pyx_n_s_debug); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 29, __pyx_L1_error)
@@ -10572,22 +9404,8 @@ if (!__Pyx_RefNanny) {
     __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
     __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-    /* "handlers/payments/yoomoney_pay.py":28
- * 
- * 
- * if YOOMONEY_ENABLE:             # <<<<<<<<<<<<<<
- *     logger.debug(f"Account ID: {YOOMONEY_ID}")
- * 
- */
   }
 
-  /* "handlers/payments/yoomoney_pay.py":32
- * 
- * 
- * class ReplenishBalanceState(StatesGroup):             # <<<<<<<<<<<<<<
- *     choosing_amount_yoomoney = State()
- *     waiting_for_payment_confirmation_yoomoney = State()
- */
   __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_StatesGroup); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 32, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __pyx_t_2 = PyTuple_New(1); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 32, __pyx_L1_error)
@@ -10606,13 +9424,6 @@ if (!__Pyx_RefNanny) {
   }
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":33
- * 
- * class ReplenishBalanceState(StatesGroup):
- *     choosing_amount_yoomoney = State()             # <<<<<<<<<<<<<<
- *     waiting_for_payment_confirmation_yoomoney = State()
- *     entering_custom_amount_yoomoney = State()
- */
   __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_State); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 33, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_7);
   __pyx_t_8 = NULL;
@@ -10640,13 +9451,6 @@ if (!__Pyx_RefNanny) {
   if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_n_s_choosing_amount_yoomoney, __pyx_t_2) < 0) __PYX_ERR(0, 33, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":34
- * class ReplenishBalanceState(StatesGroup):
- *     choosing_amount_yoomoney = State()
- *     waiting_for_payment_confirmation_yoomoney = State()             # <<<<<<<<<<<<<<
- *     entering_custom_amount_yoomoney = State()
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_State); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 34, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_7);
   __pyx_t_8 = NULL;
@@ -10674,13 +9478,6 @@ if (!__Pyx_RefNanny) {
   if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_n_s_waiting_for_payment_confirmation, __pyx_t_2) < 0) __PYX_ERR(0, 34, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":35
- *     choosing_amount_yoomoney = State()
- *     waiting_for_payment_confirmation_yoomoney = State()
- *     entering_custom_amount_yoomoney = State()             # <<<<<<<<<<<<<<
- * 
- * 
- */
   __Pyx_GetModuleGlobalName(__pyx_t_7, __pyx_n_s_State); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 35, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_7);
   __pyx_t_8 = NULL;
@@ -10708,13 +9505,6 @@ if (!__Pyx_RefNanny) {
   if (__Pyx_SetNameInClass(__pyx_t_6, __pyx_n_s_entering_custom_amount_yoomoney, __pyx_t_2) < 0) __PYX_ERR(0, 35, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":32
- * 
- * 
- * class ReplenishBalanceState(StatesGroup):             # <<<<<<<<<<<<<<
- *     choosing_amount_yoomoney = State()
- *     waiting_for_payment_confirmation_yoomoney = State()
- */
   __pyx_t_2 = __Pyx_Py3ClassCreate(__pyx_t_3, __pyx_n_s_ReplenishBalanceState, __pyx_t_5, __pyx_t_6, NULL, 0, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 32, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_ReplenishBalanceState, __pyx_t_2) < 0) __PYX_ERR(0, 32, __pyx_L1_error)
@@ -10723,13 +9513,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":38
- * 
- * 
- * @router.callback_query(F.data == "pay_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_callback_pay_yoomoney(
- *     callback_query: types.CallbackQuery, state: FSMContext, session: Any
- */
   __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_router); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 38, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_callback_query); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 38, __pyx_L1_error)
@@ -10762,13 +9545,6 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_process_callback_pay_yoomoney, __pyx_t_5) < 0) __PYX_ERR(0, 38, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":98
- * 
- * 
- * @router.callback_query(F.data.startswith("yoomoney_amount"))             # <<<<<<<<<<<<<<
- * async def process_amount_selection(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
   __Pyx_GetModuleGlobalName(__pyx_t_5, __pyx_n_s_router); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 98, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   __pyx_t_3 = __Pyx_PyObject_GetAttrStr(__pyx_t_5, __pyx_n_s_callback_query); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 98, __pyx_L1_error)
@@ -10804,13 +9580,6 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_process_amount_selection, __pyx_t_6) < 0) __PYX_ERR(0, 98, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":135
- * 
- * 
- * async def yoomoney_webhook(request: web.Request):             # <<<<<<<<<<<<<<
- *     data = await request.post()
- *     logger.debug(f"Webhook event received: {data}")
- */
   __pyx_t_6 = __Pyx_PyDict_NewPresized(1); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 135, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_6);
   if (PyDict_SetItem(__pyx_t_6, __pyx_n_s_request, __pyx_kp_s_web_Request) < 0) __PYX_ERR(0, 135, __pyx_L1_error)
@@ -10821,13 +9590,6 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_yoomoney_webhook, __pyx_t_3) < 0) __PYX_ERR(0, 135, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":166
- * 
- * 
- * @router.callback_query(F.data == "enter_custom_amount_yoomoney")             # <<<<<<<<<<<<<<
- * async def process_enter_custom_amount(
- *     callback_query: types.CallbackQuery, state: FSMContext
- */
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_router); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 166, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_callback_query); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 166, __pyx_L1_error)
@@ -10859,13 +9621,6 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_process_enter_custom_amount, __pyx_t_3) < 0) __PYX_ERR(0, 166, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":181
- * 
- * 
- * @router.message(ReplenishBalanceState.entering_custom_amount_yoomoney)             # <<<<<<<<<<<<<<
- * async def process_custom_amount_input(message: types.Message, state: FSMContext):
- *     if message.text.isdigit():
- */
   __Pyx_GetModuleGlobalName(__pyx_t_3, __pyx_n_s_router); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 181, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __pyx_t_6 = __Pyx_PyObject_GetAttrStr(__pyx_t_3, __pyx_n_s_message); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 181, __pyx_L1_error)
@@ -10895,11 +9650,6 @@ if (!__Pyx_RefNanny) {
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_process_custom_amount_input, __pyx_t_5) < 0) __PYX_ERR(0, 181, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_5); __pyx_t_5 = 0;
 
-  /* "handlers/payments/yoomoney_pay.py":1
- * import hashlib             # <<<<<<<<<<<<<<
- * from typing import Any
- * 
- */
   __pyx_t_5 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_5)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_5);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_test, __pyx_t_5) < 0) __PYX_ERR(0, 1, __pyx_L1_error)

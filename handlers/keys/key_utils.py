@@ -10,7 +10,9 @@ from handlers.utils import get_least_loaded_cluster
 from logger import logger
 
 
-async def create_key_on_cluster(cluster_id: str, tg_id: int, client_id: str, email: str, expiry_timestamp: int):
+async def create_key_on_cluster(
+    cluster_id: str, tg_id: int, client_id: str, email: str, expiry_timestamp: int, plan: int = None
+):
     """
     Создает ключ на всех серверах указанного кластера.
     """
@@ -26,24 +28,12 @@ async def create_key_on_cluster(cluster_id: str, tg_id: int, client_id: str, ema
         if SUPERNODE:
             for server_info in cluster:
                 await create_client_on_server(
-                    server_info,
-                    tg_id,
-                    client_id,
-                    email,
-                    expiry_timestamp,
-                    semaphore,
+                    server_info, tg_id, client_id, email, expiry_timestamp, semaphore, plan=plan
                 )
         else:
             await asyncio.gather(
                 *(
-                    create_client_on_server(
-                        server,
-                        tg_id,
-                        client_id,
-                        email,
-                        expiry_timestamp,
-                        semaphore,
-                    )
+                    create_client_on_server(server, tg_id, client_id, email, expiry_timestamp, semaphore, plan=plan)
                     for server in cluster
                 )
             )
@@ -60,6 +50,7 @@ async def create_client_on_server(
     email: str,
     expiry_timestamp: int,
     semaphore: asyncio.Semaphore,
+    plan: int = None,
 ):
     """
     Создает клиента на указанном сервере.
@@ -85,6 +76,8 @@ async def create_client_on_server(
             unique_email = email
             sub_id = unique_email
 
+        total_gb_value = int(TOTAL_GB) if plan is None else int(plan) * int(TOTAL_GB)
+
         await add_client(
             xui,
             ClientConfig(
@@ -92,7 +85,7 @@ async def create_client_on_server(
                 email=unique_email,
                 tg_id=tg_id,
                 limit_ip=LIMIT_IP,
-                total_gb=TOTAL_GB,
+                total_gb=total_gb_value,
                 expiry_time=expiry_timestamp,
                 enable=True,
                 flow="xtls-rprx-vision",

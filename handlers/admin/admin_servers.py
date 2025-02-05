@@ -414,22 +414,18 @@ async def handle_clusters_backup(
             )
             return
 
-        servers = await get_servers(session)
-        cluster_servers = servers.get(cluster_name, [])
-
         for key in keys_to_sync:
-            for _server in cluster_servers:
-                try:
-                    await create_key_on_cluster(
-                        cluster_name,
-                        key["tg_id"],
-                        key["client_id"],
-                        key["email"],
-                        key["expiry_time"],
-                    )
-                    await asyncio.sleep(0.6)
-                except Exception as e:
-                    logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
+            try:
+                await create_key_on_cluster(
+                    cluster_name,
+                    key["tg_id"],
+                    key["client_id"],
+                    key["email"],
+                    key["expiry_time"],
+                )
+                await asyncio.sleep(0.6)
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
 
         await callback_query.message.answer(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",

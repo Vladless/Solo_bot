@@ -54,8 +54,8 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
     try:
         await state.clear()
-    except Exception as e:
-        logger.warning(f"Не удалось очистить состояние для пользователя {message.chat.id}: {e}")
+    except Exception:
+        pass
 
     if CAPTCHA_ENABLE and captcha:
         captcha_data = await generate_captcha(message, state)
@@ -67,6 +67,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
             member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
             if member.status not in ["member", "administrator", "creator"]:
                 builder = InlineKeyboardBuilder()
+                await state.update_data(original_text=message.text)
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
                 await message.answer(
                     f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
@@ -86,8 +87,11 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     await process_start_logic(message, state, session, admin)
 
 
-async def process_start_logic(message: Message, state: FSMContext, session: Any, admin: bool):
-    if message.text:
+async def process_start_logic(
+    message: Message, state: FSMContext, session: Any, admin: bool, text_to_process: str = None
+):
+    text = text_to_process if text_to_process is not None else message.text
+    if text:
         try:
             connection_exists = await check_connection_exists(message.chat.id)
             logger.info(f"Проверка существования подключения: {connection_exists}")
@@ -96,16 +100,15 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                 await add_connection(tg_id=message.chat.id, session=session)
                 logger.info(f"Пользователь {message.chat.id} успешно добавлен в базу данных.")
 
-            if "coupons_" in message.text:
-                logger.info(f"Обнаружена ссылка на купон: {message.text}")
-                coupon_code = message.text.split("coupons_")[1].strip()
+            if "coupons_" in text:
+                logger.info(f"Обнаружена ссылка на купон: {text}")
+                coupon_code = text.split("coupons_")[1].strip()
                 logger.info(f"Пользователь {message.chat.id} ввёл купон: {coupon_code}")
 
                 coupon = await session.fetchrow(
                     "SELECT id, code, amount, usage_limit, usage_count, is_used FROM coupons WHERE code = $1",
                     coupon_code,
                 )
-
                 if coupon is None:
                     logger.warning(f"Купон {coupon_code} не найден.")
                     await message.answer("❌ Купон не найден!")
@@ -116,7 +119,6 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                     coupon["id"],
                     message.chat.id,
                 )
-
                 if usage_exists:
                     logger.info(f"Пользователь {message.chat.id} уже активировал купон {coupon_code}.")
                     await message.answer("❌ Вы уже использовали этот купон!")
@@ -152,7 +154,7 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                 await message.answer(f"🎉 Ваш баланс пополнен на {coupon['amount']} RUB по купону!")
                 return await show_start_menu(message, admin, session)
 
-            if "gift_" in message.text:
+            if "gift_" in text:
                 logger.info(f"Обнаружена ссылка на подарок: {message.text}")
                 parts = message.text.split("gift_")[1].split("_")
                 gift_id = parts[0]
@@ -219,7 +221,7 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
                 logger.info(f"Подарок на {selected_months} месяцев активирован для пользователя {recipient_tg_id}.")
                 return
 
-            elif "referral_" in message.text:
+            elif "referral_" in text:
                 try:
                     referrer_tg_id = int(message.text.split("referral_")[1])
 
@@ -262,16 +264,11 @@ async def process_start_logic(message: Message, state: FSMContext, session: Any,
 async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback_query.from_user.id
     logger.info(f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}")
-
     try:
-        logger.info(f"[CALLBACK] Запрос информации о подписке для пользователя {user_id} на канал {CHANNEL_ID}")
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         logger.info(f"[CALLBACK] Статус подписки пользователя {user_id}: {member.status}")
 
         if member.status not in ["member", "administrator", "creator"]:
-            logger.info(
-                f"[CALLBACK] Пользователь {user_id} НЕ подписан на канал {CHANNEL_ID}. Текущий статус: {member.status}"
-            )
             await callback_query.answer("Вы еще не подписаны на канал!", show_alert=True)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
@@ -279,16 +276,12 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
                 f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
                 reply_markup=builder.as_markup(),
             )
-            logger.info(f"[CALLBACK] Обновлено сообщение с приглашением подписаться для пользователя {user_id}")
         else:
-            logger.info(f"[CALLBACK] Пользователь {user_id} подписан на канал {CHANNEL_ID} - подписка подтверждена")
             await callback_query.answer("Подписка подтверждена!")
-            logger.info(
-                f"[CALLBACK] Перед вызовом process_start_logic для пользователя {user_id}. Текущее сообщение: {callback_query.message.text}"
-            )
-            await process_start_logic(callback_query.message, state, session, admin)
+            data = await state.get_data()
+            original_text = data.get("original_text", callback_query.message.text)
+            await process_start_logic(callback_query.message, state, session, admin, text_to_process=original_text)
             logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
-
     except Exception as e:
         logger.error(f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}", exc_info=True)
         await callback_query.answer("Ошибка проверки подписки, повторите попытку", show_alert=True)

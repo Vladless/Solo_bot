@@ -18,7 +18,7 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-version = "4.0.0-Alpha(01-dev)"
+version = "4.0.0-Alpha(06-dev)"
 
 register_middleware(dp)
 
@@ -41,6 +41,7 @@ async def errors_handler(
         if (
             "query is too old and response timeout expired or query ID is invalid" in error_message
             or "message can't be deleted for everyone" in error_message
+            or "message to delete not found" in error_message
         ):
             logger.warning("Отправляем стартовое меню.")
 
