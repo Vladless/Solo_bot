@@ -558,20 +558,29 @@ async def update_balance(tg_id: int, amount: float, session: Any = None):
         extra = amount * (CASHBACK / 100.0) if (CASHBACK > 0 and amount > 0) else 0
         total_amount = int(amount + extra)
 
+        current_balance = await session.fetchval(
+            "SELECT balance FROM connections WHERE tg_id = $1", tg_id
+        )
+
+        if current_balance is None:
+            current_balance = 0
+
+        new_balance = int(current_balance) + total_amount
+
         await session.execute(
             """
             UPDATE connections
-            SET balance = balance + $1
+            SET balance = $1
             WHERE tg_id = $2
             """,
-            total_amount,
+            new_balance,
             tg_id,
         )
         logger.info(
-            f"Баланс пользователя {tg_id} обновлен на сумму {total_amount} (исходная сумма {amount}, кэшбек {extra})"
+            f"Баланс пользователя {tg_id} обновлен. Было: {int(current_balance)}, пополнение: {total_amount}, стало: {new_balance}"
         )
 
-        await handle_referral_on_balance_update(tg_id, amount)
+        await handle_referral_on_balance_update(tg_id, int(amount))
 
     except Exception as e:
         logger.error(f"Ошибка при обновлении баланса для пользователя {tg_id}: {e}")
