@@ -12,6 +12,8 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -21,8 +23,6 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
-
-from bot import bot
 from database import (
     add_connection,
     add_referral,

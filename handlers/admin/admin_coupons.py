@@ -4,8 +4,8 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-from config import USERNAME_BOT
 
+from config import USERNAME_BOT
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from keyboards.admin.coupons_kb import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
@@ -86,7 +86,8 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
         text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
             f"💰 Сумма: <b>{coupon_amount} рублей</b> \n"
-            f"🔢 Лимит использования: <b>{usage_limit} раз</b>"
+            f"🔢 Лимит использования: <b>{usage_limit} раз</b>\n"
+            f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}</code>\n"
         )
 
         await message.answer(text=text, reply_markup=kb)

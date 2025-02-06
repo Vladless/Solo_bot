@@ -9,6 +9,8 @@ from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from py3xui import AsyncApi
+
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -23,8 +25,6 @@ from config import (
     TOTAL_GB,
     TRIAL_TIME,
 )
-from py3xui import AsyncApi
-
 from database import (
     add_notification,
     check_notification_time,

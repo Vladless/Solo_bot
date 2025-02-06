@@ -23,9 +23,10 @@ def build_coupons_list_kb(coupons: list) -> InlineKeyboardMarkup:
     for coupon in coupons:
         coupon_code = coupon["code"]
         builder.button(
-            text=f"❌ Удалить {coupon_code}",
+            text=f"❌{coupon_code}",
             callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code).pack(),
         )
 
     builder.row(build_admin_back_btn("coupons"))
+    builder.adjust(2)
     return builder.as_markup()
