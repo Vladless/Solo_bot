@@ -4,8 +4,8 @@ from typing import Any
 
 import asyncpg
 import pytz
-
 from config import CASHBACK, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 
@@ -556,7 +556,7 @@ async def update_balance(tg_id: int, amount: float, session: Any = None):
             session = conn
 
         extra = amount * (CASHBACK / 100.0) if (CASHBACK > 0 and amount > 0) else 0
-        total_amount = amount + extra
+        total_amount = int(amount + extra)
 
         await session.execute(
             """

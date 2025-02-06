@@ -6,10 +6,10 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, delete_server, get_servers
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
@@ -264,7 +264,7 @@ async def handle_servers_availability(
     cluster_servers = servers.get(cluster_name, [])
 
     if not cluster_servers:
-        await callback_query.message.answer(text=f"Кластер '{cluster_name}' не содержит серверов.")
+        await callback_query.message.edit_text(text=f"Кластер '{cluster_name}' не содержит серверов.")
         return
 
     text = (
@@ -272,23 +272,22 @@ async def handle_servers_availability(
         "Это может занять до 1 минуты, пожалуйста, подождите..."
     )
 
-    in_progress_message = await callback_query.message.answer(text=text)
+    await callback_query.message.edit_text(text=text)
 
-    text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
+    result_text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
 
     for server in cluster_servers:
         xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
         try:
             await xui.login()
-
             online_users = len(await xui.client.online())
-            text += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
+            result_text += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
 
         except Exception as e:
-            text += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
+            result_text += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
 
-    await in_progress_message.edit_text(text=text, reply_markup=build_admin_back_kb("servers"))
+    await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("servers"))
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "servers_manage"), IsAdminFilter())

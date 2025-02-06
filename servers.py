@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 import asyncpg
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from database import check_unique_server_name, create_server, get_servers
 from logger import logger
 
