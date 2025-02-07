@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import py3xui
-from config import LIMIT_IP, SUPERNODE
 
+from config import LIMIT_IP, SUPERNODE
 from logger import logger
 
 
@@ -155,3 +155,30 @@ async def delete_client(
     except Exception as e:
         logger.error(f"Ошибка при удалении клиента с ID {client_id}: {e}")
         return False
+
+
+async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, Any]:
+    """
+    Получает информацию о трафике пользователя по client_id.
+
+    Args:
+        xui: Экземпляр API клиента
+        client_id: UUID клиента
+
+    Returns:
+        dict[str, Any]: Информация о трафике пользователя или ошибка
+    """
+    try:
+        await xui.login()
+        traffic_data = await xui.client.get_traffic_by_id(client_id)
+
+        if not traffic_data:
+            logger.warning(f"Трафик для клиента {client_id} не найден.")
+            return {"status": "not_found", "client_id": client_id}
+
+        logger.info(f"Трафик для клиента {client_id} успешно получен.")
+        return {"status": "success", "client_id": client_id, "traffic": traffic_data}
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
+        return {"status": "error", "error": str(e)}

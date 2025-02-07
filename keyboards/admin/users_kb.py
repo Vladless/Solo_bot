@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import RENEWAL_PRICES
 
+from config import RENEWAL_PRICES
 from keyboards.admin.panel_kb import build_admin_back_btn
 
 
@@ -165,6 +165,10 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder.button(
         text="❌ Удалить",
         callback_data=AdminUserEditorCallback(action="users_delete_key", data=email, tg_id=key_details["tg_id"]).pack(),
+    )
+    builder.button(
+        text="📊 Трафик",
+        callback_data=AdminUserEditorCallback(action="users_traffic", data=email, tg_id=key_details["tg_id"]).pack(),
     )
     builder.row(build_editor_back_btn(key_details["tg_id"], True))
     builder.adjust(1)

@@ -189,15 +189,20 @@ async def view_tariffs_handler(callback_query: CallbackQuery):
 async def invite_handler(callback_query: CallbackQuery):
     chat_id = callback_query.message.chat.id
     referral_link = get_referral_link(chat_id)
-
     referral_stats = await get_referral_stats(chat_id)
+    invite_text = f"\nПриглашаю тебя пользоваться действительно быстрым VPN вместе:\n\n{referral_link}"
 
     invite_message = invite_message_send(referral_link, referral_stats)
-
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.button(
+        text="📢 Поделиться",
+        switch_inline_query=invite_text
+    )
+    builder.button(text="👤 Личный кабинет", callback_data="profile")
+    builder.adjust(1)
+
     if os.path.isfile(image_path):
         async with aiofiles.open(image_path, "rb") as image_file:
             image_data = await image_file.read()

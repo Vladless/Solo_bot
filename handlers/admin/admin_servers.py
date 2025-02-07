@@ -275,6 +275,7 @@ async def handle_servers_availability(
     await callback_query.message.edit_text(text=text)
 
     result_text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
+    total_online_users = 0
 
     for server in cluster_servers:
         xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
@@ -282,10 +283,13 @@ async def handle_servers_availability(
         try:
             await xui.login()
             online_users = len(await xui.client.online())
+            total_online_users += online_users
             result_text += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
 
         except Exception as e:
             result_text += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
+
+    result_text += f"\n👥 Общее количество активных пользователей в кластере: {total_online_users}."
 
     await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("servers"))
 

@@ -1,10 +1,10 @@
 import asyncio
 from typing import Any
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB
 from py3xui import AsyncApi
 
-from client import ClientConfig, add_client, delete_client, extend_client_key
+from client import ClientConfig, add_client, delete_client, extend_client_key, get_client_traffic
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, USE_COUNTRY_SELECTION
 from database import get_servers, store_key
 from handlers.utils import get_least_loaded_cluster
 from logger import logger
@@ -277,3 +277,69 @@ async def update_subscription(tg_id: int, email: str, session: Any) -> None:
         server_id=least_loaded_cluster_id,
         session=session,
     )
+
+
+async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, Any]:
+    """
+    Получает трафик пользователя на всех серверах, где у него есть ключ.
+
+    Args:
+        session (Any): Сессия базы данных.
+        tg_id (int): ID пользователя Telegram.
+        email (str): Email пользователя.
+
+    Returns:
+        dict[str, Any]: Структура с данными о трафике.
+    """
+    logger.info(f"🔍 Получаем ключи для пользователя {email} (TG ID: {tg_id})")
+
+    query = "SELECT client_id, server_id FROM keys WHERE tg_id = $1 AND email = $2"
+    rows = await session.fetch(query, tg_id, email)
+
+    if not rows:
+        return {"status": "error", "message": "❌ У пользователя нет активных ключей."}
+
+    server_ids = {row["server_id"] for row in rows}
+    logger.info(f"🖥️ Серверы/Кластеры пользователя: {server_ids}")
+
+    if USE_COUNTRY_SELECTION:
+        query_servers = "SELECT server_name, api_url FROM servers WHERE server_name = ANY($1)"
+        filter_ids = list(server_ids)
+    else:
+        query_servers = "SELECT server_name, api_url FROM servers WHERE cluster_name = ANY($1)"
+        filter_ids = list(server_ids)
+
+    server_rows = await session.fetch(query_servers, filter_ids)
+
+    if not server_rows:
+        logger.error(f"❌ Не найдено серверов для: {server_ids}")
+        return {"status": "error", "message": f"❌ Серверы не найдены: {', '.join(server_ids)}"}
+
+    servers_map = {row["server_name"]: row["api_url"] for row in server_rows}
+    logger.info(f"✅ Найденные серверы: {list(servers_map.keys())}")
+
+    user_traffic_data = {}
+
+    for row in rows:
+        client_id = row["client_id"]
+
+        for server, api_url in servers_map.items():
+            if not USE_COUNTRY_SELECTION and server not in servers_map:
+                continue
+
+            xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+            try:
+                traffic_info = await get_client_traffic(xui, client_id)
+
+                if traffic_info["status"] == "success" and traffic_info["traffic"]:
+                    client_data = traffic_info["traffic"][0]
+                    used_gb = (client_data.up + client_data.down) / 1073741824
+                    user_traffic_data[server] = round(used_gb, 2)
+                else:
+                    user_traffic_data[server] = "Ошибка получения трафика"
+
+            except Exception as e:
+                user_traffic_data[server] = f"Ошибка: {e}"
+
+    return {"status": "success", "traffic": user_traffic_data}

@@ -20,11 +20,7 @@ from database import (
     update_trial,
 )
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import (
-    delete_key_from_cluster,
-    renew_key_in_cluster,
-    update_subscription,
-)
+from handlers.keys.key_utils import delete_key_from_cluster, get_user_traffic, renew_key_in_cluster, update_subscription
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
 from keyboards.admin.users_kb import (
@@ -673,3 +669,33 @@ async def set_user_balance(tg_id: int, balance: int, session: Any) -> None:
         )
     except Exception as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_traffic"), IsAdminFilter())
+async def handle_user_traffic(
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
+):
+    """
+    Обработчик кнопки "📊 Трафик".
+    Получает трафик пользователя и отправляет администратору.
+    """
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    await callback_query.message.edit_text("⏳ Получаем данные о трафике, пожалуйста, подождите...")
+
+    traffic_data = await get_user_traffic(session, tg_id, email)
+
+    if traffic_data["status"] == "error":
+        await callback_query.message.edit_text(traffic_data["message"], reply_markup=build_editor_kb(tg_id, True))
+        return
+
+    result_text = f"📊 Трафик ключа {email}:\n\n"
+
+    for server, traffic in traffic_data["traffic"].items():
+        if isinstance(traffic, str):
+            result_text += f"❌ {server}: {traffic}\n"
+        else:
+            result_text += f"🌍 {server}: {traffic} ГБ\n"
+
+    await callback_query.message.edit_text(result_text, reply_markup=build_editor_kb(tg_id, True))
