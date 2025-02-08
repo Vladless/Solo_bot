@@ -139,11 +139,7 @@ async def process_10h_record(record, bot, conn):
     if time_left.total_seconds() <= 0:
         days_left_message = "Ключ истек"
     else:
-        days_left_message = (
-            f"{time_left.days}"
-            if time_left.days > 0
-            else f"{time_left.seconds // 3600}"
-        )
+        days_left_message = f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
 
     message = KEY_EXPIRY_10H.format(
         email=email,
@@ -171,20 +167,22 @@ async def process_10h_record(record, bot, conn):
 
             # После УСПЕШНОГО продления сбрасываем оба флага уведомлений,
             # чтобы через ~24ч и 10ч до НОВОГО истечения пользователь получил уведомления заново.
-            await conn.execute("""
+            await conn.execute(
+                """
                 UPDATE keys
                    SET notified = FALSE,
                        notified_24h = FALSE,
                        expiry_time = $2
                  WHERE client_id = $1
-            """, client_id, new_expiry_time)
+            """,
+                client_id,
+                new_expiry_time,
+            )
 
             # Шлём уведомление об успешном продлении
             image_path = os.path.join("img", "notify_10h.jpg")
             keyboard = types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]
-                ]
+                inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
             )
 
             if os.path.isfile(image_path):
@@ -197,11 +195,7 @@ async def process_10h_record(record, bot, conn):
                         reply_markup=keyboard,
                     )
             else:
-                await bot.send_message(
-                    tg_id,
-                    text=KEY_RENEWED.format(email=email),
-                    reply_markup=keyboard
-                )
+                await bot.send_message(tg_id, text=KEY_RENEWED.format(email=email), reply_markup=keyboard)
 
             logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
@@ -219,7 +213,7 @@ async def process_10h_record(record, bot, conn):
             conn=conn,
             client_id=client_id,
             flag="notified",  # уведомление за 10 часов
-            image_name="notify_10h.jpg"  # чтобы отличать картинки для 10h и 24h
+            image_name="notify_10h.jpg",  # чтобы отличать картинки для 10h и 24h
         )
 
 
@@ -263,11 +257,7 @@ async def process_24h_record(record, bot, conn):
     if time_left.total_seconds() <= 0:
         days_left_message = "Ключ истек"
     else:
-        days_left_message = (
-            f"{time_left.days}"
-            if time_left.days > 0
-            else f"{time_left.seconds // 3600}"
-        )
+        days_left_message = f"{time_left.days}" if time_left.days > 0 else f"{time_left.seconds // 3600}"
 
     message_24h = KEY_EXPIRY_24H.format(
         email=email,
@@ -291,13 +281,17 @@ async def process_24h_record(record, bot, conn):
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
 
             # Сбрасываем уведомления к новому сроку
-            await conn.execute("""
+            await conn.execute(
+                """
                 UPDATE keys
                    SET notified = FALSE,
                        notified_24h = FALSE,
                        expiry_time = $2
                  WHERE client_id = $1
-            """, client_id, new_expiry_time)
+            """,
+                client_id,
+                new_expiry_time,
+            )
 
             # Отправляем сообщение об успешном продлении
             image_path = os.path.join("img", "notify_24h.jpg")
@@ -315,11 +309,7 @@ async def process_24h_record(record, bot, conn):
                         reply_markup=keyboard,
                     )
             else:
-                await bot.send_message(
-                    tg_id,
-                    text=KEY_RENEWED.format(email=email),
-                    reply_markup=keyboard
-                )
+                await bot.send_message(tg_id, text=KEY_RENEWED.format(email=email), reply_markup=keyboard)
 
             logger.info(f"Уведомление об успешном продлении (24h) отправлено клиенту {tg_id}.")
 
@@ -336,7 +326,7 @@ async def process_24h_record(record, bot, conn):
             conn=conn,
             client_id=client_id,
             flag="notified_24h",
-            image_name="notify_24h.jpg"
+            image_name="notify_24h.jpg",
         )
 
 
@@ -464,9 +454,9 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: float):
     """
-    Обрабатываем ключи, которые уже истекли: 
-    если включено автопродление и у пользователя достаточно баланса, 
-    продлеваем. Иначе, ждём какое-то время (DELETE_KEYS_DELAY), 
+    Обрабатываем ключи, которые уже истекли:
+    если включено автопродление и у пользователя достаточно баланса,
+    продлеваем. Иначе, ждём какое-то время (DELETE_KEYS_DELAY),
     после чего удаляем ключ.
     """
     logger.info("Проверка подписок, срок действия которых скоро истекает или уже истек.")
@@ -515,9 +505,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 await process_key(record, bot, conn, current_time)
                 if time_since_expiry >= DELETE_KEYS_DELAY * 1000:
                     await delete_key_from_cluster(
-                        cluster_id=record["server_id"], 
-                        email=record["email"], 
-                        client_id=record["client_id"]
+                        cluster_id=record["server_id"], email=record["email"], client_id=record["client_id"]
                     )
                     await delete_key(record["client_id"], conn)
                     logger.info(f"Подписка {record['client_id']} удалена")
@@ -579,8 +567,7 @@ async def process_key(record, bot, conn, current_time, renew=False):
     current_date = datetime.now(moscow_tz)
 
     logger.info(
-        f"Время истечения подписки: {expiry_time_value} (МСК: {expiry_date}),"
-        f" текущее время (МСК): {current_date}"
+        f"Время истечения подписки: {expiry_time_value} (МСК: {expiry_date}), текущее время (МСК): {current_date}"
     )
 
     current_time_utc = int(datetime.utcnow().timestamp() * 1000)
@@ -598,9 +585,7 @@ async def process_key(record, bot, conn, current_time, renew=False):
                     )
                     remaining_time = (expiry_time_value + DELETE_KEYS_DELAY * 1000) - current_time_utc
                     if remaining_time > 0:
-                        message += (
-                            f"⏳ Подписка будет удалена через ~{remaining_time // 1000} секунд."
-                        )
+                        message += f"⏳ Подписка будет удалена через ~{remaining_time // 1000} секунд."
 
                     await send_notification(bot, tg_id, message, "notify_expired.jpg", email)
                 else:
@@ -624,13 +609,17 @@ async def process_key(record, bot, conn, current_time, renew=False):
                 logger.info(f"Подписка {tg_id} продлена в кластере {cluster_id}.")
 
             # После продления сбрасываем флаги
-            await conn.execute("""
+            await conn.execute(
+                """
                 UPDATE keys
                    SET notified = FALSE,
                        notified_24h = FALSE,
                        expiry_time = $2
                  WHERE client_id = $1
-            """, client_id, new_expiry_time)
+            """,
+                client_id,
+                new_expiry_time,
+            )
 
             try:
                 image_path = os.path.join("img", "notify_expired.jpg")
