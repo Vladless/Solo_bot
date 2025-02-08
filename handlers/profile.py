@@ -196,10 +196,7 @@ async def invite_handler(callback_query: CallbackQuery):
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="📢 Поделиться",
-        switch_inline_query=invite_text
-    )
+    builder.button(text="📢 Поделиться", switch_inline_query=invite_text)
     builder.button(text="👤 Личный кабинет", callback_data="profile")
     builder.adjust(1)
 
