@@ -11,12 +11,8 @@ from logger import logger
 
 # --------------------- Temporary Data --------------------- #
 
-async def create_temporary_data(
-    session: asyncpg.Connection,
-    tg_id: int,
-    state: str,
-    data: dict
-) -> None:
+
+async def create_temporary_data(session: asyncpg.Connection, tg_id: int, state: str, data: dict) -> None:
     """
     Сохраняет временные данные пользователя.
     """
@@ -34,42 +30,30 @@ async def create_temporary_data(
     )
 
 
-async def get_temporary_data(
-    session: asyncpg.Connection,
-    tg_id: int
-) -> Optional[dict]:
+async def get_temporary_data(session: asyncpg.Connection, tg_id: int) -> Optional[dict]:
     """
     Извлекает временные данные пользователя.
     """
-    result = await session.fetchrow(
-        "SELECT state, data FROM temporary_data WHERE tg_id = $1",
-        tg_id
-    )
+    result = await session.fetchrow("SELECT state, data FROM temporary_data WHERE tg_id = $1", tg_id)
     if result:
         return {"state": result["state"], "data": json.loads(result["data"])}
     return None
 
-#TODO delete_temporary_data
 
-async def clear_temporary_data(
-    session: asyncpg.Connection,
-    tg_id: int
-) -> None:
+# TODO delete_temporary_data
+
+
+async def clear_temporary_data(session: asyncpg.Connection, tg_id: int) -> None:
     """
     Удаляет временные данные пользователя.
     """
-    await session.execute(
-        "DELETE FROM temporary_data WHERE tg_id = $1",
-        tg_id
-    )
+    await session.execute("DELETE FROM temporary_data WHERE tg_id = $1", tg_id)
 
 
 # --------------------- Blocked Users --------------------- #
 
-async def create_blocked_user(
-    tg_id: int,
-    conn: asyncpg.Connection
-) -> None:
+
+async def create_blocked_user(tg_id: int, conn: asyncpg.Connection) -> None:
     await conn.execute(
         """
         INSERT INTO blocked_users (tg_id)
@@ -80,10 +64,7 @@ async def create_blocked_user(
     )
 
 
-async def delete_blocked_user(
-    tg_id: Union[int, List[int]],
-    conn: asyncpg.Connection
-) -> None:
+async def delete_blocked_user(tg_id: Union[int, List[int]], conn: asyncpg.Connection) -> None:
     """
     Удаляет пользователя или список пользователей из списка заблокированных.
 
@@ -104,11 +85,12 @@ async def delete_blocked_user(
 
 # --------------------- DB Initialization --------------------- #
 
+
 async def init_db(file_path: str = "assets/schema.sql") -> None:
     """
     Инициализирует базу данных, выполняя SQL-скрипты из указанного файла.
     """
-    with open(file_path, 'r', encoding='utf-8') as file:
+    with open(file_path, "r", encoding="utf-8") as file:
         sql_content = file.read()
 
     statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
@@ -126,10 +108,9 @@ async def init_db(file_path: str = "assets/schema.sql") -> None:
 
 # --------------------- Servers --------------------- #
 
+
 async def check_unique_server_name(
-    server_name: str,
-    session: asyncpg.Connection,
-    cluster_name: Optional[str] = None
+    server_name: str, session: asyncpg.Connection, cluster_name: Optional[str] = None
 ) -> bool:
     """
     Проверяет уникальность имени сервера.
@@ -156,10 +137,7 @@ async def check_unique_server_name(
     return result is None
 
 
-async def check_server_name_by_cluster(
-    server_name: str,
-    session: asyncpg.Connection
-) -> Optional[dict]:
+async def check_server_name_by_cluster(server_name: str, session: asyncpg.Connection) -> Optional[dict]:
     """
     Проверяет принадлежность сервера к кластеру.
     """
@@ -188,7 +166,7 @@ async def create_server(
     api_url: str,
     subscription_url: str,
     inbound_id: int,
-    session: asyncpg.Connection
+    session: asyncpg.Connection,
 ) -> None:
     """
     Добавляет новый сервер в базу данных.
@@ -211,10 +189,7 @@ async def create_server(
         raise
 
 
-async def delete_server(
-    server_name: str,
-    session: asyncpg.Connection
-) -> None:
+async def delete_server(server_name: str, session: asyncpg.Connection) -> None:
     """
     Удаляет сервер из базы данных по его названию.
     """
@@ -283,12 +258,8 @@ async def get_servers(session: asyncpg.Connection = None) -> dict:
 
 # --------------------- Coupons --------------------- #
 
-async def create_coupon(
-    coupon_code: str,
-    amount: float,
-    usage_limit: int,
-    session: asyncpg.Connection
-) -> None:
+
+async def create_coupon(coupon_code: str, amount: float, usage_limit: int, session: asyncpg.Connection) -> None:
     """
     Создает новый купон в базе данных.
     """
@@ -308,10 +279,7 @@ async def create_coupon(
         raise
 
 
-async def get_coupon_by_code(
-    coupon_code: str,
-    session: asyncpg.Connection
-) -> Optional[dict]:
+async def get_coupon_by_code(coupon_code: str, session: asyncpg.Connection) -> Optional[dict]:
     """
     Получает информацию о купоне по его коду.
     """
@@ -332,11 +300,7 @@ async def get_coupon_by_code(
         raise
 
 
-async def get_all_coupons(
-    session: asyncpg.Connection,
-    page: int = 1,
-    per_page: int = 10
-) -> dict:
+async def get_all_coupons(session: asyncpg.Connection, page: int = 1, per_page: int = 10) -> dict:
     """
     Получает список купонов из базы данных с пагинацией.
     """
@@ -370,10 +334,7 @@ async def get_all_coupons(
         return {"coupons": [], "total": 0, "pages": 0, "current_page": page}
 
 
-async def delete_coupon(
-    coupon_code: str,
-    session: asyncpg.Connection
-) -> bool:
+async def delete_coupon(coupon_code: str, session: asyncpg.Connection) -> bool:
     """
     Удаляет купон из базы данных по его коду.
     """
@@ -403,11 +364,7 @@ async def delete_coupon(
         return False
 
 
-async def create_coupon_usage(
-    coupon_id: int,
-    user_id: int,
-    session: asyncpg.Connection
-) -> None:
+async def create_coupon_usage(coupon_id: int, user_id: int, session: asyncpg.Connection) -> None:
     """
     Создаёт запись об использовании купона в базе данных.
     """
@@ -427,11 +384,7 @@ async def create_coupon_usage(
         raise
 
 
-async def check_coupon_usage(
-    coupon_id: int,
-    user_id: int,
-    session: asyncpg.Connection
-) -> bool:
+async def check_coupon_usage(coupon_id: int, user_id: int, session: asyncpg.Connection) -> bool:
     """
     Проверяет, использовал ли пользователь данный купон.
     """
@@ -451,10 +404,7 @@ async def check_coupon_usage(
         raise
 
 
-async def update_coupon_usage_count(
-    coupon_id: int,
-    session: asyncpg.Connection
-) -> None:
+async def update_coupon_usage_count(coupon_id: int, session: asyncpg.Connection) -> None:
     """
     Обновляет счетчик использования купона и его статус.
     """
@@ -479,10 +429,7 @@ async def update_coupon_usage_count(
         raise
 
 
-async def get_coupon_details(
-    coupon_id: str,
-    session: asyncpg.Connection
-) -> Optional[dict]:
+async def get_coupon_details(coupon_id: str, session: asyncpg.Connection) -> Optional[dict]:
     """
     Получает детали купона по его ID (или коду, если используется поле id как varchar).
     """
@@ -510,12 +457,8 @@ async def get_coupon_details(
 
 # --------------------- Connections (Users + Balances) --------------------- #
 
-async def add_connection(
-    tg_id: int,
-    balance: float,
-    trial: int,
-    session: asyncpg.Connection
-) -> None:
+
+async def add_connection(tg_id: int, balance: float, trial: int, session: asyncpg.Connection) -> None:
     """
     Добавляет новое подключение для пользователя в базу данных.
     """
@@ -563,10 +506,7 @@ async def check_connection_exists(tg_id: int) -> bool:
             await conn.close()
 
 
-async def get_balance(
-    tg_id: int,
-    session: asyncpg.Connection = None
-) -> float:
+async def get_balance(tg_id: int, session: asyncpg.Connection = None) -> float:
     """
     Получает баланс пользователя из базы данных.
     """
@@ -593,12 +533,7 @@ async def get_balance(
             await conn.close()
 
 
-async def update_balance(
-    tg_id: int,
-    amount: float,
-    session: asyncpg.Connection = None,
-    is_admin: bool = False
-) -> None:
+async def update_balance(tg_id: int, amount: float, session: asyncpg.Connection = None, is_admin: bool = False) -> None:
     """
     Обновляет баланс пользователя в базе данных.
     Кэшбек применяется только для положительных сумм и если пополнение НЕ через админку.
@@ -653,11 +588,7 @@ async def update_balance(
             await conn.close()
 
 
-async def update_trial(
-    tg_id: int,
-    status: int,
-    session: asyncpg.Connection
-) -> bool:
+async def update_trial(tg_id: int, status: int, session: asyncpg.Connection) -> bool:
     """
     Устанавливает статус триального периода для пользователя (0 - доступен, 1 - использован).
     """
@@ -680,10 +611,7 @@ async def update_trial(
         return False
 
 
-async def get_trial(
-    tg_id: int,
-    session: asyncpg.Connection
-) -> int:
+async def get_trial(tg_id: int, session: asyncpg.Connection) -> int:
     """
     Получает статус триала (0 - не использован, 1 - использован).
     """
@@ -704,6 +632,7 @@ async def get_trial(
 
 
 # --------------------- Keys --------------------- #
+
 
 async def store_key(
     tg_id: int,
@@ -740,10 +669,7 @@ async def store_key(
         raise
 
 
-async def get_keys(
-    tg_id: int,
-    session: asyncpg.Connection
-) -> List[asyncpg.Record]:
+async def get_keys(tg_id: int, session: asyncpg.Connection) -> List[asyncpg.Record]:
     """
     Получает список ключей для указанного пользователя.
     """
@@ -763,11 +689,7 @@ async def get_keys(
         raise
 
 
-async def get_keys_by_server(
-    tg_id: Optional[int],
-    server_id: str,
-    session: asyncpg.Connection
-) -> List[asyncpg.Record]:
+async def get_keys_by_server(tg_id: Optional[int], server_id: str, session: asyncpg.Connection) -> List[asyncpg.Record]:
     """
     Получает список ключей на определенном сервере. Если tg_id=None, возвращает все ключи на сервере.
     """
@@ -804,11 +726,7 @@ async def get_keys_by_server(
         raise
 
 
-async def get_key_by_server(
-    tg_id: int,
-    client_id: str,
-    session: asyncpg.Connection
-) -> Optional[asyncpg.Record]:
+async def get_key_by_server(tg_id: int, client_id: str, session: asyncpg.Connection) -> Optional[asyncpg.Record]:
     """
     Возвращает запись по конкретному ключу (tg_id + client_id).
     """
@@ -855,11 +773,7 @@ async def get_key_count(tg_id: int) -> int:
             await conn.close()
 
 
-async def update_key_expiry(
-    client_id: str,
-    new_expiry_time: int,
-    session: asyncpg.Connection
-) -> None:
+async def update_key_expiry(client_id: str, new_expiry_time: int, session: asyncpg.Connection) -> None:
     """
     Обновление времени истечения ключа для указанного клиента.
     """
@@ -879,10 +793,7 @@ async def update_key_expiry(
         raise
 
 
-async def delete_key(
-    identifier: Union[int, str],
-    session: asyncpg.Connection
-) -> None:
+async def delete_key(identifier: Union[int, str], session: asyncpg.Connection) -> None:
     """
     Удаляет ключ из базы данных по client_id (str) или tg_id (int).
     """
@@ -901,6 +812,7 @@ async def delete_key(
 
 
 # --------------------- Gifts (Опционально) --------------------- #
+
 
 async def store_gift_link(
     gift_id: str,
@@ -950,20 +862,14 @@ async def store_gift_link(
 
 # --------------------- Referrals --------------------- #
 
-async def add_referral(
-    referred_tg_id: int,
-    referrer_tg_id: int,
-    session: asyncpg.Connection
-) -> None:
+
+async def add_referral(referred_tg_id: int, referrer_tg_id: int, session: asyncpg.Connection) -> None:
     """
     Добавляет новую реферальную связь.
     """
     try:
         if referred_tg_id == referrer_tg_id:
-            logger.warning(
-                f"Пользователь {referred_tg_id} попытался использовать "
-                f"свою собственную реферальную ссылку."
-            )
+            logger.warning(f"Пользователь {referred_tg_id} попытался использовать свою собственную реферальную ссылку.")
             return
 
         await session.execute(
@@ -974,19 +880,13 @@ async def add_referral(
             referred_tg_id,
             referrer_tg_id,
         )
-        logger.info(
-            f"Добавлена реферальная связь: приглашенный {referred_tg_id}, пригласивший {referrer_tg_id}"
-        )
+        logger.info(f"Добавлена реферальная связь: приглашенный {referred_tg_id}, пригласивший {referrer_tg_id}")
     except Exception as e:
         logger.error(f"Ошибка при добавлении реферала: {e}")
         raise
 
 
-async def handle_referral_on_balance_update(
-    tg_id: int,
-    amount: float,
-    session: asyncpg.Connection = None
-) -> None:
+async def handle_referral_on_balance_update(tg_id: int, amount: float, session: asyncpg.Connection = None) -> None:
     """
     Обработка многоуровневой реферальной системы при обновлении баланса пользователя.
     """
@@ -1009,9 +909,7 @@ async def handle_referral_on_balance_update(
         # Формируем цепочку рефералов
         for level in range(1, MAX_REFERRAL_LEVELS + 1):
             if current_tg_id in visited_tg_ids:
-                logger.warning(
-                    f"Обнаружен цикл в реферальной цепочке для пользователя {current_tg_id}. Прекращение."
-                )
+                logger.warning(f"Обнаружен цикл в реферальной цепочке для пользователя {current_tg_id}. Прекращение.")
                 break
 
             visited_tg_ids.add(current_tg_id)
@@ -1059,10 +957,7 @@ async def handle_referral_on_balance_update(
             await conn.close()
 
 
-async def get_referral_by_referred_id(
-    referred_tg_id: int,
-    session: asyncpg.Connection
-) -> Optional[dict]:
+async def get_referral_by_referred_id(referred_tg_id: int, session: asyncpg.Connection) -> Optional[dict]:
     """
     Получает информацию о реферале по ID приглашенного пользователя.
     """
@@ -1184,7 +1079,7 @@ async def get_referral_stats(referrer_tg_id: int) -> dict:
                 SUM(
                     p.amount * (
                         CASE
-                           {' '.join(case_lines)}
+                           {" ".join(case_lines)}
                            ELSE 0 
                         END
                     )
@@ -1219,11 +1114,8 @@ async def get_referral_stats(referrer_tg_id: int) -> dict:
 
 # --------------------- Payments --------------------- #
 
-async def add_payment(
-    tg_id: int,
-    amount: float,
-    payment_system: str
-) -> None:
+
+async def add_payment(tg_id: int, amount: float, payment_system: str) -> None:
     """
     Добавляет информацию о платеже в базу данных.
     """
@@ -1251,10 +1143,7 @@ async def add_payment(
             logger.info("Закрытие подключения к базе данных после добавления платежа")
 
 
-async def get_last_payments(
-    tg_id: int,
-    session: asyncpg.Connection
-) -> List[asyncpg.Record]:
+async def get_last_payments(tg_id: int, session: asyncpg.Connection) -> List[asyncpg.Record]:
     """
     Получает последние 3 платежа пользователя.
     """
@@ -1278,11 +1167,8 @@ async def get_last_payments(
 
 # --------------------- Notifications --------------------- #
 
-async def add_notification(
-    tg_id: int,
-    notification_type: str,
-    session: asyncpg.Connection
-) -> None:
+
+async def add_notification(tg_id: int, notification_type: str, session: asyncpg.Connection) -> None:
     """
     Добавляет запись о notification в базу данных.
     """
@@ -1304,10 +1190,7 @@ async def add_notification(
 
 
 async def check_notification_time(
-    tg_id: int,
-    notification_type: str,
-    hours: int = 12,
-    session: asyncpg.Connection = None
+    tg_id: int, notification_type: str, hours: int = 12, session: asyncpg.Connection = None
 ) -> bool:
     """
     Проверяет, прошло ли указанное количество часов с момента последнего уведомления.
@@ -1350,6 +1233,7 @@ async def check_notification_time(
 
 
 # --------------------- Users --------------------- #
+
 
 async def upsert_user(
     tg_id: int,
@@ -1402,10 +1286,8 @@ async def upsert_user(
 
 # --------------------- Misc --------------------- #
 
-async def add_balance_to_client(
-    client_id: str,
-    amount: float
-) -> None:
+
+async def add_balance_to_client(client_id: str, amount: float) -> None:
     """
     Добавление баланса клиенту по его идентификатору Telegram.
     """
@@ -1433,9 +1315,7 @@ async def add_balance_to_client(
             logger.info("Закрытие подключения к базе данных")
 
 
-async def get_client_id_by_email(
-    email: str
-) -> Optional[str]:
+async def get_client_id_by_email(email: str) -> Optional[str]:
     """
     Получение идентификатора клиента по электронной почте.
     """
@@ -1467,9 +1347,7 @@ async def get_client_id_by_email(
             await conn.close()
 
 
-async def get_tg_id_by_client_id(
-    client_id: str
-) -> Optional[int]:
+async def get_tg_id_by_client_id(client_id: str) -> Optional[int]:
     """
     Получение Telegram ID по идентификатору клиента.
     """
@@ -1484,7 +1362,7 @@ async def get_tg_id_by_client_id(
             FROM keys 
             WHERE client_id = $1
             """,
-            client_id
+            client_id,
         )
 
         if result:
@@ -1501,10 +1379,7 @@ async def get_tg_id_by_client_id(
             await conn.close()
 
 
-async def delete_user_data(
-    session: asyncpg.Connection,
-    tg_id: int
-) -> None:
+async def delete_user_data(session: asyncpg.Connection, tg_id: int) -> None:
     """
     Удаляет информацию о пользователе из связанных таблиц.
     """
@@ -1522,23 +1397,11 @@ async def delete_user_data(
         except Exception as e:
             logger.warning(f"Версия без подарков или другая ошибка при удалении gifts для {tg_id}: {e}")
 
-        await session.execute(
-            "DELETE FROM payments WHERE tg_id = $1",
-            tg_id
-        )
-        await session.execute(
-            "DELETE FROM users WHERE tg_id = $1",
-            tg_id
-        )
-        await session.execute(
-            "DELETE FROM connections WHERE tg_id = $1",
-            tg_id
-        )
+        await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
+        await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
+        await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
         await delete_key(tg_id, session)
-        await session.execute(
-            "DELETE FROM referrals WHERE referrer_tg_id = $1",
-            tg_id
-        )
+        await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
         logger.info(f"Все данные пользователя {tg_id} успешно удалены.")
     except Exception as e:
@@ -1546,10 +1409,7 @@ async def delete_user_data(
         raise
 
 
-async def get_key_details(
-    email: str,
-    session: asyncpg.Connection
-) -> Optional[dict]:
+async def get_key_details(email: str, session: asyncpg.Connection) -> Optional[dict]:
     """
     Возвращает подробную информацию по ключу (и состоянию пользователя) по email.
     """
