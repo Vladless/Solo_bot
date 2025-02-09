@@ -23,3 +23,4 @@ def register_middleware(dispatcher: Dispatcher) -> None:
     for middleware in middlewares:
         dispatcher.message.outer_middleware(middleware)
         dispatcher.callback_query.outer_middleware(middleware)
+        dispatcher.inline_query.outer_middleware(middleware)

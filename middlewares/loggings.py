@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery, Message, TelegramObject
+from aiogram.types import CallbackQuery, InlineQuery, Message, TelegramObject
 
 from logger import logger
 
@@ -39,5 +39,10 @@ class LoggingMiddleware(BaseMiddleware):
             user_id = user.id
             username = user.username
             action = f"Обратный вызов: {event.data}"
+        elif isinstance(event, InlineQuery):
+            user = event.from_user
+            user_id = user.id
+            username = user.username
+            action = f"Inline запрос: {event.query}"
 
         return {"user_id": user_id, "username": username, "action": action}
