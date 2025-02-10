@@ -514,30 +514,15 @@ async def process_key(record, bot, conn, current_time, renew=False):
     try:
         if not renew:
             if current_time_utc >= expiry_time_value:
-                if time_since_expiry <= DELETE_KEYS_DELAY * 500:
-                    message = (
-                        f"🔔 <b>Уведомление:</b>\n\n"
-                        f"📅 Ваша подписка: {record['email']} истекла. Пополните баланс для продления.\n\n"
-                    )
-                    remaining_time = (expiry_time_value + DELETE_KEYS_DELAY * 1000) - current_time_utc
-
-                    if remaining_time > 0:
-                        message += (
-                            f"⏳ Подписка будет удалена через {format_time_until_deletion(remaining_time // 1000)}."
-                        )
-
-                    await send_notification(bot, tg_id, message, "notify_expired.jpg", email)
-                    await add_notification(tg_id, "expired_key", session=conn)
-            else:
-                if (expiry_time_value - current_time_utc) <= (EXPIRED_KEYS_CHECK_INTERVAL * 1000):
-                    await send_notification(
-                        bot,
-                        tg_id,
-                        f"Ваша подписка {email} скоро истечет. Пополните баланс для продления.",
-                        "notify_expiring.jpg",
-                        email,
-                    )
-                    await add_notification(tg_id, "expired_key", session=conn)
+                check_interval_ms = EXPIRED_KEYS_CHECK_INTERVAL * 1.5 * 1000
+                if current_time_utc <= (expiry_time_value + check_interval_ms):
+                   remaining_time = (DELETE_KEYS_DELAY * 1000 - (current_time_utc - expiry_time_value)) // 1000
+                   message = (
+                       f"🔔 <b>Уведомление:</b>\n\n"
+                       f"📅 Ваша подписка: {record['email']} истекла. Пополните баланс для продления.\n\n"
+                       f"⏳ Подписка будет удалена через {format_time_until_deletion(remaining_time)}."
+                   )
+                   await send_notification(bot, tg_id, message, "notify_expired.jpg", email)
 
         elif renew and AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
