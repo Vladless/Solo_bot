@@ -57,3 +57,4 @@ Dockerfile
 /logs
 setup.py
 .ruff_cache
+.github/workflows/

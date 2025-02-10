@@ -118,6 +118,10 @@ async def process_10h_record(record, bot, conn):
     email = record["email"]
     expiry_time = record["expiry_time"]
 
+    can_notify = await check_notification_time(tg_id, "expiry_10h", hours=10, session=conn)
+    if not can_notify:
+        return
+
     moscow_tz = pytz.timezone("Europe/Moscow")
 
     expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
@@ -173,10 +177,13 @@ async def process_10h_record(record, bot, conn):
 
             logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
+            await add_notification(tg_id, "expiry_10h", session=conn)
+
         except Exception as e:
             logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
     else:
         await send_renewal_notification(bot, tg_id, email, message, conn, record["client_id"], "notified")
+        await add_notification(tg_id, "expiry_10h", session=conn)
 
 
 async def notify_24h_keys(
@@ -206,6 +213,11 @@ async def notify_24h_keys(
 
 async def process_24h_record(record, bot, conn):
     tg_id = record["tg_id"]
+    
+    can_notify = await check_notification_time(tg_id, "expiry_24h", hours=24, session=conn)
+    if not can_notify:
+        return
+
     email = record["email"]
     expiry_time = record["expiry_time"]
     client_id = record["client_id"]
@@ -242,8 +254,7 @@ async def process_24h_record(record, bot, conn):
                 await renew_key_in_cluster(cluster_id, email, record["client_id"], new_expiry_time, TOTAL_GB)
                 logger.info(f"Ключ для пользователя {tg_id} успешно продлен в кластере {cluster_id}.")
 
-        except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+            await conn.execute("UPDATE keys SET notified_24h = TRUE WHERE client_id = $1", client_id)
 
             image_path = os.path.join("img", "notify_24h.jpg")
             keyboard = types.InlineKeyboardMarkup(
@@ -264,10 +275,35 @@ async def process_24h_record(record, bot, conn):
 
             logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
 
+            await add_notification(tg_id, "expiry_24h", session=conn)
+
         except Exception as e:
             logger.error(f"Ошибка при продлении подписки для клиента {tg_id}: {e}")
+
+            image_path = os.path.join("img", "notify_24h.jpg")
+            keyboard = types.InlineKeyboardMarkup(
+                inline_keyboard=[[types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")]]
+            )
+
+            if os.path.isfile(image_path):
+                async with aiofiles.open(image_path, "rb") as image_file:
+                    image_data = await image_file.read()
+                    await bot.send_photo(
+                        tg_id,
+                        photo=BufferedInputFile(image_data, filename="notify_24h.jpg"),
+                        caption=KEY_RENEWED.format(email=email),
+                        reply_markup=keyboard,
+                    )
+            else:
+                await bot.send_message(tg_id, text=KEY_RENEWED.format(email=email), reply_markup=keyboard)
+
+            logger.info(f"Уведомление об успешном продлении отправлено клиенту {tg_id}.")
+
+            await add_notification(tg_id, "expiry_24h", session=conn)
+
     else:
         await send_renewal_notification(bot, tg_id, email, message_24h, conn, client_id, "notified_24h")
+        await add_notification(tg_id, "expiry_24h", session=conn)
 
 
 async def send_renewal_notification(bot, tg_id, email, message, conn, client_id, flag):
@@ -438,6 +474,8 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
                     logger.info(f"Уведомление об удалении отправлено пользователю {record['tg_id']}")
 
+                    await add_notification(record["tg_id"], "expired_key", session=conn)
+
                 else:
                     remaining_time = (DELETE_KEYS_DELAY * 1000 - time_since_expiry) // 1000
                     logger.info(
@@ -452,6 +490,11 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
 async def process_key(record, bot, conn, current_time, renew=False):
     tg_id = record["tg_id"]
+    
+    can_notify = await check_notification_time(tg_id, "expired_key", hours=24, session=conn)
+    if not can_notify:
+        return
+
     client_id = record["client_id"]
     email = record["email"]
     balance = await get_balance(tg_id)
@@ -484,6 +527,7 @@ async def process_key(record, bot, conn, current_time, renew=False):
                         )
 
                     await send_notification(bot, tg_id, message, "notify_expired.jpg", email)
+                    await add_notification(tg_id, "expired_key", session=conn)
             else:
                 if (expiry_time_value - current_time_utc) <= (EXPIRED_KEYS_CHECK_INTERVAL * 1000):
                     await send_notification(
@@ -493,6 +537,7 @@ async def process_key(record, bot, conn, current_time, renew=False):
                         "notify_expiring.jpg",
                         email,
                     )
+                    await add_notification(tg_id, "expired_key", session=conn)
 
         elif renew and AUTO_RENEW_KEYS and balance >= RENEWAL_PLANS["1"]["price"]:
             await update_balance(tg_id, -RENEWAL_PLANS["1"]["price"], conn)
@@ -521,6 +566,8 @@ async def process_key(record, bot, conn, current_time, renew=False):
                     await bot.send_message(tg_id, text=caption)
 
                 logger.info(f"Уведомление о продлении отправлено {tg_id}")
+
+                await add_notification(tg_id, "expired_key", session=conn)
 
             except Exception as e:
                 logger.error(f"Ошибка отправки уведомления {tg_id}: {e}")
