@@ -397,7 +397,7 @@ async def handle_clusters_backup(
 
 
 @router.callback_query(AdminServerEditorCallback.filter(F.action == "clusters_sync"), IsAdminFilter())
-async def handle_clusters_backup(
+async def handle_clusters_sync(
     callback_query: types.CallbackQuery, callback_data: AdminServerEditorCallback, session: Any
 ):
     cluster_name = callback_data.data

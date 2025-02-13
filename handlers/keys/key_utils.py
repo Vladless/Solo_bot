@@ -104,7 +104,15 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
         cluster = servers.get(cluster_id)
 
         if not cluster:
-            raise ValueError(f"Кластер с ID {cluster_id} не найден.")
+            found_servers = []
+            for _key, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        found_servers.append(server_info)
+            if found_servers:
+                cluster = found_servers
+            else:
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         tasks = []
         for server_info in cluster:
@@ -135,18 +143,27 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(f"Не удалось продлить ключ {client_id} в кластере {cluster_id}: {e}")
+        logger.error(f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
         raise e
 
 
 async def delete_key_from_cluster(cluster_id, email, client_id):
-    """Удаление ключа с серверов в кластере"""
+    """Удаление ключа с серверов в кластере или с конкретного сервера"""
     try:
         servers = await get_servers()
         cluster = servers.get(cluster_id)
 
         if not cluster:
-            raise ValueError(f"Кластер с ID {cluster_id} не найден.")
+            found_servers = []
+            for _, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        found_servers.append(server_info)
+
+            if found_servers:
+                cluster = found_servers
+            else:
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         tasks = []
         for server_info in cluster:
@@ -175,7 +192,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
         await asyncio.gather(*tasks)
 
     except Exception as e:
-        logger.error(f"Не удалось удалить ключ {client_id} в кластере {cluster_id}: {e}")
+        logger.error(f"Не удалось удалить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
         raise e
 
 
@@ -291,7 +308,6 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
     Returns:
         dict[str, Any]: Структура с данными о трафике.
     """
-    logger.info(f"🔍 Получаем ключи для пользователя {email} (TG ID: {tg_id})")
 
     query = "SELECT client_id, server_id FROM keys WHERE tg_id = $1 AND email = $2"
     rows = await session.fetch(query, tg_id, email)
@@ -300,33 +316,27 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
         return {"status": "error", "message": "❌ У пользователя нет активных ключей."}
 
     server_ids = {row["server_id"] for row in rows}
-    logger.info(f"🖥️ Серверы/Кластеры пользователя: {server_ids}")
 
-    if USE_COUNTRY_SELECTION:
-        query_servers = "SELECT server_name, api_url FROM servers WHERE server_name = ANY($1)"
-        filter_ids = list(server_ids)
-    else:
-        query_servers = "SELECT server_name, api_url FROM servers WHERE cluster_name = ANY($1)"
-        filter_ids = list(server_ids)
-
-    server_rows = await session.fetch(query_servers, filter_ids)
+    query_servers = """
+        SELECT server_name, api_url FROM servers 
+        WHERE server_name = ANY($1) OR cluster_name = ANY($1)
+    """
+    server_rows = await session.fetch(query_servers, list(server_ids))
 
     if not server_rows:
         logger.error(f"❌ Не найдено серверов для: {server_ids}")
         return {"status": "error", "message": f"❌ Серверы не найдены: {', '.join(server_ids)}"}
 
     servers_map = {row["server_name"]: row["api_url"] for row in server_rows}
-    logger.info(f"✅ Найденные серверы: {list(servers_map.keys())}")
 
     user_traffic_data = {}
 
     for row in rows:
         client_id = row["client_id"]
+        server_id = row["server_id"]
 
-        for server, api_url in servers_map.items():
-            if not USE_COUNTRY_SELECTION and server not in servers_map:
-                continue
-
+        if server_id in servers_map:
+            api_url = servers_map[server_id]
             xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
 
             try:
@@ -335,11 +345,28 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
                 if traffic_info["status"] == "success" and traffic_info["traffic"]:
                     client_data = traffic_info["traffic"][0]
                     used_gb = (client_data.up + client_data.down) / 1073741824
-                    user_traffic_data[server] = round(used_gb, 2)
+                    user_traffic_data[server_id] = round(used_gb, 2)
                 else:
-                    user_traffic_data[server] = "Ошибка получения трафика"
+                    user_traffic_data[server_id] = "Ошибка получения трафика"
 
             except Exception as e:
-                user_traffic_data[server] = f"Ошибка: {e}"
+                user_traffic_data[server_id] = f"Ошибка: {e}"
+
+        else:
+            for server, api_url in servers_map.items():
+                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+
+                try:
+                    traffic_info = await get_client_traffic(xui, client_id)
+
+                    if traffic_info["status"] == "success" and traffic_info["traffic"]:
+                        client_data = traffic_info["traffic"][0]
+                        used_gb = (client_data.up + client_data.down) / 1073741824
+                        user_traffic_data[server] = round(used_gb, 2)
+                    else:
+                        user_traffic_data[server] = "Ошибка получения трафика"
+
+                except Exception as e:
+                    user_traffic_data[server] = f"Ошибка: {e}"
 
     return {"status": "success", "traffic": user_traffic_data}

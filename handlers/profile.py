@@ -7,8 +7,8 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import DATABASE_URL, INSTRUCTIONS_BUTTON, NEWS_MESSAGE, RENEWAL_PLANS
 
+from config import DATABASE_URL, INSTRUCTIONS_BUTTON, NEWS_MESSAGE, RENEWAL_PLANS
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
@@ -117,13 +117,22 @@ async def process_callback_view_profile(
 
 
 @router.callback_query(F.data == "balance")
-async def balance_handler(callback_query: CallbackQuery):
+async def balance_handler(callback_query: CallbackQuery, session: Any):
+    result = await session.fetchrow(
+        "SELECT balance FROM connections WHERE tg_id = $1",
+        callback_query.from_user.id,
+    )
+    balance = result["balance"] if result else 0.0
+
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    await callback_query.message.answer("💰 Управление балансом:", reply_markup=builder.as_markup())
+    await callback_query.message.answer(
+        f"<b>Управление вашим балансом 💰</b>\n\nВаш баланс: {balance}",
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.callback_query(F.data == "balance_history")

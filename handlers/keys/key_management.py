@@ -19,14 +19,18 @@ from config import (
     CONNECT_IOS,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
+    NOTIFY_EXTRA_DAYS,
     PUBLIC_LINK,
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
     TRIAL_TIME,
+    TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
+    add_connection,
+    check_connection_exists,
     create_temporary_data,
     delete_key,
     get_balance,
@@ -34,6 +38,7 @@ from database import (
     get_trial,
     store_key,
     update_balance,
+    update_trial,
 )
 from handlers.buttons.add_subscribe import (
     DOWNLOAD_ANDROID_BUTTON,
@@ -65,8 +70,6 @@ class Form(FSMContext):
 @router.callback_query(F.data == "create_key")
 async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
-    logger.info(f"User {tg_id} confirmed creation of a new key.")
-    logger.info(f"Balance for user {tg_id} is sufficient. Proceeding with key creation.")
     await handle_key_creation(tg_id, state, session, callback_query)
 
 
@@ -78,35 +81,46 @@ async def handle_key_creation(
 ):
     """Создание ключа с учётом выбора тарифного плана."""
     current_time = datetime.now(moscow_tz)
-    trial_status = await get_trial(tg_id, session)
 
-    if trial_status == 0:
-        expiry_time = current_time + timedelta(days=TRIAL_TIME)
-        logger.info(f"Assigned {TRIAL_TIME}-дневный пробный период пользователю {tg_id}.")
-        await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", tg_id)
-        await create_key(tg_id, expiry_time, state, session, message_or_query)
-    else:
-        builder = InlineKeyboardBuilder()
-        for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
-            discount_text = ""
-            if plan_id in DISCOUNTS:
-                discount_percentage = DISCOUNTS[plan_id]
-                discount_text = f" ({discount_percentage}% скидка)"
-                if index == len(RENEWAL_PRICES) - 1:
-                    discount_text = f" ({discount_percentage}% 🔥)"
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"📅 {plan_id} мес. - {price}₽{discount_text}",
-                    callback_data=f"select_plan_{plan_id}",
-                )
+    if not TRIAL_TIME_DISABLE:
+        trial_status = await get_trial(tg_id, session)
+
+        if trial_status in [0, -1]:
+            extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
+            expiry_time = current_time + timedelta(days=TRIAL_TIME + extra_days)
+
+            logger.info(f"Доступен {TRIAL_TIME + extra_days}-дневный пробный период пользователю {tg_id}.")
+
+            updated = await update_trial(tg_id, 1, session)
+            if updated:
+                await create_key(tg_id, expiry_time, state, session, message_or_query)
+                return
+            else:
+                logger.error(f"Не удалось обновить статус триального периода для пользователя {tg_id}.")
+
+    builder = InlineKeyboardBuilder()
+    for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
+        discount_text = ""
+        if plan_id in DISCOUNTS:
+            discount_percentage = DISCOUNTS[plan_id]
+            discount_text = f" ({discount_percentage}% скидка)"
+            if index == len(RENEWAL_PRICES) - 1:
+                discount_text = f" ({discount_percentage}% 🔥)"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"📅 {plan_id} мес. - {price}₽{discount_text}",
+                callback_data=f"select_plan_{plan_id}",
             )
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
-        await message_or_query.message.answer(
-            "💳 Выберите тарифный план для создания нового ключа:",
-            reply_markup=builder.as_markup(),
         )
-        await state.update_data(tg_id=tg_id)
-        await state.set_state(Form.waiting_for_server_selection)
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    await message_or_query.message.answer(
+        "💳 Выберите тарифный план для создания нового ключа:",
+        reply_markup=builder.as_markup(),
+    )
+
+    await state.update_data(tg_id=tg_id)
+    await state.set_state(Form.waiting_for_server_selection)
 
 
 @router.callback_query(F.data.startswith("select_plan_"))
@@ -161,12 +175,16 @@ async def create_key(
 ):
     """Создаёт ключ с заданным сроком действия."""
 
+    if not await check_connection_exists(tg_id):
+        await add_connection(tg_id, balance=0.0, trial=0, session=session)
+        logger.info(f"[Connection] Подключение создано для пользователя {tg_id}")
+
     if USE_COUNTRY_SELECTION:
-        logger.info("[Country Selection] USE_COUNTRY_SELECTION включен.")
-        logger.info("[Country Selection] Получение наименее загруженного кластера.")
+        logger.info("[Country Selection] USE_COUNTRY_SELECTION включен. Получение наименее загруженного кластера")
         least_loaded_cluster = await get_least_loaded_cluster()
-        logger.info(f"[Country Selection] Наименее загруженный кластер: {least_loaded_cluster}")
-        logger.info(f"[Country Selection] Получение списка серверов для кластера {least_loaded_cluster}.")
+        logger.info(
+            f"[Country Selection] Наименее загруженный кластер: {least_loaded_cluster}. Получаем список серверов"
+        )
         servers = await session.fetch(
             "SELECT server_name FROM servers WHERE cluster_name = $1",
             least_loaded_cluster,
@@ -182,36 +200,27 @@ async def create_key(
             else:
                 callback_data = f"select_country|{country}|{ts}"
             builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
-            logger.info(f"[Country Selection] Добавлена кнопка для страны: {country} с callback_data: {callback_data}")
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
-        logger.info("[Country Selection] Добавлена кнопка '⬅️ Назад'.")
 
         if isinstance(message_or_query, Message):
-            logger.info("[Country Selection] Сообщение пользователя - тип Message.")
             await message_or_query.answer(
                 "🌍 Пожалуйста, выберите страну для вашего ключа:",
                 reply_markup=builder.as_markup(),
             )
-            logger.info("[Country Selection] Сообщение отправлено с выбором страны.")
         elif isinstance(message_or_query, CallbackQuery):
-            logger.info("[Country Selection] Сообщение пользователя - тип CallbackQuery.")
             await message_or_query.message.answer(
                 "🌍 Пожалуйста, выберите страну для вашего ключа:",
                 reply_markup=builder.as_markup(),
             )
-            logger.info("[Country Selection] Сообщение отправлено с выбором страны.")
         elif tg_id is not None:
-            logger.info("[Country Selection] Использование tg_id для отправки сообщения.")
             await bot.send_message(
                 chat_id=tg_id,
                 text="🌍 Пожалуйста, выберите страну для вашего ключа:",
                 reply_markup=builder.as_markup(),
             )
-            logger.info(f"[Country Selection] Сообщение отправлено напрямую в чат {tg_id}.")
         else:
             logger.error("[Country Selection] Невозможно определить идентификатор чата. Сообщение не отправлено.")
 
-        logger.info("[Country Selection] Возврат из функции.")
         return
 
     while True:
@@ -245,6 +254,7 @@ async def create_key(
             least_loaded_cluster,
             session,
         )
+        await update_trial(tg_id, 1, session)
         logger.info(f"[Database] Ключ сохранён в базе данных для пользователя {tg_id}")
     except Exception as e:
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
@@ -288,48 +298,6 @@ async def create_key(
 
     if state:
         await state.clear()
-        logger.info(f"[FSM] Состояние пользователя {tg_id} очищено")
-
-    if old_key_name:
-        try:
-            old_record = await get_key_details(old_key_name, session)
-            if old_record is not None:
-                old_client_id = old_record["client_id"]
-                old_email = old_record["email"]
-                server_name = old_record.get("server_id")
-
-                if server_name:
-                    server_info = await session.fetchrow(
-                        "SELECT api_url, inbound_id, server_name FROM servers WHERE server_name = $1",
-                        server_name,
-                    )
-                    if server_info:
-                        xui = AsyncApi(
-                            server_info["api_url"],
-                            username=ADMIN_USERNAME,
-                            password=ADMIN_PASSWORD,
-                        )
-                        deletion_success = await delete_client(
-                            xui,
-                            server_info["inbound_id"],
-                            old_email,
-                            old_client_id,
-                        )
-                        if deletion_success:
-                            logger.info(f"Клиент с ID {old_client_id} успешно удалён с сервера.")
-                        else:
-                            logger.warning(f"Не удалось удалить клиента с ID {old_client_id} с сервера.")
-                    else:
-                        logger.warning(f"Информация о сервере {server_name} не найдена в БД.")
-                else:
-                    logger.warning("Имя сервера для старого ключа не указано.")
-
-                await delete_key(old_client_id, session)
-                logger.info(f"Старый ключ {old_key_name} (client_id: {old_client_id}) удалён для пользователя {tg_id}.")
-            else:
-                logger.warning(f"Запись для старого ключа {old_key_name} не найдена.")
-        except Exception as e:
-            logger.error(f"Ошибка при удалении старого ключа {old_key_name} для пользователя {tg_id}: {e}")
 
 
 @router.callback_query(F.data.startswith("change_location|"))
@@ -348,7 +316,6 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
 
         expiry_timestamp = record["expiry_time"]
         ts = int(expiry_timestamp / 1000)
-        expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
 
         servers = await session.fetch("SELECT server_name FROM servers")
         countries = [row["server_name"] for row in servers]
@@ -411,11 +378,15 @@ async def finalize_key_creation(
     """Финализирует создание ключа с выбранной страной.
     Если old_key_name передан, после создания нового ключа старый будет удалён.
     """
+
+    if not await check_connection_exists(tg_id):
+        await add_connection(tg_id, balance=0.0, trial=0, session=session)
+        logger.info(f"[Connection] Подключение создано для пользователя {tg_id}")
+
     expiry_time = expiry_time.astimezone(moscow_tz)
 
     while True:
         key_name = generate_random_email()
-        logger.info(f"Generated random key name for user {tg_id}: {key_name}")
         existing_key = await get_key_details(key_name, session)
         if not existing_key:
             break

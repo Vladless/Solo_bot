@@ -27,7 +27,6 @@ from database import (
     add_connection,
     add_referral,
     check_connection_exists,
-    get_coupon_details,
     get_referral_by_referred_id,
     get_trial,
     update_balance,
@@ -54,8 +53,9 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
     try:
         await state.clear()
+        logger.info(f"Состояние для пользователя {message.chat.id} успешно очищено.")
     except Exception:
-        pass
+        logger.info(f"Состояние для пользователя {message.chat.id} не было очищено.")
 
     if CAPTCHA_ENABLE and captcha:
         captcha_data = await generate_captcha(message, state)
@@ -66,14 +66,19 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
         try:
             member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
             if member.status not in ["member", "administrator", "creator"]:
+                original_text = message.text
+                await state.update_data(original_text=original_text)
                 builder = InlineKeyboardBuilder()
-                await state.update_data(original_text=message.text)
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
                 await message.answer(
                     f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
                     reply_markup=builder.as_markup(),
                 )
                 return
+            else:
+                logger.info(
+                    f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу."
+                )
         except Exception as e:
             logger.error(f"Ошибка проверки подписки пользователя {message.chat.id}: {e}")
             await state.update_data(start_text=message.text)
@@ -155,10 +160,13 @@ async def process_start_logic(
                 return await show_start_menu(message, admin, session)
 
             if "gift_" in text:
-                logger.info(f"Обнаружена ссылка на подарок: {message.text}")
-                parts = message.text.split("gift_")[1].split("_")
+                logger.info(f"Обнаружена ссылка на подарок: {text}")
+                parts = text.split("gift_")[1].split("_")
+                if len(parts) < 2:
+                    logger.error("Неверный формат ссылки на подарок: недостаточно частей после 'gift_'")
+                    await message.answer("❌ Неверный формат ссылки на подарок.")
+                    return await show_start_menu(message, admin, session)
                 gift_id = parts[0]
-
                 recipient_tg_id = message.chat.id
 
                 gift_info = await session.fetchrow(
@@ -197,6 +205,13 @@ async def process_start_logic(
                         f"Пользователь {recipient_tg_id} теперь является рефералом отправителя {gift_info['sender_tg_id']}."
                     )
 
+                await session.execute(
+                    """
+                    UPDATE connections SET trial = 1 WHERE tg_id = $1
+                    """,
+                    recipient_tg_id,
+                )
+
                 selected_months = gift_info["selected_months"]
                 expiry_time = gift_info["expiry_time"].replace(tzinfo=None)
 
@@ -223,8 +238,7 @@ async def process_start_logic(
 
             elif "referral_" in text:
                 try:
-                    referrer_tg_id = int(message.text.split("referral_")[1])
-
+                    referrer_tg_id = int(text.split("referral_")[1])
                     if connection_exists:
                         logger.info(f"Пользователь {message.chat.id} уже зарегистрирован и не может стать рефералом.")
                         await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
@@ -242,6 +256,7 @@ async def process_start_logic(
 
                     await add_referral(message.chat.id, referrer_tg_id, session)
                     logger.info(f"Реферал {message.chat.id} использовал ссылку от пользователя {referrer_tg_id}")
+                    await message.answer(f"Вы стали рефералом пользователя с ID {referrer_tg_id}")
                     return await show_start_menu(message, admin, session)
 
                 except (ValueError, IndexError) as e:
@@ -279,7 +294,9 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         else:
             await callback_query.answer("Подписка подтверждена!")
             data = await state.get_data()
-            original_text = data.get("original_text", callback_query.message.text)
+            original_text = data.get("original_text")
+            if not original_text:
+                original_text = callback_query.message.text
             await process_start_logic(callback_query.message, state, session, admin, text_to_process=original_text)
             logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
     except Exception as e:

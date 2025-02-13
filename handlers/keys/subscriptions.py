@@ -5,8 +5,8 @@ from datetime import datetime
 import aiohttp
 import asyncpg
 from aiohttp import web
-from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
 
+from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
 from database import get_key_details, get_servers
 from logger import logger
 
@@ -98,7 +98,7 @@ async def handle_subscription(request, old_subscription=False):
             return web.Response(text="❌ Клиент с таким email не найден.", status=404)
 
         stored_tg_id = client_data.get("tg_id")
-        server_id = client_data["server_id"]  # В режиме выбора стран — это server_name, иначе — cluster_name
+        server_id = client_data["server_id"]
 
         if not old_subscription and str(tg_id) != str(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")

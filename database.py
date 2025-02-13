@@ -5,7 +5,7 @@ from typing import Any
 import asyncpg
 import pytz
 
-from config import CASHBACK, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -528,7 +528,6 @@ async def get_balance(tg_id: int) -> float:
     try:
         conn = await asyncpg.connect(DATABASE_URL)
         balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-        logger.info(f"Получен баланс для пользователя {tg_id}: {balance}")
         return round(balance, 1) if balance is not None else 0.0
     except Exception as e:
         logger.error(f"Ошибка при получении баланса для пользователя {tg_id}: {e}")
@@ -693,7 +692,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
             referral = await conn.fetchrow(
                 """
-                SELECT referrer_tg_id 
+                SELECT referrer_tg_id, reward_issued
                 FROM referrals 
                 WHERE referred_tg_id = $1
                 """,
@@ -708,6 +707,10 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
             if referrer_tg_id in visited_tg_ids:
                 logger.warning(f"Реферер {referrer_tg_id} уже обработан. Пропуск.")
+                break
+
+            if CHECK_REFERRAL_REWARD_ISSUED and referral["reward_issued"]:
+                logger.info(f"Реферальный бонус уже выдан для пользователя {current_tg_id}. Прекращение начисления.")
                 break
 
             referral_chain.append({"tg_id": referrer_tg_id, "level": level})
@@ -727,6 +730,16 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             if bonus > 0:
                 logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}.")
                 await update_balance(referrer_tg_id, bonus)
+
+                if CHECK_REFERRAL_REWARD_ISSUED:
+                    await conn.execute(
+                        """
+                        UPDATE referrals
+                        SET reward_issued = TRUE
+                        WHERE referred_tg_id = $1
+                        """,
+                        tg_id,
+                    )
 
     except Exception as e:
         logger.error(f"Ошибка при обработке многоуровневой реферальной системы для {tg_id}: {e}")
@@ -795,9 +808,52 @@ async def get_referral_stats(referrer_tg_id: int):
         }
         logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
 
-        total_referral_bonus = await conn.fetchval(
-            f"""
-            WITH RECURSIVE referral_levels AS (
+        if CHECK_REFERRAL_REWARD_ISSUED:
+            bonus_cte = f"""
+            WITH RECURSIVE
+            referral_levels AS (
+                SELECT 
+                    referred_tg_id, 
+                    referrer_tg_id, 
+                    1 AS level
+                FROM referrals 
+                WHERE referrer_tg_id = $1 AND reward_issued = TRUE
+                
+                UNION
+                
+                SELECT 
+                    r.referred_tg_id, 
+                    r.referrer_tg_id, 
+                    rl.level + 1
+                FROM referrals r
+                JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
+                WHERE rl.level < {MAX_REFERRAL_LEVELS} AND r.reward_issued = TRUE
+            ),
+            earliest_payments AS (
+                SELECT DISTINCT ON (tg_id) tg_id, amount, created_at
+                FROM payments
+                WHERE status = 'success'
+                ORDER BY tg_id, created_at
+            )
+            """
+            total_referral_bonus_query = (
+                bonus_cte
+                + f"""
+            SELECT 
+                COALESCE(SUM(ep.amount * (
+                    CASE 
+                        {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
+                        ELSE 0 
+                    END)), 0) AS total_bonus
+            FROM referral_levels rl
+            JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
+            WHERE rl.level <= {MAX_REFERRAL_LEVELS}
+            """
+            )
+        else:
+            bonus_cte = f"""
+            WITH RECURSIVE
+            referral_levels AS (
                 SELECT 
                     referred_tg_id, 
                     referrer_tg_id, 
@@ -815,6 +871,10 @@ async def get_referral_stats(referrer_tg_id: int):
                 JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
                 WHERE rl.level < {MAX_REFERRAL_LEVELS}
             )
+            """
+            total_referral_bonus_query = (
+                bonus_cte
+                + f"""
             SELECT 
                 COALESCE(SUM(p.amount * (
                     CASE 
@@ -824,10 +884,10 @@ async def get_referral_stats(referrer_tg_id: int):
             FROM referral_levels rl
             JOIN payments p ON rl.referred_tg_id = p.tg_id
             WHERE p.status = 'success' AND rl.level <= {MAX_REFERRAL_LEVELS}
-            """,
-            referrer_tg_id,
-        )
+            """
+            )
 
+        total_referral_bonus = await conn.fetchval(total_referral_bonus_query, referrer_tg_id)
         logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
 
         return {
@@ -1157,6 +1217,43 @@ async def check_notification_time(tg_id: int, notification_type: str, hours: int
     except Exception as e:
         logger.error(f"Ошибка при проверке времени уведомления для пользователя {tg_id}: {e}")
         return False
+
+    finally:
+        if conn is not None and session is None:
+            await conn.close()
+
+
+async def get_last_notification_time(tg_id: int, notification_type: str, session: Any = None) -> int:
+    """
+    Возвращает время последнего уведомления в миллисекундах (UTC).
+
+    Args:
+        tg_id (int): Telegram ID пользователя.
+        notification_type (str): Тип уведомления.
+        session (Any): Сессия базы данных.
+
+    Returns:
+        int: Время последнего уведомления в миллисекундах, или None, если уведомления не было.
+    """
+    conn = None
+    try:
+        conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
+
+        last_notification_time = await conn.fetchval(
+            """
+            SELECT EXTRACT(EPOCH FROM MAX(last_notification_time AT TIME ZONE 'Europe/Moscow' AT TIME ZONE 'UTC')) * 1000
+            FROM notifications 
+            WHERE tg_id = $1 AND notification_type = $2
+            """,
+            tg_id,
+            notification_type,
+        )
+
+        return int(last_notification_time) if last_notification_time is not None else None
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении времени последнего уведомления для пользователя {tg_id}: {e}")
+        return None
 
     finally:
         if conn is not None and session is None:

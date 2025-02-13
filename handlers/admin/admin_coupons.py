@@ -115,8 +115,6 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
         per_page = 10
         result = await get_all_coupons(session, page, per_page)
         coupons = result["coupons"]
-        total_pages = result["pages"]
-        current_page = result["current_page"]
 
         if not coupons:
             await callback_query.message.edit_text(

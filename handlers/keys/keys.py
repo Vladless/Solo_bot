@@ -10,9 +10,12 @@ import pytz
 from aiogram import F, Router, types
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
+    CONNECT_PHONE_BUTTON,
     DATABASE_URL,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
@@ -24,8 +27,6 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
-
-from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,
@@ -57,6 +58,7 @@ from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,
     PLAN_SELECTION_MSG,
+    SUBSCRIPTION_DESCRIPTION,
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
@@ -175,10 +177,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 hours = (total_seconds % 86400) // 3600
                 minutes = (total_seconds % 3600) // 60
 
-                days_left_message = (
-                    f"<b>🕒 Статус подписки:</b>\n"
-                    f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
-                )
+                days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
 
             formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
 
@@ -196,15 +195,19 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     )
                 )
 
-            builder.row(
-                InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-                InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
-            )
-
-            builder.row(
-                InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
-                InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
-            )
+            if CONNECT_PHONE_BUTTON:
+                builder.row(
+                    InlineKeyboardButton(text="📱 Подключить телефон", callback_data=f"connect_phone|{key_name}")
+                )
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+                    InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
+                )
+                builder.row(
+                    InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_name}"),
+                    InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_name}"),
+                )
 
             builder.row(
                 InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
@@ -217,7 +220,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
                 )
             else:
-                builder.row(InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"))
+                builder.row(InlineKeyboardButton(text="⏳ Продлить подписку", callback_data=f"renew_key|{key_name}"))
 
             if USE_COUNTRY_SELECTION:
                 builder.row(
@@ -252,6 +255,50 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             callback_query,
             f"Ошибка при получении информации о ключе: {e}",
         )
+
+
+@router.callback_query(F.data.startswith("connect_phone|"))
+async def process_callback_connect_phone(callback_query: CallbackQuery):
+    email = callback_query.data.split("|")[1]
+
+    conn = None
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        key_data = await conn.fetchrow(
+            """
+            SELECT key FROM keys WHERE email = $1
+            """,
+            email,
+        )
+        if not key_data:
+            await callback_query.message.answer("❌ Ошибка: ключ не найден.")
+            return
+
+        key_link = key_data["key"]
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении ключа для {email}: {e}")
+        await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        return
+    finally:
+        if conn:
+            await conn.close()
+
+    description = SUBSCRIPTION_DESCRIPTION.format(key_link=key_link)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+        InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
+    )
+    builder.row(
+        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"),
+        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"),
+    )
+    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{email}"))
+
+    await callback_query.message.answer(description, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data.startswith("update_subscription|"))
@@ -470,21 +517,16 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     )
 
     response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
-    logger.info(f"[RENEW] Сформировано сообщение: {response_message}")
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     if callback_query:
-        logger.info("[RENEW] Отправка ответа через callback_query.message.answer()")
         await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
-        logger.info("[RENEW] Отправка ответа через bot.send_message()")
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
-    logger.info("[RENEW] Подключение к базе данных...")
     conn = await asyncpg.connect(DATABASE_URL)
-    logger.info("[RENEW] Подключение к базе данных установлено.")
 
     logger.info(f"[RENEW] Получение данных о ключе для email: {email}")
     key_info = await get_key_details(email, conn)
@@ -492,10 +534,8 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
         logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")
         await conn.close()
         return
-    logger.info(f"[RENEW] Данные о ключе получены: {key_info}")
 
     server_id = key_info["server_id"]
-    logger.info(f"[RENEW] Используется server_id: {server_id}")
 
     if USE_COUNTRY_SELECTION:
         logger.info(f"[RENEW] USE_COUNTRY_SELECTION включён. Проверяю информацию о сервере {server_id}")

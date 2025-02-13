@@ -5,9 +5,9 @@ import string
 
 import aiohttp
 import asyncpg
-from config import DATABASE_URL
 
 from bot import bot
+from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 
@@ -20,10 +20,10 @@ async def get_usd_rate():
                     data = await response.text()
                     usd = float(json.loads(data)["Valute"]["USD"]["Value"])
                 else:
-                    usd = float(100)  # Default value if request fails
+                    usd = float(100)
     except Exception as e:
         logger.exception(f"Error fetching USD rate: {e}")
-        usd = float(100)  # Default value if an exception occurs
+        usd = float(100)
     return usd
 
 
