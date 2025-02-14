@@ -331,42 +331,36 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
 
     user_traffic_data = {}
 
+    async def fetch_traffic(api_url: str, client_id: str, server: str) -> tuple[str, Any]:
+        """
+        Получает трафик с сервера для заданного client_id.
+        Возвращает кортеж: (server, used_gb) или (server, ошибка).
+        """
+        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+        try:
+            traffic_info = await get_client_traffic(xui, client_id)
+            if traffic_info["status"] == "success" and traffic_info["traffic"]:
+                client_data = traffic_info["traffic"][0]
+                used_gb = (client_data.up + client_data.down) / 1073741824
+                return server, round(used_gb, 2)
+            else:
+                return server, "Ошибка получения трафика"
+        except Exception as e:
+            return server, f"Ошибка: {e}"
+
+    tasks = []
     for row in rows:
         client_id = row["client_id"]
         server_id = row["server_id"]
-
         if server_id in servers_map:
             api_url = servers_map[server_id]
-            xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
-
-            try:
-                traffic_info = await get_client_traffic(xui, client_id)
-
-                if traffic_info["status"] == "success" and traffic_info["traffic"]:
-                    client_data = traffic_info["traffic"][0]
-                    used_gb = (client_data.up + client_data.down) / 1073741824
-                    user_traffic_data[server_id] = round(used_gb, 2)
-                else:
-                    user_traffic_data[server_id] = "Ошибка получения трафика"
-
-            except Exception as e:
-                user_traffic_data[server_id] = f"Ошибка: {e}"
-
+            tasks.append(fetch_traffic(api_url, client_id, server_id))
         else:
             for server, api_url in servers_map.items():
-                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+                tasks.append(fetch_traffic(api_url, client_id, server))
 
-                try:
-                    traffic_info = await get_client_traffic(xui, client_id)
-
-                    if traffic_info["status"] == "success" and traffic_info["traffic"]:
-                        client_data = traffic_info["traffic"][0]
-                        used_gb = (client_data.up + client_data.down) / 1073741824
-                        user_traffic_data[server] = round(used_gb, 2)
-                    else:
-                        user_traffic_data[server] = "Ошибка получения трафика"
-
-                except Exception as e:
-                    user_traffic_data[server] = f"Ошибка: {e}"
+    results = await asyncio.gather(*tasks)
+    for server, result in results:
+        user_traffic_data[server] = result
 
     return {"status": "success", "traffic": user_traffic_data}

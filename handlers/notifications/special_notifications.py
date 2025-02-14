@@ -13,9 +13,13 @@ from database import (
 )
 from handlers.keys.key_utils import get_user_traffic
 from logger import logger
+from datetime import datetime, timedelta
+
+import pytz
 
 router = Router()
 
+moscow_tz = pytz.timezone("Europe/Moscow")
 
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     """
@@ -113,13 +117,6 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
 
 
-from datetime import datetime, timedelta
-
-import pytz
-
-moscow_tz = pytz.timezone("Europe/Moscow")
-
-
 async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_time: int, keys: list):
     """
     Проверяет трафик пользователей, у которых ещё не отправлялось уведомление о нулевом трафике.
@@ -143,14 +140,14 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
             logger.warning(f"Для {email} нет значения created_at. Пропускаем.")
             continue
 
+        if notified is True:
+            logger.info(f"Уведомление для {email} уже отправлено, пропускаем.")
+            continue
+
         created_at_dt = pytz.utc.localize(datetime.fromtimestamp(created_at / 1000)).astimezone(moscow_tz)
         created_at_plus_2 = created_at_dt + timedelta(hours=NOTIFY_INACTIVE_TRAFFIC)
 
         if current_dt < created_at_plus_2:
-            continue
-
-        if notified:
-            logger.info(f"Уведомление для {email} уже отправлено, пропускаем.")
             continue
 
         try:
@@ -194,5 +191,13 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
                 await create_blocked_user(tg_id, conn)
             except Exception as e:
                 logger.error(f"⚠ Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+        else:
+            try:
+                await conn.execute(
+                    "UPDATE keys SET notified = TRUE WHERE tg_id = $1 AND client_id = $2", tg_id, client_id
+                )
+                logger.info(f"Ключ для {email} имеет трафик. Обновлено notified = TRUE.")
+            except Exception as e:
+                logger.error(f"Ошибка обновления notified для пользователя {tg_id}: {e}")
 
     logger.info("✅ Обработка пользователей с нулевым трафиком завершена.")
