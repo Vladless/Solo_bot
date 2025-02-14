@@ -8,10 +8,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from py3xui import AsyncApi
-
-from bot import bot
-from client import delete_client
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -28,6 +24,10 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
+from py3xui import AsyncApi
+
+from bot import bot
+from client import delete_client
 from database import (
     add_connection,
     check_connection_exists,

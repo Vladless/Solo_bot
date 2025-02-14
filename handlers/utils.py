@@ -5,9 +5,9 @@ import string
 
 import aiohttp
 import asyncpg
+from config import DATABASE_URL
 
 from bot import bot
-from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 

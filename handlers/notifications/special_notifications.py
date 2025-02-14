@@ -1,11 +1,13 @@
 import asyncio
+from datetime import datetime, timedelta
 
 import asyncpg
+import pytz
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
+
 from database import (
     add_notification,
     check_notification_time,
@@ -13,13 +15,11 @@ from database import (
 )
 from handlers.keys.key_utils import get_user_traffic
 from logger import logger
-from datetime import datetime, timedelta
-
-import pytz
 
 router = Router()
 
 moscow_tz = pytz.timezone("Europe/Moscow")
+
 
 async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     """

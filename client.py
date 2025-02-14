@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import py3xui
-
 from config import LIMIT_IP, SUPERNODE
+
 from logger import logger
 
 
@@ -182,3 +182,46 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, 
     except Exception as e:
         logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
         return {"status": "error", "error": str(e)}
+
+
+async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, client_id: str, enable: bool = True) -> bool:
+    """
+    Функция для включения/отключения клиента на сервере 3x-ui.
+
+    Args:
+        xui: Экземпляр API клиента
+        inbound_id: ID инбаунда
+        email: Email клиента
+        client_id: UUID клиента
+        enable: True для включения, False для отключения
+
+    Returns:
+        bool: True при успешном выполнении, False при ошибке
+    """
+    try:
+        await xui.login()
+
+        # Получаем клиента по email
+        client = await xui.client.get_by_email(email)
+
+        if not client:
+            logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")
+            return False
+
+        # Обновляем параметры клиента
+        client.enable = enable
+        client.id = client_id
+        client.flow = "xtls-rprx-vision"
+        client.limit_ip = LIMIT_IP
+        client.inbound_id = inbound_id
+
+        # Обновляем клиента
+        await xui.client.update(client.id, client)
+        status = "включен" if enable else "отключен"
+        logger.info(f"Клиент с email {email} и ID {client_id} успешно {status}.")
+        return True
+
+    except Exception as e:
+        status = "включении" if enable else "отключении"
+        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
+        return False

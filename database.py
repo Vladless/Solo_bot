@@ -4,8 +4,8 @@ from typing import Any
 
 import asyncpg
 import pytz
-
 from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 

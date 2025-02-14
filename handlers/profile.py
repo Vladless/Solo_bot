@@ -7,8 +7,8 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import DATABASE_URL, INSTRUCTIONS_BUTTON, NEWS_MESSAGE, RENEWAL_PLANS
+
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
