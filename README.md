@@ -148,10 +148,7 @@ python3 main.py
 
 #### Отзывы пользователей:
 SoloBot уже помог сотням пользователей!:
-![image](https://github.com/user-attachments/assets/18c7a190-3ba3-4667-9f1e-dc1051e4abdf)
-
-
-
+![image](https://github.com/user-attachments/assets/fe13a00f-94d3-419c-afd0-d1c1efec5179)
 
 
  **Читать** [**➡ Отзывы**](https://pocomacho.ru/solonetbot/reviews/)
