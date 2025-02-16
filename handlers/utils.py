@@ -191,7 +191,7 @@ async def edit_or_send_message(
                 await target_message.edit_caption(caption=text, reply_markup=reply_markup)
                 return
             except Exception as e:
-                logger.error("Ошибка редактирования подписи: %s", e)
+                logger.error(f"Ошибка редактирования подписи: {e}")
         try:
             await target_message.edit_text(
                 text=text,
@@ -200,7 +200,7 @@ async def edit_or_send_message(
             )
             return
         except Exception as e:
-            logger.error("Ошибка редактирования текста: %s", e)
+            logger.error(f"Ошибка редактирования текста: {e}")
             await target_message.answer(
                 text=text,
                 reply_markup=reply_markup,
