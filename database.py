@@ -537,18 +537,18 @@ async def get_balance(tg_id: int) -> float:
             await conn.close()
 
 
-async def update_balance(tg_id: int, amount: float, session: Any = None, is_admin: bool = False):
+async def update_balance(
+    tg_id: int,
+    amount: float,
+    session: Any = None,
+    is_admin: bool = False,
+    skip_referral: bool = False,    # <- флаг "пропустить реферальное начисление"
+    skip_cashback: bool = False     # <- флаг "пропустить кэшбэк"
+):
     """
     Обновляет баланс пользователя в базе данных.
-    Кэшбек применяется только для положительных сумм, если пополнение НЕ через админку.
-
-    Args:
-        tg_id (int): Telegram ID пользователя.
-        amount (float): Сумма для обновления баланса.
-        session (Any, optional): Сессия базы данных. Если не передана, создается новая.
-        is_admin (bool, optional): Флаг, указывающий, что пополнение идёт через админку. По умолчанию False.
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или обновлении баланса.
+    - Кэшбек применяется только для положительных сумм, если пополнение НЕ через админку и не пропущен явно.
+    - Реферальный бонус тоже не срабатывает, если явно попросили пропустить (например, при начислении за купон).
     """
     conn = None
     try:
@@ -556,15 +556,20 @@ async def update_balance(tg_id: int, amount: float, session: Any = None, is_admi
             conn = await asyncpg.connect(DATABASE_URL)
             session = conn
 
-        extra = amount * (CASHBACK / 100.0) if (CASHBACK > 0 and amount > 0 and not is_admin) else 0
+        # Если пополнение не от админа и не сказали пропустить кэшбэк
+        if (CASHBACK > 0 and amount > 0 and not is_admin and not skip_cashback):
+            extra = amount * (CASHBACK / 100.0)
+        else:
+            extra = 0
+
         total_amount = int(amount + extra)
 
-        current_balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
+        current_balance = await session.fetchval(
+            "SELECT balance FROM connections WHERE tg_id = $1",
+            tg_id
+        ) or 0
 
-        if current_balance is None:
-            current_balance = 0
-
-        new_balance = int(current_balance) + total_amount
+        new_balance = current_balance + total_amount
 
         await session.execute(
             """
@@ -580,7 +585,8 @@ async def update_balance(tg_id: int, amount: float, session: Any = None, is_admi
             f"({'+ кешбэк' if extra > 0 else 'без кешбэка'}), стало: {new_balance}"
         )
 
-        if not is_admin:
+        # Если не админ и не пропустили реферальное начисление — обрабатываем реферальную цепочку
+        if not is_admin and not skip_referral:
             await handle_referral_on_balance_update(tg_id, int(amount))
 
     except Exception as e:
@@ -729,7 +735,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
 
             if bonus > 0:
                 logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}.")
-                await update_balance(referrer_tg_id, bonus)
+                await update_balance(referrer_tg_id, bonus, skip_referral=True, skip_cashback=True)
 
                 if CHECK_REFERRAL_REWARD_ISSUED:
                     await conn.execute(
