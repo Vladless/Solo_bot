@@ -6,9 +6,13 @@ import aiohttp
 import asyncpg
 from aiohttp import web
 
-from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
+from config import (
+    DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE,
+    TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
+)
 from database import get_key_details, get_servers
 from logger import logger
+
 
 db_pool = None
 
@@ -53,7 +57,10 @@ async def combine_unique_lines(urls, tg_id, query_string):
 
     logger.info(f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}")
 
-    urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
+    urls_with_query = [
+        f"{url}?{query_string}" if query_string else url
+        for url in urls
+    ]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
     tasks = [fetch_url_content(url, tg_id) for url in urls_with_query]
@@ -64,7 +71,6 @@ async def combine_unique_lines(urls, tg_id, query_string):
         all_lines.update(filter(None, lines))
 
     logger.info(f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}")
-
     return list(all_lines)
 
 
@@ -73,6 +79,40 @@ transition_timestamp_ms = int(transition_date.timestamp() * 1000)
 transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
 
 logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
+
+
+async def get_subscription_urls(server_id: str, email: str, conn) -> list:
+    """
+    Универсальная функция, которая в зависимости от флага USE_COUNTRY_SELECTION
+    получает список URL-адресов для подписки. Возвращает пустой список, если
+    нужные данные не найдены.
+    """
+    if USE_COUNTRY_SELECTION:
+        logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
+        server_data = await conn.fetchrow(
+            "SELECT subscription_url FROM servers WHERE server_name = $1",
+            server_id
+        )
+        if not server_data:
+            logger.warning(f"Не найден сервер {server_id} в БД!")
+            return []
+        subscription_url = server_data["subscription_url"]
+        urls = [f"{subscription_url}/{email}"]
+        logger.info(f"Используем подписку {urls[0]}")
+        return urls
+
+    # Если режим выбора страны выключен, получаем все сервера кластера
+    servers = await get_servers()
+    logger.info(f"Режим выбора страны отключен. Используем кластер {server_id}.")
+    cluster_servers = servers.get(server_id, [])
+
+    if not cluster_servers:
+        logger.warning(f"Не найдены сервера для {server_id}")
+        return []
+
+    urls = [f"{server['subscription_url']}/{email}" for server in cluster_servers]
+    logger.info(f"Найдено {len(urls)} URL-адресов в кластере {server_id}")
+    return urls
 
 
 async def handle_subscription(request, old_subscription=False):
@@ -85,7 +125,8 @@ async def handle_subscription(request, old_subscription=False):
         return web.Response(text="❌ Неверные параметры запроса.", status=400)
 
     logger.info(
-        f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}"
+        f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: "
+        f"email={email}, tg_id={tg_id}"
     )
 
     await init_db_pool()
@@ -100,6 +141,7 @@ async def handle_subscription(request, old_subscription=False):
         stored_tg_id = client_data.get("tg_id")
         server_id = client_data["server_id"]
 
+        # Проверяем, что tg_id из запроса совпадает с сохранённым в БД (для новой подписки)
         if not old_subscription and str(tg_id) != str(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")
             return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
@@ -112,39 +154,29 @@ async def handle_subscription(request, old_subscription=False):
 
             if created_at_ms >= transition_timestamp_ms_adjusted:
                 logger.info(f"Клиент с email {email} является новым.")
-                return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
+                return web.Response(
+                    text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.",
+                    status=400
+                )
 
-        urls = []
-
-        if USE_COUNTRY_SELECTION:
-            logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
-            server_data = await conn.fetchrow("SELECT subscription_url FROM servers WHERE server_name = $1", server_id)
-
-            if not server_data:
-                logger.warning(f"Не найден сервер {server_id} в БД!")
-                return web.Response(text="❌ Сервер не найден.", status=404)
-
-            subscription_url = server_data["subscription_url"]
-            urls = [f"{subscription_url}/{email}"]
-            logger.info(f"Используем подписку {urls[0]}")
-
-        else:
-            servers = await get_servers()
-            logger.info(f"Режим выбора страны отключен. Используем кластер {server_id}.")
-            cluster_servers = servers.get(server_id, [])
-
-            if not cluster_servers:
-                logger.warning(f"Не найдены сервера для {server_id}")
-                return web.Response(text="❌ Сервер не найден.", status=404)
-
-            urls = [f"{server['subscription_url']}/{email}" for server in cluster_servers]
+        # Получаем список URL-адресов для подписки через универсальную функцию
+        urls = await get_subscription_urls(server_id, email, conn)
+        if not urls:
+            # Сообщаем, что сервер не найден или неверные данные
+            return web.Response(text="❌ Сервер не найден.", status=404)
 
         query_string = request.query_string if not old_subscription else ""
-        combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
+        combined_subscriptions = await combine_unique_lines(
+            urls,
+            tg_id or email,  # Если tg_id нет, для лога используем email
+            query_string
+        )
 
-        base64_encoded = base64.b64encode("\n".join(combined_subscriptions).encode("utf-8")).decode("utf-8")
+        base64_encoded = base64.b64encode(
+            "\n".join(combined_subscriptions).encode("utf-8")
+        ).decode("utf-8")
+
         encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
-
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",

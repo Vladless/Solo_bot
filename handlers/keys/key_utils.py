@@ -14,14 +14,23 @@ async def create_key_on_cluster(
     cluster_id: str, tg_id: int, client_id: str, email: str, expiry_timestamp: int, plan: int = None
 ):
     """
-    Создает ключ на всех серверах указанного кластера.
+    Создает ключ на всех серверах указанного кластера (или на конкретном сервере, если cluster_id — это имя сервера).
     """
     try:
         servers = await get_servers()
         cluster = servers.get(cluster_id)
 
+        # Если не нашли кластер по ключу, ищем сервер по имени (аналогично renew_key_in_cluster, delete_key_from_cluster)
         if not cluster:
-            raise ValueError(f"Кластер с ID {cluster_id} не найден.")
+            found_servers = []
+            for _key, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        found_servers.append(server_info)
+            if found_servers:
+                cluster = found_servers
+            else:
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         semaphore = asyncio.Semaphore(2)
 
@@ -197,12 +206,24 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
 
 
 async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id):
+    """
+    Обновляет ключ на всех серверах указанного кластера (или сервера, если передано имя).
+    """
     try:
         servers = await get_servers()
         cluster = servers.get(cluster_id)
 
+        # Аналогичная логика поиска кластера или конкретного сервера
         if not cluster:
-            raise ValueError(f"Кластер с ID {cluster_id} не найден.")
+            found_servers = []
+            for _key, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        found_servers.append(server_info)
+            if found_servers:
+                cluster = found_servers
+            else:
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         tasks = []
         for server_info in cluster:
