@@ -7,8 +7,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-from config import TOTAL_GB
 
+from config import TOTAL_GB
 from database import (
     delete_key,
     delete_user_data,

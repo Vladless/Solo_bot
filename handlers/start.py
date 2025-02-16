@@ -1,17 +1,17 @@
 import os
 from typing import Any
 
-import aiofiles
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -21,8 +21,6 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
-
-from bot import bot
 from database import (
     add_connection,
     add_referral,
@@ -35,6 +33,8 @@ from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
 from handlers.texts import WELCOME_TEXT, get_about_vpn
 from logger import logger
+
+from .utils import edit_or_send_message
 
 router = Router()
 
@@ -59,7 +59,11 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
     if CAPTCHA_ENABLE and captcha:
         captcha_data = await generate_captcha(message, state)
-        await message.answer(text=captcha_data["text"], reply_markup=captcha_data["markup"])
+        await edit_or_send_message(
+            target_message=message,
+            text=captcha_data["text"],
+            reply_markup=captcha_data["markup"],
+        )
         return
 
     if CHANNEL_EXISTS and CHANNEL_REQUIRED:
@@ -70,8 +74,9 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 await state.update_data(original_text=original_text)
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
-                await message.answer(
-                    f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                await edit_or_send_message(
+                    target_message=message,
+                    text=f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
                     reply_markup=builder.as_markup(),
                 )
                 return
@@ -84,8 +89,10 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
             await state.update_data(start_text=message.text)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
-            await message.answer(
-                f"Пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}", reply_markup=builder.as_markup()
+            await edit_or_send_message(
+                target_message=message,
+                text=f"Пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                reply_markup=builder.as_markup(),
             )
             return
 
@@ -287,7 +294,7 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
             await callback_query.answer("Вы еще не подписаны на канал!", show_alert=True)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
                 reply_markup=builder.as_markup(),
             )
@@ -305,7 +312,8 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
 
 
 async def show_start_menu(message: Message, admin: bool, session: Any):
-    """Функция для отображения стандартного меню"""
+    """Функция для отображения стандартного меню через редактирование сообщения.
+    Если редактирование не удалось, отправляем новое сообщение."""
     logger.info(f"Показываю главное меню для пользователя {message.chat.id}")
 
     image_path = os.path.join("img", "pic.jpg")
@@ -334,35 +342,29 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 
     builder.row(InlineKeyboardButton(text="🌐 О VPN", callback_data="about_vpn"))
 
-    if os.path.isfile(image_path):
-        async with aiofiles.open(image_path, "rb") as image_from_buffer:
-            image_data = await image_from_buffer.read()
-            await message.answer_photo(
-                photo=BufferedInputFile(image_data, filename="pic.jpg"),
-                caption=WELCOME_TEXT,
-                reply_markup=builder.as_markup(),
-            )
-    else:
-        await message.answer(
-            text=WELCOME_TEXT,
-            reply_markup=builder.as_markup(),
-        )
+    await edit_or_send_message(
+        target_message=message,
+        text=WELCOME_TEXT,
+        reply_markup=builder.as_markup(),
+        media_path=image_path,
+    )
 
 
 @router.callback_query(F.data == "about_vpn")
 async def handle_about_vpn(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
-
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
-
-    builder.row(
-        InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL),
-    )
+    builder.row(InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL))
     if CHANNEL_EXISTS:
-        builder.row(
-            InlineKeyboardButton(text="📢 Официальный канал", url=CHANNEL_URL),
-        )
+        builder.row(InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL))
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
+    text = get_about_vpn("3.2.3-minor")
 
-    await callback_query.message.answer(get_about_vpn("3.2.3-minor"), reply_markup=builder.as_markup())
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=text,
+        reply_markup=builder.as_markup(),
+        media_path=None,
+        force_text=False,
+    )

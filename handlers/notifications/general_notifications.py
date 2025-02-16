@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import asyncpg
 import pytz
 from aiogram import Bot, Router
+
 from config import (
     DATABASE_URL,
     NOTIFICATION_TIME,
@@ -16,7 +17,6 @@ from config import (
     TOTAL_GB,
     TRIAL_TIME_DISABLE,
 )
-
 from database import (
     add_notification,
     check_notification_time,

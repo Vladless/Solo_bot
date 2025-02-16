@@ -6,8 +6,8 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import CAPTCHA_EMOJIS
 
+from config import CAPTCHA_EMOJIS
 from logger import logger
 
 router = Router()

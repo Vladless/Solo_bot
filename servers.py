@@ -2,55 +2,15 @@ import asyncio
 import re
 from datetime import datetime, timedelta
 
-import asyncpg
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from ping3 import ping
 
 from bot import bot
-from database import check_unique_server_name, create_server, get_servers
+from config import ADMIN_ID, DATABASE_URL, PING_TIME
+from database import get_servers
+from keyboards.admin.servers_kb import AdminServerEditorCallback
 from logger import logger
-
-try:
-    from config import CLUSTERS
-except ImportError:
-    CLUSTERS = None
-    logger.info("Переменная CLUSTERS не найдена в конфигурации. Добавьте сервера через админ-панель в боте!")
-
-
-async def sync_servers_with_db():
-    """
-    Синхронизирует сервера из конфигурации CLUSTERS с базой данных.
-    """
-    if CLUSTERS is None:
-        logger.info("Конфигурация CLUSTERS не найдена. Синхронизация не будет выполнена.")
-        return
-
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-
-        for cluster_name, servers in CLUSTERS.items():
-            for _server_key, server_info in servers.items():
-                exists = await check_unique_server_name(server_info["name"], conn, cluster_name)
-
-                if not exists:
-                    await create_server(
-                        cluster_name=cluster_name,
-                        server_name=server_info["name"],
-                        api_url=server_info["API_URL"],
-                        subscription_url=server_info["SUBSCRIPTION"],
-                        inbound_id=server_info["INBOUND_ID"],
-                        session=conn,
-                    )
-        logger.info("✅ Синхронизация серверов завершена.")
-
-    except Exception as e:
-        logger.error(f"Ошибка при синхронизации серверов: {e}")
-    finally:
-        if "conn" in locals():
-            await conn.close()
-
 
 last_ping_times = {}
 last_notification_times = {}
@@ -89,7 +49,12 @@ async def notify_admin(server_name: str):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Управление сервером", callback_data=f"manage_server|{server_name}"))
+    builder.row(
+        InlineKeyboardButton(
+            text="Управление сервером",
+            callback_data=AdminServerEditorCallback(action="servers_manage", data=server_name).pack(),
+        )
+    )
 
     for admin_id in ADMIN_ID:
         await bot.send_message(
@@ -116,7 +81,7 @@ async def check_servers():
         tasks = []
         server_info_list = []
 
-        for cluster_name, cluster_servers in servers.items():
+        for _, cluster_servers in servers.items():
             for server in cluster_servers:
                 original_api_url = server["api_url"]
                 server_name = server["server_name"]
@@ -141,7 +106,7 @@ async def check_servers():
                     last_ping_times[server_name] = current_time
 
         online_servers = [name for name, _ in server_info_list if name not in offline_servers]
-        logger.info(f"Проверка серверов завершена. Онлайн: {len(online_servers)}, Оффлайн: {len(offline_servers)}")
+        logger.info(f"Проверка серверов завершена. Доступно: {len(online_servers)}, Недоступно: {len(offline_servers)}")
         if offline_servers:
             logger.warning(f"🚨 Не отвечает {len(offline_servers)} серверов: {', '.join(offline_servers)}")
 

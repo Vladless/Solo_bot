@@ -30,6 +30,8 @@ from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import PAYMENT_OPTIONS
 from logger import logger
 
+from handlers.utils import edit_or_send_message
+
 router = Router()
 
 
@@ -102,9 +104,11 @@ async def process_callback_pay_robokassa(
             await add_connection(tg_id, balance=0.0, trial=0, session=session)
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
-    await callback_query.message.answer(
+    await edit_or_send_message(
+        target_message=callback_query.message,
         text="Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),
+        force_text=True
     )
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
     logger.info(f"Displayed amount selection for user {tg_id}.")
@@ -119,7 +123,12 @@ async def process_amount_selection(
     data = callback_query.data.split("|")
     if len(data) != 3 or data[1] != "amount":
         logger.error("Ошибка: callback_data не соответствует формату.")
-        await callback_query.message.answer("Ошибка: данные повреждены.")
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="Ошибка: данные повреждены.",
+            reply_markup=types.InlineKeyboardMarkup(),
+            force_text=True
+        )
         return
 
     amount_str = data[2]
@@ -129,7 +138,12 @@ async def process_amount_selection(
             raise ValueError("Сумма должна быть положительным числом.")
     except ValueError as e:
         logger.error(f"Некорректное значение суммы: {amount_str}. Ошибка: {e}")
-        await callback_query.message.answer("Некорректная сумма.")
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="Некорректная сумма.",
+            reply_markup=types.InlineKeyboardMarkup(),
+            force_text=True
+        )
         return
 
     await state.update_data(amount=amount)
@@ -148,9 +162,11 @@ async def process_amount_selection(
         ]
     )
 
-    await callback_query.message.answer(
+    await edit_or_send_message(
+        target_message=callback_query.message,
         text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
         reply_markup=confirm_keyboard,
+        force_text=True
     )
     logger.info(f"Payment link sent to user {callback_query.message.chat.id}.")
 
@@ -228,9 +244,11 @@ async def process_custom_amount_selection(
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_robokassa"))
 
-    await callback_query.message.answer(
-        "Пожалуйста, введите сумму пополнения.",
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text="Пожалуйста, введите сумму пополнения.",
         reply_markup=builder.as_markup(),
+        force_text=True
     )
 
     await state.set_state(
@@ -242,67 +260,70 @@ async def process_custom_amount_selection(
 async def handle_custom_amount_input(message: types.Message | types.CallbackQuery, state: FSMContext = None, session: Any = None):
     if isinstance(message, types.CallbackQuery):
         tg_id = message.message.chat.id
+        target_message = message.message
     else:
         tg_id = message.chat.id
+        target_message = message
 
     logger.info(f"User {tg_id} initiated payment through ROBOKASSA")
     inv_id = 0
 
     try:
-
         conn = await asyncpg.connect(DATABASE_URL)
         user_data = await get_temporary_data(conn, tg_id)
         await conn.close()
 
         if not user_data:
-            await message.answer("Данные для оплаты не найдены. Попробуйте снова.")
+            await edit_or_send_message(
+                target_message=target_message,
+                text="Данные для оплаты не найдены. Попробуйте снова.",
+                reply_markup=types.InlineKeyboardMarkup()
+            )
             return
 
         state_type = user_data["state"]
         amount = user_data["data"].get("required_amount", 0)
 
         if amount <= 0:
-            await message.answer("Недостаточная сумма для пополнения.")
+            await edit_or_send_message(
+                target_message=target_message,
+                text="Недостаточная сумма для пополнения.",
+                reply_markup=types.InlineKeyboardMarkup()
+            )
             return
 
         payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
-
         logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
 
-        confirm_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="💳 Оплатить", url=payment_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa")],
-            ]
-        )
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_url))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa"))
 
         if state_type == "waiting_for_payment":
             message_text = f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"
         elif state_type == "waiting_for_renewal_payment":
             message_text = f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
         else:
-            await message.answer("Некорректное состояние данных. Попробуйте снова.")
+            await edit_or_send_message(
+                target_message=target_message,
+                text="Некорректное состояние данных. Попробуйте снова.",
+                reply_markup=types.InlineKeyboardMarkup()
+            )
             return
 
-        if isinstance(message, types.CallbackQuery):
-            await message.message.answer(
-                text=message_text,
-                reply_markup=confirm_keyboard,
-            )
-        else:
-            await message.answer(
-                text=message_text,
-                reply_markup=confirm_keyboard,
-            )
+        await edit_or_send_message(
+            target_message=target_message,
+            text=message_text,
+            reply_markup=builder.as_markup()
+        )
 
         if isinstance(state, FSMContext):
             await state.clear()
 
     except Exception as e:
         logger.error(f"Ошибка при создании платежа для пользователя {tg_id}: {e}")
-        error_message = "Произошла ошибка при создании платежа. Попробуйте позже."
-
-        if isinstance(message, types.CallbackQuery):
-            await message.message.answer(error_message)
-        else:
-            await message.answer(error_message)
+        await edit_or_send_message(
+            target_message=target_message,
+            text="Произошла ошибка при создании платежа. Попробуйте позже.",
+            reply_markup=types.InlineKeyboardMarkup()
+        )

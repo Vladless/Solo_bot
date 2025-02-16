@@ -2442,7 +2442,6 @@ static const char __pyx_k_USE_NEW_PAYMENT_FLOW[] = "USE_NEW_PAYMENT_FLOW";
 static const char __pyx_k_clear_temporary_data[] = "clear_temporary_data";
 static const char __pyx_k_complete_key_renewal[] = "complete_key_renewal";
 static const char __pyx_k_InlineKeyboardBuilder[] = "InlineKeyboardBuilder";
-static const char __pyx_k_USE_COUNTRY_SELECTION[] = "USE_COUNTRY_SELECTION";
 static const char __pyx_k_aiogram_utils_keyboard[] = "aiogram.utils.keyboard";
 static const char __pyx_k_PAYMENT_SUCCESS_MESSAGE[] = "PAYMENT_SUCCESS_MESSAGE";
 static const char __pyx_k_handlers_payments_utils[] = "handlers.payments.utils";
@@ -2495,7 +2494,6 @@ typedef struct {
   PyObject *__pyx_n_s_PROFILE;
   PyObject *__pyx_kp_u_RENEW;
   PyObject *__pyx_n_s_RENEW_KEY;
-  PyObject *__pyx_n_s_USE_COUNTRY_SELECTION;
   PyObject *__pyx_n_s_USE_NEW_PAYMENT_FLOW;
   PyObject *__pyx_kp_u__10;
   PyObject *__pyx_kp_u__11;
@@ -2683,7 +2681,6 @@ static int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_n_s_PROFILE);
   Py_CLEAR(clear_module_state->__pyx_kp_u_RENEW);
   Py_CLEAR(clear_module_state->__pyx_n_s_RENEW_KEY);
-  Py_CLEAR(clear_module_state->__pyx_n_s_USE_COUNTRY_SELECTION);
   Py_CLEAR(clear_module_state->__pyx_n_s_USE_NEW_PAYMENT_FLOW);
   Py_CLEAR(clear_module_state->__pyx_kp_u__10);
   Py_CLEAR(clear_module_state->__pyx_kp_u__11);
@@ -2849,7 +2846,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
   Py_VISIT(traverse_module_state->__pyx_n_s_PROFILE);
   Py_VISIT(traverse_module_state->__pyx_kp_u_RENEW);
   Py_VISIT(traverse_module_state->__pyx_n_s_RENEW_KEY);
-  Py_VISIT(traverse_module_state->__pyx_n_s_USE_COUNTRY_SELECTION);
   Py_VISIT(traverse_module_state->__pyx_n_s_USE_NEW_PAYMENT_FLOW);
   Py_VISIT(traverse_module_state->__pyx_kp_u__10);
   Py_VISIT(traverse_module_state->__pyx_kp_u__11);
@@ -3025,7 +3021,6 @@ static int __pyx_m_traverse(PyObject *m, visitproc visit, void *arg) {
 #define __pyx_n_s_PROFILE __pyx_mstate_global->__pyx_n_s_PROFILE
 #define __pyx_kp_u_RENEW __pyx_mstate_global->__pyx_kp_u_RENEW
 #define __pyx_n_s_RENEW_KEY __pyx_mstate_global->__pyx_n_s_RENEW_KEY
-#define __pyx_n_s_USE_COUNTRY_SELECTION __pyx_mstate_global->__pyx_n_s_USE_COUNTRY_SELECTION
 #define __pyx_n_s_USE_NEW_PAYMENT_FLOW __pyx_mstate_global->__pyx_n_s_USE_NEW_PAYMENT_FLOW
 #define __pyx_kp_u__10 __pyx_mstate_global->__pyx_kp_u__10
 #define __pyx_kp_u__11 __pyx_mstate_global->__pyx_kp_u__11
@@ -6859,7 +6854,6 @@ static int __Pyx_CreateStringTabAndInitStrings(void) {
     {&__pyx_n_s_PROFILE, __pyx_k_PROFILE, sizeof(__pyx_k_PROFILE), 0, 0, 1, 1},
     {&__pyx_kp_u_RENEW, __pyx_k_RENEW, sizeof(__pyx_k_RENEW), 0, 1, 0, 0},
     {&__pyx_n_s_RENEW_KEY, __pyx_k_RENEW_KEY, sizeof(__pyx_k_RENEW_KEY), 0, 0, 1, 1},
-    {&__pyx_n_s_USE_COUNTRY_SELECTION, __pyx_k_USE_COUNTRY_SELECTION, sizeof(__pyx_k_USE_COUNTRY_SELECTION), 0, 0, 1, 1},
     {&__pyx_n_s_USE_NEW_PAYMENT_FLOW, __pyx_k_USE_NEW_PAYMENT_FLOW, sizeof(__pyx_k_USE_NEW_PAYMENT_FLOW), 0, 0, 1, 1},
     {&__pyx_kp_u__10, __pyx_k__10, sizeof(__pyx_k__10), 0, 1, 0, 0},
     {&__pyx_kp_u__11, __pyx_k__11, sizeof(__pyx_k__11), 0, 1, 0, 0},
@@ -7472,7 +7466,7 @@ if (!__Pyx_RefNanny) {
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  __pyx_t_2 = PyList_New(3); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 8, __pyx_L1_error)
+  __pyx_t_2 = PyList_New(2); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   __Pyx_INCREF(__pyx_n_s_DATABASE_URL);
   __Pyx_GIVEREF(__pyx_n_s_DATABASE_URL);
@@ -7480,9 +7474,6 @@ if (!__Pyx_RefNanny) {
   __Pyx_INCREF(__pyx_n_s_USE_NEW_PAYMENT_FLOW);
   __Pyx_GIVEREF(__pyx_n_s_USE_NEW_PAYMENT_FLOW);
   if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 1, __pyx_n_s_USE_NEW_PAYMENT_FLOW)) __PYX_ERR(0, 8, __pyx_L1_error);
-  __Pyx_INCREF(__pyx_n_s_USE_COUNTRY_SELECTION);
-  __Pyx_GIVEREF(__pyx_n_s_USE_COUNTRY_SELECTION);
-  if (__Pyx_PyList_SET_ITEM(__pyx_t_2, 2, __pyx_n_s_USE_COUNTRY_SELECTION)) __PYX_ERR(0, 8, __pyx_L1_error);
   __pyx_t_3 = __Pyx_Import(__pyx_n_s_config, __pyx_t_2, 0); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_3);
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
@@ -7493,10 +7484,6 @@ if (!__Pyx_RefNanny) {
   __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_USE_NEW_PAYMENT_FLOW); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   if (PyDict_SetItem(__pyx_d, __pyx_n_s_USE_NEW_PAYMENT_FLOW, __pyx_t_2) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
-  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
-  __pyx_t_2 = __Pyx_ImportFrom(__pyx_t_3, __pyx_n_s_USE_COUNTRY_SELECTION); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 8, __pyx_L1_error)
-  __Pyx_GOTREF(__pyx_t_2);
-  if (PyDict_SetItem(__pyx_d, __pyx_n_s_USE_COUNTRY_SELECTION, __pyx_t_2) < 0) __PYX_ERR(0, 8, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
   __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
 

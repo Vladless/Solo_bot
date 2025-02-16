@@ -8,8 +8,8 @@ from aiogram.filters import ExceptionTypeFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
-from config import ADMIN_ID, API_TOKEN
 
+from config import ADMIN_ID, API_TOKEN
 from filters.private import IsPrivateFilter
 from logger import logger
 from middlewares import register_middleware
@@ -18,7 +18,7 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-version = "4.0.0-Alpha(13-dev)"
+version = "4.0.0-beta(16)"
 
 register_middleware(dp)
 

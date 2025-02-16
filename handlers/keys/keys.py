@@ -4,12 +4,13 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
-import aiofiles
 import asyncpg
 import pytz
 from aiogram import F, Router, types
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -25,8 +26,6 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
-
-from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,
@@ -62,7 +61,7 @@ from handlers.texts import (
     SUCCESS_RENEWAL_MSG,
     key_message,
 )
-from handlers.utils import handle_error
+from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
@@ -74,24 +73,21 @@ router = Router()
 @router.message(F.text == "/subs")
 async def process_callback_or_message_view_keys(callback_query_or_message: Message | CallbackQuery, session: Any):
     if isinstance(callback_query_or_message, CallbackQuery):
-        chat_id = callback_query_or_message.message.chat.id
-        send_message = callback_query_or_message.message.answer
-        send_photo = callback_query_or_message.message.answer_photo
+        target_message = callback_query_or_message.message
     else:
-        chat_id = callback_query_or_message.chat.id
-        send_message = callback_query_or_message.answer
-        send_photo = callback_query_or_message.answer_photo
+        target_message = callback_query_or_message
 
     try:
-        records = await get_keys(chat_id, session)
-
+        records = await get_keys(target_message.chat.id, session)
         inline_keyboard, response_message = build_keys_response(records)
-
         image_path = os.path.join("img", "pic_keys.jpg")
-        await send_with_optional_image(send_message, send_photo, image_path, response_message, inline_keyboard)
+
+        await edit_or_send_message(
+            target_message=target_message, text=response_message, reply_markup=inline_keyboard, media_path=image_path
+        )
     except Exception as e:
         error_message = f"Ошибка при получении ключей: {e}"
-        await send_message(text=error_message)
+        await target_message.answer(text=error_message)
 
 
 def build_keys_response(records):
@@ -134,32 +130,12 @@ def build_keys_response(records):
     return inline_keyboard, response_message
 
 
-async def send_with_optional_image(send_message, send_photo, image_path, text, keyboard):
-    """
-    Отправляет сообщение с изображением, если файл существует. В противном случае отправляет только текст.
-    """
-    if os.path.isfile(image_path):
-        async with aiofiles.open(image_path, "rb") as image_file:
-            image_data = await image_file.read()
-            await send_photo(
-                photo=BufferedInputFile(image_data, filename=os.path.basename(image_path)),
-                caption=text,
-                reply_markup=keyboard,
-            )
-    else:
-        await send_message(
-            text=text,
-            reply_markup=keyboard,
-        )
-
-
 @router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(key_name, session)
-
         if record:
             key = record["key"]
             expiry_time = record["expiry_time"]
@@ -176,11 +152,9 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 days = total_seconds // 86400
                 hours = (total_seconds % 86400) // 3600
                 minutes = (total_seconds % 3600) // 60
-
                 days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
 
             formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
-
             response_message = key_message(
                 key, formatted_expiry_date, days_left_message, server_name, country if USE_COUNTRY_SELECTION else None
             )
@@ -231,24 +205,20 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
             keyboard = builder.as_markup()
-
             image_path = os.path.join("img", "pic_view.jpg")
 
             if not os.path.isfile(image_path):
                 await callback_query.message.answer("Файл изображения не найден.")
                 return
 
-            async with aiofiles.open(image_path, "rb") as image_file:
-                image_data = await image_file.read()
-                await callback_query.message.answer_photo(
-                    photo=BufferedInputFile(image_data, filename="pic_view.jpg"),
-                    caption=response_message,
-                    reply_markup=keyboard,
-                )
-        else:
-            await callback_query.message.answer(
-                text="<b>Информация о подписке не найдена.</b>",
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=response_message,
+                reply_markup=keyboard,
+                media_path=image_path,
             )
+        else:
+            await callback_query.message.answer(text="<b>Информация о подписке не найдена.</b>")
     except Exception as e:
         await handle_error(
             tg_id,
@@ -298,7 +268,9 @@ async def process_callback_connect_phone(callback_query: CallbackQuery):
     builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{email}"))
 
-    await callback_query.message.answer(description, reply_markup=builder.as_markup())
+    await edit_or_send_message(
+        target_message=callback_query.message, text=description, reply_markup=builder.as_markup(), media_path=None
+    )
 
 
 @router.callback_query(F.data.startswith("update_subscription|"))
@@ -330,13 +302,17 @@ async def process_callback_delete_key(callback_query: CallbackQuery):
             ]
         )
 
-        await callback_query.message.answer(
-            text="<b>Вы уверены, что хотите удалить ключ?</b>",
-            reply_markup=confirmation_keyboard,
-        )
+        if callback_query.message.caption:
+            await callback_query.message.edit_caption(
+                caption="<b>Вы уверены, что хотите удалить ключ?</b>", reply_markup=confirmation_keyboard
+            )
+        else:
+            await callback_query.message.edit_text(
+                text="<b>Вы уверены, что хотите удалить ключ?</b>", reply_markup=confirmation_keyboard
+            )
 
     except Exception as e:
-        logger.error(e)
+        logger.error(f"Ошибка при обработке запроса на удаление ключа {client_id}: {e}")
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
@@ -345,7 +321,6 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
     key_name = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(key_name, session)
-
         if record:
             client_id = record["client_id"]
             expiry_time = record["expiry_time"]
@@ -375,9 +350,11 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
                 expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
             )
 
-            await callback_query.message.answer(
+            await edit_or_send_message(
+                target_message=callback_query.message,
                 text=response_message,
                 reply_markup=builder.as_markup(),
+                media_path=None,
             )
         else:
             await callback_query.message.answer("<b>Ключ не найден.</b>")
@@ -390,7 +367,6 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
     email = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(email, session)
-
         if record:
             client_id = record["client_id"]
             response_message = "Ключ успешно удален."
@@ -398,9 +374,9 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
             await delete_key(client_id, session)
-            await callback_query.message.answer(
-                response_message,
-                reply_markup=keyboard,
+
+            await edit_or_send_message(
+                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
             )
 
             servers = await get_servers(session)
@@ -410,24 +386,19 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
                     tasks = []
                     for cluster_id, _cluster in servers.items():
                         tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
-
                     await asyncio.gather(*tasks)
-
                 except Exception as e:
                     logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
 
             asyncio.create_task(delete_key_from_servers())
 
             await delete_key(client_id, session)
-
         else:
             response_message = "Ключ не найден или уже удален."
             back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-            await callback_query.message.answer(
-                response_message,
-                reply_markup=keyboard,
+            await edit_or_send_message(
+                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
             )
     except Exception as e:
         logger.error(e)
@@ -492,9 +463,11 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
                     builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
                     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-                    await callback_query.message.answer(
-                        f"💳 Недостаточно средств. Пополните баланс на {required_amount}₽.",
+                    await edit_or_send_message(
+                        target_message=callback_query.message,
+                        text=f"💳 Недостаточно средств. Пополните баланс на {required_amount}₽.",
                         reply_markup=builder.as_markup(),
+                        media_path=None,
                     )
                 return
 
@@ -522,7 +495,16 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     if callback_query:
-        await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
+        try:
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=response_message,
+                reply_markup=builder.as_markup(),
+                media_path=None,
+            )
+        except Exception as e:
+            logger.error(f"Ошибка редактирования сообщения в complete_key_renewal: {e}")
+            await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 

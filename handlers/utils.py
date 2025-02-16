@@ -1,13 +1,16 @@
 import json
+import os
 import re
 import secrets
 import string
 
+import aiofiles
 import aiohttp
 import asyncpg
-from config import DATABASE_URL
+from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 from bot import bot
+from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 
@@ -142,3 +145,64 @@ def format_time_until_deletion(seconds: int) -> str:
             parts.append(f"{minutes} минут")
 
     return " и ".join(parts) if parts else "менее минуты"
+
+
+async def edit_or_send_message(
+    target_message: Message,
+    text: str,
+    reply_markup: InlineKeyboardMarkup,
+    media_path: str = None,
+    disable_web_page_preview: bool = False,
+    force_text: bool = False,
+):
+    """
+    Универсальная функция для редактирования исходного сообщения target_message.
+
+    - Если media_path указан и существует, считается, что сообщение содержит фото, и используется редактирование медиа
+      (замена фото и подписи) через edit_media. Если редактирование не удаётся, отправляется новое сообщение с фото.
+
+    - Если media_path не указан:
+        - Если force_text=False и target_message уже имеет caption, пытаемся отредактировать подпись (edit_caption).
+        - Иначе (или если редактирование caption не удалось) — редактируем текст (edit_text).
+
+    В случае неудачи fallback – отправка нового сообщения.
+    """
+    if media_path and os.path.isfile(media_path):
+        async with aiofiles.open(media_path, "rb") as f:
+            image_data = await f.read()
+        media = InputMediaPhoto(
+            media=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
+            caption=text,
+        )
+        try:
+            await target_message.edit_media(media=media, reply_markup=reply_markup)
+            return
+        except Exception as e:
+            await target_message.answer_photo(
+                photo=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
+                caption=text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview,
+            )
+            return
+    else:
+        if not force_text and target_message.caption is not None:
+            try:
+                await target_message.edit_caption(caption=text, reply_markup=reply_markup)
+                return
+            except Exception as e:
+                logger.error("Ошибка редактирования подписи: %s", e)
+        try:
+            await target_message.edit_text(
+                text=text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview,
+            )
+            return
+        except Exception as e:
+            logger.error("Ошибка редактирования текста: %s", e)
+            await target_message.answer(
+                text=text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview,
+            )

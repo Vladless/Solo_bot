@@ -3,7 +3,6 @@ from typing import Any
 from aiogram import Dispatcher
 
 from .admin import AdminMiddleware
-from .delete import DeleteMessageMiddleware
 from .loggings import LoggingMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
@@ -14,7 +13,6 @@ def register_middleware(dispatcher: Dispatcher) -> None:
     middlewares = [
         AdminMiddleware(),
         SessionMiddleware(),
-        DeleteMessageMiddleware(),
         LoggingMiddleware(),
         ThrottlingMiddleware(),
         UserMiddleware(),
