@@ -177,7 +177,7 @@ async def edit_or_send_message(
         try:
             await target_message.edit_media(media=media, reply_markup=reply_markup)
             return
-        except Exception as e:
+        except Exception:
             await target_message.answer_photo(
                 photo=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
                 caption=text,

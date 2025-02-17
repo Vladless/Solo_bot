@@ -1,7 +1,8 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import pytz
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
@@ -38,6 +39,8 @@ from keyboards.admin.users_kb import (
     build_users_key_show_kb,
 )
 from logger import logger
+
+MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 
 router = Router()
 
@@ -431,23 +434,31 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
         )
         return
 
-    if op_type == "add":
-        days = int(message.text)
-        text = f"✅ Ко времени действия ключа добавлено <b>{days} дн.</b>"
-        await change_expiry_time(key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session)
-    elif op_type == "take":
-        days = int(message.text)
-        text = f"✅ Из времени действия ключа вычтено <b>{days} дн.</b>"
-        await change_expiry_time(key_details["expiry_time"] - days * 24 * 3600 * 1000, email, session)
-    else:
-        try:
-            expiry_time = int(datetime.strptime(message.text, "%Y-%m-%d %H:%M").timestamp() * 1000)
-            text = f"✅ Время действия ключа изменено на <b>{message.text}</b>"
-            await change_expiry_time(expiry_time, email, session)
-        except ValueError:
-            text = "🚫 Пожалуйста, используйте корректный формат даты!"
-        except Exception as e:
-            text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
+    try:
+        current_expiry_time = datetime.fromtimestamp(key_details["expiry_time"] / 1000, tz=MOSCOW_TZ)
+
+        if op_type == "add":
+            days = int(message.text)
+            new_expiry_time = current_expiry_time + timedelta(days=days)
+            text = f"✅ Ко времени действия ключа добавлено <b>{days} дн.</b>"
+
+        elif op_type == "take":
+            days = int(message.text)
+            new_expiry_time = current_expiry_time - timedelta(days=days)
+            text = f"✅ Из времени действия ключа вычтено <b>{days} дн.</b>"
+
+        else:
+            new_expiry_time = datetime.strptime(message.text, "%Y-%m-%d %H:%M")
+            new_expiry_time = MOSCOW_TZ.localize(new_expiry_time)
+            text = f"✅ Время действия ключа изменено на <b>{message.text} (МСК)</b>"
+
+        new_expiry_timestamp = int(new_expiry_time.timestamp() * 1000)
+        await change_expiry_time(new_expiry_timestamp, email, session)
+
+    except ValueError:
+        text = "🚫 Пожалуйста, используйте корректный формат даты (ГГГГ-ММ-ДД ЧЧ:ММ)!"
+    except Exception as e:
+        text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
 
     await message.answer(text=text, reply_markup=build_users_key_show_kb(tg_id, email))
 

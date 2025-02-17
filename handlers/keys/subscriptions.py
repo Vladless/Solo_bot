@@ -8,13 +8,9 @@ import aiohttp
 import asyncpg
 from aiohttp import web
 
-from config import (
-    DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE,
-    TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
-)
+from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
 from database import get_key_details, get_servers
 from logger import logger
-
 
 db_pool = None
 
@@ -59,10 +55,7 @@ async def combine_unique_lines(urls, tg_id, query_string):
 
     logger.info(f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}")
 
-    urls_with_query = [
-        f"{url}?{query_string}" if query_string else url
-        for url in urls
-    ]
+    urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
     tasks = [fetch_url_content(url, tg_id) for url in urls_with_query]
@@ -91,10 +84,7 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     """
     if USE_COUNTRY_SELECTION:
         logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
-        server_data = await conn.fetchrow(
-            "SELECT subscription_url FROM servers WHERE server_name = $1",
-            server_id
-        )
+        server_data = await conn.fetchrow("SELECT subscription_url FROM servers WHERE server_name = $1", server_id)
         if not server_data:
             logger.warning(f"Не найден сервер {server_id} в БД!")
             return []
@@ -124,8 +114,7 @@ async def handle_subscription(request, old_subscription=False):
         return web.Response(text="❌ Неверные параметры запроса.", status=400)
 
     logger.info(
-        f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: "
-        f"email={email}, tg_id={tg_id}"
+        f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}"
     )
 
     await init_db_pool()
@@ -152,29 +141,22 @@ async def handle_subscription(request, old_subscription=False):
 
             if created_at_ms >= transition_timestamp_ms_adjusted:
                 logger.info(f"Клиент с email {email} является новым.")
-                return web.Response(
-                    text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.",
-                    status=400
-                )
+                return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
 
         urls = await get_subscription_urls(server_id, email, conn)
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
 
         query_string = request.query_string if not old_subscription else ""
-        combined_subscriptions = await combine_unique_lines(
-            urls,
-            tg_id or email,
-            query_string
-        )
+        combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
 
         random.shuffle(combined_subscriptions)
 
         time_left = None
         for line in combined_subscriptions:
-            if '#' in line:
-                _, meta = line.split('#', 1)
-                parts = meta.split('-')
+            if "#" in line:
+                _, meta = line.split("#", 1)
+                parts = meta.split("-")
                 if len(parts) >= 2:
                     candidate = parts[-1]
                     if candidate:
@@ -185,10 +167,10 @@ async def handle_subscription(request, old_subscription=False):
 
         cleaned_subscriptions = []
         for line in combined_subscriptions:
-            if '#' in line:
-                base, meta = line.split('#', 1)
-                meta_clean = meta.split('-', 1)[0]
-                cleaned_line = base + '#' + meta_clean
+            if "#" in line:
+                base, meta = line.split("#", 1)
+                meta_clean = meta.split("-", 1)[0]
+                cleaned_line = base + "#" + meta_clean
             else:
                 cleaned_line = line
             cleaned_subscriptions.append(cleaned_line)
@@ -203,16 +185,14 @@ async def handle_subscription(request, old_subscription=False):
 
         final_subscriptions = [profile_line] + cleaned_subscriptions
 
-        base64_encoded = base64.b64encode(
-            "\n".join(final_subscriptions).encode("utf-8")
-        ).decode("utf-8")
+        base64_encoded = base64.b64encode("\n".join(final_subscriptions).encode("utf-8")).decode("utf-8")
 
         encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
         headers = {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "7",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8")
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
         }
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")

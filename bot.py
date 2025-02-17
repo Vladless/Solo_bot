@@ -18,7 +18,7 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-version = "4.0.0-beta(16)"
+version = "4.0.0-beta(16-fixed)"
 
 register_middleware(dp)
 

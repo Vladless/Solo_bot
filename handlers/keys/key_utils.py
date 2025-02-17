@@ -20,7 +20,6 @@ async def create_key_on_cluster(
         servers = await get_servers()
         cluster = servers.get(cluster_id)
 
-        # Если не нашли кластер по ключу, ищем сервер по имени (аналогично renew_key_in_cluster, delete_key_from_cluster)
         if not cluster:
             found_servers = []
             for _key, server_list in servers.items():
@@ -213,7 +212,6 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
         servers = await get_servers()
         cluster = servers.get(cluster_id)
 
-        # Аналогичная логика поиска кластера или конкретного сервера
         if not cluster:
             found_servers = []
             for _key, server_list in servers.items():
@@ -405,7 +403,6 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
         cluster = servers.get(cluster_id)
 
         if not cluster:
-            # Поиск по имени сервера, если не найден кластер
             found_servers = []
             for _, server_list in servers.items():
                 for server_info in server_list:
@@ -442,10 +439,8 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
 
             tasks.append(toggle_client(xui, int(inbound_id), unique_email, client_id, enable))
 
-        # Выполняем все задачи параллельно
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Формируем результаты для каждого сервера
         for server_info, result in zip(cluster, task_results, strict=False):
             server_name = server_info.get("server_name", "unknown")
             if isinstance(result, Exception):

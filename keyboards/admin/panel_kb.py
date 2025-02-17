@@ -30,6 +30,7 @@ def build_management_kb() -> InlineKeyboardMarkup:
     builder.button(text="💾 Создать резервную копию", callback_data=AdminPanelCallback(action="backups").pack())
     builder.button(text="🚫 Заблокировавшие бота", callback_data=AdminPanelCallback(action="bans").pack())
     builder.button(text="🔄 Перезагрузить бота", callback_data=AdminPanelCallback(action="restart").pack())
+    builder.button(text="🌐 Сменить домен", callback_data=AdminPanelCallback(action="change_domain").pack())
     builder.row(build_admin_back_btn())
     builder.adjust(1)
     return builder.as_markup()

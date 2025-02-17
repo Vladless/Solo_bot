@@ -61,10 +61,10 @@ async def process_callback_view_profile(
         target_message = callback_query_or_message
 
     image_path = os.path.join("img", "profile.jpg")
+    logger.info(f"Переход в профиль. Используется изображение: {image_path}")
+
     key_count = await get_key_count(chat_id)
-    balance = await get_balance(chat_id)
-    if balance is None:
-        balance = 0
+    balance = await get_balance(chat_id) or 0
 
     conn = await asyncpg.connect(DATABASE_URL)
     try:
@@ -100,6 +100,7 @@ async def process_callback_view_profile(
             reply_markup=builder.as_markup(),
             media_path=image_path,
             disable_web_page_preview=False,
+            force_text=True,
         )
     finally:
         await conn.close()
@@ -195,7 +196,7 @@ async def invite_handler(callback_query: CallbackQuery):
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="👥 Пригласить друга", switch_inline_query="invite ")
+    builder.button(text="👥 Пригласить друга", switch_inline_query="invite")
     builder.button(text="👤 Личный кабинет", callback_data="profile")
     builder.adjust(1)
 

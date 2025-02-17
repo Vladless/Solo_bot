@@ -542,8 +542,8 @@ async def update_balance(
     amount: float,
     session: Any = None,
     is_admin: bool = False,
-    skip_referral: bool = False,    # <- флаг "пропустить реферальное начисление"
-    skip_cashback: bool = False     # <- флаг "пропустить кэшбэк"
+    skip_referral: bool = False,  # <- флаг "пропустить реферальное начисление"
+    skip_cashback: bool = False,  # <- флаг "пропустить кэшбэк"
 ):
     """
     Обновляет баланс пользователя в базе данных.
@@ -557,17 +557,14 @@ async def update_balance(
             session = conn
 
         # Если пополнение не от админа и не сказали пропустить кэшбэк
-        if (CASHBACK > 0 and amount > 0 and not is_admin and not skip_cashback):
+        if CASHBACK > 0 and amount > 0 and not is_admin and not skip_cashback:
             extra = amount * (CASHBACK / 100.0)
         else:
             extra = 0
 
         total_amount = int(amount + extra)
 
-        current_balance = await session.fetchval(
-            "SELECT balance FROM connections WHERE tg_id = $1",
-            tg_id
-        ) or 0
+        current_balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id) or 0
 
         new_balance = current_balance + total_amount
 
