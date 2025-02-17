@@ -1,5 +1,7 @@
 import asyncio
 import base64
+import random
+import urllib.parse
 from datetime import datetime
 
 import aiohttp
@@ -101,15 +103,12 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
         logger.info(f"Используем подписку {urls[0]}")
         return urls
 
-    # Если режим выбора страны выключен, получаем все сервера кластера
     servers = await get_servers()
     logger.info(f"Режим выбора страны отключен. Используем кластер {server_id}.")
     cluster_servers = servers.get(server_id, [])
-
     if not cluster_servers:
         logger.warning(f"Не найдены сервера для {server_id}")
         return []
-
     urls = [f"{server['subscription_url']}/{email}" for server in cluster_servers]
     logger.info(f"Найдено {len(urls)} URL-адресов в кластере {server_id}")
     return urls
@@ -141,7 +140,6 @@ async def handle_subscription(request, old_subscription=False):
         stored_tg_id = client_data.get("tg_id")
         server_id = client_data["server_id"]
 
-        # Проверяем, что tg_id из запроса совпадает с сохранённым в БД (для новой подписки)
         if not old_subscription and str(tg_id) != str(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")
             return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
@@ -159,21 +157,54 @@ async def handle_subscription(request, old_subscription=False):
                     status=400
                 )
 
-        # Получаем список URL-адресов для подписки через универсальную функцию
         urls = await get_subscription_urls(server_id, email, conn)
         if not urls:
-            # Сообщаем, что сервер не найден или неверные данные
             return web.Response(text="❌ Сервер не найден.", status=404)
 
         query_string = request.query_string if not old_subscription else ""
         combined_subscriptions = await combine_unique_lines(
             urls,
-            tg_id or email,  # Если tg_id нет, для лога используем email
+            tg_id or email,
             query_string
         )
 
+        random.shuffle(combined_subscriptions)
+
+        time_left = None
+        for line in combined_subscriptions:
+            if '#' in line:
+                _, meta = line.split('#', 1)
+                parts = meta.split('-')
+                if len(parts) >= 2:
+                    candidate = parts[-1]
+                    if candidate:
+                        time_left = candidate
+                        break
+        if not time_left:
+            time_left = "N/A"
+
+        cleaned_subscriptions = []
+        for line in combined_subscriptions:
+            if '#' in line:
+                base, meta = line.split('#', 1)
+                meta_clean = meta.split('-', 1)[0]
+                cleaned_line = base + '#' + meta_clean
+            else:
+                cleaned_line = line
+            cleaned_subscriptions.append(cleaned_line)
+
+        profile_info = f"👤Профиль: {email} - {time_left}"
+        encoded_profile_info = urllib.parse.quote(profile_info)
+
+        profile_line = (
+            "vless://00000000-0000-0000-0000-000000000000@my.profile:443"
+            "?encryption=none&security=none#" + encoded_profile_info
+        )
+
+        final_subscriptions = [profile_line] + cleaned_subscriptions
+
         base64_encoded = base64.b64encode(
-            "\n".join(combined_subscriptions).encode("utf-8")
+            "\n".join(final_subscriptions).encode("utf-8")
         ).decode("utf-8")
 
         encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
@@ -181,7 +212,7 @@ async def handle_subscription(request, old_subscription=False):
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "7",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8")
         }
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
