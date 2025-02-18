@@ -170,7 +170,12 @@ async def handle_subscription(request, old_subscription=False):
         for line in combined_subscriptions:
             if "#" in line:
                 base, meta = line.split("#", 1)
-                meta_clean = meta.split("-", 1)[0]
+                parts = meta.split("-")
+                # Если получаем 4 части, берем первую (страна) и третью (трафик)
+                if len(parts) == 4:
+                    meta_clean = parts[0] + "-" + parts[2]
+                else:
+                    meta_clean = parts[0]
                 cleaned_line = base + "#" + meta_clean
             else:
                 cleaned_line = line
