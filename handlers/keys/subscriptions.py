@@ -200,7 +200,7 @@ async def handle_subscription(request, old_subscription=False):
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Content-Disposition": "inline",
-                "profile-update-interval": "7",
+                "profile-update-interval": "3",
                 "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8")
             }
 
