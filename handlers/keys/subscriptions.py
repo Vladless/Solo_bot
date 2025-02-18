@@ -12,13 +12,12 @@ from aiohttp import web
 
 from config import (
     DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE,
-    TRANSITION_DATE_STR, USE_COUNTRY_SELECTION, SUPPORT_CHAT_URL, USERNAME_BOT
+    TRANSITION_DATE_STR, USE_COUNTRY_SELECTION, SUPPORT_CHAT_URL, USERNAME_BOT, TOTAL_GB
 )
 from database import get_key_details, get_servers
 from logger import logger
 
 db_pool = None
-
 
 async def init_db_pool():
     """Инициализация пула соединений, если он ещё не создан."""
@@ -198,10 +197,15 @@ async def handle_subscription(request, old_subscription=False):
                         meta_clean = ""
                 else:
                     # Для SUPERNODE=False:
-                    if len(parts) == 4:
+                    if len(parts) >= 4:
                         meta_clean = parts[0] + "-" + parts[2]
                     elif len(parts) == 3:
-                        meta_clean = parts[0] + "-" + parts[1]
+                        if re.search(r'\d+[DH]', parts[1], re.IGNORECASE):
+                            meta_clean = parts[0]
+                        else:
+                            meta_clean = parts[0] + "-" + parts[1]
+                    elif len(parts) == 2:
+                        meta_clean = parts[0]
                     elif parts:
                         meta_clean = parts[0]
                     else:
@@ -233,29 +237,53 @@ async def handle_subscription(request, old_subscription=False):
                 expire_timestamp = int(time.time() + d * 86400 + h * 3600)
 
             # Извлекаем общий трафик (total)
-            total_traffic_bytes = 0
-            if cleaned_subscriptions:
-                first_line = cleaned_subscriptions[0]
-                if "#" in first_line:
-                    _, meta_clean = first_line.split("#", 1)
-                    parts = meta_clean.split("-")
-                    if len(parts) >= 2:
-                        total_str = urllib.parse.unquote(parts[1])
-                        m_total = re.search(r'([\d.]+)([GMK]B)', total_str)
+            if TOTAL_GB != 0:
+                # Извлекаем остаток трафика с каждой страны + расчет общего трафика.
+                country_remaining = {}
+                for line in combined_subscriptions:
+                    if "#" not in line:
+                        continue
+                    try:
+                        _, meta = line.split("#", 1)
+                    except ValueError:
+                        continue
+                    parts = meta.split("-")
+                    if len(parts) == 4:
+                        remaining_str = parts[2]
+                    elif len(parts) == 3:
+                        remaining_str = parts[1]
+                    else:
+                        remaining_str = ""
+                    if remaining_str:
+                        remaining_str = urllib.parse.unquote(remaining_str)
+                        remaining_str = remaining_str.replace(',', '.')
+                        remaining_str = re.sub(r'[^0-9\.GMKB]', '', remaining_str)
+                        m_total = re.search(r'([\d\.]+)([GMK]B)', remaining_str, re.IGNORECASE)
                         if m_total:
                             value = float(m_total.group(1))
-                            unit = m_total.group(2)
+                            unit = m_total.group(2).upper()
                             if unit == "GB":
-                                total_traffic_bytes = int(value * 1073741824)
+                                remaining_bytes = int(value * 1073741824)
                             elif unit == "MB":
-                                total_traffic_bytes = int(value * 1048576)
+                                remaining_bytes = int(value * 1048576)
                             elif unit == "KB":
-                                total_traffic_bytes = int(value * 1024)
+                                remaining_bytes = int(value * 1024)
                             else:
-                                total_traffic_bytes = int(value)
+                                remaining_bytes = int(value)
+                            country = parts[0].strip()
+                            country_remaining[country] = remaining_bytes
+                num_countries = len(country_remaining)
+                issued_per_country = int(TOTAL_GB * 1073741824)
+                total_traffic_bytes = issued_per_country * num_countries
+                consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
+                if consumed_traffic_bytes < 0:
+                    consumed_traffic_bytes = 0
+            else:
+                consumed_traffic_bytes = 0
+                total_traffic_bytes = 0
             
             # Заголовок subscription-userinfo для Happ
-            subscription_userinfo = f"upload=0; download=0; total={total_traffic_bytes}; expire={expire_timestamp}"
+            subscription_userinfo = f"upload=0; download={consumed_traffic_bytes}; total={total_traffic_bytes}; expire={expire_timestamp}"
             
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
