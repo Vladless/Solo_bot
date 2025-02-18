@@ -273,7 +273,7 @@ async def handle_subscription(request, old_subscription=False):
                             country = parts[0].strip()
                             country_remaining[country] = remaining_bytes
                 num_countries = len(country_remaining)
-                issued_per_country = int(TOTAL_GB * 1073741824)
+                issued_per_country = TOTAL_GB
                 total_traffic_bytes = issued_per_country * num_countries
                 consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
                 if consumed_traffic_bytes < 0:
