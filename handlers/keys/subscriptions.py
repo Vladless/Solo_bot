@@ -157,9 +157,11 @@ async def handle_subscription(request, old_subscription=False):
                 if len(parts) >= 3:
                     candidate = parts[-1]
                     candidate_decoded = urllib.parse.unquote(candidate)
-                    match = re.search(r'(\d+D,\d+H)', candidate_decoded)
+                    match = re.search(r'(?:(\d+D,))?(\d+H)', candidate_decoded)
                     if match:
-                        time_left = match.group(1) + "⏳"
+                        day_part = match.group(1) or ""
+                        hour_part = match.group(2)
+                        time_left = (day_part + hour_part).strip() + " ⏳"
                         break
         if not time_left:
             time_left = "N/A"
@@ -183,7 +185,7 @@ async def handle_subscription(request, old_subscription=False):
         if "Happ" in user_agent:
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
-            announce_str = f"Поддержка @{support_username} 🔗(Справа)\n\nБот @{USERNAME_BOT} ⓘ(Слева)\n\n📄 Подписка: {email} - {time_left}"
+            announce_str = f"Поддержка @{support_username} 🔗(Справа)\n📄 Подписка: {email} - {time_left}\nБот @{USERNAME_BOT} ⓘ(Слева)"
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Content-Disposition": "inline",
