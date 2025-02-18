@@ -82,8 +82,7 @@ logger.info(f"Время перехода (с поправкой на часов
 async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     """
     Универсальная функция, которая в зависимости от флага USE_COUNTRY_SELECTION
-    получает список URL-адресов для подписки. Возвращает пустой список, если
-    нужные данные не найдены.
+    получает список URL-адресов для подписки. Возвращает пустой список, если нужные данные не найдены.
     """
     if USE_COUNTRY_SELECTION:
         logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
@@ -153,29 +152,56 @@ async def handle_subscription(request, old_subscription=False):
         time_left = None
         for line in combined_subscriptions:
             if "#" in line:
-                _, meta = line.split("#", 1)
+                try:
+                    _, meta = line.split("#", 1)
+                except ValueError:
+                    continue
                 parts = meta.split("-")
-                if len(parts) >= 3:
-                    candidate = parts[-1]
-                    candidate_decoded = urllib.parse.unquote(candidate)
-                    m = re.search(r'(?:(\d+)D,)?(\d+)H', candidate_decoded)
-                    if m:
-                        d = int(m.group(1)) if m.group(1) else 0
-                        h = int(m.group(2))
-                        time_left = f"{d}D,{h}H ⏳" if d else f"{h}H ⏳"
-                        break
+
+                if SUPERNODE:
+                    candidate = parts[-1] if parts else ""
+                else:
+                    candidate = parts[-1] if parts else ""
+                candidate_decoded = urllib.parse.unquote(candidate)
+                m = re.search(r'(?:(\d+)D,)?(\d+)H', candidate_decoded)
+                if m:
+                    d = int(m.group(1)) if m.group(1) else 0
+                    h = int(m.group(2))
+                    time_left = f"{d}D,{h}H ⏳" if d else f"{h}H ⏳"
+                    break
         if not time_left:
             time_left = "N/A"
 
         cleaned_subscriptions = []
         for line in combined_subscriptions:
             if "#" in line:
-                base, meta = line.split("#", 1)
+                try:
+                    base, meta = line.split("#", 1)
+                except ValueError:
+                    continue
                 parts = meta.split("-")
-                if len(parts) == 4:
-                    meta_clean = parts[0] + "-" + parts[2]
+                if SUPERNODE:
+                    if parts:
+                        country = parts[0]
+                        if "_" in country:
+                            country = country.split("_", 1)[1]
+                        if len(parts) == 4:
+                            meta_clean = country + "-" + parts[2]
+                        elif len(parts) == 3:
+                            meta_clean = country
+                        else:
+                            meta_clean = country
+                    else:
+                        meta_clean = ""
                 else:
-                    meta_clean = parts[0]
+                    if len(parts) == 4:
+                        meta_clean = parts[0] + "-" + parts[2]
+                    elif len(parts) == 3:
+                        meta_clean = parts[0] + "-" + parts[1]
+                    elif parts:
+                        meta_clean = parts[0]
+                    else:
+                        meta_clean = ""
                 cleaned_line = base + "#" + meta_clean
             else:
                 cleaned_line = line
@@ -193,10 +219,10 @@ async def handle_subscription(request, old_subscription=False):
             announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
 
             expire_timestamp = 0
-            m = re.search(r'(?:(\d+)D,)?(\d+)H', time_left)
-            if m:
-                d = int(m.group(1)) if m.group(1) else 0
-                h = int(m.group(2))
+            m_expire = re.search(r'(?:(\d+)D,)?(\d+)H', time_left)
+            if m_expire:
+                d = int(m_expire.group(1)) if m_expire.group(1) else 0
+                h = int(m_expire.group(2))
                 expire_timestamp = int(time.time() + d * 86400 + h * 3600)
 
             total_traffic_bytes = 0
