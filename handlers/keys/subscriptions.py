@@ -190,7 +190,7 @@ async def handle_subscription(request, old_subscription=False):
         if "Happ" in user_agent:
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
-            announce_str = f"↖️Бот|📄 Подписка: {email} - {time_left}|Поддержка↗️"
+            announce_str = f"↖️Бот | 📄 Подписка: {email} - {time_left} | Поддержка↗️"
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Content-Disposition": "inline",
