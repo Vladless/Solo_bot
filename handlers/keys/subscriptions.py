@@ -156,10 +156,13 @@ async def handle_subscription(request, old_subscription=False):
                 except ValueError:
                     continue
                 parts = meta.split("-")
-                candidate = parts[-1] if parts else ""
+                candidate = parts[-1].strip() if parts else ""
                 candidate_decoded = urllib.parse.unquote(candidate)
-                # Ищем формат "11D,1H", либо "1H"
-                m = re.search(r'(?:(\d+)D,?)?(\d+)H', candidate_decoded)
+                m = re.search(
+                    r'(?:(\d+)\s*[Dd]\s*,?\s*)?(\d+)\s*[Hh][^\d]*',
+                    candidate_decoded,
+                    re.IGNORECASE
+                )
                 if m:
                     d = int(m.group(1)) if m.group(1) else 0
                     h = int(m.group(2))
