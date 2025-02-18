@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import random
+import re
 import urllib.parse
 from datetime import datetime
 
@@ -8,7 +9,10 @@ import aiohttp
 import asyncpg
 from aiohttp import web
 
-from config import DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE, TRANSITION_DATE_STR, USE_COUNTRY_SELECTION
+from config import (
+    DATABASE_URL, PROJECT_NAME, SUB_MESSAGE, SUPERNODE,
+    TRANSITION_DATE_STR, USE_COUNTRY_SELECTION, SUPPORT_CHAT_URL, USERNAME_BOT
+)
 from database import get_key_details, get_servers
 from logger import logger
 
@@ -54,7 +58,6 @@ async def combine_unique_lines(urls, tg_id, query_string):
         return await fetch_url_content(url_with_query, tg_id)
 
     logger.info(f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}")
-
     urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
@@ -72,7 +75,6 @@ async def combine_unique_lines(urls, tg_id, query_string):
 transition_date = datetime.strptime(TRANSITION_DATE_STR, "%Y-%m-%d %H:%M:%S")
 transition_timestamp_ms = int(transition_date.timestamp() * 1000)
 transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
-
 logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
 
 
@@ -84,7 +86,9 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     """
     if USE_COUNTRY_SELECTION:
         logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
-        server_data = await conn.fetchrow("SELECT subscription_url FROM servers WHERE server_name = $1", server_id)
+        server_data = await conn.fetchrow(
+            "SELECT subscription_url FROM servers WHERE server_name = $1", server_id
+        )
         if not server_data:
             logger.warning(f"Не найден сервер {server_id} в БД!")
             return []
@@ -113,15 +117,11 @@ async def handle_subscription(request, old_subscription=False):
         logger.warning("Получен запрос с отсутствующими параметрами")
         return web.Response(text="❌ Неверные параметры запроса.", status=400)
 
-    logger.info(
-        f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}"
-    )
-
+    logger.info(f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}")
     await init_db_pool()
 
     async with db_pool.acquire() as conn:
         client_data = await get_key_details(email, conn)
-
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")
             return web.Response(text="❌ Клиент с таким email не найден.", status=404)
@@ -136,9 +136,7 @@ async def handle_subscription(request, old_subscription=False):
         if old_subscription:
             created_at_ms = client_data["created_at"]
             created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
-
             logger.info(f"created_at для {email}: {created_at_datetime}, server_id: {server_id}")
-
             if created_at_ms >= transition_timestamp_ms_adjusted:
                 logger.info(f"Клиент с email {email} является новым.")
                 return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
@@ -149,7 +147,6 @@ async def handle_subscription(request, old_subscription=False):
 
         query_string = request.query_string if not old_subscription else ""
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
-
         random.shuffle(combined_subscriptions)
 
         time_left = None
@@ -157,10 +154,12 @@ async def handle_subscription(request, old_subscription=False):
             if "#" in line:
                 _, meta = line.split("#", 1)
                 parts = meta.split("-")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     candidate = parts[-1]
-                    if candidate:
-                        time_left = candidate
+                    candidate_decoded = urllib.parse.unquote(candidate)
+                    match = re.search(r'(\d+D,\d+H)', candidate_decoded)
+                    if match:
+                        time_left = match.group(1) + "⏳"
                         break
         if not time_left:
             time_left = "N/A"
@@ -175,25 +174,32 @@ async def handle_subscription(request, old_subscription=False):
                 cleaned_line = line
             cleaned_subscriptions.append(cleaned_line)
 
-        profile_info = f"👤Профиль: {email} - {time_left}"
-        encoded_profile_info = urllib.parse.quote(profile_info)
-
-        profile_line = (
-            "vless://00000000-0000-0000-0000-000000000000@my.profile:443"
-            "?encryption=none&security=none#" + encoded_profile_info
-        )
-
-        final_subscriptions = [profile_line] + cleaned_subscriptions
-
+        final_subscriptions = cleaned_subscriptions
         base64_encoded = base64.b64encode("\n".join(final_subscriptions).encode("utf-8")).decode("utf-8")
 
-        encoded_project_name = f"{PROJECT_NAME} - {SUB_MESSAGE}"
-        headers = {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Content-Disposition": "inline",
-            "profile-update-interval": "7",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
-        }
+        subscription_info = f"📄 Подписка: {email} - {time_left}"
+        encoded_project_name = f"{PROJECT_NAME}\n{subscription_info}"
+
+        user_agent = request.headers.get("User-Agent", "")
+        if "Happ" in user_agent:
+            support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
+            announce_str = f"Поддержка @{support_username} 🔗(Справа)\n\nБот @{USERNAME_BOT} ⓘ(Слева)\n\n📄 Подписка: {email} - {time_left}"
+            headers = {
+                "Content-Type": "text/plain; charset=utf-8",
+                "Content-Disposition": "inline",
+                "profile-update-interval": "3",
+                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+                "support-url": SUPPORT_CHAT_URL,
+                "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+                "profile-web-page-url": f"https://t.me/{USERNAME_BOT}"
+            }
+        else:
+            headers = {
+                "Content-Type": "text/plain; charset=utf-8",
+                "Content-Disposition": "inline",
+                "profile-update-interval": "7",
+                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8")
+            }
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
         return web.Response(text=base64_encoded, headers=headers)
