@@ -149,6 +149,7 @@ async def handle_subscription(request, old_subscription=False):
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
         random.shuffle(combined_subscriptions)
 
+        # Извлечение времени (time_left) из метаданных подписки.
         time_left = None
         for line in combined_subscriptions:
             if "#" in line:
@@ -157,12 +158,9 @@ async def handle_subscription(request, old_subscription=False):
                 except ValueError:
                     continue
                 parts = meta.split("-")
-
-                if SUPERNODE:
-                    candidate = parts[-1] if parts else ""
-                else:
-                    candidate = parts[-1] if parts else ""
+                candidate = parts[-1] if parts else ""
                 candidate_decoded = urllib.parse.unquote(candidate)
+                # Ищем формат "11D,1H", либо "1H"
                 m = re.search(r'(?:(\d+)D,)?(\d+)H', candidate_decoded)
                 if m:
                     d = int(m.group(1)) if m.group(1) else 0
@@ -172,6 +170,7 @@ async def handle_subscription(request, old_subscription=False):
         if not time_left:
             time_left = "N/A"
 
+        # Логика зависит от значения SUPERNODE.
         cleaned_subscriptions = []
         for line in combined_subscriptions:
             if "#" in line:
@@ -181,19 +180,24 @@ async def handle_subscription(request, old_subscription=False):
                     continue
                 parts = meta.split("-")
                 if SUPERNODE:
+                    # Если SUPERNODE=True:
+                    # Если трафик включен (4 поля или 3 поля): берем страну и трафик (если 4 поля – берем третью, если 3 – оставляем только страну)
                     if parts:
                         country = parts[0]
+                        # Убираем префикс до символа "_"
                         if "_" in country:
                             country = country.split("_", 1)[1]
                         if len(parts) == 4:
                             meta_clean = country + "-" + parts[2]
                         elif len(parts) == 3:
+                            # Если трафик отключен, оставляем только страну
                             meta_clean = country
                         else:
                             meta_clean = country
                     else:
                         meta_clean = ""
                 else:
+                    # Для SUPERNODE=False:
                     if len(parts) == 4:
                         meta_clean = parts[0] + "-" + parts[2]
                     elif len(parts) == 3:
@@ -210,14 +214,17 @@ async def handle_subscription(request, old_subscription=False):
         final_subscriptions = cleaned_subscriptions
         base64_encoded = base64.b64encode("\n".join(final_subscriptions).encode("utf-8")).decode("utf-8")
 
+        # Информации о подписке, которая используется в заголовке вместе с PROJECT_NAME
         subscription_info = f"📄 Подписка: {email} - {time_left}"
 
         user_agent = request.headers.get("User-Agent", "")
         if "Happ" in user_agent:
+            # Для Happ передаётся только PROJECT_NAME
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
             announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
 
+            # Вычисляем expire таймштамп + текущее время
             expire_timestamp = 0
             m_expire = re.search(r'(?:(\d+)D,)?(\d+)H', time_left)
             if m_expire:
@@ -225,6 +232,7 @@ async def handle_subscription(request, old_subscription=False):
                 h = int(m_expire.group(2))
                 expire_timestamp = int(time.time() + d * 86400 + h * 3600)
 
+            # Извлекаем общий трафик (total)
             total_traffic_bytes = 0
             if cleaned_subscriptions:
                 first_line = cleaned_subscriptions[0]
@@ -246,6 +254,7 @@ async def handle_subscription(request, old_subscription=False):
                             else:
                                 total_traffic_bytes = int(value)
             
+            # Заголовок subscription-userinfo для Happ
             subscription_userinfo = f"upload=0; download=0; total={total_traffic_bytes}; expire={expire_timestamp}"
             
             headers = {
@@ -269,7 +278,6 @@ async def handle_subscription(request, old_subscription=False):
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
         return web.Response(text=base64_encoded, headers=headers)
-
 
 async def handle_old_subscription(request):
     """Обработка запроса для старых клиентов."""
