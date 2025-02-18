@@ -2,6 +2,7 @@ import asyncio
 import base64
 import random
 import re
+import time
 import urllib.parse
 from datetime import datetime
 
@@ -157,11 +158,11 @@ async def handle_subscription(request, old_subscription=False):
                 if len(parts) >= 3:
                     candidate = parts[-1]
                     candidate_decoded = urllib.parse.unquote(candidate)
-                    match = re.search(r'(?:(\d+D,))?(\d+H)', candidate_decoded)
-                    if match:
-                        day_part = match.group(1) or ""
-                        hour_part = match.group(2)
-                        time_left = (day_part + hour_part).strip() + " ⏳"
+                    m = re.search(r'(?:(\d+)D,)?(\d+)H', candidate_decoded)
+                    if m:
+                        d = int(m.group(1)) if m.group(1) else 0
+                        h = int(m.group(2))
+                        time_left = f"{d}D,{h}H ⏳" if d else f"{h}H ⏳"
                         break
         if not time_left:
             time_left = "N/A"
@@ -171,7 +172,6 @@ async def handle_subscription(request, old_subscription=False):
             if "#" in line:
                 base, meta = line.split("#", 1)
                 parts = meta.split("-")
-                # Если получаем 4 части, берем первую (страна) и третью (трафик)
                 if len(parts) == 4:
                     meta_clean = parts[0] + "-" + parts[2]
                 else:
@@ -190,7 +190,38 @@ async def handle_subscription(request, old_subscription=False):
         if "Happ" in user_agent:
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
-            announce_str = f"↖️Бот | 📄 Подписка: {email} - {time_left} | Поддержка↗️"
+            announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
+
+            expire_timestamp = 0
+            m = re.search(r'(?:(\d+)D,)?(\d+)H', time_left)
+            if m:
+                d = int(m.group(1)) if m.group(1) else 0
+                h = int(m.group(2))
+                expire_timestamp = int(time.time() + d * 86400 + h * 3600)
+
+            total_traffic_bytes = 0
+            if cleaned_subscriptions:
+                first_line = cleaned_subscriptions[0]
+                if "#" in first_line:
+                    _, meta_clean = first_line.split("#", 1)
+                    parts = meta_clean.split("-")
+                    if len(parts) >= 2:
+                        total_str = urllib.parse.unquote(parts[1])
+                        m_total = re.search(r'([\d.]+)([GMK]B)', total_str)
+                        if m_total:
+                            value = float(m_total.group(1))
+                            unit = m_total.group(2)
+                            if unit == "GB":
+                                total_traffic_bytes = int(value * 1073741824)
+                            elif unit == "MB":
+                                total_traffic_bytes = int(value * 1048576)
+                            elif unit == "KB":
+                                total_traffic_bytes = int(value * 1024)
+                            else:
+                                total_traffic_bytes = int(value)
+            
+            subscription_userinfo = f"upload=0; download=0; total={total_traffic_bytes}; expire={expire_timestamp}"
+            
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Content-Disposition": "inline",
@@ -198,7 +229,8 @@ async def handle_subscription(request, old_subscription=False):
                 "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
                 "support-url": SUPPORT_CHAT_URL,
                 "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
-                "profile-web-page-url": f"https://t.me/{USERNAME_BOT}"
+                "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
+                "subscription-userinfo": subscription_userinfo
             }
         else:
             encoded_project_name = f"{PROJECT_NAME}\n{subscription_info}"
