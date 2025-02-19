@@ -25,7 +25,6 @@ async def init_db_pool():
     if not db_pool:
         db_pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=5, max_size=20)
 
-
 async def fetch_url_content(url, tg_id):
     """Получает содержимое подписки по URL и декодирует его."""
     try:
@@ -47,7 +46,6 @@ async def fetch_url_content(url, tg_id):
         logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
         return []
 
-
 async def combine_unique_lines(urls, tg_id, query_string):
     """Объединяет строки подписки, удаляя дубликаты."""
     if SUPERNODE:
@@ -63,25 +61,22 @@ async def combine_unique_lines(urls, tg_id, query_string):
 
     tasks = [fetch_url_content(url, tg_id) for url in urls_with_query]
     results = await asyncio.gather(*tasks)
-
     all_lines = set()
     for lines in results:
         all_lines.update(filter(None, lines))
-
     logger.info(f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}")
     return list(all_lines)
-
 
 transition_date = datetime.strptime(TRANSITION_DATE_STR, "%Y-%m-%d %H:%M:%S")
 transition_timestamp_ms = int(transition_date.timestamp() * 1000)
 transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
 logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
 
-
 async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     """
     Универсальная функция, которая в зависимости от флага USE_COUNTRY_SELECTION
-    получает список URL-адресов для подписки. Возвращает пустой список, если нужные данные не найдены.
+    получает список URL-адресов для подписки. Возвращает пустой список, если
+    нужные данные не найдены.
     """
     if USE_COUNTRY_SELECTION:
         logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
@@ -106,6 +101,48 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     logger.info(f"Найдено {len(urls)} URL-адресов в кластере {server_id}")
     return urls
 
+def calculate_traffic(cleaned_subscriptions, expiry_time_ms):
+    expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
+    if TOTAL_GB != 0:
+        country_remaining = {}
+        for line in cleaned_subscriptions:
+            if "#" not in line:
+                continue
+            try:
+                _, meta = line.split("#", 1)
+            except ValueError:
+                continue
+            parts = meta.split("-")
+            country = parts[0].strip()
+            remaining_str = parts[1].strip() if len(parts) == 2 else ""
+            if remaining_str:
+                remaining_str = remaining_str.replace(',', '.')
+                m_total = re.search(r'([\d\.]+)\s*([GMKTB]B)', remaining_str, re.IGNORECASE)
+                if m_total:
+                    value = float(m_total.group(1))
+                    unit = m_total.group(2).upper()
+                    if unit == "GB":
+                        remaining_bytes = int(value * 1073741824)
+                    elif unit == "MB":
+                        remaining_bytes = int(value * 1048576)
+                    elif unit == "KB":
+                        remaining_bytes = int(value * 1024)
+                    elif unit == "TB":
+                        remaining_bytes = int(value * 1099511627776)
+                    else:
+                        remaining_bytes = int(value)
+                    country_remaining[country] = remaining_bytes
+        num_countries = len(country_remaining)
+        issued_per_country = TOTAL_GB
+        total_traffic_bytes = issued_per_country * num_countries
+        consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
+        if consumed_traffic_bytes < 0:
+            consumed_traffic_bytes = 0
+    else:
+        consumed_traffic_bytes = 1
+        total_traffic_bytes = 0
+
+    return f"upload=0; download={consumed_traffic_bytes}; total={total_traffic_bytes}; expire={expire_timestamp}"
 
 async def handle_subscription(request, old_subscription=False):
     """Обрабатывает запрос на подписку (старую или новую)."""
@@ -140,6 +177,16 @@ async def handle_subscription(request, old_subscription=False):
                 logger.info(f"Клиент с email {email} является новым.")
                 return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
 
+        expiry_time_ms = client_data.get("expiry_time")
+        if expiry_time_ms:
+            now_ms = int(time.time() * 1000)
+            remaining_sec = max((expiry_time_ms - now_ms) / 1000, 0)
+            days = int(remaining_sec // 86400)
+            hours = int((remaining_sec % 86400) // 3600)
+            time_left = f"{days}D,{hours}H ⏳" if days else f"{hours}H ⏳"
+        else:
+            time_left = "N/A"
+
         urls = await get_subscription_urls(server_id, email, conn)
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
@@ -148,66 +195,24 @@ async def handle_subscription(request, old_subscription=False):
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
         random.shuffle(combined_subscriptions)
 
-        time_left = None
-        for line in combined_subscriptions:
-            if "#" in line:
-                try:
-                    _, meta = line.split("#", 1)
-                except ValueError:
-                    continue
-                parts = meta.split("-")
-                candidate = parts[-1].strip() if parts else ""
-                candidate_decoded = urllib.parse.unquote(candidate)
-                m = re.search(
-                    r'(?:(\d+)\s*[Dd]\s*,?\s*)?(\d+)\s*[Hh][^\d]*',
-                    candidate_decoded,
-                    re.IGNORECASE
-                )
-                if m:
-                    d = int(m.group(1)) if m.group(1) else 0
-                    h = int(m.group(2))
-                    time_left = f"{d}D,{h}H ⏳" if d else f"{h}H ⏳"
-                    break
-        if not time_left:
-            time_left = "N/A"
-
         cleaned_subscriptions = []
         for line in combined_subscriptions:
             if "#" in line:
                 try:
                     base, meta = line.split("#", 1)
                 except ValueError:
-                    continue
-                parts = meta.split("-")
-                if SUPERNODE:
-                    if parts:
-                        country = parts[0]
-                        if "_" in country:
-                            country = country.split("_", 1)[1]
-                        if len(parts) == 4:
-                            meta_clean = country + "-" + parts[2]
-                        elif len(parts) == 3:
-                            meta_clean = country
-                        else:
-                            meta_clean = country
-                    else:
-                        meta_clean = ""
+                    cleaned_line = line
                 else:
-                    # Для SUPERNODE=False:
-                    if len(parts) >= 4:
-                        meta_clean = parts[0] + "-" + parts[2]
-                    elif len(parts) == 3:
-                        if re.search(r'\d+[DH]', parts[1], re.IGNORECASE):
-                            meta_clean = parts[0]
-                        else:
-                            meta_clean = parts[0] + "-" + parts[1]
-                    elif len(parts) == 2:
-                        meta_clean = parts[0]
-                    elif parts:
-                        meta_clean = parts[0]
-                    else:
-                        meta_clean = ""
-                cleaned_line = base + "#" + meta_clean
+                    parts = meta.split("-")
+                    country = parts[0].strip() if parts else ""
+                    traffic = ""
+                    for part in parts[1:]:
+                        part_decoded = urllib.parse.unquote(part).strip()
+                        if re.search(r'\d+(?:[.,]\d+)?\s*(?:GB|MB|KB|TB)', part_decoded, re.IGNORECASE):
+                            traffic = part_decoded
+                            break
+                    meta_clean = f"{country} - {traffic}" if traffic else country
+                    cleaned_line = base + "#" + meta_clean
             else:
                 cleaned_line = line
             cleaned_subscriptions.append(cleaned_line)
@@ -218,63 +223,10 @@ async def handle_subscription(request, old_subscription=False):
 
         user_agent = request.headers.get("User-Agent", "")
         if "Happ" in user_agent:
+            subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
             announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
-
-            expire_timestamp = 0
-            m_expire = re.search(r'(?:(\d+)D,)?(\d+)H', time_left)
-            if m_expire:
-                d = int(m_expire.group(1)) if m_expire.group(1) else 0
-                h = int(m_expire.group(2))
-                expire_timestamp = int(time.time() + d * 86400 + h * 3600)
-
-            if TOTAL_GB != 0:
-                country_remaining = {}
-                for line in combined_subscriptions:
-                    if "#" not in line:
-                        continue
-                    try:
-                        _, meta = line.split("#", 1)
-                    except ValueError:
-                        continue
-                    parts = meta.split("-")
-                    if len(parts) == 4:
-                        remaining_str = parts[2]
-                    elif len(parts) == 3:
-                        remaining_str = parts[1]
-                    else:
-                        remaining_str = ""
-                    if remaining_str:
-                        remaining_str = urllib.parse.unquote(remaining_str)
-                        remaining_str = remaining_str.replace(',', '.')
-                        remaining_str = re.sub(r'[^0-9\.GMKB]', '', remaining_str)
-                        m_total = re.search(r'([\d\.]+)([GMK]B)', remaining_str, re.IGNORECASE)
-                        if m_total:
-                            value = float(m_total.group(1))
-                            unit = m_total.group(2).upper()
-                            if unit == "GB":
-                                remaining_bytes = int(value * 1073741824)
-                            elif unit == "MB":
-                                remaining_bytes = int(value * 1048576)
-                            elif unit == "KB":
-                                remaining_bytes = int(value * 1024)
-                            else:
-                                remaining_bytes = int(value)
-                            country = parts[0].strip()
-                            country_remaining[country] = remaining_bytes
-                num_countries = len(country_remaining)
-                issued_per_country = TOTAL_GB
-                total_traffic_bytes = issued_per_country * num_countries
-                consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
-                if consumed_traffic_bytes < 0:
-                    consumed_traffic_bytes = 0
-            else:
-                consumed_traffic_bytes = 0
-                total_traffic_bytes = 0
-
-            subscription_userinfo = f"upload=0; download={consumed_traffic_bytes}; total={total_traffic_bytes}; expire={expire_timestamp}"
-            
             headers = {
                 "Content-Type": "text/plain; charset=utf-8",
                 "Content-Disposition": "inline",
@@ -283,6 +235,13 @@ async def handle_subscription(request, old_subscription=False):
                 "support-url": SUPPORT_CHAT_URL,
                 "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
                 "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
+                "subscription-userinfo": subscription_userinfo
+            }
+        elif "Hiddify" in user_agent:
+            encoded_project_name = f"{PROJECT_NAME}\n📄 Подписка: {email}"
+            headers = {
+                "profile-update-interval": "3",
+                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
                 "subscription-userinfo": subscription_userinfo
             }
         else:
@@ -300,7 +259,6 @@ async def handle_subscription(request, old_subscription=False):
 async def handle_old_subscription(request):
     """Обработка запроса для старых клиентов."""
     return await handle_subscription(request, old_subscription=True)
-
 
 async def handle_new_subscription(request):
     """Обработка запроса для новых клиентов."""
