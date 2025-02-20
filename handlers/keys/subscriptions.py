@@ -16,6 +16,7 @@ from config import (
 )
 from database import get_key_details, get_servers
 from logger import logger
+from handlers.utils import convert_to_bytes
 
 db_pool = None
 
@@ -121,16 +122,7 @@ def calculate_traffic(cleaned_subscriptions, expiry_time_ms):
                 if m_total:
                     value = float(m_total.group(1))
                     unit = m_total.group(2).upper()
-                    if unit == "GB":
-                        remaining_bytes = int(value * 1073741824)
-                    elif unit == "MB":
-                        remaining_bytes = int(value * 1048576)
-                    elif unit == "KB":
-                        remaining_bytes = int(value * 1024)
-                    elif unit == "TB":
-                        remaining_bytes = int(value * 1099511627776)
-                    else:
-                        remaining_bytes = int(value)
+                    remaining_bytes = convert_to_bytes(value, unit)
                     country_remaining[country] = remaining_bytes
         num_countries = len(country_remaining)
         issued_per_country = TOTAL_GB
@@ -222,8 +214,8 @@ async def handle_subscription(request, old_subscription=False):
         subscription_info = f"📄 Подписка: {email} - {time_left}"
 
         user_agent = request.headers.get("User-Agent", "")
+        subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
         if "Happ" in user_agent:
-            subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
             encoded_project_name = f"{PROJECT_NAME}"
             support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
             announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
