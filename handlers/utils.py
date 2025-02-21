@@ -206,3 +206,19 @@ async def edit_or_send_message(
                 reply_markup=reply_markup,
                 disable_web_page_preview=disable_web_page_preview,
             )
+
+def convert_to_bytes(value: float, unit: str) -> int:
+    """
+    Конвертирует значение с указанной единицей измерения в байты.
+    Args:
+        value (float): Числовое значение.
+        unit (str): Единица измерения ('KB', 'MB', 'GB', 'TB').
+    Returns:
+        int: Количество байт.
+    """
+    KB = 1024
+    MB = KB * 1024
+    GB = MB * 1024
+    TB = GB * 1024
+    units = {"KB": KB, "MB": MB, "GB": GB, "TB": TB}
+    return int(value * units.get(unit.upper(), 1))
