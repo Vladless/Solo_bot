@@ -103,15 +103,8 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
 )
 async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
     try:
-        if ":" in callback_query.data:
-            parts = callback_query.data.split(":")
-            if len(parts) > 1 and parts[1].isdigit():
-                page = int(parts[1])
-            else:
-                page = 1
-        else:
-            page = 1
-
+        data = AdminPanelCallback.unpack(callback_query.data)
+        page = data.page if data.page is not None else 1
         per_page = 10
         result = await get_all_coupons(session, page, per_page)
         coupons = result["coupons"]
@@ -123,9 +116,8 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
             )
             return
 
-        kb = build_coupons_list_kb(coupons)
+        kb = build_coupons_list_kb(coupons, result["current_page"], result["pages"])
         coupon_list = "📜 Список всех купонов:\n\n"
-
         for coupon in coupons:
             coupon_list += (
                 f"🏷️ <b>Код:</b> {coupon['code']}\n"
@@ -134,31 +126,47 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n"
                 f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon['code']}</code>\n"
             )
-
         await callback_query.message.edit_text(text=coupon_list, reply_markup=kb)
-
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
         await callback_query.message.answer("Произошла ошибка при получении списка купонов.")
 
 
-@router.callback_query(
-    AdminCouponDeleteCallback.filter(),
-    IsAdminFilter(),
-)
+@router.callback_query(AdminCouponDeleteCallback.filter(), IsAdminFilter())
 async def handle_coupon_delete(callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any):
     coupon_code = callback_data.coupon_code
-
     try:
         result = await delete_coupon(coupon_code, session)
-
         if result:
-            await handle_coupons_list(callback_query, session)
+            await callback_query.edit_text(f"Купон {coupon_code} удалён!")
         else:
-            await callback_query.message.edit_text(
-                text=f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
-            )
-            await handle_coupons_list(callback_query, session)
-
+            await callback_query.edit_text(f"❌ Купон с кодом {coupon_code} не найден.", show_alert=True)
+        await update_coupons_list(callback_query.message, session)
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
+        await callback_query.edit_text("Произошла ошибка при удалении купона.", show_alert=True)
+
+
+async def update_coupons_list(message, session: Any, page: int = 1):
+    per_page = 10
+    result = await get_all_coupons(session, page, per_page)
+    coupons = result["coupons"]
+
+    if not coupons:
+        await message.edit_text(
+            text="❌ На данный момент нет доступных купонов!",
+            reply_markup=build_admin_back_kb("coupons"),
+        )
+        return
+
+    kb = build_coupons_list_kb(coupons, result["current_page"], result["pages"])
+    coupon_list = "📜 Список всех купонов:\n\n"
+    for coupon in coupons:
+        coupon_list += (
+            f"🏷️ <b>Код:</b> {coupon['code']}\n"
+            f"💰 <b>Сумма:</b> {coupon['amount']} рублей\n"
+            f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
+            f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n"
+            f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon['code']}</code>\n"
+        )
+    await message.edit_text(text=coupon_list, reply_markup=kb)

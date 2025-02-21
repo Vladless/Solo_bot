@@ -17,6 +17,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     DATABASE_URL,
+    INLINE_MODE,
     INSTRUCTIONS_BUTTON,
     NEWS_MESSAGE,
     REFERRAL_OFFERS,
@@ -37,6 +38,7 @@ from handlers.buttons.profile import (
     PAYMENT,
 )
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
+from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -91,7 +93,10 @@ async def process_callback_view_profile(
         if INSTRUCTIONS_BUTTON:
             builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
         if admin:
-            builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
+            builder.row(
+                InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+            )
+
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
         await edit_or_send_message(
@@ -196,7 +201,11 @@ async def invite_handler(callback_query: CallbackQuery):
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.button(text="👥 Пригласить друга", switch_inline_query="invite")
+    if INLINE_MODE:
+        builder.button(text="👥 Пригласить друга", switch_inline_query="invite")
+    else:
+        invite_text = f"\nПриглашаю тебя пользоваться действительно быстрым VPN вместе:\n\n{referral_link}"
+        builder.button(text="👥 Пригласить друга", switch_inline_query=invite_text)
     builder.button(text="👤 Личный кабинет", callback_data="profile")
     builder.adjust(1)
 

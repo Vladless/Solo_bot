@@ -1,5 +1,5 @@
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn
@@ -17,7 +17,7 @@ def build_coupons_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_coupons_list_kb(coupons: list) -> InlineKeyboardMarkup:
+def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for coupon in coupons:
@@ -26,6 +26,24 @@ def build_coupons_list_kb(coupons: list) -> InlineKeyboardMarkup:
             text=f"❌{coupon_code}",
             callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code).pack(),
         )
+
+    pagination_buttons = []
+    if current_page > 1:
+        pagination_buttons.append(
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=AdminPanelCallback(action="coupons_list", page=current_page - 1).pack(),
+            )
+        )
+    if current_page < total_pages:
+        pagination_buttons.append(
+            InlineKeyboardButton(
+                text="Вперед ➡️",
+                callback_data=AdminPanelCallback(action="coupons_list", page=current_page + 1).pack(),
+            )
+        )
+    if pagination_buttons:
+        builder.row(*pagination_buttons)
 
     builder.row(build_admin_back_btn("coupons"))
     builder.adjust(2)

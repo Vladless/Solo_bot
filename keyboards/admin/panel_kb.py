@@ -5,6 +5,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
     action: str
+    page: int
+
+    def __init__(self, *args, **kwargs):
+        if "page" not in kwargs or kwargs["page"] is None:
+            kwargs["page"] = 1
+        super().__init__(*args, **kwargs)
 
 
 def build_panel_kb() -> InlineKeyboardMarkup:

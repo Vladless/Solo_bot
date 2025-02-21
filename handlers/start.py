@@ -32,6 +32,7 @@ from database import (
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
 from handlers.texts import WELCOME_TEXT, get_about_vpn
+from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -338,7 +339,9 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
         builder.row(InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL))
 
     if admin:
-        builder.row(InlineKeyboardButton(text="🔧 Администратор", callback_data="admin"))
+        builder.row(
+            InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+        )
 
     builder.row(InlineKeyboardButton(text="🌐 О VPN", callback_data="about_vpn"))
 

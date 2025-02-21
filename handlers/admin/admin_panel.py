@@ -15,7 +15,16 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
     text = f"🤖 Панель администратора\n📌 Версия бота: {version}"
 
     await state.clear()
-    await callback_query.message.edit_text(text=text, reply_markup=build_panel_kb())
+
+    if callback_query.message.text:
+        await callback_query.message.edit_text(text=text, reply_markup=build_panel_kb())
+    else:
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения: {e}")
+
+        await callback_query.message.answer(text=text, reply_markup=build_panel_kb())
 
 
 @router.callback_query(F.data == "admin", IsAdminFilter())

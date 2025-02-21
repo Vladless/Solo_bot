@@ -280,12 +280,28 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
         if last_notification_time is None:
             keyboard = build_notification_kb(email)
+
+            if NOTIFY_DELETE_DELAY > 0:
+                hours = NOTIFY_DELETE_DELAY // 60
+                minutes = NOTIFY_DELETE_DELAY % 60
+
+                if hours > 0:
+                    if minutes > 0:
+                        delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {hours} час{'а' if hours == 1 else 'ов'} и {minutes} минут."
+                    else:
+                        delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {hours} час{'а' if hours == 1 else 'ов'}."
+                else:
+                    delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {NOTIFY_DELETE_DELAY} минут."
+
+            else:
+                delay_message = f"⚠ Ваша подписка {email} истекла!\n\nПродлите доступ, чтобы возобновить услуги."
+
             try:
                 await send_notification(
                     bot,
                     tg_id,
                     "notify_expired.jpg",
-                    f"⚠ Ваша подписка {email} истекла!\n\nПродлите доступ, чтобы возобновить услуги.",
+                    delay_message,
                     keyboard,
                 )
                 await add_notification(tg_id, notification_id, session=conn)

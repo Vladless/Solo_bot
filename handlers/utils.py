@@ -207,6 +207,7 @@ async def edit_or_send_message(
                 disable_web_page_preview=disable_web_page_preview,
             )
 
+
 def convert_to_bytes(value: float, unit: str) -> int:
     """
     Конвертирует значение с указанной единицей измерения в байты.

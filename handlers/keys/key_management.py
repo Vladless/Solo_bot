@@ -395,9 +395,7 @@ async def finalize_key_creation(
     callback_query: CallbackQuery,
     old_key_name: str = None,
 ):
-    """Финализирует создание ключа с выбранной страной.
-    Если old_key_name передан, после создания нового ключа старый будет удалён.
-    """
+    """Финализирует создание ключа с выбором стран."""
 
     if not await check_connection_exists(tg_id):
         await add_connection(tg_id, balance=0.0, trial=0, session=session)
@@ -405,12 +403,15 @@ async def finalize_key_creation(
 
     expiry_time = expiry_time.astimezone(moscow_tz)
 
-    while True:
-        key_name = generate_random_email()
-        existing_key = await get_key_details(key_name, session)
-        if not existing_key:
-            break
-        logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")
+    if old_key_name:
+        key_name = old_key_name
+    else:
+        while True:
+            key_name = generate_random_email()
+            existing_key = await get_key_details(key_name, session)
+            if not existing_key:
+                break
+            logger.warning(f"Key name '{key_name}' already exists for user {tg_id}. Generating a new one.")
 
     client_id = str(uuid.uuid4())
     email = key_name.lower()
@@ -426,6 +427,33 @@ async def finalize_key_creation(
         if not server_info:
             raise ValueError(f"Сервер {selected_country} не найден.")
 
+        if old_key_name:
+            old_key_details = await get_key_details(old_key_name, session)
+            old_client_id = old_key_details.get("client_id") if old_key_details else None
+            old_email = old_key_details.get("email") if old_key_details else None
+            old_server_id = old_key_details.get("server_id") if old_key_details else None
+
+            if old_client_id and old_email and old_server_id:
+                old_server_info = await session.fetchrow(
+                    "SELECT api_url, inbound_id, server_name FROM servers WHERE server_name = $1",
+                    old_server_id,
+                )
+
+                if old_server_info:
+                    xui = AsyncApi(
+                        old_server_info["api_url"],
+                        username=ADMIN_USERNAME,
+                        password=ADMIN_PASSWORD,
+                    )
+                    deletion_success = await delete_client(
+                        xui,
+                        old_server_info["inbound_id"],
+                        old_email,
+                        old_client_id,
+                    )
+                    if not deletion_success:
+                        raise ValueError(f"Не удалось удалить клиента с сервера {old_server_id}.")
+
         semaphore = asyncio.Semaphore(2)
         await create_client_on_server(
             server_info=server_info,
@@ -437,15 +465,37 @@ async def finalize_key_creation(
         )
 
         logger.info(f"Key created on server {selected_country} for user {tg_id}.")
-        await store_key(
-            tg_id,
-            client_id,
-            email,
-            expiry_timestamp,
-            public_link,
-            selected_country,
-            session,
-        )
+
+        if old_key_name:
+            await session.execute(
+                """
+                UPDATE keys
+                SET client_id = $1, email = $2, expiry_time = $3, key = $4, server_id = $5
+                WHERE tg_id = $6 AND email = $7
+                """,
+                client_id,
+                email,
+                expiry_timestamp,
+                public_link,
+                selected_country,
+                tg_id,
+                old_key_name,
+            )
+        else:
+            created_at = int(datetime.now(moscow_tz).timestamp() * 1000)
+            await session.execute(
+                """
+                INSERT INTO keys (tg_id, client_id, email, created_at, expiry_time, key, server_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                tg_id,
+                client_id,
+                email,
+                created_at,
+                expiry_timestamp,
+                public_link,
+                selected_country,
+            )
 
     except Exception as e:
         logger.error(f"Error while creating the key for user {tg_id}: {e}")
@@ -481,44 +531,3 @@ async def finalize_key_creation(
 
     if state:
         await state.clear()
-
-    if old_key_name:
-        try:
-            old_record = await get_key_details(old_key_name, session)
-            if old_record is not None:
-                old_client_id = old_record["client_id"]
-                old_email = old_record["email"]
-                server_name = old_record.get("server_id")
-
-                if server_name:
-                    server_info = await session.fetchrow(
-                        "SELECT api_url, inbound_id, server_name FROM servers WHERE server_name = $1",
-                        server_name,
-                    )
-                    if server_info:
-                        xui = AsyncApi(
-                            server_info["api_url"],
-                            username=ADMIN_USERNAME,
-                            password=ADMIN_PASSWORD,
-                        )
-                        deletion_success = await delete_client(
-                            xui,
-                            server_info["inbound_id"],
-                            old_email,
-                            old_client_id,
-                        )
-                        if deletion_success:
-                            logger.info(f"Клиент с ID {old_client_id} успешно удалён с сервера.")
-                        else:
-                            logger.warning(f"Не удалось удалить клиента с ID {old_client_id} с сервера.")
-                    else:
-                        logger.warning(f"Информация о сервере {server_name} не найдена в БД.")
-                else:
-                    logger.warning("Имя сервера для старого ключа не указано.")
-
-                await delete_key(old_client_id, session)
-                logger.info(f"Старый ключ {old_key_name} (client_id: {old_client_id}) удалён для пользователя {tg_id}.")
-            else:
-                logger.warning(f"Запись для старого ключа {old_key_name} не найдена.")
-        except Exception as e:
-            logger.error(f"Ошибка при удалении старого ключа {old_key_name} для пользователя {tg_id}: {e}")

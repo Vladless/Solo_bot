@@ -723,12 +723,13 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             referrer_tg_id = referral["tg_id"]
             level = referral["level"]
 
-            bonus_percent = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
-            if bonus_percent <= 0:
+            bonus = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
+            if bonus <= 0:
                 logger.warning(f"Процент бонуса для уровня {level} равен 0. Пропуск.")
                 continue
 
-            bonus = round(amount * bonus_percent, 2)
+            if isinstance(bonus, (int, float)):
+                bonus = round(bonus, 2)
 
             if bonus > 0:
                 logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}.")
@@ -761,7 +762,9 @@ async def get_referral_stats(referrer_tg_id: int):
 
         total_referrals = await conn.fetchval(
             """
-            SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1
+            SELECT COUNT(*) 
+            FROM referrals 
+            WHERE referrer_tg_id = $1
             """,
             referrer_tg_id,
         )
@@ -769,7 +772,9 @@ async def get_referral_stats(referrer_tg_id: int):
 
         active_referrals = await conn.fetchval(
             """
-            SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1 AND reward_issued = TRUE
+            SELECT COUNT(*) 
+            FROM referrals 
+            WHERE referrer_tg_id = $1 AND reward_issued = TRUE
             """,
             referrer_tg_id,
         )
@@ -842,16 +847,17 @@ async def get_referral_stats(referrer_tg_id: int):
             total_referral_bonus_query = (
                 bonus_cte
                 + f"""
-            SELECT 
-                COALESCE(SUM(ep.amount * (
-                    CASE 
-                        {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
-                        ELSE 0 
-                    END)), 0) AS total_bonus
-            FROM referral_levels rl
-            JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
-            WHERE rl.level <= {MAX_REFERRAL_LEVELS}
-            """
+                SELECT 
+                    COALESCE(SUM(
+                        CASE
+                            {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount" if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
+                            ELSE 0 
+                        END
+                    ), 0) AS total_bonus
+                FROM referral_levels rl
+                JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
+                WHERE rl.level <= {MAX_REFERRAL_LEVELS}
+                """
             )
         else:
             bonus_cte = f"""
@@ -875,19 +881,21 @@ async def get_referral_stats(referrer_tg_id: int):
                 WHERE rl.level < {MAX_REFERRAL_LEVELS}
             )
             """
+
             total_referral_bonus_query = (
                 bonus_cte
                 + f"""
-            SELECT 
-                COALESCE(SUM(p.amount * (
-                    CASE 
-                        {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
-                        ELSE 0 
-                    END)), 0) AS total_bonus
-            FROM referral_levels rl
-            JOIN payments p ON rl.referred_tg_id = p.tg_id
-            WHERE p.status = 'success' AND rl.level <= {MAX_REFERRAL_LEVELS}
-            """
+                SELECT 
+                    COALESCE(SUM(
+                        CASE
+                            {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount" if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
+                            ELSE 0 
+                        END
+                    ), 0) AS total_bonus
+                FROM referral_levels rl
+                JOIN payments p ON rl.referred_tg_id = p.tg_id
+                WHERE p.status = 'success' AND rl.level <= {MAX_REFERRAL_LEVELS}
+                """
             )
 
         total_referral_bonus = await conn.fetchval(total_referral_bonus_query, referrer_tg_id)
