@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
@@ -54,6 +55,8 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
         )
         expired_keys = total_keys - active_keys
 
+        update_time = datetime.now().strftime("%d.%m.%y %H:%M:%S")
+
         stats_message = (
             f"📊 <b>Подробная статистика проекта:</b>\n\n"
             f"👥 Пользователи:\n"
@@ -73,10 +76,14 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             f"   📅 За день: <b>{total_payments_today} ₽</b>\n"
             f"   📆 За неделю: <b>{total_payments_week} ₽</b>\n"
             f"   📆 За месяц: <b>{total_payments_month} ₽</b>\n"
-            f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n"
+            f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n\n"
+            f" ⏳ Последнее обновление: {update_time}"
         )
 
         await callback_query.message.edit_text(text=stats_message, reply_markup=build_stats_kb())
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):  # skip when Telegram message is not modified
+            logger.error(f"Error in user_stats_menu: {e}")
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
 
