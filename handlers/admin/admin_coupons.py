@@ -138,13 +138,13 @@ async def handle_coupon_delete(callback_query: CallbackQuery, callback_data: Adm
     try:
         result = await delete_coupon(coupon_code, session)
         if result:
-            await callback_query.edit_text(f"Купон {coupon_code} удалён!")
+            await callback_query.message.edit_text(f"Купон {coupon_code} удалён!")
         else:
-            await callback_query.edit_text(f"❌ Купон с кодом {coupon_code} не найден.", show_alert=True)
+            await callback_query.message.edit_text(f"❌ Купон с кодом {coupon_code} не найден.", show_alert=True)
         await update_coupons_list(callback_query.message, session)
     except Exception as e:
         logger.error(f"Ошибка при удалении купона: {e}")
-        await callback_query.edit_text("Произошла ошибка при удалении купона.", show_alert=True)
+        await callback_query.message.edit_text("Произошла ошибка при удалении купона.", show_alert=True)
 
 
 async def update_coupons_list(message, session: Any, page: int = 1):

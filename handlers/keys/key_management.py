@@ -33,7 +33,6 @@ from database import (
     add_connection,
     check_connection_exists,
     create_temporary_data,
-    delete_key,
     get_balance,
     get_key_details,
     get_trial,

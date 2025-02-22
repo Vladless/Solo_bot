@@ -1,5 +1,5 @@
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn
@@ -38,20 +38,22 @@ def build_manage_cluster_kb(cluster_servers, cluster_name) -> InlineKeyboardMark
         text="➕ Добавить сервер",
         callback_data=AdminServerEditorCallback(action="servers_add", data=cluster_name).pack(),
     )
-    builder.button(
-        text="🌐 Доступность серверов",
-        callback_data=AdminServerEditorCallback(action="servers_availability", data=cluster_name).pack(),
+    builder.row(
+        InlineKeyboardButton(
+            text="🌐 Доступность",
+            callback_data=AdminServerEditorCallback(action="servers_availability", data=cluster_name).pack(),
+        ),
+        InlineKeyboardButton(
+            text="🔄 Синхронизация",
+            callback_data=AdminServerEditorCallback(action="clusters_sync", data=cluster_name).pack(),
+        )
     )
     builder.button(
         text="💾 Создать бэкап кластера",
         callback_data=AdminServerEditorCallback(action="clusters_backup", data=cluster_name).pack(),
     )
-    builder.button(
-        text="🔄 Синхронизировать",
-        callback_data=AdminServerEditorCallback(action="clusters_sync", data=cluster_name).pack(),
-    )
     builder.row(build_admin_back_btn("servers"))
-    builder.adjust(1)
+    builder.adjust(1, 1, 1, 1, 1, 2, 1)
     return builder.as_markup()
 
 

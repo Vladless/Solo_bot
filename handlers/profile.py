@@ -193,8 +193,16 @@ async def view_tariffs_handler(callback_query: CallbackQuery):
 
 
 @router.callback_query(F.data == "invite")
-async def invite_handler(callback_query: CallbackQuery):
-    chat_id = callback_query.message.chat.id
+@router.message(F.text == "/invite")
+async def invite_handler(callback_query_or_message: Message | CallbackQuery):
+    chat_id = None
+    if isinstance(callback_query_or_message, CallbackQuery):
+        chat_id = callback_query_or_message.message.chat.id
+        target_message = callback_query_or_message.message
+    else:
+        chat_id = callback_query_or_message.chat.id
+        target_message = callback_query_or_message
+
     referral_link = get_referral_link(chat_id)
     referral_stats = await get_referral_stats(chat_id)
     invite_message = invite_message_send(referral_link, referral_stats)
@@ -210,7 +218,7 @@ async def invite_handler(callback_query: CallbackQuery):
     builder.adjust(1)
 
     await edit_or_send_message(
-        target_message=callback_query.message,
+        target_message=target_message,
         text=invite_message,
         reply_markup=builder.as_markup(),
         media_path=image_path,

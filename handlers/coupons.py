@@ -14,6 +14,8 @@ from database import (
     update_coupon_usage_count,
 )
 
+from .utils import edit_or_send_message
+
 
 class CouponActivationState(StatesGroup):
     waiting_for_coupon_code = State()
@@ -23,14 +25,22 @@ router = Router()
 
 
 @router.callback_query(F.data == "activate_coupon")
-async def handle_activate_coupon(callback_query: CallbackQuery, state: FSMContext):
+@router.message(F.text == "/activate_coupon")
+async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await callback_query.message.answer(
-        "<b>🎫 Введите код купона:</b>\n\n"
-        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
+    if isinstance(callback_query_or_message, CallbackQuery):
+        target_message = callback_query_or_message.message
+    else:
+        target_message = callback_query_or_message
+
+    await edit_or_send_message(
+        target_message=target_message,
+        text="<b>🎫 Введите код купона:</b>\n\n"
+             "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
         reply_markup=builder.as_markup(),
+        media_path=None
     )
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
 
