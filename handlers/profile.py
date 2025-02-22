@@ -220,37 +220,25 @@ async def invite_handler(callback_query: CallbackQuery):
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery):
-    try:
-        if not inline_query.from_user:
-            return await inline_query.answer([])
+    referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
 
-        if not USERNAME_BOT:
-            return await inline_query.answer([])
+    results: list[InlineQueryResultArticle] = []
 
-        referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
+    for index, offer in enumerate(REFERRAL_OFFERS):
+        description = offer["description"][:64]
+        message_text = offer["message"].format(trial_time=TRIAL_TIME)[:4096]
 
-        if not inline_query.query:
-            return await inline_query.answer([])
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=offer["title"], url=referral_link))
 
-        results: list[InlineQueryResultArticle] = []
-
-        for index, offer in enumerate(REFERRAL_OFFERS):
-            description = offer["description"][:64]
-            message_text = offer["message"].format(trial_time=TRIAL_TIME)[:4096]
-
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=offer["title"], url=referral_link))
-
-            results.append(
-                InlineQueryResultArticle(
-                    id=str(index),
-                    title=offer["title"],
-                    description=description,
-                    input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
-                    reply_markup=builder.as_markup(),
-                )
+        results.append(
+            InlineQueryResultArticle(
+                id=str(index),
+                title=offer["title"],
+                description=description,
+                input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
+                reply_markup=builder.as_markup(),
             )
+        )
 
-        await inline_query.answer(results=results, cache_time=1)
-    except Exception:
-        await inline_query.answer([])
+    await inline_query.answer(results=results, cache_time=86400, is_personal=True)

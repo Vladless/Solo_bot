@@ -4,6 +4,7 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
+import pytz
 
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
@@ -54,8 +55,8 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             int(datetime.utcnow().timestamp() * 1000),
         )
         expired_keys = total_keys - active_keys
-
-        update_time = datetime.now().strftime("%d.%m.%y %H:%M:%S")
+        moscow_tz = pytz.timezone("Europe/Moscow")
+        update_time = datetime.now(moscow_tz).strftime("%d.%m.%y %H:%M:%S")
 
         stats_message = (
             f"📊 <b>Подробная статистика проекта:</b>\n\n"
