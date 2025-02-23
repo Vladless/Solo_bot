@@ -723,27 +723,28 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             referrer_tg_id = referral["tg_id"]
             level = referral["level"]
 
-            bonus = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
-            if bonus <= 0:
+            bonus_val = REFERRAL_BONUS_PERCENTAGES.get(level, 0)
+            if bonus_val <= 0:
                 logger.warning(f"Процент бонуса для уровня {level} равен 0. Пропуск.")
                 continue
 
-            if isinstance(bonus, (int, float)):
-                bonus = round(bonus, 2)
+            if bonus_val < 1:
+                bonus_amount = round(amount * bonus_val, 2)
+            else:
+                bonus_amount = bonus_val
 
-            if bonus > 0:
-                logger.info(f"Начисление бонуса {bonus} рублей рефереру {referrer_tg_id} на уровне {level}.")
-                await update_balance(referrer_tg_id, bonus, skip_referral=True, skip_cashback=True)
+            logger.info(f"Начисление бонуса {bonus_amount} рублей рефереру {referrer_tg_id} на уровне {level}.")
+            await update_balance(referrer_tg_id, bonus_amount, skip_referral=True, skip_cashback=True)
 
-                if CHECK_REFERRAL_REWARD_ISSUED:
-                    await conn.execute(
-                        """
-                        UPDATE referrals
-                        SET reward_issued = TRUE
-                        WHERE referred_tg_id = $1
-                        """,
-                        tg_id,
-                    )
+            if CHECK_REFERRAL_REWARD_ISSUED:
+                await conn.execute(
+                    """
+                    UPDATE referrals
+                    SET reward_issued = TRUE
+                    WHERE referred_tg_id = $1
+                    """,
+                    tg_id,
+                )
 
     except Exception as e:
         logger.error(f"Ошибка при обработке многоуровневой реферальной системы для {tg_id}: {e}")
@@ -752,72 +753,69 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
             await conn.close()
 
 
-async def get_referral_stats(referrer_tg_id: int):
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(
-            f"Установлено подключение к базе данных для получения статистики рефералов пользователя {referrer_tg_id}"
-        )
+async def get_total_referrals(conn, referrer_tg_id: int) -> int:
+    total = await conn.fetchval(
+        """
+        SELECT COUNT(*) 
+        FROM referrals 
+        WHERE referrer_tg_id = $1
+        """,
+        referrer_tg_id,
+    )
+    logger.debug(f"Получено общее количество рефералов: {total}")
+    return total
 
-        total_referrals = await conn.fetchval(
-            """
-            SELECT COUNT(*) 
+
+async def get_active_referrals(conn, referrer_tg_id: int) -> int:
+    active = await conn.fetchval(
+        """
+        SELECT COUNT(*) 
+        FROM referrals 
+        WHERE referrer_tg_id = $1 AND reward_issued = TRUE
+        """,
+        referrer_tg_id,
+    )
+    logger.debug(f"Получено количество активных рефералов: {active}")
+    return active
+
+
+async def get_referrals_by_level(conn, referrer_tg_id: int, max_levels: int) -> dict:
+    query = f"""
+        WITH RECURSIVE referral_levels AS (
+            SELECT referred_tg_id, referrer_tg_id, 1 AS level
             FROM referrals 
             WHERE referrer_tg_id = $1
-            """,
-            referrer_tg_id,
+            
+            UNION
+            
+            SELECT r.referred_tg_id, r.referrer_tg_id, rl.level + 1
+            FROM referrals r
+            JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
+            WHERE rl.level < {max_levels}
         )
-        logger.debug(f"Получено общее количество рефералов: {total_referrals}")
-
-        active_referrals = await conn.fetchval(
-            """
-            SELECT COUNT(*) 
-            FROM referrals 
-            WHERE referrer_tg_id = $1 AND reward_issued = TRUE
-            """,
-            referrer_tg_id,
-        )
-        logger.debug(f"Получено количество активных рефералов: {active_referrals}")
-
-        MAX_REFERRAL_LEVELS = len(REFERRAL_BONUS_PERCENTAGES.keys())
-
-        referrals_by_level_records = await conn.fetch(
-            f"""
-            WITH RECURSIVE referral_levels AS (
-                SELECT referred_tg_id, referrer_tg_id, 1 AS level
-                FROM referrals 
-                WHERE referrer_tg_id = $1
-                
-                UNION
-                
-                SELECT r.referred_tg_id, r.referrer_tg_id, rl.level + 1
-                FROM referrals r
-                JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
-                WHERE rl.level < {MAX_REFERRAL_LEVELS}
-            )
-            SELECT level, 
-                   COUNT(*) AS level_count, 
-                   COUNT(CASE WHEN reward_issued = TRUE THEN 1 END) AS active_level_count
-            FROM referral_levels rl
-            JOIN referrals r ON rl.referred_tg_id = r.referred_tg_id
-            GROUP BY level
-            ORDER BY level
-            """,
-            referrer_tg_id,
-        )
-
-        referrals_by_level = {
-            record["level"]: {
-                "total": record["level_count"],
-                "active": record["active_level_count"],
-            }
-            for record in referrals_by_level_records
+        SELECT level, 
+               COUNT(*) AS level_count, 
+               COUNT(CASE WHEN reward_issued = TRUE THEN 1 END) AS active_level_count
+        FROM referral_levels rl
+        JOIN referrals r ON rl.referred_tg_id = r.referred_tg_id
+        GROUP BY level
+        ORDER BY level
+    """
+    records = await conn.fetch(query, referrer_tg_id)
+    referrals_by_level = {
+        record["level"]: {
+            "total": record["level_count"],
+            "active": record["active_level_count"],
         }
-        logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
+        for record in records
+    }
+    logger.debug(f"Получена статистика рефералов по уровням: {referrals_by_level}")
+    return referrals_by_level
 
-        if CHECK_REFERRAL_REWARD_ISSUED:
-            bonus_cte = f"""
+
+async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -> float:
+    if CHECK_REFERRAL_REWARD_ISSUED:
+        bonus_cte = f"""
             WITH RECURSIVE
             referral_levels AS (
                 SELECT 
@@ -835,7 +833,7 @@ async def get_referral_stats(referrer_tg_id: int):
                     rl.level + 1
                 FROM referrals r
                 JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
-                WHERE rl.level < {MAX_REFERRAL_LEVELS} AND r.reward_issued = TRUE
+                WHERE rl.level < {max_levels} AND r.reward_issued = TRUE
             ),
             earliest_payments AS (
                 SELECT DISTINCT ON (tg_id) tg_id, amount, created_at
@@ -843,24 +841,26 @@ async def get_referral_stats(referrer_tg_id: int):
                 WHERE status = 'success'
                 ORDER BY tg_id, created_at
             )
-            """
-            total_referral_bonus_query = (
-                bonus_cte
-                + f"""
-                SELECT 
-                    COALESCE(SUM(
-                        CASE
-                            {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount" if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
-                            ELSE 0 
-                        END
-                    ), 0) AS total_bonus
-                FROM referral_levels rl
-                JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
-                WHERE rl.level <= {MAX_REFERRAL_LEVELS}
-                """
-            )
-        else:
-            bonus_cte = f"""
+        """
+        bonus_query = bonus_cte + f"""
+            SELECT 
+                COALESCE(SUM(
+                    CASE
+                        {" ".join([
+                            f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount" 
+                            if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) 
+                            else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                            for level in REFERRAL_BONUS_PERCENTAGES
+                        ])}
+                        ELSE 0 
+                    END
+                ), 0) AS total_bonus
+            FROM referral_levels rl
+            JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
+            WHERE rl.level <= {max_levels}
+        """
+    else:
+        bonus_cte = f"""
             WITH RECURSIVE
             referral_levels AS (
                 SELECT 
@@ -878,28 +878,43 @@ async def get_referral_stats(referrer_tg_id: int):
                     rl.level + 1
                 FROM referrals r
                 JOIN referral_levels rl ON r.referrer_tg_id = rl.referred_tg_id
-                WHERE rl.level < {MAX_REFERRAL_LEVELS}
+                WHERE rl.level < {max_levels}
             )
-            """
+        """
+        bonus_query = bonus_cte + f"""
+            SELECT 
+                COALESCE(SUM(
+                    CASE
+                        {" ".join([
+                            f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount" 
+                            if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) 
+                            else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                            for level in REFERRAL_BONUS_PERCENTAGES
+                        ])}
+                        ELSE 0 
+                    END
+                ), 0) AS total_bonus
+            FROM referral_levels rl
+            JOIN payments p ON rl.referred_tg_id = p.tg_id
+            WHERE p.status = 'success' AND rl.level <= {max_levels}
+        """
+    total_bonus = await conn.fetchval(bonus_query, referrer_tg_id)
+    logger.debug(f"Получена общая сумма бонусов от рефералов: {total_bonus}")
+    return total_bonus
 
-            total_referral_bonus_query = (
-                bonus_cte
-                + f"""
-                SELECT 
-                    COALESCE(SUM(
-                        CASE
-                            {" ".join([f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount" if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}" for level in REFERRAL_BONUS_PERCENTAGES])}
-                            ELSE 0 
-                        END
-                    ), 0) AS total_bonus
-                FROM referral_levels rl
-                JOIN payments p ON rl.referred_tg_id = p.tg_id
-                WHERE p.status = 'success' AND rl.level <= {MAX_REFERRAL_LEVELS}
-                """
-            )
 
-        total_referral_bonus = await conn.fetchval(total_referral_bonus_query, referrer_tg_id)
-        logger.debug(f"Получена общая сумма бонусов от рефералов: {total_referral_bonus}")
+async def get_referral_stats(referrer_tg_id: int):
+    conn = None
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        logger.info(
+            f"Установлено подключение к базе данных для получения статистики рефералов пользователя {referrer_tg_id}"
+        )
+        total_referrals = await get_total_referrals(conn, referrer_tg_id)
+        active_referrals = await get_active_referrals(conn, referrer_tg_id)
+        max_levels = len(REFERRAL_BONUS_PERCENTAGES.keys())
+        referrals_by_level = await get_referrals_by_level(conn, referrer_tg_id, max_levels)
+        total_referral_bonus = await get_total_referral_bonus(conn, referrer_tg_id, max_levels)
 
         return {
             "total_referrals": total_referrals,
@@ -907,7 +922,6 @@ async def get_referral_stats(referrer_tg_id: int):
             "referrals_by_level": referrals_by_level,
             "total_referral_bonus": total_referral_bonus,
         }
-
     except Exception as e:
         logger.error(f"Ошибка при получении статистики рефералов для пользователя {referrer_tg_id}: {e}")
         raise
