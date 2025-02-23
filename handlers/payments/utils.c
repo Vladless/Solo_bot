@@ -5014,8 +5014,8 @@ static PyObject *__pyx_gb_8handlers_8payments_5utils_2generator(__pyx_CoroutineO
                   }
                   #endif
                   {
-                    PyObject *__pyx_callargs[7] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_user_id, __pyx_cur_scope->__pyx_v_expiry_time, Py_None, __pyx_cur_scope->__pyx_v_conn, Py_None, __pyx_t_6};
-                    __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_10, __pyx_callargs+1-__pyx_t_11, 6+__pyx_t_11);
+                    PyObject *__pyx_callargs[8] = {__pyx_t_5, __pyx_cur_scope->__pyx_v_user_id, __pyx_cur_scope->__pyx_v_expiry_time, Py_None, __pyx_cur_scope->__pyx_v_conn, Py_None, Py_None, __pyx_t_6};
+                    __pyx_t_9 = __Pyx_PyObject_FastCall(__pyx_t_10, __pyx_callargs+1-__pyx_t_11, 7+__pyx_t_11);
                     __Pyx_XDECREF(__pyx_t_5); __pyx_t_5 = 0;
                     __Pyx_DECREF(__pyx_t_6); __pyx_t_6 = 0;
                     if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 77, __pyx_L13_error)
