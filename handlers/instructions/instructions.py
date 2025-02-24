@@ -8,8 +8,8 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
+
 from database import get_key_details
 from handlers.texts import (
     CONNECT_TV_TEXT,

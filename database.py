@@ -4,8 +4,8 @@ from typing import Any
 
 import asyncpg
 import pytz
-
 from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 
@@ -842,7 +842,9 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
                 ORDER BY tg_id, created_at
             )
         """
-        bonus_query = bonus_cte + f"""
+        bonus_query = (
+            bonus_cte
+            + f"""
             SELECT 
                 COALESCE(SUM(
                     CASE
@@ -859,6 +861,7 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
             JOIN earliest_payments ep ON rl.referred_tg_id = ep.tg_id
             WHERE rl.level <= {max_levels}
         """
+        )
     else:
         bonus_cte = f"""
             WITH RECURSIVE
@@ -881,7 +884,9 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
                 WHERE rl.level < {max_levels}
             )
         """
-        bonus_query = bonus_cte + f"""
+        bonus_query = (
+            bonus_cte
+            + f"""
             SELECT 
                 COALESCE(SUM(
                     CASE
@@ -898,6 +903,7 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
             JOIN payments p ON rl.referred_tg_id = p.tg_id
             WHERE p.status = 'success' AND rl.level <= {max_levels}
         """
+        )
     total_bonus = await conn.fetchval(bonus_query, referrer_tg_id)
     logger.debug(f"Получена общая сумма бонусов от рефералов: {total_bonus}")
     return total_bonus
@@ -1102,7 +1108,7 @@ async def upsert_user(
     """
     conn = None
     close_conn = False
-    
+
     try:
         # Используем переданную сессию или создаем новое подключение
         if session:
@@ -1137,9 +1143,9 @@ async def upsert_user(
             language_code,
             is_bot,
         )
-        
+
         logger.debug(f"Успешно обновлена информация о пользователе {tg_id}")
-        
+
         # Преобразуем результат в словарь
         return dict(user_data)
     except Exception as e:

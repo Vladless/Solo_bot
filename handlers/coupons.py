@@ -38,9 +38,9 @@ async def handle_activate_coupon(callback_query_or_message: Message | CallbackQu
     await edit_or_send_message(
         target_message=target_message,
         text="<b>🎫 Введите код купона:</b>\n\n"
-             "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
+        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
         reply_markup=builder.as_markup(),
-        media_path=None
+        media_path=None,
     )
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
 

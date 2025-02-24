@@ -1,7 +1,6 @@
 __all__ = ("router",)
 
 from aiogram import Router
-
 from config import (
     CRYPTO_BOT_ENABLE,
     ROBOKASSA_ENABLE,

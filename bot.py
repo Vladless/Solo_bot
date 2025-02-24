@@ -8,8 +8,8 @@ from aiogram.filters import ExceptionTypeFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
-
 from config import ADMIN_ID, API_TOKEN
+
 from filters.private import IsPrivateFilter
 from logger import logger
 from middlewares import register_middleware
