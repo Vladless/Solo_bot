@@ -5,9 +5,11 @@ import re
 import time
 import urllib.parse
 from datetime import datetime
+from typing import Dict, List, Optional, Union
 
 import aiohttp
 import asyncpg
+import pytz
 from aiohttp import web
 
 from config import (
@@ -25,71 +27,82 @@ from database import get_key_details, get_servers
 from handlers.utils import convert_to_bytes
 from logger import logger
 
-db_pool = None
 
-
-async def init_db_pool():
-    """Инициализация пула соединений, если он ещё не создан."""
-    global db_pool
-    if not db_pool:
-        db_pool = await asyncpg.create_pool(dsn=DATABASE_URL, min_size=5, max_size=20)
-
-
-async def fetch_url_content(url, tg_id):
-    """Получает содержимое подписки по URL и декодирует его."""
+# Функции для работы с URL и подписками
+async def fetch_url_content(url: str, identifier: str) -> List[str]:
+    """
+    Получает содержимое подписки по URL и декодирует его.
+    
+    Args:
+        url: URL для получения содержимого
+        identifier: Идентификатор пользователя (tg_id или email)
+        
+    Returns:
+        Список строк из подписки
+    """
     try:
-        logger.info(f"Получение URL: {url} для tg_id: {tg_id}")
+        logger.info(f"Получение URL: {url} для идентификатора: {identifier}")
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, ssl=False) as response:
                 if response.status == 200:
                     content = await response.text()
-                    logger.info(f"Успешно получен контент с {url} для tg_id: {tg_id}")
+                    logger.info(f"Успешно получен контент с {url} для идентификатора: {identifier}")
                     return base64.b64decode(content).decode("utf-8").split("\n")
                 else:
-                    logger.error(f"Не удалось получить {url} для tg_id: {tg_id}, статус: {response.status}")
+                    logger.error(f"Не удалось получить {url} для идентификатора: {identifier}, статус: {response.status}")
                     return []
     except TimeoutError:
-        logger.error(f"Таймаут при получении {url} для tg_id: {tg_id}")
+        logger.error(f"Таймаут при получении {url} для идентификатора: {identifier}")
         return []
     except Exception as e:
-        logger.error(f"Ошибка при получении {url} для tg_id: {tg_id}: {e}")
+        logger.error(f"Ошибка при получении {url} для идентификатора: {identifier}: {e}")
         return []
 
 
-async def combine_unique_lines(urls, tg_id, query_string):
-    """Объединяет строки подписки, удаляя дубликаты."""
+async def combine_unique_lines(urls: List[str], identifier: str, query_string: str) -> List[str]:
+    """
+    Объединяет строки подписки из нескольких URL, удаляя дубликаты.
+    
+    Args:
+        urls: Список URL для получения подписок
+        identifier: Идентификатор пользователя (tg_id или email)
+        query_string: Строка запроса для добавления к URL
+        
+    Returns:
+        Список уникальных строк из всех подписок
+    """
     if SUPERNODE:
-        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для tg_id: {tg_id}")
+        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}")
         if not urls:
             return []
         url_with_query = f"{urls[0]}?{query_string}" if query_string else urls[0]
-        return await fetch_url_content(url_with_query, tg_id)
+        return await fetch_url_content(url_with_query, identifier)
 
-    logger.info(f"Начинаем объединение подписок для tg_id: {tg_id}, запрос: {query_string}")
+    logger.info(f"Начинаем объединение подписок для идентификатора: {identifier}, запрос: {query_string}")
     urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
-    tasks = [fetch_url_content(url, tg_id) for url in urls_with_query]
+    tasks = [fetch_url_content(url, identifier) for url in urls_with_query]
     results = await asyncio.gather(*tasks)
     all_lines = set()
     for lines in results:
         all_lines.update(filter(None, lines))
-    logger.info(f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для tg_id: {tg_id}")
+    logger.info(f"Объединено {len(all_lines)} строк после фильтрации и удаления дубликатов для идентификатора: {identifier}")
     return list(all_lines)
 
 
-transition_date = datetime.strptime(TRANSITION_DATE_STR, "%Y-%m-%d %H:%M:%S")
-transition_timestamp_ms = int(transition_date.timestamp() * 1000)
-transition_timestamp_ms_adjusted = transition_timestamp_ms - (3 * 60 * 60 * 1000)
-logger.info(f"Время перехода (с поправкой на часовой пояс): {transition_timestamp_ms_adjusted}")
-
-
-async def get_subscription_urls(server_id: str, email: str, conn) -> list:
+async def get_subscription_urls(server_id: str, email: str, conn) -> List[str]:
     """
-    Универсальная функция, которая в зависимости от флага USE_COUNTRY_SELECTION
-    получает список URL-адресов для подписки. Возвращает пустой список, если
-    нужные данные не найдены.
+    Получает список URL-адресов для подписки в зависимости от режима выбора страны.
+    
+    Args:
+        server_id: Идентификатор сервера или кластера
+        email: Email пользователя
+        conn: Соединение с базой данных
+        
+    Returns:
+        Список URL-адресов для подписки
     """
     if USE_COUNTRY_SELECTION:
         logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
@@ -102,7 +115,7 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
         logger.info(f"Используем подписку {urls[0]}")
         return urls
 
-    servers = await get_servers()
+    servers = await get_servers(conn)
     logger.info(f"Режим выбора страны отключен. Используем кластер {server_id}.")
     cluster_servers = servers.get(server_id, [])
     if not cluster_servers:
@@ -113,20 +126,49 @@ async def get_subscription_urls(server_id: str, email: str, conn) -> list:
     return urls
 
 
-def calculate_traffic(cleaned_subscriptions, expiry_time_ms):
+def get_transition_timestamp() -> int:
+    """
+    Получает временную метку перехода с учетом часового пояса Москвы.
+    
+    Returns:
+        Временная метка перехода в миллисекундах
+    """
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    transition_date_naive = datetime.strptime(TRANSITION_DATE_STR, "%Y-%m-%d %H:%M:%S")
+    transition_date = moscow_tz.localize(transition_date_naive)
+    transition_timestamp_ms = int(transition_date.timestamp() * 1000)
+    return transition_timestamp_ms
+
+
+# Функции для обработки и форматирования данных
+def calculate_traffic(cleaned_subscriptions: List[str], expiry_time_ms: Optional[int]) -> str:
+    """
+    Рассчитывает информацию о трафике на основе подписок.
+    
+    Args:
+        cleaned_subscriptions: Список строк подписки
+        expiry_time_ms: Время истечения подписки в миллисекундах
+        
+    Returns:
+        Строка с информацией о трафике
+    """
     expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
+    
     if TOTAL_GB != 0:
         country_remaining = {}
         for line in cleaned_subscriptions:
             if "#" not in line:
                 continue
+                
             try:
                 _, meta = line.split("#", 1)
             except ValueError:
                 continue
+                
             parts = meta.split("-")
             country = parts[0].strip()
             remaining_str = parts[1].strip() if len(parts) == 2 else ""
+            
             if remaining_str:
                 remaining_str = remaining_str.replace(",", ".")
                 m_total = re.search(r"([\d\.]+)\s*([GMKTB]B)", remaining_str, re.IGNORECASE)
@@ -135,10 +177,12 @@ def calculate_traffic(cleaned_subscriptions, expiry_time_ms):
                     unit = m_total.group(2).upper()
                     remaining_bytes = convert_to_bytes(value, unit)
                     country_remaining[country] = remaining_bytes
+                    
         num_countries = len(country_remaining)
         issued_per_country = TOTAL_GB
         total_traffic_bytes = issued_per_country * num_countries
         consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
+        
         if consumed_traffic_bytes < 0:
             consumed_traffic_bytes = 0
     else:
@@ -148,8 +192,115 @@ def calculate_traffic(cleaned_subscriptions, expiry_time_ms):
     return f"upload=0; download={consumed_traffic_bytes}; total={total_traffic_bytes}; expire={expire_timestamp}"
 
 
-async def handle_subscription(request, old_subscription=False):
-    """Обрабатывает запрос на подписку (старую или новую)."""
+def clean_subscription_line(line: str) -> str:
+    """
+    Очищает строку подписки, оставляя только нужную информацию.
+    
+    Args:
+        line: Исходная строка подписки
+        
+    Returns:
+        Очищенная строка подписки
+    """
+    if "#" not in line:
+        return line
+        
+    try:
+        base, meta = line.split("#", 1)
+    except ValueError:
+        return line
+        
+    parts = meta.split("-")
+    country = parts[0].strip() if parts else ""
+    traffic = ""
+    
+    for part in parts[1:]:
+        part_decoded = urllib.parse.unquote(part).strip()
+        if re.search(r"\d+(?:[.,]\d+)?\s*(?:GB|MB|KB|TB)", part_decoded, re.IGNORECASE):
+            traffic = part_decoded
+            break
+            
+    meta_clean = f"{country} - {traffic}" if traffic else country
+    return base + "#" + meta_clean
+
+
+def format_time_left(expiry_time_ms: Optional[int]) -> str:
+    """
+    Форматирует оставшееся время подписки.
+    
+    Args:
+        expiry_time_ms: Время истечения подписки в миллисекундах
+        
+    Returns:
+        Отформатированная строка с оставшимся временем
+    """
+    if not expiry_time_ms:
+        return "N/A"
+        
+    now_ms = int(time.time() * 1000)
+    remaining_sec = max((expiry_time_ms - now_ms) / 1000, 0)
+    days = int(remaining_sec // 86400)
+    hours = int((remaining_sec % 86400) // 3600)
+    
+    return f"{days}D,{hours}H ⏳" if days else f"{hours}H ⏳"
+
+
+def prepare_headers(user_agent: str, project_name: str, subscription_info: str, 
+                   subscription_userinfo: str) -> Dict[str, str]:
+    """
+    Подготавливает заголовки ответа в зависимости от User-Agent клиента.
+    
+    Args:
+        user_agent: User-Agent клиента
+        project_name: Название проекта
+        subscription_info: Информация о подписке
+        subscription_userinfo: Информация о трафике
+        
+    Returns:
+        Словарь с заголовками ответа
+    """
+    if "Happ" in user_agent:
+        encoded_project_name = f"{project_name}"
+        announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
+        return {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": "inline",
+            "profile-update-interval": "3",
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "support-url": SUPPORT_CHAT_URL,
+            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
+            "subscription-userinfo": subscription_userinfo,
+        }
+    elif "Hiddify" in user_agent:
+        encoded_project_name = f"{project_name}\n📄 Подписка: {subscription_info.split(' - ')[0].split(': ')[1]}"
+        return {
+            "profile-update-interval": "3",
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "subscription-userinfo": subscription_userinfo,
+        }
+    else:
+        encoded_project_name = f"{project_name}\n{subscription_info}"
+        return {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": "inline",
+            "profile-update-interval": "3",
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+        }
+
+
+# Основные обработчики запросов
+async def handle_subscription(request: web.Request, old_subscription: bool = False) -> web.Response:
+    """
+    Обрабатывает запрос на подписку (старую или новую).
+    
+    Args:
+        request: Объект запроса
+        old_subscription: Флаг, указывающий на тип подписки (старая или новая)
+        
+    Returns:
+        Ответ с подпиской или сообщением об ошибке
+    """
     email = request.match_info.get("email")
     tg_id = request.match_info.get("tg_id") if not old_subscription else None
 
@@ -160,9 +311,9 @@ async def handle_subscription(request, old_subscription=False):
     logger.info(
         f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}"
     )
-    await init_db_pool()
-
-    async with db_pool.acquire() as conn:
+    
+    async with asyncpg.connect(DATABASE_URL) as conn:
+        # Получение данных клиента
         client_data = await get_key_details(email, conn)
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -171,103 +322,61 @@ async def handle_subscription(request, old_subscription=False):
         stored_tg_id = client_data.get("tg_id")
         server_id = client_data["server_id"]
 
+        # Проверка tg_id для новых клиентов
         if not old_subscription and str(tg_id) != str(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")
             return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
 
+        # Проверка даты создания для старых клиентов
         if old_subscription:
             created_at_ms = client_data["created_at"]
+            # Используем pytz для корректного сравнения времени
             created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
             logger.info(f"created_at для {email}: {created_at_datetime}, server_id: {server_id}")
-            if created_at_ms >= transition_timestamp_ms_adjusted:
+            
+            # Получаем временную метку перехода
+            transition_timestamp_ms = get_transition_timestamp()
+            logger.info(f"Время перехода (с учетом часового пояса Москвы): {transition_timestamp_ms}")
+            
+            if created_at_ms >= transition_timestamp_ms:
                 logger.info(f"Клиент с email {email} является новым.")
                 return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
 
+        # Форматирование оставшегося времени
         expiry_time_ms = client_data.get("expiry_time")
-        if expiry_time_ms:
-            now_ms = int(time.time() * 1000)
-            remaining_sec = max((expiry_time_ms - now_ms) / 1000, 0)
-            days = int(remaining_sec // 86400)
-            hours = int((remaining_sec % 86400) // 3600)
-            time_left = f"{days}D,{hours}H ⏳" if days else f"{hours}H ⏳"
-        else:
-            time_left = "N/A"
+        time_left = format_time_left(expiry_time_ms)
 
+        # Получение URL-адресов подписки
         urls = await get_subscription_urls(server_id, email, conn)
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
 
+        # Получение и обработка подписок
         query_string = request.query_string if not old_subscription else ""
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
         random.shuffle(combined_subscriptions)
 
-        cleaned_subscriptions = []
-        for line in combined_subscriptions:
-            if "#" in line:
-                try:
-                    base, meta = line.split("#", 1)
-                except ValueError:
-                    cleaned_line = line
-                else:
-                    parts = meta.split("-")
-                    country = parts[0].strip() if parts else ""
-                    traffic = ""
-                    for part in parts[1:]:
-                        part_decoded = urllib.parse.unquote(part).strip()
-                        if re.search(r"\d+(?:[.,]\d+)?\s*(?:GB|MB|KB|TB)", part_decoded, re.IGNORECASE):
-                            traffic = part_decoded
-                            break
-                    meta_clean = f"{country} - {traffic}" if traffic else country
-                    cleaned_line = base + "#" + meta_clean
-            else:
-                cleaned_line = line
-            cleaned_subscriptions.append(cleaned_line)
+        # Очистка строк подписки
+        cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
-        final_subscriptions = cleaned_subscriptions
-        base64_encoded = base64.b64encode("\n".join(final_subscriptions).encode("utf-8")).decode("utf-8")
+        # Кодирование подписки в base64
+        base64_encoded = base64.b64encode("\n".join(cleaned_subscriptions).encode("utf-8")).decode("utf-8")
         subscription_info = f"📄 Подписка: {email} - {time_left}"
 
+        # Подготовка заголовков ответа
         user_agent = request.headers.get("User-Agent", "")
         subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
-        if "Happ" in user_agent:
-            encoded_project_name = f"{PROJECT_NAME}"
-            support_username = SUPPORT_CHAT_URL.split("https://t.me/")[-1]
-            announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
-            headers = {
-                "Content-Type": "text/plain; charset=utf-8",
-                "Content-Disposition": "inline",
-                "profile-update-interval": "3",
-                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
-                "support-url": SUPPORT_CHAT_URL,
-                "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
-                "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
-                "subscription-userinfo": subscription_userinfo,
-            }
-        elif "Hiddify" in user_agent:
-            encoded_project_name = f"{PROJECT_NAME}\n📄 Подписка: {email}"
-            headers = {
-                "profile-update-interval": "3",
-                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
-                "subscription-userinfo": subscription_userinfo,
-            }
-        else:
-            encoded_project_name = f"{PROJECT_NAME}\n{subscription_info}"
-            headers = {
-                "Content-Type": "text/plain; charset=utf-8",
-                "Content-Disposition": "inline",
-                "profile-update-interval": "3",
-                "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
-            }
+        headers = prepare_headers(user_agent, PROJECT_NAME, subscription_info, subscription_userinfo)
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
         return web.Response(text=base64_encoded, headers=headers)
 
 
-async def handle_old_subscription(request):
+async def handle_old_subscription(request: web.Request) -> web.Response:
     """Обработка запроса для старых клиентов."""
     return await handle_subscription(request, old_subscription=True)
 
 
-async def handle_new_subscription(request):
+async def handle_new_subscription(request: web.Request) -> web.Response:
     """Обработка запроса для новых клиентов."""
     return await handle_subscription(request, old_subscription=False)
