@@ -104,8 +104,7 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
         async with aiofiles.open(backup_file_path, "rb") as backup_file:
             backup_data = await backup_file.read()
             backup_input_file = BufferedInputFile(file=backup_data, filename=os.path.basename(backup_file_path))
-            admin_ids = ADMIN_ID if isinstance(ADMIN_ID, list) else [ADMIN_ID]
-            for admin_id in admin_ids:
+            for admin_id in ADMIN_ID:
                 await bot.send_document(chat_id=admin_id, document=backup_input_file)
             logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
     except Exception as e:

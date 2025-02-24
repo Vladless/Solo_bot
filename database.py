@@ -1080,6 +1080,7 @@ async def upsert_user(
     last_name: str = None,
     language_code: str = None,
     is_bot: bool = False,
+    session: Any = None,
 ):
     """
     Обновляет или вставляет информацию о пользователе в базу данных.
@@ -1091,14 +1092,23 @@ async def upsert_user(
         last_name (str, optional): Фамилия пользователя
         language_code (str, optional): Код языка пользователя
         is_bot (bool, optional): Флаг, указывающий является ли пользователь ботом
+        session (Any, optional): Существующая сессия базы данных
 
     Raises:
         Exception: В случае ошибки при работе с базой данных
     """
     conn = None
+    close_conn = False
+    
     try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(f"Установлено подключение к базе данных для обновления пользователя {tg_id}")
+        # Используем переданную сессию или создаем новое подключение
+        if session:
+            conn = session
+            logger.debug(f"Используем существующую сессию для обновления пользователя {tg_id}")
+        else:
+            conn = await asyncpg.connect(DATABASE_URL)
+            close_conn = True
+            logger.info(f"Установлено новое подключение к базе данных для обновления пользователя {tg_id}")
 
         await conn.execute(
             """
@@ -1120,14 +1130,15 @@ async def upsert_user(
             language_code,
             is_bot,
         )
-        logger.info(f"Успешно обновлена информация о пользователе {tg_id}")
+        logger.debug(f"Успешно обновлена информация о пользователе {tg_id}")
     except Exception as e:
         logger.error(f"Ошибка при обновлении информации о пользователе {tg_id}: {e}")
         raise
     finally:
-        if conn:
+        # Закрываем соединение только если мы его создали
+        if conn and close_conn:
             await conn.close()
-            logger.info("Закрытие подключения к базе данных")
+            logger.debug("Закрытие подключения к базе данных")
 
 
 async def add_payment(tg_id: int, amount: float, payment_system: str):
