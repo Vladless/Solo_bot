@@ -107,7 +107,7 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📖 Полная инструкция", url="https://vpn4tv.com/quick-guide.html"))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"connect_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await edit_or_send_message(
