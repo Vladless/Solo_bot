@@ -10,6 +10,8 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -19,8 +21,6 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
-
-from bot import bot
 from database import (
     add_connection,
     add_referral,
@@ -265,6 +265,12 @@ async def process_start_logic(
                     await add_referral(message.chat.id, referrer_tg_id, session)
                     logger.info(f"Реферал {message.chat.id} использовал ссылку от пользователя {referrer_tg_id}")
                     await message.answer(f"Вы стали рефералом пользователя с ID {referrer_tg_id}")
+                    try:
+                        await bot.send_message(referrer_tg_id, f"🎉 Ваш реферал {message.chat.id} успешно зарегистрировался!")
+                        logger.info(f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}")
+                    except Exception as e:
+                        logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
+
                     return await show_start_menu(message, admin, session)
 
                 except (ValueError, IndexError) as e:

@@ -4,8 +4,8 @@ from typing import Any
 
 import asyncpg
 import pytz
-from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 
+from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
 from logger import logger
 
 
@@ -848,12 +848,16 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
             SELECT 
                 COALESCE(SUM(
                     CASE
-                        {" ".join([
-                            f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount" 
-                            if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) 
-                            else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
-                            for level in REFERRAL_BONUS_PERCENTAGES
-                        ])}
+                        {
+                " ".join(
+                    [
+                        f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount"
+                        if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
+                        else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                        for level in REFERRAL_BONUS_PERCENTAGES
+                    ]
+                )
+            }
                         ELSE 0 
                     END
                 ), 0) AS total_bonus
@@ -890,12 +894,16 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
             SELECT 
                 COALESCE(SUM(
                     CASE
-                        {" ".join([
-                            f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount" 
-                            if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float) 
-                            else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
-                            for level in REFERRAL_BONUS_PERCENTAGES
-                        ])}
+                        {
+                " ".join(
+                    [
+                        f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount"
+                        if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
+                        else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                        for level in REFERRAL_BONUS_PERCENTAGES
+                    ]
+                )
+            }
                         ELSE 0 
                     END
                 ), 0) AS total_bonus
@@ -1133,7 +1141,7 @@ async def upsert_user(
                 is_bot = EXCLUDED.is_bot,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING 
-                id, tg_id, username, first_name, last_name, language_code, 
+                tg_id, username, first_name, last_name, language_code, 
                 is_bot, created_at, updated_at
             """,
             tg_id,
@@ -1146,13 +1154,11 @@ async def upsert_user(
 
         logger.debug(f"Успешно обновлена информация о пользователе {tg_id}")
 
-        # Преобразуем результат в словарь
         return dict(user_data)
     except Exception as e:
         logger.error(f"Ошибка при обновлении информации о пользователе {tg_id}: {e}")
         raise
     finally:
-        # Закрываем соединение только если мы его создали
         if conn and close_conn:
             await conn.close()
             logger.debug("Закрытие подключения к базе данных")

@@ -9,6 +9,8 @@ import pytz
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -24,8 +26,6 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
-
-from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,

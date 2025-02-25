@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import ADMIN_ID, DATABASE_URL, PING_TIME
 from ping3 import ping
 
 from bot import bot
+from config import ADMIN_ID, PING_TIME
 from database import get_servers
 from keyboards.admin.servers_kb import AdminServerEditorCallback
 from logger import logger

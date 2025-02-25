@@ -6,8 +6,8 @@ import pytz
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
 
+from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
 from database import (
     add_notification,
     check_notification_time,

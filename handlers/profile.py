@@ -14,6 +14,7 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from config import (
     DATABASE_URL,
     INLINE_MODE,
@@ -24,7 +25,6 @@ from config import (
     TRIAL_TIME,
     USERNAME_BOT,
 )
-
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,

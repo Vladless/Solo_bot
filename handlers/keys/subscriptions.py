@@ -5,12 +5,12 @@ import re
 import time
 import urllib.parse
 from datetime import datetime
-from typing import Dict, List, Optional, Union
 
 import aiohttp
 import asyncpg
 import pytz
 from aiohttp import web
+
 from config import (
     DATABASE_URL,
     PROJECT_NAME,
@@ -22,13 +22,11 @@ from config import (
     USE_COUNTRY_SELECTION,
     USERNAME_BOT,
 )
-
 from database import get_key_details, get_servers
 from handlers.utils import convert_to_bytes
 from logger import logger
 
 
-# Функции для работы с URL и подписками
 async def fetch_url_content(url: str, identifier: str) -> list[str]:
     """
     Получает содержимое подписки по URL и декодирует его.
@@ -144,7 +142,6 @@ def get_transition_timestamp() -> int:
     return transition_timestamp_ms
 
 
-# Функции для обработки и форматирования данных
 def calculate_traffic(cleaned_subscriptions: list[str], expiry_time_ms: int | None) -> str:
     """
     Рассчитывает информацию о трафике на основе подписок.
@@ -294,7 +291,6 @@ def prepare_headers(
         }
 
 
-# Основные обработчики запросов
 async def handle_subscription(request: web.Request, old_subscription: bool = False) -> web.Response:
     """
     Обрабатывает запрос на подписку (старую или новую).
@@ -317,8 +313,8 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
         f"Обработка запроса для {'старого' if old_subscription else 'нового'} клиента: email={email}, tg_id={tg_id}"
     )
 
-    async with asyncpg.connect(DATABASE_URL) as conn:
-        # Получение данных клиента
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
         client_data = await get_key_details(email, conn)
         if not client_data:
             logger.warning(f"Клиент с email {email} не найден в базе.")
@@ -327,19 +323,15 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
         stored_tg_id = client_data.get("tg_id")
         server_id = client_data["server_id"]
 
-        # Проверка tg_id для новых клиентов
         if not old_subscription and str(tg_id) != str(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")
             return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
 
-        # Проверка даты создания для старых клиентов
         if old_subscription:
             created_at_ms = client_data["created_at"]
-            # Используем pytz для корректного сравнения времени
             created_at_datetime = datetime.utcfromtimestamp(created_at_ms / 1000)
             logger.info(f"created_at для {email}: {created_at_datetime}, server_id: {server_id}")
 
-            # Получаем временную метку перехода
             transition_timestamp_ms = get_transition_timestamp()
             logger.info(f"Время перехода (с учетом часового пояса Москвы): {transition_timestamp_ms}")
 
@@ -347,34 +339,30 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
                 logger.info(f"Клиент с email {email} является новым.")
                 return web.Response(text="❌ Эта ссылка устарела. Пожалуйста, обновите ссылку.", status=400)
 
-        # Форматирование оставшегося времени
         expiry_time_ms = client_data.get("expiry_time")
         time_left = format_time_left(expiry_time_ms)
 
-        # Получение URL-адресов подписки
         urls = await get_subscription_urls(server_id, email, conn)
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
 
-        # Получение и обработка подписок
         query_string = request.query_string if not old_subscription else ""
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
         random.shuffle(combined_subscriptions)
 
-        # Очистка строк подписки
         cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
-        # Кодирование подписки в base64
         base64_encoded = base64.b64encode("\n".join(cleaned_subscriptions).encode("utf-8")).decode("utf-8")
         subscription_info = f"📄 Подписка: {email} - {time_left}"
 
-        # Подготовка заголовков ответа
         user_agent = request.headers.get("User-Agent", "")
         subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
         headers = prepare_headers(user_agent, PROJECT_NAME, subscription_info, subscription_userinfo)
 
         logger.info(f"Возвращаем объединенные подписки для email: {email}")
         return web.Response(text=base64_encoded, headers=headers)
+    finally:
+        await conn.close()
 
 
 async def handle_old_subscription(request: web.Request) -> web.Response:

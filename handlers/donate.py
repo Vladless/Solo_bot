@@ -3,9 +3,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, LabeledPrice, Message, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import RUB_TO_XTR
 
+from config import RUB_TO_XTR
 from logger import logger
+
+from .utils import edit_or_send_message
 
 
 class DonateState(StatesGroup):
@@ -31,10 +33,15 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
     )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    await callback_query.message.answer(
-        text="🌟 Поддержите наш проект! 💪\n\n"
+    text = (
+        "🌟 Поддержите наш проект! 💪\n\n"
         "💖 Каждый донат помогает развивать и улучшать сервис. "
-        "🤝 Мы ценим вашу поддержку и работаем над тем, чтобы сделать наш продукт еще лучше. 🚀💡",
+        "🤝 Мы ценим вашу поддержку и работаем над тем, чтобы сделать наш продукт еще лучше. 🚀💡"
+    )
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=text,
         reply_markup=builder.as_markup(),
     )
 
@@ -43,7 +50,14 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
 async def process_enter_donate_amount(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
-    await callback_query.message.answer("💸 Введите сумму доната в рублях:", reply_markup=builder.as_markup())
+    text = "💸 Введите сумму доната в рублях:"
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=text,
+        reply_markup=builder.as_markup(),
+    )
+
     await state.set_state(DonateState.entering_donate_amount)
 
 

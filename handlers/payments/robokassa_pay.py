@@ -99,12 +99,13 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
             await add_connection(tg_id, balance=0.0, trial=0, session=session)
             logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
 
-    await edit_or_send_message(
-        target_message=callback_query.message,
+    await callback_query.message.delete()
+    
+    new_message = await callback_query.message.answer(
         text="Выберите сумму пополнения:",
         reply_markup=builder.as_markup(),
-        force_text=True,
     )
+    await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id) 
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
     logger.info(f"Displayed amount selection for user {tg_id}.")
 
