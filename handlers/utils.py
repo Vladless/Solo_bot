@@ -200,7 +200,6 @@ async def edit_or_send_message(
             )
             return
         except Exception as e:
-            logger.error(f"Ошибка редактирования текста: {e}")
             await target_message.answer(
                 text=text,
                 reply_markup=reply_markup,
