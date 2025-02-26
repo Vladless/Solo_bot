@@ -275,7 +275,10 @@ def prepare_headers(
             "subscription-userinfo": subscription_userinfo,
         }
     elif "Hiddify" in user_agent:
-        encoded_project_name = f"{project_name}\n📄 Подписка: {subscription_info.split(' - ')[0].split(': ')[1]}"
+        parts = subscription_info.split(' - ')[0].split(': ')
+        key_info = parts[1] if len(parts) > 1 else parts[0]
+
+        encoded_project_name = f"{project_name}\n📄 Подписка: {key_info}"
         return {
             "profile-update-interval": "3",
             "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
