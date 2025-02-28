@@ -52,12 +52,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     """Обрабатывает команду /start, включая логику проверки подписки, рефералов и подарков."""
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
-    try:
-        await state.clear()
-        logger.info(f"Состояние для пользователя {message.chat.id} успешно очищено.")
-    except Exception:
-        logger.info(f"Состояние для пользователя {message.chat.id} не было очищено.")
-
     if CAPTCHA_ENABLE and captcha:
         captcha_data = await generate_captcha(message, state)
         await edit_or_send_message(
@@ -67,12 +61,14 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
         )
         return
 
+    state_data = await state.get_data()
+    text_to_process = state_data.get("original_text", message.text)
+
     if CHANNEL_EXISTS and CHANNEL_REQUIRED:
         try:
             member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
             if member.status not in ["member", "administrator", "creator"]:
-                original_text = message.text
-                await state.update_data(original_text=original_text)
+                await state.update_data(original_text=text_to_process)
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
                 await edit_or_send_message(
@@ -82,12 +78,10 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 )
                 return
             else:
-                logger.info(
-                    f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу."
-                )
+                logger.info(f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу.")
         except Exception as e:
             logger.error(f"Ошибка проверки подписки пользователя {message.chat.id}: {e}")
-            await state.update_data(start_text=message.text)
+            await state.update_data(start_text=text_to_process)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
             await edit_or_send_message(
@@ -96,8 +90,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 reply_markup=builder.as_markup(),
             )
             return
-
-    await process_start_logic(message, state, session, admin)
+    await process_start_logic(message, state, session, admin, text_to_process)
 
 
 async def process_start_logic(

@@ -26,6 +26,7 @@ async def generate_captcha(message: Message, state: FSMContext):
         correct_emoji=correct_emoji,
         message_id=message.message_id,
         chat_id=message.chat.id,
+        original_text=message.text,
     )
 
     builder = InlineKeyboardBuilder()
@@ -63,7 +64,7 @@ async def check_captcha(callback: CallbackQuery, state: FSMContext, session: Any
 
     if selected_emoji == correct_emoji:
         logger.info(f"Пользователь {callback.message.chat.id} успешно прошел капчу")
-        await start_command(target_message, state, session, admin, False)
+        await start_command(target_message, state, session, admin, captcha=False)
     else:
         logger.warning(f"Пользователь {callback.message.chat.id} неверно ответил на капчу")
         captcha = await generate_captcha(target_message, state)
