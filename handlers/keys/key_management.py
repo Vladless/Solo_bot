@@ -90,6 +90,12 @@ async def handle_key_creation(
             logger.info(f"Доступен {TRIAL_TIME + extra_days}-дневный пробный период пользователю {tg_id}.")
             updated = await update_trial(tg_id, 1, session)
             if updated:
+                await edit_or_send_message(
+                    target_message=message_or_query if isinstance(message_or_query, Message) else message_or_query.message,
+                    text="⏳ Пожалуйста, подождите, создаем вам подключение...",
+                    reply_markup=None,  
+                )
+
                 await create_key(tg_id, expiry_time, state, session, message_or_query)
                 return
             else:
