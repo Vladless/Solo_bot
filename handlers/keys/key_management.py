@@ -293,8 +293,8 @@ async def create_key(
             InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
         )
         builder.row(
-            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_name}"),
-            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_name}"),
+            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
         )
     builder.row(
         InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
@@ -517,8 +517,8 @@ async def finalize_key_creation(
             InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
         )
         builder.row(
-            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_name}"),
-            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_name}"),
+            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
         )
     builder.row(
         InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),

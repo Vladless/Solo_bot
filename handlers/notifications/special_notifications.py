@@ -120,8 +120,8 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_time: int, keys: list):
     """
     Проверяет трафик пользователей, у которых ещё не отправлялось уведомление о нулевом трафике.
-    Если трафик 0 ГБ и прошло более 2 часов с момента создания ключа, отправляет уведомление и
-    обновляет запись в БД (notified = TRUE).
+    Если трафик 0 ГБ и прошло более 2 часов с момента создания ключа, отправляет уведомление,
+    но исключает пользователей, у которых подписка недавно продлилась.
     """
     logger.info("Проверка пользователей с нулевым трафиком...")
 
@@ -132,6 +132,7 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
         email = key.get("email")
         created_at = key.get("created_at")
         client_id = key.get("client_id")
+        expiry_time = key.get("expiry_time")
         notified = key.get("notified")
 
         if created_at is None:
@@ -143,6 +144,14 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
 
         created_at_dt = pytz.utc.localize(datetime.fromtimestamp(created_at / 1000)).astimezone(moscow_tz)
         created_at_plus_2 = created_at_dt + timedelta(hours=NOTIFY_INACTIVE_TRAFFIC)
+
+        if expiry_time:
+            expiry_dt = pytz.utc.localize(datetime.fromtimestamp(expiry_time / 1000)).astimezone(moscow_tz)
+            renewal_threshold = expiry_dt - timedelta(days=30)
+            renewal_recent = current_dt - renewal_threshold < timedelta(hours=NOTIFY_INACTIVE_TRAFFIC)
+
+            if renewal_recent:
+                continue
 
         if current_dt < created_at_plus_2:
             continue

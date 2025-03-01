@@ -179,8 +179,8 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
                 )
                 builder.row(
-                    InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_name}"),
-                    InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_name}"),
+                    InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
+                    InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
                 )
 
             builder.row(
