@@ -34,7 +34,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         SELECT tg_id, username, first_name, last_name FROM users 
         WHERE tg_id IN (
             SELECT tg_id FROM connections 
-            WHERE trial = 0
+            WHERE trial IN (0, -1)
         )
         AND tg_id NOT IN (
             SELECT tg_id FROM blocked_users

@@ -51,10 +51,12 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     record = await get_key_details(key_name, session)
     if not record:
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
         await edit_or_send_message(
             target_message=callback_query.message,
             text="❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=builder.as_markup(),
             media_path=None,
         )
         return
@@ -76,6 +78,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
         reply_markup=builder.as_markup(),
         media_path=None,
     )
+
 
 
 @router.callback_query(F.data.startswith("connect_tv|"))

@@ -119,6 +119,7 @@ async def balance_handler(callback_query: CallbackQuery, session: Any):
         callback_query.from_user.id,
     )
     balance = result["balance"] if result else 0.0
+    balance = int(balance)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
