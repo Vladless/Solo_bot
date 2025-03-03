@@ -279,7 +279,7 @@ async def handle_servers_availability(
     total_online_users = 0
 
     for server in cluster_servers:
-        xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+        xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
 
         try:
             await xui.login()
@@ -383,6 +383,7 @@ async def handle_clusters_backup(
             server["api_url"],
             username=ADMIN_USERNAME,
             password=ADMIN_PASSWORD,
+            logger=logger,
         )
         await create_backup_and_send_to_admins(xui)
 

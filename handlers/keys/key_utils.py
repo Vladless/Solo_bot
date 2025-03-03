@@ -69,6 +69,7 @@ async def create_client_on_server(
             server_info["api_url"],
             username=ADMIN_USERNAME,
             password=ADMIN_PASSWORD,
+            logger=logger,
         )
 
         inbound_id = server_info.get("inbound_id")
@@ -129,6 +130,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -180,6 +182,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -230,6 +233,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -357,7 +361,7 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
         Получает трафик с сервера для заданного client_id.
         Возвращает кортеж: (server, used_gb) или (server, ошибка).
         """
-        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
         try:
             traffic_info = await get_client_traffic(xui, client_id)
             if traffic_info["status"] == "success" and traffic_info["traffic"]:
@@ -424,6 +428,7 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")

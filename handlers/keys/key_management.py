@@ -449,6 +449,7 @@ async def finalize_key_creation(
                         old_server_info["api_url"],
                         username=ADMIN_USERNAME,
                         password=ADMIN_PASSWORD,
+                        logger=logger,
                     )
                     deletion_success = await delete_client(
                         xui,

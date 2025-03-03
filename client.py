@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
-
+import httpx 
 import py3xui
 
 from config import LIMIT_IP, SUPERNODE
@@ -54,6 +54,10 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
         logger.info(f"Клиент {config.email} успешно добавлен с ID {config.client_id}")
 
         return response if response else {"status": "failed"}
+    
+    except httpx.ConnectTimeout as e:
+        logger.error(f"Ошибка при добавлении клиента {config.email}: {e}")
+        return {"status": "failed", "error": "Timeout"}
 
     except Exception as e:
         error_message = str(e)
@@ -110,6 +114,10 @@ async def extend_client_key(
         await xui.client.reset_stats(inbound_id, email)
         logger.info(f"Ключ клиента {email} успешно продлён до {new_expiry_time}")
         return True
+    
+    except httpx.ConnectTimeout as e:
+        logger.error(f"Ошибка при обновлении клиента {email}: {e}")
+        return False
 
     except Exception as e:
         logger.error(f"Ошибка при обновлении клиента с email {email}: {e}")
@@ -151,6 +159,10 @@ async def delete_client(
         await xui.client.delete(inbound_id, client.id)
         logger.info(f"Клиент с ID {client_id} был удален успешно")
         return True
+    
+    except httpx.ConnectTimeout as e:
+        logger.error(f"Ошибка при удалении клиента {email}: {e}")
+        return False
 
     except Exception as e:
         logger.error(f"Ошибка при удалении клиента с ID {client_id}: {e}")
@@ -178,6 +190,10 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, 
 
         logger.info(f"Трафик для клиента {client_id} успешно получен.")
         return {"status": "success", "client_id": client_id, "traffic": traffic_data}
+    
+    except httpx.ConnectTimeout as e:
+        logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
+        return {"status": "error", "error": "Timeout"}
 
     except Exception as e:
         logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")
@@ -221,6 +237,11 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
         logger.info(f"Клиент с email {email} и ID {client_id} успешно {status}.")
         return True
 
+    except httpx.ConnectTimeout as e:
+        status = "включении" if enable else "отключении"
+        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
+        return False
+    
     except Exception as e:
         status = "включении" if enable else "отключении"
         logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
