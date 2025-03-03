@@ -382,11 +382,11 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
             servers = await get_servers(session)
 
             async def delete_key_from_servers():
-                try:
+                try: # lol
                     tasks = []
                     for cluster_id, _cluster in servers.items():
                         tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
-                    await asyncio.gather(*tasks)
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 except Exception as e:
                     logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
 

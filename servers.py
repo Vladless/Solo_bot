@@ -90,7 +90,7 @@ async def check_servers():
                 server_info_list.append((server_name, server_host))
                 tasks.append(ping_server(server_host))
 
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         offline_servers = []
 

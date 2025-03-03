@@ -259,7 +259,7 @@ async def create_key(
                 create_key_on_cluster(least_loaded_cluster, tg_id, client_id, email, expiry_timestamp, plan)
             )
         ]
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
         logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
         await store_key(
             tg_id,
