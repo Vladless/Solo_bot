@@ -84,7 +84,7 @@ async def combine_unique_lines(urls: list[str], identifier: str, query_string: s
     logger.info(f"Составлены URL-адреса: {urls_with_query}")
 
     tasks = [fetch_url_content(url, identifier) for url in urls_with_query]
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     all_lines = set()
     for lines in results:
         all_lines.update(filter(None, lines))

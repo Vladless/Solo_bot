@@ -514,7 +514,7 @@ async def handle_delete_key_confirm(
             for cluster_name, cluster_servers in clusters.items():
                 for _ in cluster_servers:
                     tasks.append(delete_key_from_cluster(cluster_name, email, client_id))
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         await delete_key_from_servers()
         await delete_key(client_id, session)
@@ -546,7 +546,7 @@ async def handle_delete_user_confirm(
                 servers = await get_servers()
                 for cluster_id, _cluster in servers.items():
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
             logger.error(f"Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
 
@@ -665,7 +665,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
             for cluster_name in clusters
         ]
 
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     await update_key_on_all_servers()
     await update_key_expiry(client_id, expiry_time, session)

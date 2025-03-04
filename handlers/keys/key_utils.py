@@ -43,7 +43,8 @@ async def create_key_on_cluster(
                 *(
                     create_client_on_server(server, tg_id, client_id, email, expiry_timestamp, semaphore, plan=plan)
                     for server in cluster
-                )
+                ),
+                return_exceptions=True,
             )
 
     except Exception as e:
@@ -68,6 +69,7 @@ async def create_client_on_server(
             server_info["api_url"],
             username=ADMIN_USERNAME,
             password=ADMIN_PASSWORD,
+            logger=logger,
         )
 
         inbound_id = server_info.get("inbound_id")
@@ -128,6 +130,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -148,7 +151,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 extend_client_key(xui, int(inbound_id), unique_email, new_expiry_time, client_id, total_gb, sub_id)
             )
 
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as e:
         logger.error(f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
@@ -179,6 +182,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -197,7 +201,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 )
             )
 
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     except Exception as e:
         logger.error(f"Не удалось удалить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
@@ -229,6 +233,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
@@ -256,7 +261,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 )
             )
 
-        await asyncio.gather(*tasks)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         logger.info(f"Ключ успешно обновлен для {client_id} на всех серверах в кластере {cluster_id}")
 
@@ -301,7 +306,8 @@ async def update_subscription(tg_id: int, email: str, session: Any) -> None:
             email,
             expiry_time,
             least_loaded_cluster_id,
-        )
+        ),
+        return_exceptions=True,
     )
 
     await store_key(
@@ -355,7 +361,7 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
         Получает трафик с сервера для заданного client_id.
         Возвращает кортеж: (server, used_gb) или (server, ошибка).
         """
-        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
+        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
         try:
             traffic_info = await get_client_traffic(xui, client_id)
             if traffic_info["status"] == "success" and traffic_info["traffic"]:
@@ -378,7 +384,7 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
             for server, api_url in servers_map.items():
                 tasks.append(fetch_traffic(api_url, client_id, server))
 
-    results = await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks, return_exceptions=True)
     for server, result in results:
         user_traffic_data[server] = result
 
@@ -422,6 +428,7 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
                 server_info["api_url"],
                 username=ADMIN_USERNAME,
                 password=ADMIN_PASSWORD,
+                logger=logger,
             )
 
             inbound_id = server_info.get("inbound_id")
