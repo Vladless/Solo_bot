@@ -672,6 +672,9 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
         tg_id (int): Идентификатор Telegram пользователя, пополнившего баланс
         amount (float): Сумма пополнения баланса
     """
+
+    if amount <= 0:
+            return
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
