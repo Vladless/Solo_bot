@@ -1,9 +1,11 @@
 import logging
 import os
 import sys
+
 from datetime import timedelta
 
 from loguru import logger
+
 
 log_folder = "logs"
 

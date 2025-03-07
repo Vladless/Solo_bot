@@ -1,4 +1,5 @@
 import json
+
 from datetime import datetime
 from typing import Any
 
@@ -6,6 +7,7 @@ import asyncpg
 import pytz
 
 from config import CASHBACK, CHECK_REFERRAL_REWARD_ISSUED, DATABASE_URL, REFERRAL_BONUS_PERCENTAGES
+
 from logger import logger
 
 
@@ -674,7 +676,7 @@ async def handle_referral_on_balance_update(tg_id: int, amount: float):
     """
 
     if amount <= 0:
-            return
+        return
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -852,14 +854,12 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
                 COALESCE(SUM(
                     CASE
                         {
-                " ".join(
-                    [
-                        f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount"
-                        if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
-                        else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
-                        for level in REFERRAL_BONUS_PERCENTAGES
-                    ]
-                )
+                " ".join([
+                    f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * ep.amount"
+                    if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
+                    else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                    for level in REFERRAL_BONUS_PERCENTAGES
+                ])
             }
                         ELSE 0 
                     END
@@ -898,14 +898,12 @@ async def get_total_referral_bonus(conn, referrer_tg_id: int, max_levels: int) -
                 COALESCE(SUM(
                     CASE
                         {
-                " ".join(
-                    [
-                        f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount"
-                        if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
-                        else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
-                        for level in REFERRAL_BONUS_PERCENTAGES
-                    ]
-                )
+                " ".join([
+                    f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]} * p.amount"
+                    if isinstance(REFERRAL_BONUS_PERCENTAGES[level], float)
+                    else f"WHEN rl.level = {level} THEN {REFERRAL_BONUS_PERCENTAGES[level]}"
+                    for level in REFERRAL_BONUS_PERCENTAGES
+                ])
             }
                         ELSE 0 
                     END
@@ -1339,14 +1337,12 @@ async def get_servers(session: Any = None):
             if cluster_name not in servers:
                 servers[cluster_name] = []
 
-            servers[cluster_name].append(
-                {
-                    "server_name": row["server_name"],
-                    "api_url": row["api_url"],
-                    "subscription_url": row["subscription_url"],
-                    "inbound_id": row["inbound_id"],
-                }
-            )
+            servers[cluster_name].append({
+                "server_name": row["server_name"],
+                "api_url": row["api_url"],
+                "subscription_url": row["subscription_url"],
+                "inbound_id": row["inbound_id"],
+            })
 
         return servers
 

@@ -44,13 +44,16 @@ dependencies = [
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+fix = true
+unsafe-fixes = true
+preview = true
 
 [tool.uv]
 package = false
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "ANN", "ASYNC", "S", "BLE", "FBT", "B", "A", "C4", "DTZ", "T10", "ISC", "ICN", "G", "PIE"]
-ignore = ["ANN101", "ANN102", "S101",'ANN201','ANN001','BLE001','W291','ANN401','DTZ003','DTZ005','F401','FBT002','FBT001','FBT003','A005','E501','UP017','DTZ004','W293','ANN202','DTZ007']
+ignore = ["ANN101", "ANN102", "S101", "ANN201", "ANN001", "BLE001", "W291", "ANN401", "DTZ003", "DTZ005", "F401", "FBT002", "FBT001", "FBT003", "A005", "E501", "UP017", "DTZ004", "W293", "ANN202", "DTZ007"]
 exclude = [
     ".git", 
     "venv",
@@ -61,6 +64,32 @@ exclude = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+docstring-code-line-length = 88
+
+[tool.ruff.lint.isort]
+case-sensitive = true
+combine-as-imports = true
+force-wrap-aliases = true
+known-first-party = ["Solo_bot"]
+lines-after-imports = 2
+lines-between-types = 1
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.darker]
 src = ["."]

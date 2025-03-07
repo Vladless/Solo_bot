@@ -7,6 +7,7 @@ from bot import version
 from filters.admin import IsAdminFilter
 from keyboards.admin.panel_kb import AdminPanelCallback, build_management_kb, build_panel_kb
 
+
 router = Router()
 
 

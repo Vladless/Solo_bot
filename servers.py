@@ -1,16 +1,18 @@
 import asyncio
 import re
+
 from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMIN_ID, PING_TIME
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, PING_TIME
 from database import get_servers
 from keyboards.admin.servers_kb import AdminServerEditorCallback
 from logger import logger
+
 
 last_ping_times = {}
 last_notification_times = {}
@@ -32,7 +34,7 @@ async def ping_server(server_ip: str) -> bool:
 async def check_tcp_connection(host: str, port: int) -> bool:
     """Проверяет доступность сервера через TCP (порт 443)."""
     try:
-        reader, writer = await asyncio.open_connection(host, port)
+        _reader, writer = await asyncio.open_connection(host, port)
         writer.close()
         await writer.wait_closed()
         return True

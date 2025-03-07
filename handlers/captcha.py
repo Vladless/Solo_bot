@@ -1,16 +1,18 @@
 import random
 import secrets
+
 from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import CAPTCHA_EMOJIS
+
 from logger import logger
 
 from .utils import edit_or_send_message
+
 
 router = Router()
 

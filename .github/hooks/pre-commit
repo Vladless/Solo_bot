@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# Сохраняем текущие изменения
+echo "Сохранение текущих изменений..."
+git stash -q --keep-index
+
+# Запускаем форматирование кода
+echo "Запуск Ruff format..."
+ruff format . --config pyproject.toml --exclude main.py,handlers/payments
+
+# Запускаем проверку и исправление кода
+echo "Запуск Ruff check с автоисправлением..."
+ruff check . --config pyproject.toml --exclude main.py,handlers/payments --fix
+
+# Добавляем изменения, внесенные форматированием
+git add -u
+
+# Восстанавливаем сохраненные изменения
+echo "Восстановление сохраненных изменений..."
+git stash pop -q
+
+# Выход с кодом 0 (успешно)
+exit 0 

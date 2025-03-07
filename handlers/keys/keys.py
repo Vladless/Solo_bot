@@ -1,16 +1,16 @@
 import asyncio
 import locale
 import os
+
 from datetime import datetime, timedelta
 from typing import Any
 
 import asyncpg
 import pytz
+
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -26,6 +26,8 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
+
+from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,
@@ -63,6 +65,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
+
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -382,7 +385,7 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
             servers = await get_servers(session)
 
             async def delete_key_from_servers():
-                try: # lol
+                try:  # lol
                     tasks = []
                     for cluster_id, _cluster in servers.items():
                         tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
