@@ -4,13 +4,14 @@ import random
 import re
 import time
 import urllib.parse
+
 from datetime import datetime
 
 import aiohttp
 import asyncpg
 import pytz
-from aiohttp import web
 
+from aiohttp import web
 from config import (
     DATABASE_URL,
     PROJECT_NAME,
@@ -19,9 +20,10 @@ from config import (
     SUPPORT_CHAT_URL,
     TOTAL_GB,
     TRANSITION_DATE_STR,
-    USE_COUNTRY_SELECTION,
     USERNAME_BOT,
+    USE_COUNTRY_SELECTION,
 )
+
 from database import get_key_details, get_servers
 from handlers.utils import convert_to_bytes
 from logger import logger
@@ -275,7 +277,7 @@ def prepare_headers(
             "subscription-userinfo": subscription_userinfo,
         }
     elif "Hiddify" in user_agent:
-        parts = subscription_info.split(' - ')[0].split(': ')
+        parts = subscription_info.split(" - ")[0].split(": ")
         key_info = parts[1] if len(parts) > 1 else parts[0]
 
         encoded_project_name = f"{project_name}\n📄 Подписка: {key_info}"

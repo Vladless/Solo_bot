@@ -7,7 +7,7 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
     action: str
     page: int
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         if "page" not in kwargs or kwargs["page"] is None:
             kwargs["page"] = 1
         super().__init__(*args, **kwargs)

@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -10,8 +11,6 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -21,6 +20,8 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
+
+from bot import bot
 from database import (
     add_connection,
     add_referral,
@@ -36,6 +37,7 @@ from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message
+
 
 router = Router()
 
@@ -78,7 +80,9 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 )
                 return
             else:
-                logger.info(f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу.")
+                logger.info(
+                    f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу."
+                )
         except Exception as e:
             logger.error(f"Ошибка проверки подписки пользователя {message.chat.id}: {e}")
             await state.update_data(start_text=text_to_process)
@@ -259,8 +263,12 @@ async def process_start_logic(
                     logger.info(f"Реферал {message.chat.id} использовал ссылку от пользователя {referrer_tg_id}")
                     await message.answer(f"Вы стали рефералом пользователя с ID {referrer_tg_id}")
                     try:
-                        await bot.send_message(referrer_tg_id, f"🎉 Ваш реферал {message.chat.id} успешно зарегистрировался!")
-                        logger.info(f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}")
+                        await bot.send_message(
+                            referrer_tg_id, f"🎉 Ваш реферал {message.chat.id} успешно зарегистрировался!"
+                        )
+                        logger.info(
+                            f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}"
+                        )
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
 

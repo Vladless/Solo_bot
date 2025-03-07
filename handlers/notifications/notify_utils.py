@@ -1,7 +1,10 @@
 import os
 
+from typing import Optional
+
 import aiofiles
-from aiogram import Bot, types
+
+from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
@@ -13,40 +16,68 @@ async def send_notification(
     tg_id: int,
     image_filename: str,
     caption: str,
-    keyboard: InlineKeyboardMarkup,
-):
+    keyboard: InlineKeyboardMarkup | None = None,
+) -> bool:
     """
-    Отправляет уведомление с изображением, если файл существует, иначе отправляет текстовое сообщение.
-    Если возникает TelegramForbiddenError (например, бот заблокирован пользователем),
-    функция логирует ошибку и прекращает попытки отправки уведомления.
+    Отправляет уведомление пользователю.
+
+    Args:
+        bot: Экземпляр бота для отправки сообщений
+        tg_id: Telegram ID пользователя
+        image_filename: Имя файла изображения в директории img
+        caption: Текст сообщения
+        keyboard: Клавиатура для сообщения (опционально)
+
+    Returns:
+        bool: True если сообщение успешно отправлено, False в случае ошибки
     """
     photo_path = os.path.join("img", image_filename)
+
+    # Проверяем существование файла изображения
     if os.path.isfile(photo_path):
-        try:
-            async with aiofiles.open(photo_path, "rb") as image_file:
-                image_data = await image_file.read()
-            buffered_photo = BufferedInputFile(image_data, filename=image_filename)
-            await bot.send_photo(tg_id, buffered_photo, caption=caption, reply_markup=keyboard)
-        except TelegramForbiddenError as e:
-            logger.error(f"Ошибка отправки фото для пользователя {tg_id}: {e}")
-            return
-        except Exception as e:
-            logger.error(f"Ошибка отправки фото для пользователя {tg_id}: {e}")
-            try:
-                await bot.send_message(tg_id, caption, reply_markup=keyboard)
-            except TelegramForbiddenError as e:
-                logger.error(f"Ошибка отправки fallback-сообщения для пользователя {tg_id}: {e}")
-                return
-            except Exception as e:
-                logger.error(f"Неизвестная ошибка при отправке fallback-сообщения для пользователя {tg_id}: {e}")
-                return
+        return await _send_photo_notification(bot, tg_id, photo_path, image_filename, caption, keyboard)
     else:
-        logger.error(f"Файл с изображением не найден: {photo_path}")
-        try:
-            await bot.send_message(tg_id, caption, reply_markup=keyboard)
-        except TelegramForbiddenError as e:
-            logger.error(f"Ошибка отправки сообщения для пользователя {tg_id}: {e}")
-            return
-        except Exception as e:
-            logger.error(f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}")
-            return
+        logger.warning(f"Файл с изображением не найден: {photo_path}")
+        return await _send_text_notification(bot, tg_id, caption, keyboard)
+
+
+async def _send_photo_notification(
+    bot: Bot,
+    tg_id: int,
+    photo_path: str,
+    image_filename: str,
+    caption: str,
+    keyboard: InlineKeyboardMarkup | None = None,
+) -> bool:
+    """Отправляет уведомление с изображением."""
+    try:
+        async with aiofiles.open(photo_path, "rb") as image_file:
+            image_data = await image_file.read()
+        buffered_photo = BufferedInputFile(image_data, filename=image_filename)
+        await bot.send_photo(tg_id, buffered_photo, caption=caption, reply_markup=keyboard)
+        return True
+    except TelegramForbiddenError:
+        logger.error(f"Пользователь {tg_id} заблокировал бота")
+        return False
+    except Exception as e:
+        logger.error(f"Ошибка отправки фото для пользователя {tg_id}: {e}")
+        # Пробуем отправить текстовое сообщение как запасной вариант
+        return await _send_text_notification(bot, tg_id, caption, keyboard)
+
+
+async def _send_text_notification(
+    bot: Bot,
+    tg_id: int,
+    caption: str,
+    keyboard: InlineKeyboardMarkup | None = None,
+) -> bool:
+    """Отправляет текстовое уведомление."""
+    try:
+        await bot.send_message(tg_id, caption, reply_markup=keyboard)
+        return True
+    except TelegramForbiddenError:
+        logger.error(f"Пользователь {tg_id} заблокировал бота")
+        return False
+    except Exception as e:
+        logger.error(f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}")
+        return False

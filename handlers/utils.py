@@ -7,10 +7,11 @@ import string
 import aiofiles
 import aiohttp
 import asyncpg
+
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
+from config import DATABASE_URL
 
 from bot import bot
-from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 
@@ -65,7 +66,7 @@ async def get_least_loaded_cluster() -> str:
     """
     servers = await get_servers()
 
-    cluster_loads: dict[str, int] = {cluster_id: 0 for cluster_id in servers.keys()}
+    cluster_loads: dict[str, int] = dict.fromkeys(servers.keys(), 0)
 
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
@@ -199,7 +200,7 @@ async def edit_or_send_message(
                 disable_web_page_preview=disable_web_page_preview,
             )
             return
-        except Exception as e:
+        except Exception:
             await target_message.answer(
                 text=text,
                 reply_markup=reply_markup,

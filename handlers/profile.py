@@ -1,7 +1,10 @@
+import html
 import os
+
 from typing import Any
 
 import asyncpg
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -14,7 +17,6 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import (
     DATABASE_URL,
     INLINE_MODE,
@@ -25,6 +27,7 @@ from config import (
     TRIAL_TIME,
     USERNAME_BOT,
 )
+
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
@@ -40,9 +43,9 @@ from handlers.buttons.profile import (
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
 from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
-import html
 
 from .utils import edit_or_send_message
+
 
 router = Router()
 
@@ -56,7 +59,7 @@ async def process_callback_view_profile(
 ):
     if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
-        username = html.escape(callback_query_or_message.from_user.full_name)  
+        username = html.escape(callback_query_or_message.from_user.full_name)
         target_message = callback_query_or_message.message
     else:
         chat_id = callback_query_or_message.chat.id
@@ -176,14 +179,12 @@ async def view_tariffs_handler(callback_query: CallbackQuery):
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     image_path = os.path.join("img", "tariffs.jpg")
-    tariffs_message = "<b>🚀 Доступные тарифы VPN:</b>\n\n" + "\n".join(
-        [
-            f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
-            f"{RENEWAL_PLANS[months]['price']} "
-            f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
-            for months in sorted(RENEWAL_PLANS.keys(), key=int)
-        ]
-    )
+    tariffs_message = "<b>🚀 Доступные тарифы VPN:</b>\n\n" + "\n".join([
+        f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
+        f"{RENEWAL_PLANS[months]['price']} "
+        f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
+        for months in sorted(RENEWAL_PLANS.keys(), key=int)
+    ])
 
     await edit_or_send_message(
         target_message=callback_query.message,

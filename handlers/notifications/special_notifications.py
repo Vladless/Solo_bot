@@ -1,13 +1,15 @@
 import asyncio
+
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
+
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
+
 from database import (
     add_notification,
     check_notification_time,
@@ -15,6 +17,7 @@ from database import (
 )
 from handlers.keys.key_utils import get_user_traffic
 from logger import logger
+
 
 router = Router()
 
@@ -167,7 +170,7 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
             continue
 
         total_traffic = sum(
-            value if isinstance(value, (int, float)) else 0 for value in traffic_data.get("traffic", {}).values()
+            value if isinstance(value, int | float) else 0 for value in traffic_data.get("traffic", {}).values()
         )
         logger.info(f"Ключ для {email}: общий трафик: {total_traffic} ГБ")
 

@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router, types
@@ -8,17 +9,18 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
+
 from database import get_key_details
 from handlers.texts import (
     CONNECT_TV_TEXT,
-    INSTRUCTION_PC,
     INSTRUCTIONS,
+    INSTRUCTION_PC,
     KEY_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
+
 
 router = Router()
 
@@ -80,7 +82,6 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     )
 
 
-
 @router.callback_query(F.data.startswith("connect_tv|"))
 async def process_connect_tv(callback_query: CallbackQuery):
     key_name = callback_query.data.split("|")[1]
@@ -102,7 +103,6 @@ async def process_connect_tv(callback_query: CallbackQuery):
 @router.callback_query(F.data.startswith("continue_tv|"))
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    tg_id = callback_query.from_user.id
 
     record = await get_key_details(key_name, session)
     subscription_link = record["key"]

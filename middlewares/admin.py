@@ -3,7 +3,6 @@ from typing import Any, Dict, Set, cast
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
-
 from config import ADMIN_ID
 
 
@@ -15,7 +14,7 @@ class AdminMiddleware(BaseMiddleware):
     """
 
     # Кэш ID администраторов для быстрого доступа
-    _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+    _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
 
     async def __call__(
         self,
