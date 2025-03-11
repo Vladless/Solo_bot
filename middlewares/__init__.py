@@ -6,6 +6,7 @@ from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
 from .admin import AdminMiddleware
 from .loggings import LoggingMiddleware
+from .message_handler import MessageHandlerMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
@@ -34,6 +35,7 @@ def register_middleware(
             "logging": LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
+            "message_handler": MessageHandlerMiddleware(),
         }
 
         # Фильтруем middleware по списку исключений
