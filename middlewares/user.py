@@ -21,20 +21,14 @@ class UserMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         try:
-            # Получаем пользователя из данных события
             if user := data.get("event_from_user"):
-                # Получаем сессию из контекста, если она есть
                 session = data.get("session")
-                # Обрабатываем пользователя и получаем его данные из БД
                 db_user = await self._process_user(user, session)
-                # Добавляем данные пользователя из БД в контекст
                 if db_user:
                     data["user"] = db_user
         except Exception as e:
-            # Логируем ошибку, но не прерываем обработку события
             logger.error(f"Ошибка при обработке пользователя: {e}")
 
-        # Продолжаем обработку события в любом случае
         return await handler(event, data)
 
     async def _process_user(self, user: User, session: Any = None) -> dict:
@@ -49,7 +43,6 @@ class UserMiddleware(BaseMiddleware):
             dict: Словарь с информацией о пользователе из базы данных
         """
         logger.debug(f"Обработка пользователя: {user.id}")
-        # Получаем данные пользователя из БД после вставки/обновления
         user_data = await upsert_user(
             tg_id=user.id,
             username=user.username,
@@ -57,7 +50,7 @@ class UserMiddleware(BaseMiddleware):
             last_name=user.last_name,
             language_code=user.language_code,
             is_bot=user.is_bot,
-            session=session,  # Передаем сессию, если она есть
+            session=session,
         )
 
         logger.debug(f"Получены данные пользователя из БД: {user.id}")

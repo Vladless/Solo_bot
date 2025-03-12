@@ -1,7 +1,5 @@
 import os
 
-from typing import Optional
-
 import aiofiles
 
 from aiogram import Bot
@@ -33,7 +31,6 @@ async def send_notification(
     """
     photo_path = os.path.join("img", image_filename)
 
-    # Проверяем существование файла изображения
     if os.path.isfile(photo_path):
         return await _send_photo_notification(bot, tg_id, photo_path, image_filename, caption, keyboard)
     else:
@@ -61,7 +58,6 @@ async def _send_photo_notification(
         return False
     except Exception as e:
         logger.error(f"Ошибка отправки фото для пользователя {tg_id}: {e}")
-        # Пробуем отправить текстовое сообщение как запасной вариант
         return await _send_text_notification(bot, tg_id, caption, keyboard)
 
 

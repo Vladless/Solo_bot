@@ -72,7 +72,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
 
 
 async def extend_client_key(
-    xui: py3xui.AsyncApi, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str
+    xui: py3xui.AsyncApi, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str, tg_id: int
 ) -> bool | None:
     """
     Обновляет срок действия ключа клиента.
@@ -94,11 +94,11 @@ async def extend_client_key(
         client = await xui.client.get_by_email(email)
 
         if not client:
-            logger.warning(f"Клиент с email {email} не найден")
+            logger.warning(f"Клиент с email {email} не найден.")
             return None
 
         if not client.id:
-            logger.warning(f"Ошибка: клиент {email} не имеет действительного ID")
+            logger.warning(f"Ошибка: клиент {email} не имеет действительного ID.")
             return None
 
         logger.info(f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}")
@@ -111,6 +111,7 @@ async def extend_client_key(
         client.enable = True
         client.limit_ip = LIMIT_IP
         client.inbound_id = inbound_id
+        client.tg_id = tg_id
 
         await xui.client.update(client.id, client)
         await xui.client.reset_stats(inbound_id, email)
@@ -219,21 +220,18 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
     try:
         await xui.login()
 
-        # Получаем клиента по email
         client = await xui.client.get_by_email(email)
 
         if not client:
             logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")
             return False
 
-        # Обновляем параметры клиента
         client.enable = enable
         client.id = client_id
         client.flow = "xtls-rprx-vision"
         client.limit_ip = LIMIT_IP
         client.inbound_id = inbound_id
 
-        # Обновляем клиента
         await xui.client.update(client.id, client)
         status = "включен" if enable else "отключен"
         logger.info(f"Клиент с email {email} и ID {client_id} успешно {status}.")

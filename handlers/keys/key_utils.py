@@ -2,8 +2,9 @@ import asyncio
 
 from typing import Any
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, USE_COUNTRY_SELECTION
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, DATABASE_URL
 from py3xui import AsyncApi
+import asyncpg
 
 from client import ClientConfig, add_client, delete_client, extend_client_key, get_client_traffic, toggle_client
 from database import get_servers, store_key
@@ -125,6 +126,16 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
+        async with asyncpg.create_pool(DATABASE_URL) as pool:
+            async with pool.acquire() as conn:
+                tg_id_query = "SELECT tg_id FROM keys WHERE client_id = $1 LIMIT 1"
+                tg_id_record = await conn.fetchrow(tg_id_query, client_id)
+
+                if not tg_id_record:
+                    logger.error(f"Не найден пользователь с client_id={client_id} в таблице keys.")
+                    return False
+
+                tg_id = tg_id_record["tg_id"]
         tasks = []
         for server_info in cluster:
             xui = AsyncApi(
@@ -149,7 +160,9 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                 sub_id = unique_email
 
             tasks.append(
-                extend_client_key(xui, int(inbound_id), unique_email, new_expiry_time, client_id, total_gb, sub_id)
+                extend_client_key(
+                    xui, int(inbound_id), unique_email, new_expiry_time, client_id, total_gb, sub_id, tg_id
+                )
             )
 
         await asyncio.gather(*tasks, return_exceptions=True)

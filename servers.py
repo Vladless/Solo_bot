@@ -15,12 +15,13 @@ from logger import logger
 
 
 last_ping_times = {}
-last_notification_times = {}
+last_down_times = {}
+notified_servers = set()
 PING_SEMAPHORE = asyncio.Semaphore(3)
 
 
 async def ping_server(server_ip: str) -> bool:
-    """Пингует сервер через ICMP или TCP 443, если ICMP недоступен или возникает ошибка."""
+    """Пингует сервер через ICMP или TCP 443, если ICMP недоступен."""
     async with PING_SEMAPHORE:
         try:
             response = ping(server_ip, timeout=3)
@@ -42,14 +43,8 @@ async def check_tcp_connection(host: str, port: int) -> bool:
         return False
 
 
-async def notify_admin(server_name: str):
-    """Отправляет уведомление администраторам о недоступности сервера (не чаще чем раз в 3 минуты)."""
-    current_time = datetime.now()
-    last_notification_time = last_notification_times.get(server_name)
-
-    if last_notification_time and current_time - last_notification_time < timedelta(minutes=3):
-        return
-
+async def notify_admin(server_name: str, status: str, down_duration: timedelta = None):
+    """Отправляет уведомление администратору."""
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -58,23 +53,27 @@ async def notify_admin(server_name: str):
         )
     )
 
-    for admin_id in ADMIN_ID:
-        await bot.send_message(
-            admin_id,
-            (
-                f"❌ <b>Сервер '{server_name}'</b> не отвечает более {PING_TIME * 3} секунд.\n\n"
-                "Проверьте соединение к серверу или удалите его из списка, чтобы не выдавать подписки на неработающий сервер."
-            ),
-            reply_markup=builder.as_markup(),
+    if status == "down":
+        message = (
+            f"❌ <b>Сервер '{server_name}'</b> не отвечает!\n\n"
+            "Проверьте соединение или удалите его из списка, чтобы не выдавать подписки на неработающий сервер."
+        )
+    else:
+        downtime = str(down_duration).split(".")[0]
+        message = (
+            f"✅ <b>Сервер '{server_name}' снова в сети!</b>\n\n"
+            f"⏳ Время простоя: {downtime}."
         )
 
-    last_notification_times[server_name] = current_time
+    for admin_id in ADMIN_ID:
+        logger.info(f"📨 Отправляем уведомление '{status}' администратору {admin_id} о сервере {server_name}")
+        await bot.send_message(admin_id, message, reply_markup=builder.as_markup())
 
 
 async def check_servers():
     """
     Периодическая проверка серверов.
-    Использует `asyncio.gather()` для ускорения.
+    Использует asyncio.gather() для ускорения.
     """
     while True:
         servers = await get_servers()
@@ -92,25 +91,53 @@ async def check_servers():
                 server_info_list.append((server_name, server_host))
                 tasks.append(ping_server(server_host))
 
+        logger.info(f"🔍 Начинаем проверку {len(server_info_list)} серверов...")
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        offline_servers = []
+        offline_servers = set()
+        restored_servers = set()
+        online_servers = set()
 
-        for (server_name, _), is_online in zip(server_info_list, results, strict=False):
+        for (server_name, server_host), result in zip(server_info_list, results, strict=False):
+            is_online = bool(result) if not isinstance(result, Exception) else False
+
             if is_online:
                 last_ping_times[server_name] = current_time
+                online_servers.add(server_name)
+
+                if server_name in notified_servers:
+                    down_time = last_down_times.pop(server_name, current_time)
+                    down_duration = current_time - down_time
+                    await notify_admin(server_name, "up", down_duration)
+
+                    notified_servers.remove(server_name)
+                    restored_servers.add(server_name)
+
             else:
                 last_ping_time = last_ping_times.get(server_name)
-                if last_ping_time and current_time - last_ping_time > timedelta(seconds=PING_TIME * 3):
-                    offline_servers.append(server_name)
-                    await notify_admin(server_name)
-                elif not last_ping_time:
-                    last_ping_times[server_name] = current_time
 
-        online_servers = [name for name, _ in server_info_list if name not in offline_servers]
-        logger.info(f"Проверка серверов завершена. Доступно: {len(online_servers)}, Недоступно: {len(offline_servers)}")
-        if offline_servers:
-            logger.warning(f"🚨 Не отвечает {len(offline_servers)} серверов: {', '.join(offline_servers)}")
+                if last_ping_time is None:
+                    last_ping_times[server_name] = current_time
+                    last_down_times[server_name] = current_time 
+
+                if last_ping_time and (current_time - last_ping_time > timedelta(seconds=PING_TIME * 3)):
+                    if server_name not in notified_servers:
+                        logger.warning(f"🚨 Уведомление: сервер {server_name} не отвечает более {PING_TIME * 3} секунд!")
+                        await notify_admin(server_name, "down")
+                        notified_servers.add(server_name)
+                        last_down_times[server_name] = current_time
+                    offline_servers.add(server_name)
+
+        all_servers = {name for name, _ in server_info_list}
+        true_offline_servers = all_servers - online_servers
+
+        logger.info(f"✅ Доступно серверов: {len(online_servers)}, ❌ Недоступно: {len(true_offline_servers)}")
+
+        if true_offline_servers:
+            logger.warning(f"🚨 Не отвечает {len(true_offline_servers)} серверов: {', '.join(true_offline_servers)}")
+        if restored_servers:
+            logger.info(f"✅ Восстановились {len(restored_servers)} серверов: {', '.join(restored_servers)}")
 
         await asyncio.sleep(PING_TIME)
 

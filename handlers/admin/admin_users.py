@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import TOTAL_GB
 
 from database import (
@@ -25,7 +26,7 @@ from database import (
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_cluster, get_user_traffic, renew_key_in_cluster, update_subscription
 from handlers.utils import sanitize_key_name
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
+from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb, build_admin_back_btn
 from keyboards.admin.users_kb import (
     AdminUserEditorCallback,
     AdminUserKeyEditorCallback,
@@ -718,3 +719,44 @@ async def handle_user_traffic(
     result_text += f"\n🔢 <b>Общий трафик:</b> {total_traffic:.2f} ГБ"
 
     await callback_query.message.edit_text(result_text, reply_markup=build_editor_kb(tg_id, True))
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "restore_trials"), IsAdminFilter())
+async def confirm_restore_trials(callback_query: types.CallbackQuery):
+    """
+    Меню подтверждения перед восстановлением пробников.
+    """
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Подтвердить", callback_data=AdminPanelCallback(action="confirm_restore_trials").pack())
+    builder.row(build_admin_back_btn())
+
+    await callback_query.message.edit_text(
+        text="⚠ Вы уверены, что хотите восстановить пробники для пользователей? \n\n"
+             "Только для тех, у кого нет активной подписки!",
+        reply_markup=builder.as_markup()
+    )
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "confirm_restore_trials"), IsAdminFilter())
+async def restore_trials(callback_query: types.CallbackQuery, session: Any):
+    """
+    Восстанавливает пробники для пользователей, у которых нет активной подписки.
+    """
+    query = """
+        UPDATE connections
+        SET trial = 0
+        WHERE tg_id IN (
+            SELECT DISTINCT c.tg_id
+            FROM connections c
+            LEFT JOIN keys k ON c.tg_id = k.tg_id
+            WHERE k.tg_id IS NULL AND c.trial != 0
+        )
+    """
+    await session.execute(query)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(build_admin_back_btn())
+
+    await callback_query.message.edit_text(
+        text="✅ Пробники успешно восстановлены для пользователей, у которых нет активных подписок.",
+        reply_markup=builder.as_markup()
+    )

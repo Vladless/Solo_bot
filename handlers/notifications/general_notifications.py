@@ -17,6 +17,7 @@ from config import (
     RENEWAL_PRICES,
     TOTAL_GB,
     TRIAL_TIME_DISABLE,
+    NOTIFY_INACTIVE_TRAFFIC
 )
 
 from database import (
@@ -79,8 +80,9 @@ async def periodic_notifications(bot: Bot):
             await asyncio.sleep(1)
             await handle_expired_keys(bot, conn, current_time, keys)
             await asyncio.sleep(0.5)
-            await notify_users_no_traffic(bot, conn, current_time, keys)
-            await asyncio.sleep(0.5)
+            if NOTIFY_INACTIVE_TRAFFIC:
+                await notify_users_no_traffic(bot, conn, current_time, keys)
+                await asyncio.sleep(0.5)
 
         except Exception as e:
             logger.error(f"❌ Ошибка в periodic_notifications: {e}")

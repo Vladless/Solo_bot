@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any,TypedDict
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, InlineQuery, Message, TelegramObject, User
@@ -45,12 +45,10 @@ class LoggingMiddleware(BaseMiddleware):
         """
         result: UserInfo = {"user_id": None, "username": None, "action": None}
 
-        # Обработка общих атрибутов для разных типов событий
         if hasattr(event, "from_user") and isinstance(event.from_user, User):
             result["user_id"] = event.from_user.id
             result["username"] = event.from_user.username
 
-            # Определение типа действия в зависимости от типа события
             if isinstance(event, Message):
                 result["action"] = f"Сообщение: {event.text}"
             elif isinstance(event, CallbackQuery):

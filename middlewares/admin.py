@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from typing import Any, Dict, Set, cast
+from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
@@ -13,7 +13,6 @@ class AdminMiddleware(BaseMiddleware):
     является ли пользователь администратором.
     """
 
-    # Кэш ID администраторов для быстрого доступа
     _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
 
     async def __call__(
@@ -50,7 +49,6 @@ class AdminMiddleware(BaseMiddleware):
             elif isinstance(event, CallbackQuery):
                 return event.from_user and event.from_user.id in self._admin_ids
 
-            # Для других типов событий пытаемся получить from_user
             user_id = getattr(getattr(event, "from_user", None), "id", None)
             return user_id in self._admin_ids if user_id else False
         except Exception:
