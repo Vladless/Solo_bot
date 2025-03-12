@@ -20,7 +20,7 @@ router = Router()
 
 
 @router.callback_query(F.data == "donate")
-async def process_donate(callback_query: CallbackQuery, state: FSMContext, target_message: Message):
+async def process_donate(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
 
     builder = InlineKeyboardBuilder()
@@ -40,20 +40,20 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext, targe
     )
 
     await edit_or_send_message(
-        target_message=target_message,
+        target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
     )
 
 
 @router.callback_query(F.data == "enter_custom_donate_amount")
-async def process_enter_donate_amount(callback_query: CallbackQuery, state: FSMContext, target_message: Message):
+async def process_enter_donate_amount(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
     text = "💸 Введите сумму доната в рублях:"
 
     await edit_or_send_message(
-        target_message=target_message,
+        target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
     )

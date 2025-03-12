@@ -3,7 +3,8 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import (
     check_coupon_usage,
@@ -12,8 +13,8 @@ from database import (
     update_balance,
     update_coupon_usage_count,
 )
-from handlers.utils import edit_or_send_message
-from keyboards.coupons import get_coupon_keyboard
+
+from .utils import edit_or_send_message
 
 
 class CouponActivationState(StatesGroup):
@@ -25,16 +26,14 @@ router = Router()
 
 @router.callback_query(F.data == "activate_coupon")
 @router.message(F.text == "/activate_coupon")
-async def handle_activate_coupon(state: FSMContext, target_message: Message):
-    """
-    Обрабатывает запрос на активацию купона.
+async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-    Args:
-        state: Контекст состояния FSM.
-        chat_id: ID чата (добавлено middleware).
-        target_message: Целевое сообщение для ответа (добавлено middleware).
-    """
-    builder = get_coupon_keyboard()
+    if isinstance(callback_query_or_message, CallbackQuery):
+        target_message = callback_query_or_message.message
+    else:
+        target_message = callback_query_or_message
 
     await edit_or_send_message(
         target_message=target_message,
@@ -47,37 +46,18 @@ async def handle_activate_coupon(state: FSMContext, target_message: Message):
 
 
 @router.message(CouponActivationState.waiting_for_coupon_code)
-async def process_coupon_code(message: Message, state: FSMContext, session: Any, chat_id: int):
-    """
-    Обрабатывает введенный код купона.
-
-    Args:
-        message: Сообщение с кодом купона.
-        state: Контекст состояния FSM.
-        session: Сессия базы данных.
-        chat_id: ID чата (добавлено middleware).
-    """
+async def process_coupon_code(message: Message, state: FSMContext, session: Any):
     coupon_code = message.text.strip()
-    activation_result = await activate_coupon(chat_id, coupon_code, session)
+    activation_result = await activate_coupon(message.chat.id, coupon_code, session)
 
-    builder = get_coupon_keyboard()
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await message.answer(activation_result, reply_markup=builder.as_markup())
     await state.clear()
 
 
-async def activate_coupon(user_id: int, coupon_code: str, session: Any) -> str:
-    """
-    Активирует купон для пользователя.
-
-    Args:
-        user_id: ID пользователя.
-        coupon_code: Код купона.
-        session: Сессия базы данных.
-
-    Returns:
-        str: Сообщение о результате активации.
-    """
+async def activate_coupon(user_id: int, coupon_code: str, session: Any):
     coupon_record = await get_coupon_by_code(coupon_code, session)
 
     if not coupon_record:

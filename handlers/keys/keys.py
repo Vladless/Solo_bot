@@ -74,9 +74,14 @@ router = Router()
 
 @router.callback_query(F.data == "view_keys")
 @router.message(F.text == "/subs")
-async def process_callback_or_message_view_keys(session: Any, target_message: Message, chat_id: int):
+async def process_callback_or_message_view_keys(callback_query_or_message: Message | CallbackQuery, session: Any):
+    if isinstance(callback_query_or_message, CallbackQuery):
+        target_message = callback_query_or_message.message
+    else:
+        target_message = callback_query_or_message
+
     try:
-        records = await get_keys(chat_id, session)
+        records = await get_keys(target_message.chat.id, session)
         inline_keyboard, response_message = build_keys_response(records)
         image_path = os.path.join("img", "pic_keys.jpg")
 

@@ -71,18 +71,16 @@ class Form(FSMContext):
 
 
 @router.callback_query(F.data == "create_key")
-async def confirm_create_new_key(
-    callback_query: CallbackQuery, state: FSMContext, session: Any, target_message: Message
-):
+async def confirm_create_new_key(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.message.chat.id
-    await handle_key_creation(tg_id, state, session, target_message)
+    await handle_key_creation(tg_id, state, session, callback_query)
 
 
 async def handle_key_creation(
     tg_id: int,
     state: FSMContext,
     session: Any,
-    target_message: Message,
+    message_or_query: Message | CallbackQuery,
 ):
     """Создание ключа с учётом выбора тарифного плана."""
     current_time = datetime.now(moscow_tz)
@@ -96,12 +94,14 @@ async def handle_key_creation(
             updated = await update_trial(tg_id, 1, session)
             if updated:
                 await edit_or_send_message(
-                    target_message=target_message,
+                    target_message=message_or_query
+                    if isinstance(message_or_query, Message)
+                    else message_or_query.message,
                     text="⏳ Пожалуйста, подождите, создаем вам подключение...",
                     reply_markup=None,
                 )
 
-                await create_key(tg_id, expiry_time, state, session, target_message)
+                await create_key(tg_id, expiry_time, state, session, message_or_query)
                 return
             else:
                 logger.error(f"Не удалось обновить статус триального периода для пользователя {tg_id}.")
@@ -121,6 +121,11 @@ async def handle_key_creation(
             )
         )
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    if isinstance(message_or_query, CallbackQuery):
+        target_message = message_or_query.message
+    else:
+        target_message = message_or_query
 
     await edit_or_send_message(
         target_message=target_message,
@@ -190,12 +195,13 @@ async def create_key(
     expiry_time: datetime,
     state: FSMContext | None,
     session: Any,
-    target_message: Message,
+    message_or_query: Message | CallbackQuery | None = None,
     old_key_name: str = None,
     plan: int = None,
 ):
     """Создаёт ключ с заданным сроком действия."""
 
+    target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
     if not await check_connection_exists(tg_id):
         await add_connection(tg_id, balance=0.0, trial=0, session=session)
         logger.info(f"[Connection] Подключение создано для пользователя {tg_id}")
