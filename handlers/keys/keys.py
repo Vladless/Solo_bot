@@ -25,6 +25,7 @@ from config import (
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
+    TOGGLE_CLIENT
 )
 
 from bot import bot
@@ -52,6 +53,7 @@ from handlers.keys.key_utils import (
     delete_key_from_cluster,
     renew_key_in_cluster,
     update_subscription,
+    toggle_client_on_cluster
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
@@ -138,6 +140,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             key = record["key"]
             expiry_time = record["expiry_time"]
             server_name = record["server_id"]
+            is_frozen = record["is_frozen"]
             country = server_name
             expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
             current_date = datetime.utcnow()
@@ -198,6 +201,22 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 builder.row(
                     InlineKeyboardButton(text="🌍 Сменить локацию", callback_data=f"change_location|{key_name}")
                 )
+            if TOGGLE_CLIENT:
+                if is_frozen:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="🟢 Разморозить подписку",
+                            callback_data=f"unfreeze_subscription|{key_name}",
+                        )
+                    )
+                else:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="🛑 Заморозить подписку",
+                            callback_data=f"freeze_subscription|{key_name}",
+                        )
+                    )
+
 
             builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
             builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
@@ -223,6 +242,197 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             callback_query,
             f"Ошибка при получении информации о ключе: {e}",
         )
+
+
+@router.callback_query(F.data.startswith("unfreeze_subscription|"))
+async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, session: Any):
+    key_name = callback_query.data.split("|")[1]
+    confirm_text = (
+        "Хотите включить (разморозить) подписку?\n\n"
+        "После включения доступа трафик и время снова начнут расходоваться."
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Подтвердить",
+            callback_data=f"unfreeze_subscription_confirm|{key_name}",
+        ),
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=f"view_key|{key_name}",
+        ),
+    )
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=confirm_text,
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("unfreeze_subscription_confirm|"))
+async def process_callback_unfreeze_subscription_confirm(callback_query: CallbackQuery, session: Any):
+    """
+    Размораживает (включает) подписку без SQLAlchemy.
+    Параметр 'session' предполагается, что это asyncpg.Connection или аналог.
+    """
+    tg_id = callback_query.message.chat.id
+    key_name = callback_query.data.split("|")[1]
+
+    try:
+        record = await get_key_details(key_name, session)
+        if not record:
+            await callback_query.message.answer("Ключ не найден.")
+            return
+
+        email = record["email"]
+        client_id = record["client_id"]
+        cluster_id = record["server_id"]
+
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=True)
+
+        if result["status"] == "success":
+            update_result = await session.execute(
+                """
+                UPDATE keys
+                SET is_frozen = FALSE
+                WHERE tg_id = $1
+                  AND client_id = $2
+                """,
+                record["tg_id"],
+                client_id
+            )
+
+            text_ok = (
+                "✅ Подписка успешно включена.\n\n"
+                "Теперь трафик и время подписки будут расходоваться."
+            )
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
+            )
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=text_ok,
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            text_error = (
+                "Произошла ошибка при включении подписки.\n"
+                f"Детали: {result.get('error') or result.get('results')}"
+            )
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
+            )
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=text_error,
+                reply_markup=builder.as_markup(),
+            )
+
+    except Exception as e:
+        await handle_error(tg_id, callback_query, f"Ошибка при включении подписки: {e}")
+
+
+@router.callback_query(F.data.startswith("freeze_subscription|"))
+async def process_callback_freeze_subscription(callback_query: CallbackQuery, session: Any):
+    """
+    Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
+    session здесь всё равно прокидывается, но в этой функции он не нужен,
+    т.к. мы пока ничего не читаем/не пишем в БД, а только задаём вопрос пользователю.
+    """
+    tg_id = callback_query.message.chat.id
+    key_name = callback_query.data.split("|")[1]
+
+    confirm_text = (
+        "Вы можете заморозить (отключить) свою подписку на любой удобный срок, если временно не будете "
+        "пользоваться VPN. Включить обратно можно будет в этом же меню.\n\n"
+        "<b>Вы уверены, что хотите заморозить подписку?</b>"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Подтвердить",
+            callback_data=f"freeze_subscription_confirm|{key_name}",
+        ),
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data=f"view_key|{key_name}",
+        ),
+    )
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=confirm_text,
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("freeze_subscription_confirm|"))
+async def process_callback_freeze_subscription_confirm(callback_query: CallbackQuery, session: Any):
+    """
+    Замораживает (отключает) подписку.
+    """
+    tg_id = callback_query.message.chat.id
+    key_name = callback_query.data.split("|")[1]
+
+    try:
+        record = await get_key_details(key_name, session)
+        if not record:
+            await callback_query.message.answer("Ключ не найден.")
+            return
+
+        email = record["email"]
+        client_id = record["client_id"]
+        cluster_id = record["server_id"]
+
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=False)
+
+        if result["status"] == "success":
+            update_result = await session.execute(
+                """
+                UPDATE keys
+                SET is_frozen = TRUE
+                WHERE tg_id = $1
+                  AND client_id = $2
+                """,
+                record["tg_id"],
+                client_id
+            )
+
+            text_ok = (
+                "✅ Подписка успешно заморожена.\n\n"
+                "Чтобы включить обратно, зайдите в меню ключа и нажмите «Включить подписку»."
+            )
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
+            )
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=text_ok,
+                reply_markup=builder.as_markup(),
+            )
+        else:
+            text_error = (
+                "Произошла ошибка при заморозке подписки.\n"
+                f"Детали: {result.get('error') or result.get('results')}"
+            )
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
+            )
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=text_error,
+                reply_markup=builder.as_markup(),
+            )
+
+    except Exception as e:
+        await handle_error(tg_id, callback_query, f"Ошибка при заморозке подписки: {e}")
 
 
 @router.callback_query(F.data.startswith("connect_phone|"))

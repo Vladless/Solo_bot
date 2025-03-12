@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS keys
     PRIMARY KEY (tg_id, client_id)
 );
 
+ALTER TABLE keys
+ADD COLUMN is_frozen BOOLEAN DEFAULT FALSE;
+
 CREATE TABLE IF NOT EXISTS referrals
 (
     referred_tg_id BIGINT PRIMARY KEY NOT NULL,

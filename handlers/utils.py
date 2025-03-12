@@ -65,26 +65,30 @@ async def get_least_loaded_cluster() -> str:
         str: Идентификатор наименее загруженного кластера.
     """
     servers = await get_servers()
-
-    cluster_loads: dict[str, int] = dict.fromkeys(servers.keys(), 0)
-
+    server_to_cluster = {}
+    cluster_loads = {cluster: 0 for cluster in servers.keys()}
+    for cluster_name, cluster_servers in servers.items():
+        for server in cluster_servers:
+            server_to_cluster[server["server_name"]] = cluster_name
+    logger.info(f"Сопоставление серверов и кластеров: {server_to_cluster}")
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
             keys = await get_all_keys(conn)
             for key in keys:
-                cluster_id = key["server_id"]
+                server_id = key["server_id"]
+
+                cluster_id = server_to_cluster.get(server_id, server_id)
+
                 if cluster_id in cluster_loads:
                     cluster_loads[cluster_id] += 1
-
-    logger.info(f"Cluster loads after database query: {cluster_loads}")
-
+                else:
+                    logger.warning(f"⚠️ Сервер {server_id} не найден в известных кластерах!")
+    logger.info(f"Загруженность кластеров после запроса к БД: {cluster_loads}")
     if not cluster_loads:
-        logger.warning("No clusters found in database or configuration.")
+        logger.warning("⚠️ В базе данных или конфигурации нет кластеров!")
         return "cluster1"
-
     least_loaded_cluster = min(cluster_loads, key=lambda k: (cluster_loads[k], k))
-
-    logger.info(f"Least loaded cluster selected: {least_loaded_cluster}")
+    logger.info(f"✅ Выбран наименее загруженный кластер: {least_loaded_cluster}")
 
     return least_loaded_cluster
 

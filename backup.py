@@ -3,7 +3,6 @@ import subprocess
 
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Tuple, Union
 
 import aiofiles
 
@@ -50,17 +49,14 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
     """
     date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
 
-    # Создаем директорию для бэкапов, если она не существует
     backup_dir = Path(BACK_DIR)
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     filename = backup_dir / f"{DB_NAME}-backup-{date_formatted}.sql"
 
     try:
-        # Устанавливаем пароль PostgreSQL через переменную окружения
         os.environ["PGPASSWORD"] = DB_PASSWORD
 
-        # Запускаем pg_dump для создания бэкапа
         subprocess.run(
             [
                 "pg_dump",
@@ -89,7 +85,6 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
         logger.error(f"Непредвиденная ошибка при создании бэкапа: {e}")
         return None, e
     finally:
-        # Удаляем переменную окружения с паролем
         if "PGPASSWORD" in os.environ:
             del os.environ["PGPASSWORD"]
 
@@ -106,10 +101,8 @@ def _cleanup_old_backups() -> Exception | None:
         if not backup_dir.exists():
             return None
 
-        # Вычисляем дату, старше которой нужно удалить файлы
         cutoff_date = datetime.now() - timedelta(days=3)
 
-        # Находим и удаляем старые файлы бэкапов
         for backup_file in backup_dir.glob("*.sql"):
             if backup_file.is_file():
                 file_mtime = datetime.fromtimestamp(backup_file.stat().st_mtime)
@@ -154,7 +147,6 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
             filename = os.path.basename(backup_file_path)
             backup_input_file = BufferedInputFile(file=backup_data, filename=filename)
 
-            # Отправляем файл каждому администратору
             for admin_id in ADMIN_ID:
                 try:
                     await bot.send_document(chat_id=admin_id, document=backup_input_file)
