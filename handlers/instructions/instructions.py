@@ -27,13 +27,18 @@ router = Router()
 
 @router.callback_query(F.data == "instructions")
 @router.message(F.text == "/instructions")
-async def send_instructions(target_message: Message):
+async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     instructions_message = INSTRUCTIONS
     image_path = os.path.join("img", "instructions.jpg")
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    if isinstance(callback_query_or_message, CallbackQuery):
+        target_message = callback_query_or_message.message
+    else:
+        target_message = callback_query_or_message
 
     await edit_or_send_message(
         target_message=target_message,
@@ -44,14 +49,14 @@ async def send_instructions(target_message: Message):
 
 
 @router.callback_query(F.data.startswith("connect_pc|"))
-async def process_connect_pc(callback_query: CallbackQuery, session: Any, target_message: Message):
+async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     record = await get_key_details(key_name, session)
     if not record:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
         await edit_or_send_message(
-            target_message=target_message,
+            target_message=callback_query.message,
             text="❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍",
             reply_markup=builder.as_markup(),
             media_path=None,
@@ -70,7 +75,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any, target
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await edit_or_send_message(
-        target_message=target_message,
+        target_message=callback_query.message,
         text=instruction_message,
         reply_markup=builder.as_markup(),
         media_path=None,
@@ -78,7 +83,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any, target
 
 
 @router.callback_query(F.data.startswith("connect_tv|"))
-async def process_connect_tv(callback_query: CallbackQuery, target_message: Message):
+async def process_connect_tv(callback_query: CallbackQuery):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
@@ -87,7 +92,7 @@ async def process_connect_tv(callback_query: CallbackQuery, target_message: Mess
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await edit_or_send_message(
-        target_message=target_message,
+        target_message=callback_query.message,
         text=CONNECT_TV_TEXT,
         reply_markup=builder.as_markup(),
         media_path=None,
@@ -96,7 +101,7 @@ async def process_connect_tv(callback_query: CallbackQuery, target_message: Mess
 
 
 @router.callback_query(F.data.startswith("continue_tv|"))
-async def process_continue_tv(callback_query: CallbackQuery, session: Any, target_message: Message):
+async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
 
     record = await get_key_details(key_name, session)
@@ -109,5 +114,5 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any, targe
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     await edit_or_send_message(
-        target_message=target_message, text=message_text, reply_markup=builder.as_markup(), media_path=None
+        target_message=callback_query.message, text=message_text, reply_markup=builder.as_markup(), media_path=None
     )

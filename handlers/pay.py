@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import (
     CRYPTO_BOT_ENABLE,
@@ -17,7 +17,7 @@ router = Router()
 
 
 @router.callback_query(F.data == "pay")
-async def handle_pay(callback_query: CallbackQuery, target_message: Message):
+async def handle_pay(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
 
     if YOOKASSA_ENABLE:
@@ -71,7 +71,7 @@ async def handle_pay(callback_query: CallbackQuery, target_message: Message):
     )
 
     await edit_or_send_message(
-        target_message=target_message,
+        target_message=callback_query.message,
         text=payment_text,
         reply_markup=builder.as_markup(),
         media_path=None,
