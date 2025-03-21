@@ -66,6 +66,7 @@ async def periodic_notifications(bot: Bot):
 
             try:
                 keys = await get_all_keys(session=conn)
+                keys = [k for k in keys if not k["is_frozen"]]
             except Exception as e:
                 logger.error(f"Ошибка при получении ключей: {e}")
                 keys = []

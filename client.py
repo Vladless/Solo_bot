@@ -226,6 +226,7 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
             logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")
             return False
 
+        client.sub_id = email
         client.enable = enable
         client.id = client_id
         client.flow = "xtls-rprx-vision"

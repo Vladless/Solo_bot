@@ -1,6 +1,7 @@
 import asyncio
 import locale
 import os
+import time
 
 from datetime import datetime, timedelta
 from typing import Any
@@ -53,7 +54,7 @@ from handlers.keys.key_utils import (
     delete_key_from_cluster,
     renew_key_in_cluster,
     update_subscription,
-    toggle_client_on_cluster
+    toggle_client_on_cluster,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
@@ -142,79 +143,123 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
     try:
         record = await get_key_details(key_name, session)
         if record:
-            key = record["key"]
-            expiry_time = record["expiry_time"]
-            server_name = record["server_id"]
             is_frozen = record["is_frozen"]
-            country = server_name
-            expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-            current_date = datetime.utcnow()
-            time_left = expiry_date - current_date
 
-            if time_left.total_seconds() <= 0:
-                days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
-            else:
-                total_seconds = int(time_left.total_seconds())
-                days = total_seconds // 86400
-                hours = (total_seconds % 86400) // 3600
-                minutes = (total_seconds % 3600) // 60
-                days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+            if is_frozen:
+                response_message = (
+                    "Подписка заморожена.\n"
+                    "Дата истечения будет обновлена после разморозки."
+                )
 
-            formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
-            response_message = key_message(
-                key, formatted_expiry_date, days_left_message, server_name, country if USE_COUNTRY_SELECTION else None
-            )
-
-            builder = InlineKeyboardBuilder()
-
-            if not key.startswith(PUBLIC_LINK) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+                builder = InlineKeyboardBuilder()
                 builder.row(
                     InlineKeyboardButton(
-                        text="🔄 Обновить подписку",
-                        callback_data=f"update_subscription|{key_name}",
+                        text="🟢 Разморозить подписку",
+                        callback_data=f"unfreeze_subscription|{key_name}",
                     )
                 )
+                builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
+                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            if CONNECT_PHONE_BUTTON:
-                builder.row(
-                    InlineKeyboardButton(text="📱 Подключить телефон", callback_data=f"connect_phone|{key_name}")
+                keyboard = builder.as_markup()
+                image_path = os.path.join("img", "pic_view.jpg")
+
+                if not os.path.isfile(image_path):
+                    await callback_query.message.answer("Файл изображения не найден.")
+                    return
+
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=response_message,
+                    reply_markup=keyboard,
+                    media_path=image_path,
                 )
+            
             else:
-                builder.row(
-                    InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-                    InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
-                )
-                builder.row(
-                    InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
-                    InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
+                key = record["key"]
+                expiry_time = record["expiry_time"]
+                server_name = record["server_id"]
+                country = server_name
+                expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+                current_date = datetime.utcnow()
+                time_left = expiry_date - current_date
+
+                if time_left.total_seconds() <= 0:
+                    days_left_message = (
+                        "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
+                    )
+                else:
+                    total_seconds = int(time_left.total_seconds())
+                    days = total_seconds // 86400
+                    hours = (total_seconds % 86400) // 3600
+                    minutes = (total_seconds % 3600) // 60
+                    days_left_message = (
+                        f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+                    )
+
+                formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
+                response_message = key_message(
+                    key,
+                    formatted_expiry_date,
+                    days_left_message,
+                    server_name,
+                    country if USE_COUNTRY_SELECTION else None,
                 )
 
-            builder.row(
-                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-            )
+                builder = InlineKeyboardBuilder()
 
-            if ENABLE_DELETE_KEY_BUTTON:
-                builder.row(
-                    InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
-                    InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
-                )
-            else:
-                builder.row(InlineKeyboardButton(text="⏳ Продлить подписку", callback_data=f"renew_key|{key_name}"))
-
-            if USE_COUNTRY_SELECTION:
-                builder.row(
-                    InlineKeyboardButton(text="🌍 Сменить локацию", callback_data=f"change_location|{key_name}")
-                )
-            if TOGGLE_CLIENT:
-                if is_frozen:
+                if not key.startswith(PUBLIC_LINK) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
                     builder.row(
                         InlineKeyboardButton(
-                            text="🟢 Разморозить подписку",
-                            callback_data=f"unfreeze_subscription|{key_name}",
+                            text="🔄 Обновить подписку",
+                            callback_data=f"update_subscription|{key_name}",
+                        )
+                    )
+
+                if CONNECT_PHONE_BUTTON:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="📱 Подключить телефон",
+                            callback_data=f"connect_phone|{key_name}",
                         )
                     )
                 else:
+                    builder.row(
+                        InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
+                        InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
+                    )
+                    builder.row(
+                        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
+                        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
+                    )
+
+                builder.row(
+                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
+                )
+
+                if ENABLE_DELETE_KEY_BUTTON:
+                    builder.row(
+                        InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
+                        InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
+                    )
+                else:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="⏳ Продлить подписку",
+                            callback_data=f"renew_key|{key_name}"
+                        )
+                    )
+
+                if USE_COUNTRY_SELECTION:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="🌍 Сменить локацию",
+                            callback_data=f"change_location|{key_name}"
+                        )
+                    )
+
+                if TOGGLE_CLIENT:
                     builder.row(
                         InlineKeyboardButton(
                             text="🛑 Заморозить подписку",
@@ -222,23 +267,22 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                         )
                     )
 
+                builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
+                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
-            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                keyboard = builder.as_markup()
+                image_path = os.path.join("img", "pic_view.jpg")
 
-            keyboard = builder.as_markup()
-            image_path = os.path.join("img", "pic_view.jpg")
+                if not os.path.isfile(image_path):
+                    await callback_query.message.answer("Файл изображения не найден.")
+                    return
 
-            if not os.path.isfile(image_path):
-                await callback_query.message.answer("Файл изображения не найден.")
-                return
-
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text=response_message,
-                reply_markup=keyboard,
-                media_path=image_path,
-            )
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=response_message,
+                    reply_markup=keyboard,
+                    media_path=image_path,
+                )
         else:
             await callback_query.message.answer(text="<b>Информация о подписке не найдена.</b>")
     except Exception as e:
@@ -279,8 +323,7 @@ async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, 
 @router.callback_query(F.data.startswith("unfreeze_subscription_confirm|"))
 async def process_callback_unfreeze_subscription_confirm(callback_query: CallbackQuery, session: Any):
     """
-    Размораживает (включает) подписку без SQLAlchemy.
-    Параметр 'session' предполагается, что это asyncpg.Connection или аналог.
+    Размораживает (включает) подписку.
     """
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
@@ -296,19 +339,33 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
         cluster_id = record["server_id"]
 
         result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=True)
-
         if result["status"] == "success":
-            update_result = await session.execute(
+            now_ms = int(time.time() * 1000)
+            leftover = record["expiry_time"]
+            if leftover < 0:
+                leftover = 0
+
+            new_expiry_time = now_ms + leftover
+            await session.execute(
                 """
                 UPDATE keys
-                SET is_frozen = FALSE
-                WHERE tg_id = $1
-                  AND client_id = $2
+                SET expiry_time = $1,
+                    is_frozen = FALSE
+                WHERE tg_id = $2
+                  AND client_id = $3
                 """,
+                new_expiry_time,
                 record["tg_id"],
                 client_id
             )
 
+            await renew_key_in_cluster(
+                cluster_id=cluster_id,
+                email=email,
+                client_id=client_id,
+                new_expiry_time=new_expiry_time,
+                total_gb=TOTAL_GB
+            )
             text_ok = (
                 "✅ Подписка успешно включена.\n\n"
                 "Теперь трафик и время подписки будут расходоваться."
@@ -345,8 +402,6 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
 async def process_callback_freeze_subscription(callback_query: CallbackQuery, session: Any):
     """
     Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
-    session здесь всё равно прокидывается, но в этой функции он не нужен,
-    т.к. мы пока ничего не читаем/не пишем в БД, а только задаём вопрос пользователю.
     """
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
@@ -397,13 +452,20 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
         result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=False)
 
         if result["status"] == "success":
+            now_ms = int(time.time() * 1000)
+            time_left = record["expiry_time"] - now_ms
+            if time_left < 0:
+                time_left = 0 
+
             update_result = await session.execute(
                 """
                 UPDATE keys
-                SET is_frozen = TRUE
-                WHERE tg_id = $1
-                  AND client_id = $2
+                SET expiry_time = $1,
+                    is_frozen = TRUE
+                WHERE tg_id = $2
+                  AND client_id = $3
                 """,
+                time_left,
                 record["tg_id"],
                 client_id
             )
