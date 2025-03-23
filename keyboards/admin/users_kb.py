@@ -44,6 +44,10 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
         callback_data=AdminUserEditorCallback(action="users_balance_edit", tg_id=tg_id).pack(),
     )
     builder.button(
+        text="🤝 Выгрузить рефералов",
+        callback_data=AdminUserEditorCallback(action="users_export_referrals", tg_id=tg_id).pack(),
+    )
+    builder.button(
         text="♻️ Восстановить триал",
         callback_data=AdminUserEditorCallback(action="users_trial_restore", tg_id=tg_id).pack(),
     )

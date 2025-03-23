@@ -55,8 +55,6 @@ async def handle_pay(callback_query: CallbackQuery):
                 callback_data="pay_robokassa",
             )
         )
-
-    builder.row(InlineKeyboardButton(text="🎟️ Активировать купон", callback_data="activate_coupon"))
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))

@@ -12,6 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import TOTAL_GB
+from utils.csv_export import export_referrals_csv
 
 from database import (
     delete_key,
@@ -759,4 +760,29 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
     await callback_query.message.edit_text(
         text="✅ Пробники успешно восстановлены для пользователей, у которых нет активных подписок.",
         reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_export_referrals"), IsAdminFilter())
+async def handle_users_export_referrals(
+    callback_query: types.CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: Any
+):
+    """
+    Обработчик: получает tg_id реферера из callback_data,
+    вызывает export_referrals_csv и отправляет файл или отвечает,
+    что рефералов нет.
+    """
+    referrer_tg_id = callback_data.tg_id
+
+    csv_file = await export_referrals_csv(referrer_tg_id, session)
+
+    if csv_file is None:
+        await callback_query.message.answer("У пользователя нет рефералов.")
+        return
+
+    await callback_query.message.answer_document(
+        document=csv_file,
+        caption=f"Список рефералов для пользователя {referrer_tg_id}."
     )

@@ -1,5 +1,6 @@
 from io import StringIO
 from typing import Any
+import csv
 
 from aiogram.types import BufferedInputFile
 
@@ -95,3 +96,44 @@ def _export_payments_csv(payments: list, filename: str) -> BufferedInputFile:
     buffer.seek(0)
 
     return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename=filename)
+
+
+async def export_referrals_csv(referrer_tg_id: int, session: Any) -> BufferedInputFile | None:
+    """
+    Формирует CSV-файл со списком рефералов и возвращает его как BufferedInputFile.
+    Если у пользователя нет рефералов, возвращает None.
+    """
+    rows = await session.fetch(
+        """
+        SELECT
+            r.referred_tg_id,
+            COALESCE(u.first_name, '') AS first_name,
+            COALESCE(u.last_name, '') AS last_name,
+            COALESCE(u.username, '') AS username
+        FROM referrals r
+        JOIN users u ON u.tg_id = r.referred_tg_id
+        WHERE r.referrer_tg_id = $1
+        ORDER BY r.referred_tg_id
+        """,
+        referrer_tg_id
+    )
+
+    if not rows:
+        return None
+
+    output = StringIO()
+    writer = csv.writer(output, delimiter=';')
+    writer.writerow(["Приглашённый (tg_id)", "Имя"])
+
+    for row in rows:
+        invited_id = row["referred_tg_id"]
+        full_name = row["first_name"].strip() or row["username"] or str(invited_id)
+        if row["last_name"]:
+            full_name = f"{full_name} {row['last_name']}"
+        writer.writerow([invited_id, full_name.strip()])
+
+    output.seek(0)
+    csv_data = output.getvalue().encode("utf-8")
+    filename = f"referrals_{referrer_tg_id}.csv"
+
+    return BufferedInputFile(file=csv_data, filename=filename)

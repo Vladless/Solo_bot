@@ -127,6 +127,7 @@ async def balance_handler(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
+    builder.row(InlineKeyboardButton(text="🎟️ Активировать купон", callback_data="activate_coupon"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     text = f"<b>Управление вашим балансом 💰</b>\n\nВаш баланс: {balance}"
