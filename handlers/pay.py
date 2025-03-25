@@ -1,6 +1,7 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from config import (
     CRYPTO_BOT_ENABLE,
     DONATIONS_ENABLE,
@@ -11,7 +12,6 @@ from config import (
 )
 from handlers.texts import PAYMENT_METHODS_MSG
 from .utils import edit_or_send_message
-
 
 router = Router()
 

@@ -1,18 +1,16 @@
 import asyncio
 import re
-
 from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import ADMIN_ID, PING_TIME
 from ping3 import ping
 
 from bot import bot
+from config import ADMIN_ID, PING_TIME
 from database import get_servers
-from keyboards.admin.servers_kb import AdminServerEditorCallback
+from handlers.admin.servers.keyboard import AdminServerCallback
 from logger import logger
-
 
 last_ping_times = {}
 last_down_times = {}
@@ -49,7 +47,7 @@ async def notify_admin(server_name: str, status: str, down_duration: timedelta =
     builder.row(
         InlineKeyboardButton(
             text="Управление сервером",
-            callback_data=AdminServerEditorCallback(action="servers_manage", data=server_name).pack(),
+            callback_data=AdminServerCallback(action="manage", data=server_name).pack(),
         )
     )
 

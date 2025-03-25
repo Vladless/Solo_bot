@@ -10,6 +10,8 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -19,8 +21,6 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
-
-from bot import bot
 from database import (
     add_connection,
     add_referral,
@@ -43,11 +43,9 @@ from handlers.texts import (
     NEW_REFERRAL_NOTIFICATION,
     COUPON_SUCCESS_MSG,
 )
-from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
-
+from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
-
 
 router = Router()
 
@@ -274,8 +272,7 @@ async def process_start_logic(
                     await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
                     try:
                         await bot.send_message(
-                            referrer_tg_id, 
-                            NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
+                            referrer_tg_id, NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
                         )
                         logger.info(
                             f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}"

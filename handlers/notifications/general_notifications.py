@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime, timedelta
+
 import asyncpg
 import pytz
-
 from aiogram import Bot, Router
+
 from config import (
     DATABASE_URL,
     NOTIFICATION_TIME,
@@ -47,6 +48,7 @@ from .special_notifications import notify_inactive_trial_users, notify_users_no_
 router = Router()
 
 moscow_tz = pytz.timezone("Europe/Moscow")
+
 
 async def periodic_notifications(bot: Bot):
     """
@@ -98,6 +100,7 @@ async def periodic_notifications(bot: Bot):
 
         await asyncio.sleep(NOTIFICATION_TIME)
 
+
 async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, threshold_time_24h: int, keys: list):
     logger.info("Начало проверки подписок, истекающих через 24 часа.")
 
@@ -148,6 +151,7 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
     logger.info("✅ Обработка всех уведомлений за 24 часа завершена.")
     await asyncio.sleep(1)
+
 
 async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, threshold_time_10h: int, keys: list):
     """
@@ -207,6 +211,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
     logger.info("✅ Обработка всех уведомлений за 10 часов завершена.")
     await asyncio.sleep(1)
+
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, keys: list):
     """
@@ -318,6 +323,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
     logger.info("✅ Обработка истекших ключей завершена.")
     await asyncio.sleep(1)
+
 
 async def process_auto_renew_or_notify(
     bot, conn, key: dict, notification_id: str, renewal_period_months: int, standard_photo: str, standard_caption: str

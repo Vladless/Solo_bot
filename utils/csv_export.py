@@ -1,6 +1,6 @@
+import csv
 from io import StringIO
 from typing import Any
-import csv
 
 from aiogram.types import BufferedInputFile
 

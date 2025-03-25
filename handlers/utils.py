@@ -7,11 +7,10 @@ import string
 import aiofiles
 import aiohttp
 import asyncpg
-
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
-from config import DATABASE_URL
 
 from bot import bot
+from config import DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 

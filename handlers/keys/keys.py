@@ -2,16 +2,17 @@ import asyncio
 import locale
 import os
 import time
-
 from datetime import datetime, timedelta
 from typing import Any
 
 import asyncpg
 import pytz
-
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.yookassa_pay import process_custom_amount_input
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -28,8 +29,6 @@ from config import (
     USE_NEW_PAYMENT_FLOW,
     TOGGLE_CLIENT,
 )
-
-from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,
@@ -57,7 +56,6 @@ from handlers.keys.key_utils import (
     toggle_client_on_cluster,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     DISCOUNTS,
     KEY_NOT_FOUND_MSG,
@@ -77,7 +75,6 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
-
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -354,7 +351,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 email=email,
                 client_id=client_id,
                 new_expiry_time=new_expiry_time,
-                total_gb=TOTAL_GB
+                total_gb=TOTAL_GB,
             )
             text_ok = SUBSCRIPTION_UNFROZEN_MSG
             builder = InlineKeyboardBuilder()
@@ -549,14 +546,10 @@ async def process_callback_delete_key(callback_query: CallbackQuery):
 
         if callback_query.message.caption:
             await callback_query.message.edit_caption(
-                caption=DELETE_KEY_CONFIRM_MSG,
-                reply_markup=confirmation_keyboard
+                caption=DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard
             )
         else:
-            await callback_query.message.edit_text(
-                text=DELETE_KEY_CONFIRM_MSG,
-                reply_markup=confirmation_keyboard
-            )
+            await callback_query.message.edit_text(text=DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard)
 
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса на удаление ключа {client_id}: {e}")

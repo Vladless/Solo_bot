@@ -17,7 +17,7 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
     cluster_names = list(servers.keys())
     for i in range(0, len(cluster_names), 2):
         row_buttons = []
-        for cluster_name in cluster_names[i:i+2]:
+        for cluster_name in cluster_names[i : i + 2]:
             row_buttons.append(
                 InlineKeyboardButton(
                     text=f"⚙️ {cluster_name}",

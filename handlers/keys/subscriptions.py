@@ -4,18 +4,16 @@ import random
 import re
 import time
 import urllib.parse
-
 from datetime import datetime
 
 import aiohttp
 import asyncpg
 import pytz
-
 from aiohttp import web
+
 from config import (
     DATABASE_URL,
     PROJECT_NAME,
-    SUB_MESSAGE,
     SUPERNODE,
     SUPPORT_CHAT_URL,
     TOTAL_GB,
@@ -23,7 +21,6 @@ from config import (
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
 )
-
 from database import get_key_details, get_servers
 from handlers.utils import convert_to_bytes
 from logger import logger

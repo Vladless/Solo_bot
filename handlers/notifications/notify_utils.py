@@ -1,7 +1,6 @@
 import os
 
 import aiofiles
-
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
