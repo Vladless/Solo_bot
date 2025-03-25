@@ -12,13 +12,13 @@ from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_key_on_cluster
-from keyboard import (
+from handlers.keys.key_utils import create_key_on_cluster, create_client_on_server
+from logger import logger
+from .keyboard import (
     build_clusters_editor_kb,
     build_manage_cluster_kb,
-    AdminClusterCallback,
+    AdminClusterCallback, build_sync_cluster_kb,
 )
-from logger import logger
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
@@ -246,7 +246,7 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "manage"), IsAdminFilter())
 async def handle_clusters_manage(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -254,14 +254,14 @@ async def handle_clusters_manage(
     cluster_servers = servers.get(cluster_name, [])
 
     await callback_query.message.edit_text(
-        text=f"🔧 Управление серверами для кластера {cluster_name}",
+        text=f"<b>🔧 Управление кластером {cluster_name}</b>",
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "availability"), IsAdminFilter())
 async def handle_cluster_availability(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -280,7 +280,7 @@ async def handle_cluster_availability(
     await callback_query.message.edit_text(text=text)
 
     total_online_users = 0
-    result_text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
+    result_text = f"<b>🖥️ Проверка доступности серверов</b>\n\n⚙️ Кластер: <b>{cluster_name}</b>\n\n"
 
     for server in cluster_servers:
         xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
@@ -289,18 +289,18 @@ async def handle_cluster_availability(
             await xui.login()
             online_users = len(await xui.client.online())
             total_online_users += online_users
-            result_text += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
+            result_text += f"🌍 <b>{server['server_name']}</b> - онлайн: {online_users}\n"
         except Exception as e:
-            result_text += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
+            result_text += f"❌ <b>{server['server_name']}</b> - ошибка: {e}\n"
 
-    result_text += f"\n👥 Общее количество активных пользователей в кластере: {total_online_users}."
+    result_text += f"\n👥 Всего пользователей онлайн: {total_online_users}"
 
     await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("clusters"))
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter())
 async def handle_clusters_backup(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -328,7 +328,79 @@ async def handle_clusters_backup(
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "sync"), IsAdminFilter())
-async def handle_clusters_sync(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+async def handle_sync(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+    cluster_name = callback_data.data
+
+    servers = await get_servers(session)
+    cluster_servers = servers.get(cluster_name, [])
+
+    await callback_query.message.answer(
+        text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>",
+        reply_markup=build_sync_cluster_kb(cluster_servers, cluster_name),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "sync-server"), IsAdminFilter())
+async def handle_sync_server(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+    server_name = callback_data.data
+
+    try:
+        query_keys = """
+                SELECT s.*, k.tg_id, k.client_id, k.email, k.expiry_time
+                FROM servers s
+                JOIN keys k ON s.cluster_name = k.server_id
+                WHERE s.server_name = $1;
+            """
+        keys_to_sync = await session.fetch(query_keys, server_name)
+
+        if not keys_to_sync:
+            await callback_query.message.answer(
+                text=f"❌ Нет ключей для синхронизации в сервере {server_name}.",
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
+
+        text = (
+            f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n"
+            f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
+        )
+
+        await callback_query.message.answer(
+            text=text,
+        )
+
+        semaphore = asyncio.Semaphore(2)
+        for key in keys_to_sync:
+            try:
+                await create_client_on_server(
+                    {
+                        "api_url": key["api_url"],
+                        "inbound_id": key["inbound_id"],
+                        "server_name": key["server_name"],
+                    },
+                    key["tg_id"],
+                    key["client_id"],
+                    key["email"],
+                    key["expiry_time"],
+                    semaphore
+                )
+                await asyncio.sleep(0.6)
+            except Exception as e:
+                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в сервер {server_name}: {e}")
+
+        await callback_query.message.answer(
+            text=f"✅ Ключи успешно синхронизированы для сервера {server_name}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации ключей для сервера {server_name}: {e}")
+        await callback_query.message.answer(
+            text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
+        )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "sync-cluster"), IsAdminFilter())
+async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
     cluster_name = callback_data.data
 
     try:
@@ -345,6 +417,15 @@ async def handle_clusters_sync(callback_query: types.CallbackQuery, callback_dat
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
+
+        text = (
+            f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n"
+            f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
+        )
+
+        await callback_query.message.answer(
+            text=text,
+        )
 
         for key in keys_to_sync:
             try:

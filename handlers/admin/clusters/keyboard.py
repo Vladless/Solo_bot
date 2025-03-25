@@ -8,7 +8,7 @@ from ..servers.keyboard import AdminServerCallback
 
 class AdminClusterCallback(CallbackData, prefix="admin_cluster"):
     action: str
-    data: str
+    data: str = None
 
 
 def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
@@ -16,34 +16,43 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
 
     cluster_names = list(servers.keys())
     for i in range(0, len(cluster_names), 2):
-        row_buttons = []
-        for cluster_name in cluster_names[i : i + 2]:
-            row_buttons.append(
-                InlineKeyboardButton(
-                    text=f"⚙️ {cluster_name}",
-                    callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
-                )
+        builder.row(*[
+            InlineKeyboardButton(
+                text=f"⚙️ {name}",
+                callback_data=AdminClusterCallback(action="manage", data=name).pack(),
             )
-        builder.row(*row_buttons)
+            for name in cluster_names[i: i + 2]
+        ])
 
-    builder.button(text="➕ Добавить кластер", callback_data=AdminClusterCallback(action="add").pack())
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Добавить кластер", callback_data=AdminClusterCallback(action="add").pack()
+        )
+    )
+
     builder.row(build_admin_back_btn())
+
     return builder.as_markup()
 
 
-def build_manage_cluster_kb(cluster_servers, cluster_name) -> InlineKeyboardMarkup:
+def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for server in cluster_servers:
-        builder.button(
-            text=f"🌍 {server['server_name']}",
-            callback_data=AdminServerCallback(action="manage", data=server["server_name"]).pack(),
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🌍 {server['server_name']}",
+                callback_data=AdminServerCallback(action="manage", data=server["server_name"]).pack(),
+            )
         )
 
-    builder.button(
-        text="➕ Добавить сервер",
-        callback_data=AdminServerCallback(action="add", data=cluster_name).pack(),
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Добавить сервер",
+            callback_data=AdminServerCallback(action="add", data=cluster_name).pack(),
+        )
     )
+
     builder.row(
         InlineKeyboardButton(
             text="🌐 Доступность",
@@ -54,10 +63,36 @@ def build_manage_cluster_kb(cluster_servers, cluster_name) -> InlineKeyboardMark
             callback_data=AdminClusterCallback(action="sync", data=cluster_name).pack(),
         ),
     )
-    builder.button(
-        text="💾 Создать бэкап кластера",
-        callback_data=AdminClusterCallback(action="backup", data=cluster_name).pack(),
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💾 Создать бэкап",
+            callback_data=AdminClusterCallback(action="backup", data=cluster_name).pack(),
+        )
     )
+
     builder.row(build_admin_back_btn("clusters"))
-    builder.adjust(1, 1, 1, 1, 1, 2, 1)
+    return builder.as_markup()
+
+
+def build_sync_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for server in cluster_servers:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🔄 Синхронизировать {server['server_name']}",
+                callback_data=AdminClusterCallback(action="sync-server", data=server["server_name"]).pack(),
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📍 Синхронизировать кластер",
+            callback_data=AdminClusterCallback(action="sync-cluster", data=cluster_name).pack(),
+        )
+    )
+
+    builder.row(build_admin_back_btn("clusters"))
+
     return builder.as_markup()
