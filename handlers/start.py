@@ -33,7 +33,7 @@ from database import (
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
 from handlers.texts import WELCOME_TEXT, get_about_vpn
-from keyboards.admin.panel_kb import AdminPanelCallback
+from ..panel.keyboard import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message

@@ -7,8 +7,8 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from filters.admin import IsAdminFilter
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.sender_kb import AdminSenderCallback, build_clusters_kb, build_sender_kb
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+from keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
 from logger import logger
 
 

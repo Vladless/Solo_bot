@@ -41,7 +41,7 @@ from handlers.buttons.profile import (
     PAYMENT,
 )
 from handlers.texts import get_referral_link, invite_message_send, profile_message_send
-from keyboards.admin.panel_kb import AdminPanelCallback
+from ..panel.keyboard import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message

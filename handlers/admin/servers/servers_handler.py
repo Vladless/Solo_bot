@@ -15,8 +15,8 @@ from backup import create_backup_and_send_to_admins
 from database import check_unique_server_name, delete_server, get_servers
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.servers_kb import (
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+from keyboard import (
     AdminServerEditorCallback,
     build_clusters_editor_kb,
     build_delete_server_kb,
