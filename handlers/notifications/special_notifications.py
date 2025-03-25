@@ -15,6 +15,7 @@ from database import (
     check_notification_time,
     create_blocked_user,
 )
+from handlers.texts import TRIAL_INACTIVE_FIRST_MSG, TRIAL_INACTIVE_BONUS_MSG, ZERO_TRAFFIC_MSG
 from handlers.keys.key_utils import get_user_traffic
 from logger import logger
 
@@ -81,24 +82,17 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 )
 
                 if trial_extended:
-                    message = (
-                        f"<b>{display_name}</b>, у нас для тебя подарок! 🎁\n\n"
-                        "<blockquote>"
-                        f"Мы добавили тебе +{NOTIFY_EXTRA_DAYS} дополнительных дня к пробному периоду!\n"
-                        f"Теперь у тебя есть еще шанс протестировать наш VPN целых {NOTIFY_EXTRA_DAYS + TRIAL_TIME} дня!\n"
-                        "</blockquote>"
-                        "Нажми на кнопку ниже, чтобы активировать доступ с бонусом +2 дня! 👇"
+                    total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
+                    message = TRIAL_INACTIVE_BONUS_MSG.format(
+                        display_name=display_name,
+                        NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS,
+                        total_days=total_days
                     )
-
                     await conn.execute("UPDATE connections SET trial = -1 WHERE tg_id = $1", tg_id)
                 else:
-                    message = (
-                        f"👋 <b>Привет, {display_name}!</b>\n\n"
-                        "<blockquote>"
-                        f"🎉 У тебя есть бесплатный пробный период на {TRIAL_TIME} дней!\n"
-                        "Не упусти возможность попробовать наш VPN прямо сейчас.\n"
-                        "</blockquote>"
-                        "Нажми на кнопку ниже, чтобы активировать пробный доступ! 👇"
+                    message = TRIAL_INACTIVE_FIRST_MSG.format(
+                        display_name=display_name,
+                        TRIAL_TIME=TRIAL_TIME
                     )
 
                 try:
@@ -182,12 +176,7 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
             builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
             keyboard = builder.as_markup()
 
-            message = (
-                f"⚠ <b>Ваша VPN-подписка {email} активна, но трафик не используется.</b>\n\n"
-                "<blockquote>Если у вас возникли сложности с подключением, "
-                "нажмите кнопку ниже, чтобы связаться с поддержкой.</blockquote>\n\n"
-                "🛠 Мы поможем вам разобраться! 💡"
-            )
+            message = ZERO_TRAFFIC_MSG.format(email=email)
 
             try:
                 await bot.send_message(tg_id, message, reply_markup=keyboard)
