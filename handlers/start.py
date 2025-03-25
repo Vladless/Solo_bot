@@ -11,6 +11,8 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from bot import bot
 from config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -20,8 +22,6 @@ from config import (
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
 )
-
-from bot import bot
 from database import (
     add_connection,
     add_referral,
@@ -44,11 +44,9 @@ from handlers.texts import (
     WELCOME_TEXT,
     get_about_vpn,
 )
-from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
-
+from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
-
 
 router = Router()
 

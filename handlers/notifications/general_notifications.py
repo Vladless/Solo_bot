@@ -1,25 +1,23 @@
 import asyncio
-
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
-
 from aiogram import Bot, Router
+
 from config import (
     DATABASE_URL,
     NOTIFICATION_TIME,
     NOTIFY_DELETE_DELAY,
     NOTIFY_DELETE_KEY,
-    NOTIFY_INACTIVE_TRAFFIC,
     NOTIFY_MAXPRICE,
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
     RENEWAL_PRICES,
     TOTAL_GB,
     TRIAL_TIME_DISABLE,
+    NOTIFY_INACTIVE_TRAFFIC,
 )
-
 from database import (
     add_notification,
     check_notification_time,
@@ -32,22 +30,20 @@ from database import (
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.texts import (
+    KEY_EXPIRY_10H,
+    KEY_EXPIRY_24H,
+    KEY_RENEWED,
+    KEY_RENEWED_TEMP_MSG,
     KEY_DELETED_MSG,
     KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG,
     KEY_EXPIRED_DELAY_HOURS_MSG,
     KEY_EXPIRED_DELAY_MINUTES_MSG,
     KEY_EXPIRED_NO_DELAY_MSG,
-    KEY_EXPIRY_10H,
-    KEY_EXPIRY_24H,
-    KEY_RENEWED,
-    KEY_RENEWED_TEMP_MSG,
 )
 from keyboards.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
 from logger import logger
-
 from .notify_utils import send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
-
 
 router = Router()
 

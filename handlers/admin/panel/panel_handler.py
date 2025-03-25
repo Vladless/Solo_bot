@@ -5,8 +5,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot import version
 from filters.admin import IsAdminFilter
-from keyboards.admin.panel_kb import AdminPanelCallback, build_management_kb, build_panel_kb
-
+from .keyboard import AdminPanelCallback, build_panel_kb
 
 router = Router()
 
@@ -39,11 +38,3 @@ async def handle_admin_message(message: Message, state: FSMContext):
 
     await state.clear()
     await message.answer(text=text, reply_markup=build_panel_kb())
-
-
-@router.callback_query(AdminPanelCallback.filter(F.action == "management"), IsAdminFilter())
-async def handle_management(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="🤖 Управление ботом",
-        reply_markup=build_management_kb(),
-    )

@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from typing import Any, Optional, Type, Union
 
 from aiogram import Dispatcher
 from aiogram.dispatcher.middlewares.base import BaseMiddleware

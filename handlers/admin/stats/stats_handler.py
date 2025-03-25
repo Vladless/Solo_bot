@@ -2,17 +2,15 @@ from datetime import datetime
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-from keyboards.admin.stats_kb import build_stats_kb
+from .keyboard import build_stats_kb
 from logger import logger
 from utils.csv_export import export_payments_csv, export_users_csv
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 

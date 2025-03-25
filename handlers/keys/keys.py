@@ -2,16 +2,17 @@ import asyncio
 import locale
 import os
 import time
-
 from datetime import datetime, timedelta
 from typing import Any
 
 import asyncpg
 import pytz
-
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.yookassa_pay import process_custom_amount_input
+
+from bot import bot
 from config import (
     CONNECT_ANDROID,
     CONNECT_IOS,
@@ -23,13 +24,11 @@ from config import (
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
     PUBLIC_LINK,
     RENEWAL_PLANS,
-    TOGGLE_CLIENT,
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
+    TOGGLE_CLIENT,
 )
-
-from bot import bot
 from database import (
     check_server_name_by_cluster,
     create_temporary_data,
@@ -53,31 +52,29 @@ from handlers.buttons.add_subscribe import (
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     renew_key_in_cluster,
-    toggle_client_on_cluster,
     update_subscription,
+    toggle_client_on_cluster,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
-    DELETE_KEY_CONFIRM_MSG,
     DISCOUNTS,
-    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
-    FROZEN_SUBSCRIPTION_MSG,
-    INSUFFICIENT_FUNDS_RENEWAL_MSG,
-    KEY_DELETED_MSG_SIMPLE,
     KEY_NOT_FOUND_MSG,
-    NO_SUBSCRIPTIONS_MSG,
     PLAN_SELECTION_MSG,
     SUBSCRIPTION_DESCRIPTION,
-    SUBSCRIPTION_FROZEN_MSG,
-    SUBSCRIPTION_UNFROZEN_MSG,
     SUCCESS_RENEWAL_MSG,
-    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
     key_message,
+    NO_SUBSCRIPTIONS_MSG,
+    FROZEN_SUBSCRIPTION_MSG,
+    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    SUBSCRIPTION_UNFROZEN_MSG,
+    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    SUBSCRIPTION_FROZEN_MSG,
+    DELETE_KEY_CONFIRM_MSG,
+    KEY_DELETED_MSG_SIMPLE,
+    INSUFFICIENT_FUNDS_RENEWAL_MSG,
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
-
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -290,6 +287,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
 async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     confirm_text = UNFREEZE_SUBSCRIPTION_CONFIRM_MSG
+
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -384,6 +382,7 @@ async def process_callback_freeze_subscription(callback_query: CallbackQuery, se
     """
     Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
     """
+    tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
     confirm_text = FREEZE_SUBSCRIPTION_CONFIRM_MSG
@@ -433,7 +432,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
             if time_left < 0:
                 time_left = 0
 
-            await session.execute(
+            update_result = await session.execute(
                 """
                 UPDATE keys
                 SET expiry_time = $1,

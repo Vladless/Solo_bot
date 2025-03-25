@@ -4,14 +4,13 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-from config import USERNAME_BOT
 
+from config import USERNAME_BOT
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
-from keyboards.admin.coupons_kb import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
+from .keyboard import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb
 from logger import logger
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 
