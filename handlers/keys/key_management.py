@@ -1,15 +1,18 @@
 import asyncio
 import uuid
-
 from datetime import datetime, timedelta
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.yookassa_pay import process_custom_amount_input
+from py3xui import AsyncApi
+
+from bot import bot
+from client import delete_client
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -27,10 +30,6 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
-from py3xui import AsyncApi
-
-from bot import bot
-from client import delete_client
 from database import (
     add_connection,
     check_connection_exists,
@@ -52,7 +51,6 @@ from handlers.buttons.add_subscribe import (
 )
 from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     DISCOUNTS,
@@ -63,7 +61,6 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger
-
 
 router = Router()
 

@@ -2,9 +2,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import asyncpg
-
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
+
 from config import DATABASE_URL
 
 

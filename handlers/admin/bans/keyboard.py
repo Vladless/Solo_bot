@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
 def build_bans_kb() -> InlineKeyboardMarkup:

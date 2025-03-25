@@ -5,9 +5,8 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 
 from database import delete_user_data
 from filters.admin import IsAdminFilter
-from keyboards.admin.bans_kb import build_bans_kb
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_kb
-
+from .keyboard import build_bans_kb
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 

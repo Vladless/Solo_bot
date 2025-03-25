@@ -1,10 +1,8 @@
 import html
 import os
-
 from typing import Any
 
 import asyncpg
-
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -17,6 +15,7 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
 from config import (
     DATABASE_URL,
     INLINE_MODE,
@@ -27,7 +26,6 @@ from config import (
     TRIAL_TIME,
     USERNAME_BOT,
 )
-
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
     ADD_SUB,
@@ -40,19 +38,10 @@ from handlers.buttons.profile import (
     MY_SUBS,
     PAYMENT,
 )
-from handlers.texts import (
-    BALANCE_HISTORY_HEADER,
-    BALANCE_MANAGEMENT_TEXT,
-    INVITE_TEXT_NON_INLINE,
-    get_referral_link,
-    invite_message_send,
-    profile_message_send,
-)
-from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
-
+from .admin.panel.keyboard import AdminPanelCallback
+from .texts import profile_message_send, invite_message_send, get_referral_link
 from .utils import edit_or_send_message
-
 
 router = Router()
 

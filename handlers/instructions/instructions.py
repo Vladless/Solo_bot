@@ -1,16 +1,15 @@
 import os
-
 from typing import Any
 
-from aiogram import F, Router, types
+from aiogram import F, Router
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 
+from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from database import get_key_details
 from handlers.texts import (
     CONNECT_TV_TEXT,
@@ -20,7 +19,6 @@ from handlers.texts import (
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
-
 
 router = Router()
 
