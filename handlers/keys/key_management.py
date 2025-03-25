@@ -52,12 +52,12 @@ from handlers.buttons.add_subscribe import (
 from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.texts import (
-    DISCOUNTS,
-    key_message_success,
     CREATING_CONNECTION_MSG,
-    SELECT_TARIFF_PLAN_MSG,
+    DISCOUNTS,
     INSUFFICIENT_FUNDS_MSG,
     SELECT_COUNTRY_MSG,
+    SELECT_TARIFF_PLAN_MSG,
+    key_message_success,
 )
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger

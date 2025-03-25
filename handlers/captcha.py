@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CAPTCHA_EMOJIS
+
 from handlers.texts import CAPTCHA_PROMPT_MSG
 from logger import logger
 from .utils import edit_or_send_message

@@ -14,11 +14,12 @@ from database import (
     update_coupon_usage_count,
 )
 from handlers.texts import (
+    COUPON_ACTIVATED_SUCCESS_MSG,
+    COUPON_ALREADY_USED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
-    COUPON_ALREADY_USED_MSG,
-    COUPON_ACTIVATED_SUCCESS_MSG,
 )
+
 from .utils import edit_or_send_message
 
 
