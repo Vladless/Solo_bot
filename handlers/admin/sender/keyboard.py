@@ -16,9 +16,7 @@ def build_sender_kb() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="👥 Все пользователи", callback_data=AdminSenderCallback(type="all").pack()))
     builder.row(
         InlineKeyboardButton(text="✅ С подпиской", callback_data=AdminSenderCallback(type="subscribed").pack()),
-        InlineKeyboardButton(
-            text="❌ Без подписки", callback_data=AdminSenderCallback(type="unsubscribed").pack()
-        ),
+        InlineKeyboardButton(text="❌ Без подписки", callback_data=AdminSenderCallback(type="unsubscribed").pack()),
     )
     builder.row(
         InlineKeyboardButton(

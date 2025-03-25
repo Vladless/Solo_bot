@@ -2,8 +2,6 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..clusters.keyboard import AdminClusterCallback
-
 
 class AdminServerCallback(CallbackData, prefix="admin_server"):
     action: str
@@ -11,6 +9,8 @@ class AdminServerCallback(CallbackData, prefix="admin_server"):
 
 
 def build_manage_server_kb(server_name: str, cluster_name: str) -> InlineKeyboardMarkup:
+    from ..clusters.keyboard import AdminClusterCallback
+
     builder = InlineKeyboardBuilder()
     builder.button(text="🗑️ Удалить", callback_data=AdminServerCallback(action="delete", data=server_name).pack())
     builder.button(text="🔙 Назад", callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack())

@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, Message
 from asyncpg import Connection
 
 from filters.admin import IsAdminFilter
-from keyboard import AdminPanelCallback, build_management_kb
+from .keyboard import AdminPanelCallback, build_management_kb
 from logger import logger
 from ..panel.keyboard import build_admin_back_kb
 
@@ -25,7 +25,7 @@ async def handle_management(callback_query: CallbackQuery):
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "change_domain"), IsAdminFilter())
-async def request_new_domain(callback_query: AdminPanelCallback, state: FSMContext):
+async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
     """Запрашивает у администратора новый домен."""
     await state.set_state(AdminManagementStates.waiting_for_new_domain)
     await callback_query.message.edit_text(

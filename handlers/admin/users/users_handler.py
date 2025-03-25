@@ -27,7 +27,7 @@ from handlers.utils import sanitize_key_name
 from logger import logger
 from utils.csv_export import export_referrals_csv
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb, build_admin_back_btn
-from ..users.keyboard import (
+from .keyboard import (
     AdminUserEditorCallback,
     AdminUserKeyEditorCallback,
     build_editor_kb,

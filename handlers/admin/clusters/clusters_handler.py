@@ -17,7 +17,8 @@ from logger import logger
 from .keyboard import (
     build_clusters_editor_kb,
     build_manage_cluster_kb,
-    AdminClusterCallback, build_sync_cluster_kb,
+    AdminClusterCallback,
+    build_sync_cluster_kb,
 )
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
@@ -246,7 +247,7 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "manage"), IsAdminFilter())
 async def handle_clusters_manage(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -261,7 +262,7 @@ async def handle_clusters_manage(
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "availability"), IsAdminFilter())
 async def handle_cluster_availability(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -300,7 +301,7 @@ async def handle_cluster_availability(
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter())
 async def handle_clusters_backup(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -360,10 +361,7 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
             )
             return
 
-        text = (
-            f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n"
-            f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
-        )
+        text = f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
 
         await callback_query.message.answer(
             text=text,
@@ -382,7 +380,7 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
                     key["client_id"],
                     key["email"],
                     key["expiry_time"],
-                    semaphore
+                    semaphore,
                 )
                 await asyncio.sleep(0.6)
             except Exception as e:
@@ -418,10 +416,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
             )
             return
 
-        text = (
-            f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n"
-            f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
-        )
+        text = f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
 
         await callback_query.message.answer(
             text=text,

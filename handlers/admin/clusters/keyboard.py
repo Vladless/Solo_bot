@@ -21,13 +21,11 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
                 text=f"⚙️ {name}",
                 callback_data=AdminClusterCallback(action="manage", data=name).pack(),
             )
-            for name in cluster_names[i: i + 2]
+            for name in cluster_names[i : i + 2]
         ])
 
     builder.row(
-        InlineKeyboardButton(
-            text="➕ Добавить кластер", callback_data=AdminClusterCallback(action="add").pack()
-        )
+        InlineKeyboardButton(text="➕ Добавить кластер", callback_data=AdminClusterCallback(action="add").pack())
     )
 
     builder.row(build_admin_back_btn())
