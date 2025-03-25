@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
 from filters.admin import IsAdminFilter
-from keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
+from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
 from logger import logger
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
@@ -34,7 +34,7 @@ async def handle_sender(callback_query: CallbackQuery):
     IsAdminFilter(),
 )
 async def handle_sender_callback_text(
-        callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext
+    callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext
 ):
     await callback_query.message.edit_text(
         text="✍️ Введите текст сообщения для рассылки:",
@@ -96,6 +96,8 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
             """,
             int(datetime.utcnow().timestamp() * 1000),
         )
+    elif send_to == "untrial":
+        tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections WHERE trial = 0")
     elif send_to == "cluster":
         cluster_name = state_data.get("cluster_name")
         tg_ids = await session.fetch(
@@ -114,10 +116,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
     total_users = len(tg_ids)
     success_count = 0
 
-    text = (
-        f"📤 <b>Рассылка начата!</b>\n\n"
-        f"👥 <b>Всего пользователей:</b> {total_users}\n"
-    )
+    text = f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}"
 
     await message.answer(text=text)
 
@@ -137,7 +136,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
 
     text = (
         f"📤 <b>Рассылка завершена!</b>\n\n"
-        f"👥 <b>Всего пользователей:</b> {total_users}\n"
+        f"👥 <b>Количество получателей:</b> {total_users}\n"
         f"✅ <b>Доставлено:</b> {success_count}\n"
         f"❌ <b>Не доставлено:</b> {total_users - success_count}"
     )
