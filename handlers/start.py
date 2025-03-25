@@ -1,5 +1,4 @@
 import os
-
 from typing import Any
 
 from aiogram import F, Router
@@ -32,8 +31,19 @@ from database import (
 )
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
-from handlers.texts import WELCOME_TEXT, get_about_vpn
-from ..panel.keyboard import AdminPanelCallback
+from handlers.texts import (
+    WELCOME_TEXT,
+    get_about_vpn,
+    SUBSCRIPTION_REQUIRED_MSG,
+    NOT_SUBSCRIBED_YET_MSG,
+    SUBSCRIPTION_CONFIRMED_MSG,
+    SUBSCRIPTION_CHECK_ERROR_MSG,
+    GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
+    REFERRAL_SUCCESS_MSG,
+    NEW_REFERRAL_NOTIFICATION,
+    COUPON_SUCCESS_MSG,
+)
+from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -75,7 +85,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
                 builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
                 await edit_or_send_message(
                     target_message=message,
-                    text=f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                    text=SUBSCRIPTION_REQUIRED_MSG,
                     reply_markup=builder.as_markup(),
                 )
                 return
@@ -90,7 +100,7 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
             await edit_or_send_message(
                 target_message=message,
-                text=f"Пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                text=SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
             )
             return
@@ -161,7 +171,7 @@ async def process_start_logic(
                 logger.info(
                     f"Купон {coupon_code} успешно использован пользователем {message.chat.id}, начислено {coupon['amount']} RUB."
                 )
-                await message.answer(f"🎉 Ваш баланс пополнен на {coupon['amount']} RUB по купону!")
+                await message.answer(COUPON_SUCCESS_MSG.format(amount=coupon["amount"]))
                 return await show_start_menu(message, admin, session)
 
             if "gift_" in text:
@@ -184,7 +194,7 @@ async def process_start_logic(
 
                 if gift_info is None:
                     logger.warning(f"Подарок с ID {gift_id} уже был использован или не существует.")
-                    await message.answer("Этот подарок уже был использован или не существует.")
+                    await message.answer(GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG)
                     return await show_start_menu(message, admin, session)
 
                 if gift_info["is_used"]:
@@ -261,10 +271,11 @@ async def process_start_logic(
 
                     await add_referral(message.chat.id, referrer_tg_id, session)
                     logger.info(f"Реферал {message.chat.id} использовал ссылку от пользователя {referrer_tg_id}")
-                    await message.answer(f"Вы стали рефералом пользователя с ID {referrer_tg_id}")
+                    await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
                     try:
                         await bot.send_message(
-                            referrer_tg_id, f"🎉 Ваш реферал {message.chat.id} успешно зарегистрировался!"
+                            referrer_tg_id, 
+                            NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
                         )
                         logger.info(
                             f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}"
@@ -299,15 +310,15 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         logger.info(f"[CALLBACK] Статус подписки пользователя {user_id}: {member.status}")
 
         if member.status not in ["member", "administrator", "creator"]:
-            await callback_query.answer("Вы еще не подписаны на канал!", show_alert=True)
+            await callback_query.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
             await callback_query.message.edit_text(
-                f"Для использования бота, пожалуйста, подпишитесь на наш канал: {CHANNEL_URL}",
+                SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
             )
         else:
-            await callback_query.answer("Подписка подтверждена!")
+            await callback_query.answer(SUBSCRIPTION_CONFIRMED_MSG)
             data = await state.get_data()
             original_text = data.get("original_text")
             if not original_text:
@@ -316,7 +327,7 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
             logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
     except Exception as e:
         logger.error(f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}", exc_info=True)
-        await callback_query.answer("Ошибка проверки подписки, повторите попытку", show_alert=True)
+        await callback_query.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
 async def show_start_menu(message: Message, admin: bool, session: Any):

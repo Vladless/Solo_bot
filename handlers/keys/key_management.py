@@ -53,7 +53,14 @@ from handlers.buttons.add_subscribe import (
 from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
-from handlers.texts import DISCOUNTS, key_message_success
+from handlers.texts import (
+    DISCOUNTS,
+    key_message_success,
+    CREATING_CONNECTION_MSG,
+    SELECT_TARIFF_PLAN_MSG,
+    INSUFFICIENT_FUNDS_MSG,
+    SELECT_COUNTRY_MSG,
+)
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger
 
@@ -97,7 +104,7 @@ async def handle_key_creation(
                     target_message=message_or_query
                     if isinstance(message_or_query, Message)
                     else message_or_query.message,
-                    text="⏳ Пожалуйста, подождите, создаем вам подключение...",
+                    text=CREATING_CONNECTION_MSG,
                     reply_markup=None,
                 )
 
@@ -129,7 +136,7 @@ async def handle_key_creation(
 
     await edit_or_send_message(
         target_message=target_message,
-        text="💳 Выберите тарифный план для создания нового ключа:",
+        text=SELECT_TARIFF_PLAN_MSG,
         reply_markup=builder.as_markup(),
         media_path=None,
     )
@@ -171,7 +178,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
             await edit_or_send_message(
                 target_message=callback_query.message,
-                text=f"💳 Недостаточно средств. Для продолжения необходимо пополнить баланс на {required_amount}₽.",
+                text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
                 reply_markup=builder.as_markup(),
                 media_path=None,
             )
@@ -181,7 +188,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text="⏳ Подождите, создаем вам подключение...",
+        text=CREATING_CONNECTION_MSG,
         reply_markup=builder.as_markup(),
     )
 
@@ -232,14 +239,14 @@ async def create_key(
         if target_message:
             await edit_or_send_message(
                 target_message=target_message,
-                text="🌍 Пожалуйста, выберите страну для вашего ключа:",
+                text=SELECT_COUNTRY_MSG,
                 reply_markup=builder.as_markup(),
                 media_path=None,
             )
         else:
             await bot.send_message(
                 chat_id=tg_id,
-                text="🌍 Пожалуйста, выберите страну для вашего ключа:",
+                text=SELECT_COUNTRY_MSG,
                 reply_markup=builder.as_markup(),
             )
         return
