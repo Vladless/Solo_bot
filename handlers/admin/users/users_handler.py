@@ -26,8 +26,8 @@ from database import (
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import delete_key_from_cluster, get_user_traffic, renew_key_in_cluster, update_subscription
 from handlers.utils import sanitize_key_name
-from keyboards.admin.panel_kb import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
-from keyboards.admin.users_kb import (
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
+from .keyboard import (
     AdminUserEditorCallback,
     AdminUserKeyEditorCallback,
     build_editor_kb,

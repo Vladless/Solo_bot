@@ -54,15 +54,12 @@ async def handle_servers(callback_query: CallbackQuery):
     )
 
 
-@router.callback_query(
-    AdminClusterCallback.filter(F.action == "add"),
-    IsAdminFilter(),
-)
+@router.callback_query(AdminClusterCallback.filter(F.action == "add"), IsAdminFilter())
 async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🔧 <b>Введите имя нового кластера:</b>\n\n"
         "<b>Имя должно быть уникальным!</b>\n"
-        "<b>Имя не должно превышать 12 символов!</b>\n"
+        "<b>Имя не должно превышать 12 символов!</b>\n\n"
         "<i>Пример:</i> <code>cluster1</code> или <code>us_east_1</code>"
     )
 

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -8,7 +10,7 @@ from ..servers.keyboard import AdminServerCallback
 
 class AdminClusterCallback(CallbackData, prefix="admin_cluster"):
     action: str
-    data: str = None
+    data: Optional[str] = None
 
 
 def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
