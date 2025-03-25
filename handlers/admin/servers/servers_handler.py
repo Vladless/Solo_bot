@@ -66,7 +66,8 @@ async def handle_servers(callback_query: CallbackQuery):
 async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🔧 <b>Введите имя нового кластера:</b>\n\n"
-        "<b>Имя кластера должно быть уникальным!</b>\n"
+        "<b>Имя должно быть уникальным!</b>\n"
+        "<b>Имя не должно превышать 12 символов!</b>\n"
         "<i>Пример:</i> <code>cluster1</code> или <code>us_east_1</code>"
     )
 
@@ -79,7 +80,13 @@ async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
 async def handle_cluster_name_input(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
-            text="❌ Имя кластера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
+            text="❌ Имя кластера не может быть пустым! Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
+        )
+        return
+
+    if len(message.text) > 12:
+        await message.answer(
+            text="❌ Имя кластера должно превышать 12 символов! Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
         )
         return
 
@@ -104,15 +111,16 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
+            text="❌ Имя сервера не может быть пустым. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers")
         )
         return
 
     server_name = message.text.strip()
 
-    if len(server_name) > 14:
+    if len(server_name) > 12:
         await message.answer(
-            text="❌ Имя сервера не должно превышать 10 символов. Попробуйте снова.",
+            text="❌ Имя сервера не должно превышать 12 символов. Попробуйте снова.",
             reply_markup=build_admin_back_kb("servers"),
         )
         return
@@ -131,9 +139,9 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     text = (
         f"<b>Введите API URL для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "API URL должен быть в следующем формате:\n\n"
-        "<code>https://your_domain:port/panel_path</code>\n\n"
-        "URL должен быть без слэша на конце!\n"
+        "Ссылку можно найти в поисковой строке браузера, при входе в 3X-UI.\n\n"
+        "ℹ️ Формат API URL:\n"
+        "<code>https://your_domain:port/panel_path/</code>"
     )
 
     await message.answer(
@@ -145,7 +153,7 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
 
 @router.message(AdminServersEditor.waiting_for_api_url, IsAdminFilter())
-async def handle_api_url_input(message: Message, state: FSMContext, session: Any):
+async def handle_api_url_input(message: Message, state: FSMContext):
     if not message.text or not message.text.strip().startswith("https://"):
         await message.answer(
             text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
@@ -162,10 +170,9 @@ async def handle_api_url_input(message: Message, state: FSMContext, session: Any
 
     text = (
         f"<b>Введите subscription_url для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "Subscription URL должен быть в следующем формате:\n\n"
-        "<code>https://your_domain:port_sub/sub_path</code>\n\n"
-        "URL должен быть без слэша и имени клиента на конце!\n"
-        "Его можно увидеть в панели 3x-ui в информации о клиенте."
+        "Ссылку можно найти в панели 3X-UI, в информации о клиенте.\n\n"
+        "ℹ️ Формат Subscription URL:\n"
+        "<code>https://your_domain:port_sub/sub_path/</code>"
     )
 
     await message.answer(
@@ -278,8 +285,8 @@ async def handle_servers_availability(
 
     await callback_query.message.edit_text(text=text)
 
-    result_text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
     total_online_users = 0
+    result_text = f"🖥️ Проверка доступности серверов для кластера {cluster_name} завершена:\n\n"
 
     for server in cluster_servers:
         xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
@@ -289,7 +296,6 @@ async def handle_servers_availability(
             online_users = len(await xui.client.online())
             total_online_users += online_users
             result_text += f"🌍 {server['server_name']}: {online_users} активных пользователей.\n"
-
         except Exception as e:
             result_text += f"❌ {server['server_name']}: Не удалось получить информацию. Ошибка: {e}\n"
 
@@ -359,9 +365,13 @@ async def handle_servers_add(
     await state.update_data(cluster_name=cluster_name)
 
     text = (
-        f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
-        "Рекомендуется указать локацию сервера в имени.\n\n"
-        "<i>Пример:</i> <code>server-asia</code>, <code>server-europe</code>"
+        f"<b>✏️ Введите название нового сервера для кластера {cluster_name}:</b>\n\n"
+        "🌍 Рекомендуется использовать локацию и порядковый номер сервера в названии.\n"
+        "<b>Имя не должно превышать 12 символов!</b>\n\n"
+        "Пример:\n"
+        "— <code>de1</code> - для первого сервера в Германии\n"
+        "— <code>swe2</code> - для второго сервера в Швеции\n"
+        "(если в каком-то кластере у вас уже есть сервер в Швеции)"
     )
 
     await callback_query.message.edit_text(
