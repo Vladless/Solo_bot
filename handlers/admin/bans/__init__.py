@@ -1,3 +1,3 @@
 __all__ = ("router",)
 
-from bans_handler import router
+from .bans_handler import router
