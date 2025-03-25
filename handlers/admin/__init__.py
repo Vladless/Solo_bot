@@ -2,16 +2,15 @@ __all__ = ("router",)
 
 from aiogram import Router
 
-from .admin_backups import router as backups_router
-from .admin_bans import router as bans_router
-from .admin_coupons import router as coupons_router
-from .admin_panel import router as panel_router
-from .admin_restart import router as restart_router
-from .admin_sender import router as sender_router
-from .admin_servers import router as servers_router
-from .admin_stats import router as stats_router
-from .admin_users import router as users_router
-
+from .backups import router as backups_router
+from .bans import router as bans_router
+from .coupons import router as coupons_router
+from .panel import router as panel_router
+from .restart import router as restart_router
+from .sender import router as sender_router
+from .servers import router as servers_router
+from .stats import router as stats_router
+from .users import router as users_router
 
 router = Router(name="admins_main_router")
 
