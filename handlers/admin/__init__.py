@@ -6,6 +6,7 @@ from .backups import router as backups_router
 from .bans import router as bans_router
 from .clusters import router as clusters_router
 from .coupons import router as coupons_router
+from .management import router as management_router
 from .panel import router as panel_router
 from .restart import router as restart_router
 from .sender import router as sender_router
@@ -17,6 +18,7 @@ router = Router(name="admins_main_router")
 
 router.include_routers(
     panel_router,
+    management_router,
     servers_router,
     clusters_router,
     users_router,
