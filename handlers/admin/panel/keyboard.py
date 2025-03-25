@@ -20,7 +20,7 @@ def build_panel_kb() -> InlineKeyboardMarkup:
     builder.button(text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack())
     builder.button(text="🔑 Поиск по названию ключа", callback_data=AdminPanelCallback(action="search_key").pack())
     builder.row(
-        InlineKeyboardButton(text="🖥️ Серверы", callback_data=AdminPanelCallback(action="servers").pack()),
+        InlineKeyboardButton(text="🖥️ Серверы", callback_data=AdminPanelCallback(action="clusters").pack()),
         InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )
     builder.button(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack())
