@@ -86,7 +86,8 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 
     if len(message.text) > 12:
         await message.answer(
-            text="❌ Имя кластера должно превышать 12 символов! Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
+            text="❌ Имя кластера должно превышать 12 символов! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("servers"),
         )
         return
 
@@ -111,8 +112,7 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым. Попробуйте снова.",
-            reply_markup=build_admin_back_kb("servers")
+            text="❌ Имя сервера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("servers")
         )
         return
 
