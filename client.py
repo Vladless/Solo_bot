@@ -72,7 +72,14 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
 
 
 async def extend_client_key(
-    xui: py3xui.AsyncApi, inbound_id: int, email: str, new_expiry_time: int, client_id: str, total_gb: int, sub_id: str, tg_id: int
+    xui: py3xui.AsyncApi,
+    inbound_id: int,
+    email: str,
+    new_expiry_time: int,
+    client_id: str,
+    total_gb: int,
+    sub_id: str,
+    tg_id: int,
 ) -> bool | None:
     """
     Обновляет срок действия ключа клиента.

@@ -15,8 +15,8 @@ from database import (
     check_notification_time,
     create_blocked_user,
 )
-from handlers.texts import TRIAL_INACTIVE_FIRST_MSG, TRIAL_INACTIVE_BONUS_MSG, ZERO_TRAFFIC_MSG
 from handlers.keys.key_utils import get_user_traffic
+from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
 from logger import logger
 
 
@@ -84,16 +84,11 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 if trial_extended:
                     total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
                     message = TRIAL_INACTIVE_BONUS_MSG.format(
-                        display_name=display_name,
-                        NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS,
-                        total_days=total_days
+                        display_name=display_name, NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS, total_days=total_days
                     )
                     await conn.execute("UPDATE connections SET trial = -1 WHERE tg_id = $1", tg_id)
                 else:
-                    message = TRIAL_INACTIVE_FIRST_MSG.format(
-                        display_name=display_name,
-                        TRIAL_TIME=TRIAL_TIME
-                    )
+                    message = TRIAL_INACTIVE_FIRST_MSG.format(display_name=display_name, TRIAL_TIME=TRIAL_TIME)
 
                 try:
                     await bot.send_message(tg_id, message, reply_markup=keyboard)

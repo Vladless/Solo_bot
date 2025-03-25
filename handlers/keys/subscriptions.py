@@ -328,7 +328,7 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
         stored_tg_id = client_data.get("tg_id")
         server_id = client_data["server_id"]
 
-        if not old_subscription and str(tg_id) != str(stored_tg_id):
+        if not old_subscription and int(tg_id) != int(stored_tg_id):
             logger.warning(f"Неверный tg_id для клиента с email {email}.")
             return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
 
