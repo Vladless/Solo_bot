@@ -56,7 +56,7 @@ async def handle_server_delete(callback_query: CallbackQuery, callback_data: Adm
 
 @router.callback_query(AdminServerCallback.filter(F.action == "delete_confirm"), IsAdminFilter())
 async def handle_server_delete_confirm(
-        callback_query: types.CallbackQuery, callback_data: AdminServerCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminServerCallback, session: Any
 ):
     server_name = callback_data.data
 

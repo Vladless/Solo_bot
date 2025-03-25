@@ -15,7 +15,8 @@ from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_key_on_cluster
 from keyboard import (
     build_clusters_editor_kb,
-    build_manage_cluster_kb, AdminClusterCallback,
+    build_manage_cluster_kb,
+    AdminClusterCallback,
 )
 from logger import logger
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
@@ -245,7 +246,7 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "manage"), IsAdminFilter())
 async def handle_clusters_manage(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -260,7 +261,7 @@ async def handle_clusters_manage(
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "availability"), IsAdminFilter())
 async def handle_cluster_availability(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -299,7 +300,7 @@ async def handle_cluster_availability(
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter())
 async def handle_clusters_backup(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
 ):
     cluster_name = callback_data.data
 
@@ -327,9 +328,7 @@ async def handle_clusters_backup(
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "sync"), IsAdminFilter())
-async def handle_clusters_sync(
-        callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
-):
+async def handle_clusters_sync(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
     cluster_name = callback_data.data
 
     try:
