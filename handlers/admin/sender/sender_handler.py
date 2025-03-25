@@ -34,7 +34,7 @@ async def handle_sender(callback_query: CallbackQuery):
     IsAdminFilter(),
 )
 async def handle_sender_callback_text(
-    callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext
+        callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext
 ):
     await callback_query.message.edit_text(
         text="✍️ Введите текст сообщения для рассылки:",
@@ -114,6 +114,13 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
     total_users = len(tg_ids)
     success_count = 0
 
+    text = (
+        f"📤 <b>Рассылка начата!</b>\n\n"
+        f"👥 <b>Всего пользователей:</b> {total_users}\n"
+    )
+
+    await message.answer(text=text)
+
     for record in tg_ids:
         tg_id = record["tg_id"]
         try:
@@ -135,6 +142,5 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
         f"❌ <b>Не доставлено:</b> {total_users - success_count}"
     )
 
-    await message.answer(text=text, reply_markup=build_admin_back_kb("stats"), parse_mode="HTML")
-
+    await message.answer(text=text, reply_markup=build_admin_back_kb("sender"))
     await state.clear()
