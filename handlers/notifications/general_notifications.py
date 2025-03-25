@@ -15,7 +15,7 @@ from config import (
     RENEWAL_PRICES,
     TOTAL_GB,
     TRIAL_TIME_DISABLE,
-    NOTIFY_INACTIVE_TRAFFIC
+    NOTIFY_INACTIVE_TRAFFIC,
 )
 from database import (
     add_notification,
