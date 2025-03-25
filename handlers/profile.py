@@ -40,7 +40,14 @@ from handlers.buttons.profile import (
     MY_SUBS,
     PAYMENT,
 )
-from handlers.texts import get_referral_link, invite_message_send, profile_message_send
+from handlers.texts import (
+    get_referral_link,
+    invite_message_send,
+    profile_message_send,
+    BALANCE_MANAGEMENT_TEXT,
+    BALANCE_HISTORY_HEADER,
+    INVITE_TEXT_NON_INLINE
+)
 from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
 
@@ -130,7 +137,8 @@ async def balance_handler(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text="🎟️ Активировать купон", callback_data="activate_coupon"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    text = f"<b>Управление вашим балансом 💰</b>\n\nВаш баланс: {balance}"
+    text = BALANCE_MANAGEMENT_TEXT.format(balance=balance)
+
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
@@ -149,7 +157,7 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     records = await get_last_payments(callback_query.from_user.id, session)
 
     if records:
-        history_text = "📊 <b>Последние 3 операции с балансом:</b>\n\n"
+        history_text = BALANCE_HISTORY_HEADER
         for record in records:
             amount = record["amount"]
             payment_system = record["payment_system"]
@@ -216,7 +224,7 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery):
     if INLINE_MODE:
         builder.button(text="👥 Пригласить друга", switch_inline_query="invite")
     else:
-        invite_text = f"\nПриглашаю тебя пользоваться действительно быстрым VPN вместе:\n\n{referral_link}"
+        invite_text = INVITE_TEXT_NON_INLINE.format(referral_link=referral_link)
         builder.button(text="👥 Пригласить друга", switch_inline_query=invite_text)
     builder.button(text="👤 Личный кабинет", callback_data="profile")
     builder.adjust(1)
