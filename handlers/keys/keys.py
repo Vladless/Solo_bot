@@ -26,7 +26,7 @@ from config import (
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
-    TOGGLE_CLIENT
+    TOGGLE_CLIENT,
 )
 
 from bot import bot
@@ -146,10 +146,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             is_frozen = record["is_frozen"]
 
             if is_frozen:
-                response_message = (
-                    "Подписка заморожена.\n"
-                    "Дата истечения будет обновлена после разморозки."
-                )
+                response_message = "Подписка заморожена.\nДата истечения будет обновлена после разморозки."
 
                 builder = InlineKeyboardBuilder()
                 builder.row(
@@ -174,7 +171,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     reply_markup=keyboard,
                     media_path=image_path,
                 )
-            
+
             else:
                 key = record["key"]
                 expiry_time = record["expiry_time"]
@@ -185,17 +182,13 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 time_left = expiry_date - current_date
 
                 if time_left.total_seconds() <= 0:
-                    days_left_message = (
-                        "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
-                    )
+                    days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
                 else:
                     total_seconds = int(time_left.total_seconds())
                     days = total_seconds // 86400
                     hours = (total_seconds % 86400) // 3600
                     minutes = (total_seconds % 3600) // 60
-                    days_left_message = (
-                        f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
-                    )
+                    days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
 
                 formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
                 response_message = key_message(
@@ -245,18 +238,12 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     )
                 else:
                     builder.row(
-                        InlineKeyboardButton(
-                            text="⏳ Продлить подписку",
-                            callback_data=f"renew_key|{key_name}"
-                        )
+                        InlineKeyboardButton(text="⏳ Продлить подписку", callback_data=f"renew_key|{key_name}")
                     )
 
                 if USE_COUNTRY_SELECTION:
                     builder.row(
-                        InlineKeyboardButton(
-                            text="🌍 Сменить локацию",
-                            callback_data=f"change_location|{key_name}"
-                        )
+                        InlineKeyboardButton(text="🌍 Сменить локацию", callback_data=f"change_location|{key_name}")
                     )
 
                 if TOGGLE_CLIENT:
@@ -297,8 +284,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
 async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     confirm_text = (
-        "Хотите включить (разморозить) подписку?\n\n"
-        "После включения доступа трафик и время снова начнут расходоваться."
+        "Хотите включить (разморозить) подписку?\n\nПосле включения доступа трафик и время снова начнут расходоваться."
     )
 
     builder = InlineKeyboardBuilder()
@@ -356,7 +342,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 """,
                 new_expiry_time,
                 record["tg_id"],
-                client_id
+                client_id,
             )
 
             await renew_key_in_cluster(
@@ -364,16 +350,11 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 email=email,
                 client_id=client_id,
                 new_expiry_time=new_expiry_time,
-                total_gb=TOTAL_GB
+                total_gb=TOTAL_GB,
             )
-            text_ok = (
-                "✅ Подписка успешно включена.\n\n"
-                "Теперь трафик и время подписки будут расходоваться."
-            )
+            text_ok = "✅ Подписка успешно включена.\n\nТеперь трафик и время подписки будут расходоваться."
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
-            )
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_ok,
@@ -381,13 +362,10 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
             )
         else:
             text_error = (
-                "Произошла ошибка при включении подписки.\n"
-                f"Детали: {result.get('error') or result.get('results')}"
+                f"Произошла ошибка при включении подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
-            )
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_error,
@@ -455,7 +433,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
             now_ms = int(time.time() * 1000)
             time_left = record["expiry_time"] - now_ms
             if time_left < 0:
-                time_left = 0 
+                time_left = 0
 
             update_result = await session.execute(
                 """
@@ -467,7 +445,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
                 """,
                 time_left,
                 record["tg_id"],
-                client_id
+                client_id,
             )
 
             text_ok = (
@@ -475,9 +453,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
                 "Чтобы включить обратно, зайдите в меню ключа и нажмите «Включить подписку»."
             )
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
-            )
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_ok,
@@ -485,13 +461,10 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
             )
         else:
             text_error = (
-                "Произошла ошибка при заморозке подписки.\n"
-                f"Детали: {result.get('error') or result.get('results')}"
+                f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
-            )
+            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_error,

@@ -60,10 +60,7 @@ async def notify_admin(server_name: str, status: str, down_duration: timedelta =
         )
     else:
         downtime = str(down_duration).split(".")[0]
-        message = (
-            f"✅ <b>Сервер '{server_name}' снова в сети!</b>\n\n"
-            f"⏳ Время простоя: {downtime}."
-        )
+        message = f"✅ <b>Сервер '{server_name}' снова в сети!</b>\n\n⏳ Время простоя: {downtime}."
 
     for admin_id in ADMIN_ID:
         logger.info(f"📨 Отправляем уведомление '{status}' администратору {admin_id} о сервере {server_name}")
@@ -119,11 +116,13 @@ async def check_servers():
 
                 if last_ping_time is None:
                     last_ping_times[server_name] = current_time
-                    last_down_times[server_name] = current_time 
+                    last_down_times[server_name] = current_time
 
                 if last_ping_time and (current_time - last_ping_time > timedelta(seconds=PING_TIME * 3)):
                     if server_name not in notified_servers:
-                        logger.warning(f"🚨 Уведомление: сервер {server_name} не отвечает более {PING_TIME * 3} секунд!")
+                        logger.warning(
+                            f"🚨 Уведомление: сервер {server_name} не отвечает более {PING_TIME * 3} секунд!"
+                        )
                         await notify_admin(server_name, "down")
                         notified_servers.add(server_name)
                         last_down_times[server_name] = current_time

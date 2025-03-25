@@ -733,9 +733,10 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
 
     await callback_query.message.edit_text(
         text="⚠ Вы уверены, что хотите восстановить пробники для пользователей? \n\n"
-             "Только для тех, у кого нет активной подписки!",
-        reply_markup=builder.as_markup()
+        "Только для тех, у кого нет активной подписки!",
+        reply_markup=builder.as_markup(),
     )
+
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "confirm_restore_trials"), IsAdminFilter())
 async def restore_trials(callback_query: types.CallbackQuery, session: Any):
@@ -759,15 +760,13 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
 
     await callback_query.message.edit_text(
         text="✅ Пробники успешно восстановлены для пользователей, у которых нет активных подписок.",
-        reply_markup=builder.as_markup()
+        reply_markup=builder.as_markup(),
     )
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_export_referrals"), IsAdminFilter())
 async def handle_users_export_referrals(
-    callback_query: types.CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    session: Any
+    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, session: Any
 ):
     """
     Обработчик: получает tg_id реферера из callback_data,
@@ -783,6 +782,5 @@ async def handle_users_export_referrals(
         return
 
     await callback_query.message.answer_document(
-        document=csv_file,
-        caption=f"Список рефералов для пользователя {referrer_tg_id}."
+        document=csv_file, caption=f"Список рефералов для пользователя {referrer_tg_id}."
     )
