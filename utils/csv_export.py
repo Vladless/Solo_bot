@@ -1,6 +1,7 @@
+import csv
+
 from io import StringIO
 from typing import Any
-import csv
 
 from aiogram.types import BufferedInputFile
 
@@ -115,14 +116,14 @@ async def export_referrals_csv(referrer_tg_id: int, session: Any) -> BufferedInp
         WHERE r.referrer_tg_id = $1
         ORDER BY r.referred_tg_id
         """,
-        referrer_tg_id
+        referrer_tg_id,
     )
 
     if not rows:
         return None
 
     output = StringIO()
-    writer = csv.writer(output, delimiter=';')
+    writer = csv.writer(output, delimiter=";")
     writer.writerow(["Приглашённый (tg_id)", "Имя"])
 
     for row in rows:

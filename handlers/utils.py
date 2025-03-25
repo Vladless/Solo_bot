@@ -66,7 +66,7 @@ async def get_least_loaded_cluster() -> str:
     """
     servers = await get_servers()
     server_to_cluster = {}
-    cluster_loads = {cluster: 0 for cluster in servers.keys()}
+    cluster_loads = dict.fromkeys(servers.keys(), 0)
     for cluster_name, cluster_servers in servers.items():
         for server in cluster_servers:
             server_to_cluster[server["server_name"]] = cluster_name

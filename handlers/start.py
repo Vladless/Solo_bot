@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -32,16 +33,16 @@ from database import (
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
 from handlers.texts import (
+    COUPON_SUCCESS_MSG,
+    GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
+    NEW_REFERRAL_NOTIFICATION,
+    NOT_SUBSCRIBED_YET_MSG,
+    REFERRAL_SUCCESS_MSG,
+    SUBSCRIPTION_CHECK_ERROR_MSG,
+    SUBSCRIPTION_CONFIRMED_MSG,
+    SUBSCRIPTION_REQUIRED_MSG,
     WELCOME_TEXT,
     get_about_vpn,
-    SUBSCRIPTION_REQUIRED_MSG,
-    NOT_SUBSCRIBED_YET_MSG,
-    SUBSCRIPTION_CONFIRMED_MSG,
-    SUBSCRIPTION_CHECK_ERROR_MSG,
-    GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
-    REFERRAL_SUCCESS_MSG,
-    NEW_REFERRAL_NOTIFICATION,
-    COUPON_SUCCESS_MSG,
 )
 from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
@@ -274,8 +275,7 @@ async def process_start_logic(
                     await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
                     try:
                         await bot.send_message(
-                            referrer_tg_id, 
-                            NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
+                            referrer_tg_id, NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
                         )
                         logger.info(
                             f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}"

@@ -9,7 +9,9 @@ from config import (
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
 )
+
 from handlers.texts import PAYMENT_METHODS_MSG
+
 from .utils import edit_or_send_message
 
 

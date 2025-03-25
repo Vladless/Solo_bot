@@ -41,12 +41,12 @@ from handlers.buttons.profile import (
     PAYMENT,
 )
 from handlers.texts import (
+    BALANCE_HISTORY_HEADER,
+    BALANCE_MANAGEMENT_TEXT,
+    INVITE_TEXT_NON_INLINE,
     get_referral_link,
     invite_message_send,
     profile_message_send,
-    BALANCE_MANAGEMENT_TEXT,
-    BALANCE_HISTORY_HEADER,
-    INVITE_TEXT_NON_INLINE
 )
 from keyboards.admin.panel_kb import AdminPanelCallback
 from logger import logger
