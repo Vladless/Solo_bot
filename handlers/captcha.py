@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import CAPTCHA_EMOJIS
-
+from handlers.texts import CAPTCHA_PROMPT_MSG
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -37,7 +37,7 @@ async def generate_captcha(message: Message, state: FSMContext):
     builder.adjust(2, 2)
 
     return {
-        "text": f"🔒 Для подтверждения, что вы не робот, выберите кнопку с {correct_text}",
+        "text": CAPTCHA_PROMPT_MSG.format(correct_text=correct_text),
         "markup": builder.as_markup(),
     }
 

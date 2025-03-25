@@ -1,7 +1,5 @@
 import asyncio
-
 from datetime import datetime, timedelta
-
 import asyncpg
 import pytz
 
@@ -19,7 +17,6 @@ from config import (
     TRIAL_TIME_DISABLE,
     NOTIFY_INACTIVE_TRAFFIC
 )
-
 from database import (
     add_notification,
     check_notification_time,
@@ -31,18 +28,25 @@ from database import (
     update_key_expiry,
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
-from handlers.texts import KEY_EXPIRY_10H, KEY_EXPIRY_24H, KEY_RENEWED
+from handlers.texts import (
+    KEY_EXPIRY_10H,
+    KEY_EXPIRY_24H,
+    KEY_RENEWED,
+    KEY_RENEWED_TEMP_MSG,
+    KEY_DELETED_MSG,
+    KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG,
+    KEY_EXPIRED_DELAY_HOURS_MSG,
+    KEY_EXPIRED_DELAY_MINUTES_MSG,
+    KEY_EXPIRED_NO_DELAY_MSG,
+)
 from keyboards.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
 from logger import logger
-
 from .notify_utils import send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
-
 
 router = Router()
 
 moscow_tz = pytz.timezone("Europe/Moscow")
-
 
 async def periodic_notifications(bot: Bot):
     """
@@ -94,7 +98,6 @@ async def periodic_notifications(bot: Bot):
 
         await asyncio.sleep(NOTIFICATION_TIME)
 
-
 async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, threshold_time_24h: int, keys: list):
     logger.info("Начало проверки подписок, истекающих через 24 часа.")
 
@@ -145,7 +148,6 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
     logger.info("✅ Обработка всех уведомлений за 24 часа завершена.")
     await asyncio.sleep(1)
-
 
 async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, threshold_time_10h: int, keys: list):
     """
@@ -206,7 +208,6 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
     logger.info("✅ Обработка всех уведомлений за 10 часов завершена.")
     await asyncio.sleep(1)
 
-
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, keys: list):
     """
     Обрабатывает истекшие ключи, проверяя продление или удаление.
@@ -242,7 +243,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             if balance >= renewal_cost:
                 try:
                     await process_auto_renew_or_notify(
-                        bot, conn, key, notification_id, 1, "notify_expired.jpg", "Ваш ключ продлён!"
+                        bot, conn, key, notification_id, 1, "notify_expired.jpg", KEY_RENEWED_TEMP_MSG
                     )
                 except Exception as e:
                     logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {e}")
@@ -271,10 +272,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                             bot,
                             tg_id,
                             "notify_expired.jpg",
-                            (
-                                f"Ваша подписка {email} была удалена, так как вы не продлили её действие.\n\n"
-                                "Перейдите в личный кабинет и получите новую!"
-                            ),
+                            KEY_DELETED_MSG.format(email=email),
                             keyboard,
                         )
                         logger.info(f"📢 Отправлено уведомление об удалении подписки {email} пользователю {tg_id}.")
@@ -293,14 +291,15 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
                 if hours > 0:
                     if minutes > 0:
-                        delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {hours} час{'а' if hours == 1 else 'ов'} и {minutes} минут."
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
+                            email=email, hours=hours, minutes=minutes
+                        )
                     else:
-                        delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {hours} час{'а' if hours == 1 else 'ов'}."
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(email=email, hours=hours)
                 else:
-                    delay_message = f"⚠️ Ваша подписка {email} истекла.\n\nЕсли вы не продлите её, она будет удалена через {NOTIFY_DELETE_DELAY} минут."
-
+                    delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(email=email, minutes=NOTIFY_DELETE_DELAY)
             else:
-                delay_message = f"⚠ Ваша подписка {email} истекла!\n\nПродлите доступ, чтобы возобновить услуги."
+                delay_message = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
 
             try:
                 await send_notification(
@@ -319,7 +318,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
     logger.info("✅ Обработка истекших ключей завершена.")
     await asyncio.sleep(1)
-
 
 async def process_auto_renew_or_notify(
     bot, conn, key: dict, notification_id: str, renewal_period_months: int, standard_photo: str, standard_caption: str
@@ -341,7 +339,6 @@ async def process_auto_renew_or_notify(
             return
 
         balance = await get_balance(tg_id)
-
     except Exception as e:
         logger.error(f"Ошибка получения данных для пользователя {tg_id}: {e}")
         return
@@ -384,12 +381,10 @@ async def process_auto_renew_or_notify(
 
             keyboard = build_notification_expired_kb()
             await send_notification(bot, tg_id, "notify_expired.jpg", renewed_message, keyboard)
-
         except KeyError as e:
             logger.error(f"❌ Ошибка форматирования сообщения KEY_RENEWED: отсутствует ключ {e}")
         except Exception as e:
             logger.error(f"❌ Ошибка при продлении ключа {client_id} для пользователя {tg_id}: {e}")
-
     else:
         keyboard = build_notification_kb(email)
         await send_notification(bot, tg_id, standard_photo, standard_caption, keyboard)

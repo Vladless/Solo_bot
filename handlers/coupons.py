@@ -13,7 +13,12 @@ from database import (
     update_balance,
     update_coupon_usage_count,
 )
-
+from handlers.texts import (
+    COUPON_INPUT_PROMPT,
+    COUPON_NOT_FOUND_MSG,
+    COUPON_ALREADY_USED_MSG,
+    COUPON_ACTIVATED_SUCCESS_MSG,
+)
 from .utils import edit_or_send_message
 
 
@@ -37,8 +42,7 @@ async def handle_activate_coupon(callback_query_or_message: Message | CallbackQu
 
     await edit_or_send_message(
         target_message=target_message,
-        text="<b>🎫 Введите код купона:</b>\n\n"
-        "📝 Пожалуйста, введите действующий код купона, который вы хотите активировать. 🔑",
+        text=COUPON_INPUT_PROMPT,
         reply_markup=builder.as_markup(),
         media_path=None,
     )
@@ -61,12 +65,12 @@ async def activate_coupon(user_id: int, coupon_code: str, session: Any):
     coupon_record = await get_coupon_by_code(coupon_code, session)
 
     if not coupon_record:
-        return "<b>❌ Купон не найден</b> 🚫 или его использование ограничено. 🔒 Пожалуйста, проверьте код и попробуйте снова. 🔍"
+        return COUPON_NOT_FOUND_MSG
 
     usage_exists = await check_coupon_usage(coupon_record["id"], user_id, session)
 
     if usage_exists:
-        return "<b>❌ Вы уже активировали этот купон.</b> 🚫 Купоны могут быть активированы только один раз. 🔒"
+        return COUPON_ALREADY_USED_MSG
 
     coupon_amount = coupon_record["amount"]
 
@@ -74,4 +78,4 @@ async def activate_coupon(user_id: int, coupon_code: str, session: Any):
     await create_coupon_usage(coupon_record["id"], user_id, session)
 
     await update_balance(user_id, coupon_amount, session)
-    return f"<b>✅ Купон успешно активирован! 🎉</b>\n\nНа ваш баланс добавлено <b>{coupon_amount} рублей</b> 💰."
+    return COUPON_ACTIVATED_SUCCESS_MSG.format(coupon_amount=coupon_amount)

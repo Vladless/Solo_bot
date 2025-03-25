@@ -65,6 +65,15 @@ from handlers.texts import (
     SUBSCRIPTION_DESCRIPTION,
     SUCCESS_RENEWAL_MSG,
     key_message,
+    NO_SUBSCRIPTIONS_MSG,
+    FROZEN_SUBSCRIPTION_MSG,
+    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    SUBSCRIPTION_UNFROZEN_MSG,
+    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    SUBSCRIPTION_FROZEN_MSG,
+    DELETE_KEY_CONFIRM_MSG,
+    KEY_DELETED_MSG_SIMPLE,
+    INSUFFICIENT_FUNDS_RENEWAL_MSG,
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
@@ -123,11 +132,8 @@ def build_keys_response(records):
             response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
 
         response_message += "</blockquote>\n"
-
     else:
-        response_message = (
-            "<b>🔑 У вас пока нет подписок.</b>\n\nВы можете создать новую подписку для подключения устройств."
-        )
+        response_message = NO_SUBSCRIPTIONS_MSG
 
     builder.row(InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key"))
     builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
@@ -146,10 +152,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             is_frozen = record["is_frozen"]
 
             if is_frozen:
-                response_message = (
-                    "Подписка заморожена.\n"
-                    "Дата истечения будет обновлена после разморозки."
-                )
+                response_message = FROZEN_SUBSCRIPTION_MSG
 
                 builder = InlineKeyboardBuilder()
                 builder.row(
@@ -296,11 +299,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
 @router.callback_query(F.data.startswith("unfreeze_subscription|"))
 async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    confirm_text = (
-        "Хотите включить (разморозить) подписку?\n\n"
-        "После включения доступа трафик и время снова начнут расходоваться."
-    )
-
+    confirm_text = UNFREEZE_SUBSCRIPTION_CONFIRM_MSG
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
@@ -366,10 +365,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 new_expiry_time=new_expiry_time,
                 total_gb=TOTAL_GB
             )
-            text_ok = (
-                "✅ Подписка успешно включена.\n\n"
-                "Теперь трафик и время подписки будут расходоваться."
-            )
+            text_ok = SUBSCRIPTION_UNFROZEN_MSG
             builder = InlineKeyboardBuilder()
             builder.row(
                 InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
@@ -406,11 +402,7 @@ async def process_callback_freeze_subscription(callback_query: CallbackQuery, se
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
-    confirm_text = (
-        "Вы можете заморозить (отключить) свою подписку на любой удобный срок, если временно не будете "
-        "пользоваться VPN. Включить обратно можно будет в этом же меню.\n\n"
-        "<b>Вы уверены, что хотите заморозить подписку?</b>"
-    )
+    confirm_text = FREEZE_SUBSCRIPTION_CONFIRM_MSG
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -470,10 +462,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
                 client_id
             )
 
-            text_ok = (
-                "✅ Подписка успешно заморожена.\n\n"
-                "Чтобы включить обратно, зайдите в меню ключа и нажмите «Включить подписку»."
-            )
+            text_ok = SUBSCRIPTION_FROZEN_MSG
             builder = InlineKeyboardBuilder()
             builder.row(
                 InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}")
@@ -579,15 +568,59 @@ async def process_callback_delete_key(callback_query: CallbackQuery):
 
         if callback_query.message.caption:
             await callback_query.message.edit_caption(
-                caption="<b>Вы уверены, что хотите удалить ключ?</b>", reply_markup=confirmation_keyboard
+                caption=DELETE_KEY_CONFIRM_MSG,
+                reply_markup=confirmation_keyboard
             )
         else:
             await callback_query.message.edit_text(
-                text="<b>Вы уверены, что хотите удалить ключ?</b>", reply_markup=confirmation_keyboard
+                text=DELETE_KEY_CONFIRM_MSG,
+                reply_markup=confirmation_keyboard
             )
 
     except Exception as e:
         logger.error(f"Ошибка при обработке запроса на удаление ключа {client_id}: {e}")
+
+
+@router.callback_query(F.data.startswith("confirm_delete|"))
+async def process_callback_confirm_delete(callback_query: CallbackQuery, session: Any):
+    email = callback_query.data.split("|")[1]
+    try:
+        record = await get_key_details(email, session)
+        if record:
+            client_id = record["client_id"]
+            response_message = KEY_DELETED_MSG_SIMPLE
+            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+
+            await delete_key(client_id, session)
+
+            await edit_or_send_message(
+                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
+            )
+
+            servers = await get_servers(session)
+
+            async def delete_key_from_servers():
+                try:  # lol
+                    tasks = []
+                    for cluster_id, _cluster in servers.items():
+                        tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                except Exception as e:
+                    logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
+
+            asyncio.create_task(delete_key_from_servers())
+
+            await delete_key(client_id, session)
+        else:
+            response_message = "Ключ не найден или уже удален."
+            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
+            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
+            await edit_or_send_message(
+                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
+            )
+    except Exception as e:
+        logger.error(e)
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
@@ -633,48 +666,6 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
             )
         else:
             await callback_query.message.answer("<b>Ключ не найден.</b>")
-    except Exception as e:
-        logger.error(e)
-
-
-@router.callback_query(F.data.startswith("confirm_delete|"))
-async def process_callback_confirm_delete(callback_query: CallbackQuery, session: Any):
-    email = callback_query.data.split("|")[1]
-    try:
-        record = await get_key_details(email, session)
-        if record:
-            client_id = record["client_id"]
-            response_message = "Ключ успешно удален."
-            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-
-            await delete_key(client_id, session)
-
-            await edit_or_send_message(
-                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
-            )
-
-            servers = await get_servers(session)
-
-            async def delete_key_from_servers():
-                try:  # lol
-                    tasks = []
-                    for cluster_id, _cluster in servers.items():
-                        tasks.append(delete_key_from_cluster(cluster_id, email, client_id))
-                    await asyncio.gather(*tasks, return_exceptions=True)
-                except Exception as e:
-                    logger.error(f"Ошибка при удалении ключа {client_id}: {e}")
-
-            asyncio.create_task(delete_key_from_servers())
-
-            await delete_key(client_id, session)
-        else:
-            response_message = "Ключ не найден или уже удален."
-            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
-            keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
-            await edit_or_send_message(
-                target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
-            )
     except Exception as e:
         logger.error(e)
 
@@ -740,7 +731,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
 
                     await edit_or_send_message(
                         target_message=callback_query.message,
-                        text=f"💳 Недостаточно средств. Пополните баланс на {required_amount}₽.",
+                        text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(required_amount=required_amount),
                         reply_markup=builder.as_markup(),
                         media_path=None,
                     )
