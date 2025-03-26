@@ -75,10 +75,16 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
 router = Router()
+
+
+class RenameKeyState(StatesGroup):
+    waiting_for_new_alias = State()
 
 
 @router.callback_query(F.data == "view_keys")
@@ -112,21 +118,24 @@ def build_keys_response(records):
     if records:
         response_message = "<b>🔑 Список ваших подписок:</b>\n\n<blockquote>"
         for record in records:
-            key_name = record["email"]
+            alias = record.get("alias")
+            email = record["email"]
+            client_id = record["client_id"]
             expiry_time = record.get("expiry_time")
+
+            key_display = alias.strip() if alias else email
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
                 formatted_date_full = expiry_date_full.strftime("до %d.%m.%y, %H:%M")
-                formatted_date_short = expiry_date_full.strftime("до %d.%m.%y")
             else:
                 formatted_date_full = "без срока действия"
-                formatted_date_short = "без срока действия"
 
-            button_text = f"🔑{key_name} ({formatted_date_short})"
-            builder.row(InlineKeyboardButton(text=button_text, callback_data=f"view_key|{key_name}"))
+            key_button = InlineKeyboardButton(text=f"🔑 {key_display}", callback_data=f"view_key|{email}")
+            rename_button = InlineKeyboardButton(text="✏️", callback_data=f"rename_key|{client_id}")
+            builder.row(key_button, rename_button)
 
-            response_message += f"• <b>{key_name}</b> ({formatted_date_full})\n"
+            response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
 
         response_message += "</blockquote>\n"
     else:
@@ -137,6 +146,47 @@ def build_keys_response(records):
 
     inline_keyboard = builder.as_markup()
     return inline_keyboard, response_message
+
+
+@router.callback_query(F.data.startswith("rename_key|"))
+async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
+    client_id = callback.data.split("|")[1]
+    await state.set_state(RenameKeyState.waiting_for_new_alias)
+
+    await state.update_data(client_id=client_id, target_message=callback.message)
+
+    await edit_or_send_message(
+        target_message=callback.message,
+        text="✏️ Введите новое имя подписки (до 10 символов):",
+        reply_markup=None
+    )
+
+
+@router.message(F.text, RenameKeyState.waiting_for_new_alias)
+async def handle_new_alias_input(message: Message, state: FSMContext, session: Any):
+    alias = message.text.strip()
+
+    if len(alias) > 10:
+        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.")
+        return
+
+    data = await state.get_data()
+    client_id = data.get("client_id")
+
+    try:
+        await session.execute(
+            "UPDATE keys SET alias = $1 WHERE tg_id = $2 AND client_id = $3",
+            alias,
+            message.chat.id,
+            client_id,
+        )
+    except Exception as e:
+        await message.answer("❌ Не удалось переименовать подписку.")
+        logger.error(f"Ошибка при обновлении alias: {e}")
+    finally:
+        await state.clear()
+
+    await process_callback_or_message_view_keys(message, session)
 
 
 @router.callback_query(F.data.startswith("view_key|"))

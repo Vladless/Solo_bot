@@ -62,12 +62,10 @@ async def init_db(file_path: str = "assets/schema.sql"):
     with open(file_path) as file:
         sql_content = file.read()
 
-    statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
     conn = await asyncpg.connect(DATABASE_URL)
 
     try:
-        for statement in statements:
-            await conn.execute(statement)
+        await conn.execute(sql_content)
     except Exception as e:
         logger.error(f"Error while executing SQL statement: {e}")
     finally:

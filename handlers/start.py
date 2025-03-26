@@ -47,6 +47,7 @@ from handlers.texts import (
 from logger import logger
 from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
+from handlers.profile import process_callback_view_profile
 
 router = Router()
 
@@ -112,191 +113,135 @@ async def process_start_logic(
     text = text_to_process if text_to_process is not None else message.text
     if text:
         try:
-            connection_exists = await check_connection_exists(message.chat.id)
-            logger.info(f"Проверка существования подключения: {connection_exists}")
-
-            if not connection_exists:
-                await add_connection(tg_id=message.chat.id, session=session)
-                logger.info(f"Пользователь {message.chat.id} успешно добавлен в базу данных.")
-
             if "coupons_" in text:
                 logger.info(f"Обнаружена ссылка на купон: {text}")
                 coupon_code = text.split("coupons_")[1].strip()
-                logger.info(f"Пользователь {message.chat.id} ввёл купон: {coupon_code}")
 
                 coupon = await session.fetchrow(
                     "SELECT id, code, amount, usage_limit, usage_count, is_used FROM coupons WHERE code = $1",
                     coupon_code,
                 )
-                if coupon is None:
-                    logger.warning(f"Купон {coupon_code} не найден.")
+                if not coupon:
                     await message.answer("❌ Купон не найден!")
                     return await show_start_menu(message, admin, session)
 
                 usage_exists = await session.fetchval(
                     "SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
-                    coupon["id"],
-                    message.chat.id,
+                    coupon["id"], message.chat.id,
                 )
                 if usage_exists:
-                    logger.info(f"Пользователь {message.chat.id} уже активировал купон {coupon_code}.")
                     await message.answer("❌ Вы уже использовали этот купон!")
                     return await show_start_menu(message, admin, session)
 
                 if coupon["is_used"] or coupon["usage_count"] >= coupon["usage_limit"]:
-                    logger.info(f"Купон {coupon_code} уже использован или исчерпан.")
                     await message.answer("❌ Этот купон уже использован!")
                     return await show_start_menu(message, admin, session)
 
                 await update_balance(message.chat.id, coupon["amount"])
-                logger.info(f"Начислено {coupon['amount']} единиц для пользователя {message.chat.id}")
-
-                new_usage_count = coupon["usage_count"] + 1
-                is_used = new_usage_count >= coupon["usage_limit"]
-
                 await session.execute(
                     "UPDATE coupons SET usage_count = $1, is_used = $2 WHERE code = $3",
-                    new_usage_count,
-                    is_used,
+                    coupon["usage_count"] + 1,
+                    coupon["usage_count"] + 1 >= coupon["usage_limit"],
                     coupon_code,
                 )
-
                 await session.execute(
                     "INSERT INTO coupon_usages (coupon_id, user_id, used_at) VALUES ($1, $2, NOW())",
-                    coupon["id"],
-                    message.chat.id,
-                )
-
-                logger.info(
-                    f"Купон {coupon_code} успешно использован пользователем {message.chat.id}, начислено {coupon['amount']} RUB."
+                    coupon["id"], message.chat.id,
                 )
                 await message.answer(COUPON_SUCCESS_MSG.format(amount=coupon["amount"]))
                 return await show_start_menu(message, admin, session)
 
             if "gift_" in text:
-                logger.info(f"Обнаружена ссылка на подарок: {text}")
                 parts = text.split("gift_")[1].split("_")
                 if len(parts) < 2:
-                    logger.error("Неверный формат ссылки на подарок: недостаточно частей после 'gift_'")
                     await message.answer("❌ Неверный формат ссылки на подарок.")
                     return await show_start_menu(message, admin, session)
                 gift_id = parts[0]
-                recipient_tg_id = message.chat.id
-
                 gift_info = await session.fetchrow(
-                    """
-                    SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id 
-                    FROM gifts WHERE gift_id = $1
-                    """,
+                    "SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id FROM gifts WHERE gift_id = $1",
                     gift_id,
                 )
-
-                if gift_info is None:
-                    logger.warning(f"Подарок с ID {gift_id} уже был использован или не существует.")
+                if not gift_info:
                     await message.answer(GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG)
                     return await show_start_menu(message, admin, session)
 
                 if gift_info["is_used"]:
-                    logger.warning(f"Подарок с ID {gift_id} уже был активирован ранее.")
                     await message.answer("Этот подарок уже был использован.")
                     return await show_start_menu(message, admin, session)
 
-                if gift_info["sender_tg_id"] == recipient_tg_id:
-                    logger.warning(f"Пользователь {recipient_tg_id} попытался активировать свой же подарок.")
+                if gift_info["sender_tg_id"] == message.chat.id:
                     await message.answer("❌ Вы не можете получить подарок от самого себя.")
                     return await show_start_menu(message, admin, session)
 
-                if gift_info["recipient_tg_id"] is not None:
-                    logger.warning(
-                        f"Подарок {gift_id} уже привязан к другому пользователю ({gift_info['recipient_tg_id']})."
-                    )
+                if gift_info["recipient_tg_id"]:
                     await message.answer("❌ Этот подарок уже был активирован другим пользователем.")
                     return await show_start_menu(message, admin, session)
 
-                if not connection_exists:
-                    await add_referral(recipient_tg_id, gift_info["sender_tg_id"], session)
-                    logger.info(
-                        f"Пользователь {recipient_tg_id} теперь является рефералом отправителя {gift_info['sender_tg_id']}."
-                    )
+                await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
 
                 await session.execute(
-                    """
-                    UPDATE connections SET trial = 1 WHERE tg_id = $1
-                    """,
-                    recipient_tg_id,
+                    "UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id
                 )
 
-                selected_months = gift_info["selected_months"]
-                expiry_time = gift_info["expiry_time"].replace(tzinfo=None)
-
-                logger.info(f"Подарок с ID {gift_id} успешно найден для пользователя {recipient_tg_id}.")
-
-                await create_key(recipient_tg_id, expiry_time, state, session, message)
-                logger.info(f"Ключ создан для пользователя {recipient_tg_id} на срок {selected_months} месяцев.")
-
+                await create_key(
+                    message.chat.id,
+                    gift_info["expiry_time"].replace(tzinfo=None),
+                    state,
+                    session,
+                    message,
+                )
                 await session.execute(
-                    """
-                    UPDATE gifts SET is_used = TRUE, recipient_tg_id = $1 
-                    WHERE gift_id = $2
-                    """,
-                    recipient_tg_id,
+                    "UPDATE gifts SET is_used = TRUE, recipient_tg_id = $1 WHERE gift_id = $2",
+                    message.chat.id,
                     gift_id,
                 )
-
                 await message.answer(
-                    f"🎉 Ваш подарок на {selected_months} "
-                    f"{'месяц' if selected_months == 1 else 'месяца' if selected_months in [2, 3, 4] else 'месяцев'} активирован!"
+                    f"🎉 Ваш подарок на {gift_info['selected_months']} "
+                    f"{'месяц' if gift_info['selected_months'] == 1 else 'месяца' if gift_info['selected_months'] in [2, 3, 4] else 'месяцев'} активирован!"
                 )
-                logger.info(f"Подарок на {selected_months} месяцев активирован для пользователя {recipient_tg_id}.")
                 return
 
-            elif "referral_" in text:
+            if "referral_" in text:
                 try:
                     referrer_tg_id = int(text.split("referral_")[1])
-                    if connection_exists:
-                        logger.info(f"Пользователь {message.chat.id} уже зарегистрирован и не может стать рефералом.")
+                    connection_exists_now = await check_connection_exists(message.chat.id)
+                    if connection_exists_now:
                         await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
                         return await show_start_menu(message, admin, session)
-
                     if referrer_tg_id == message.chat.id:
-                        logger.warning(f"Пользователь {message.chat.id} попытался стать рефералом самого себя.")
                         await message.answer("❌ Вы не можете быть рефералом самого себя.")
                         return await show_start_menu(message, admin, session)
-
                     existing_referral = await get_referral_by_referred_id(message.chat.id, session)
                     if existing_referral:
-                        logger.info(f"Реферал с ID {message.chat.id} уже существует.")
                         return await show_start_menu(message, admin, session)
 
                     await add_referral(message.chat.id, referrer_tg_id, session)
-                    logger.info(f"Реферал {message.chat.id} использовал ссылку от пользователя {referrer_tg_id}")
                     await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
                     try:
                         await bot.send_message(
-                            referrer_tg_id, NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id)
-                        )
-                        logger.info(
-                            f"Уведомление отправлено пользователю {referrer_tg_id} о новом реферале {message.chat.id}"
+                            referrer_tg_id,
+                            NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id),
                         )
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
-
                     return await show_start_menu(message, admin, session)
+                except (ValueError, IndexError):
+                    pass
 
-                except (ValueError, IndexError) as e:
-                    logger.error(f"Ошибка при обработке реферальной ссылки: {e}")
-                return
+            logger.info("Пользователь зашел без реферальной ссылки, подарка или купона.")
 
-            else:
-                logger.info(f"Пользователь {message.chat.id} зашел без реферальной ссылки, подарка или купона.")
+        except Exception as e:
+            logger.error(f"Ошибка при обработке текста {message.text} — {e}", exc_info=True)
+            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+            return
 
-            await show_start_menu(message, admin, session)
-
-        except (ValueError, IndexError) as e:
-            logger.error(f"Ошибка при обработке сообщения пользователя {message.chat.id}: {e}")
-            await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте снова.")
+    final_exists = await check_connection_exists(message.chat.id)
+    if final_exists:
+        return await process_callback_view_profile(message, state, admin)
     else:
-        await show_start_menu(message, admin, session)
+        await add_connection(tg_id=message.chat.id, session=session)
+        return await show_start_menu(message, admin, session)
+
 
 
 @router.callback_query(F.data == "check_subscription")
@@ -340,11 +285,11 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
         trial_status = await get_trial(message.chat.id, session)
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
         if trial_status == 0:
-            builder.row(InlineKeyboardButton(text="🔗 Подключить VPN", callback_data="create_key"))
+            builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+#    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     if CHANNEL_EXISTS:
         builder.row(
@@ -373,11 +318,19 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 async def handle_about_vpn(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
-        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
-    builder.row(InlineKeyboardButton(text="📞 Техническая поддержка", url=SUPPORT_CHAT_URL))
+        builder.row(
+            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+        )
+    support_btn = InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL)
     if CHANNEL_EXISTS:
-        builder.row(InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
+        channel_btn = InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)
+        builder.row(support_btn, channel_btn)
+    else:
+        builder.row(support_btn)
+
+    builder.row(
+        InlineKeyboardButton(text="← Назад", callback_data="start")
+    )
     text = get_about_vpn("3.2.3-minor")
 
     await edit_or_send_message(

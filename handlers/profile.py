@@ -98,7 +98,7 @@ async def process_callback_view_profile(
                 InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
             )
 
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
+        builder.row(InlineKeyboardButton(text="💬 О сервисе", callback_data="about_vpn"))
 
         await edit_or_send_message(
             target_message=target_message,
