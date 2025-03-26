@@ -40,7 +40,7 @@ from handlers.texts import (
     KEY_EXPIRED_DELAY_MINUTES_MSG,
     KEY_EXPIRED_NO_DELAY_MSG,
 )
-from keyboards.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
+from handlers.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
 from logger import logger
 from .notify_utils import send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
