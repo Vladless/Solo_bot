@@ -38,6 +38,7 @@ from handlers.buttons.profile import (
     MY_SUBS,
     PAYMENT,
 )
+from handlers.texts import BALANCE_MANAGEMENT_TEXT, BALANCE_HISTORY_HEADER, INVITE_TEXT_NON_INLINE
 from logger import logger
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import profile_message_send, invite_message_send, get_referral_link
