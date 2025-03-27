@@ -1,7 +1,7 @@
 ADD_SUB = "➕ Подписка"
 MY_SUBS = "📱 Мои подписки"
 BALANCE = "💰 Баланс"
-BALANCE_HISTORY = "📊 История пополнения"
+BALANCE_HISTORY = "📊 История пополнений"
 PAYMENT = "💳 Пополнить баланс"
 INVITE = "👥 Пригласить"
 GIFTS = "🎁 Подарить"

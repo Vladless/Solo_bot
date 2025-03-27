@@ -12,7 +12,7 @@ from handlers.payments.yookassa_pay import process_custom_amount_input
 from py3xui import AsyncApi
 
 from bot import bot
-from client import delete_client
+from panels.three_xui import delete_client
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -113,7 +113,7 @@ async def handle_key_creation(
     builder = InlineKeyboardBuilder()
     for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
         discount_text = ""
-        if plan_id in DISCOUNTS:
+        if DISCOUNTS and plan_id in DISCOUNTS:
             discount_percentage = DISCOUNTS[plan_id]
             discount_text = f" ({discount_percentage}% скидка)"
             if index == len(RENEWAL_PRICES) - 1:
