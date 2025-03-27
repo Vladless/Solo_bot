@@ -55,23 +55,49 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
 
     builder.row(
         InlineKeyboardButton(
+            text="🛠 Управление",
+            callback_data=AdminClusterCallback(action="manage_cluster", data=cluster_name).pack(),
+        )
+    )
+
+    builder.row(build_admin_back_btn("clusters"))
+    return builder.as_markup()
+
+
+def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
             text="🌐 Доступность",
             callback_data=AdminClusterCallback(action="availability", data=cluster_name).pack(),
-        ),
+        )
+    )
+    builder.row(
         InlineKeyboardButton(
             text="🔄 Синхронизация",
             callback_data=AdminClusterCallback(action="sync", data=cluster_name).pack(),
-        ),
+        )
     )
-
     builder.row(
         InlineKeyboardButton(
             text="💾 Создать бэкап",
             callback_data=AdminClusterCallback(action="backup", data=cluster_name).pack(),
         )
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="⏳ Добавить время",
+            callback_data=AdminClusterCallback(action="add_time", data=cluster_name).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+        )
+    )
 
-    builder.row(build_admin_back_btn("clusters"))
     return builder.as_markup()
 
 

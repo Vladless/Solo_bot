@@ -9,18 +9,21 @@ from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
-from database import check_unique_server_name, get_servers
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB
+from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_key_on_cluster, create_client_on_server
+from handlers.keys.key_utils import create_key_on_cluster, create_client_on_server, renew_key_in_cluster
 from logger import logger
 from .keyboard import (
     build_clusters_editor_kb,
     build_manage_cluster_kb,
     AdminClusterCallback,
+    AdminServerCallback,
     build_sync_cluster_kb,
+    build_cluster_management_kb
 )
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+import time
 
 router = Router()
 
@@ -31,6 +34,7 @@ class AdminClusterStates(StatesGroup):
     waiting_for_inbound_id = State()
     waiting_for_server_name = State()
     waiting_for_subscription_url = State()
+    waiting_for_days_input = State()
 
 
 @router.callback_query(
@@ -78,7 +82,7 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 
     if len(message.text) > 12:
         await message.answer(
-            text="❌ Имя кластера должно превышать 12 символов! Попробуйте снова.",
+            text="❌ Имя кластера не должно превышать 12 символов! Попробуйте снова.",
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -332,7 +336,7 @@ async def handle_sync(callback_query: types.CallbackQuery, callback_data: AdminC
     servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
 
-    await callback_query.message.answer(
+    await callback_query.message.edit_text(
         text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>",
         reply_markup=build_sync_cluster_kb(cluster_servers, cluster_name),
     )
@@ -352,7 +356,7 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
         keys_to_sync = await session.fetch(query_keys, server_name)
 
         if not keys_to_sync:
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 text=f"❌ Нет ключей для синхронизации в сервере {server_name}.",
                 reply_markup=build_admin_back_kb("clusters"),
             )
@@ -360,7 +364,7 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
 
         text = f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=text,
         )
 
@@ -383,13 +387,13 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
             except Exception as e:
                 logger.error(f"Ошибка при добавлении ключа {key['client_id']} в сервер {server_name}: {e}")
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для сервера {server_name}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей для сервера {server_name}: {e}")
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
         )
 
@@ -407,7 +411,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
         keys_to_sync = await session.fetch(query_keys, cluster_name)
 
         if not keys_to_sync:
-            await callback_query.message.answer(
+            await callback_query.message.edit_text(
                 text=f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
                 reply_markup=build_admin_back_kb("clusters"),
             )
@@ -415,7 +419,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
         text = f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=text,
         )
 
@@ -432,12 +436,99 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
             except Exception as e:
                 logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
 
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
-        await callback_query.message.answer(
+        await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
         )
+
+
+@router.callback_query(AdminServerCallback.filter(F.action == "add"), IsAdminFilter())
+async def handle_add_server(callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
+    cluster_name = callback_data.data
+
+    await state.update_data(cluster_name=cluster_name)
+
+    text = (
+        f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
+        "Рекомендуется указать локацию и номер сервера в имени.\n\n"
+        "<i>Пример:</i> <code>de1</code>, <code>fra1</code>, <code>fi2</code>"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_admin_back_kb("clusters"),
+    )
+
+    await state.set_state(AdminClusterStates.waiting_for_server_name)
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "manage_cluster"), IsAdminFilter())
+async def handle_manage_cluster_menu(callback_query: CallbackQuery, callback_data: AdminClusterCallback):
+    cluster_name = callback_data.data
+
+    await callback_query.message.edit_text(
+        text=f"<b>🛠 Управление кластером {cluster_name}</b>\nВыберите действие:",
+        reply_markup=build_cluster_management_kb(cluster_name),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "add_time"), IsAdminFilter())
+async def handle_add_time(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+    cluster_name = callback_data.data
+    await state.set_state(AdminClusterStates.waiting_for_days_input)
+    await state.update_data(cluster_name=cluster_name)
+
+    await callback_query.message.edit_text(
+        f"⏳ Введите количество дней, на которое хотите продлить все подписки в кластере <b>{cluster_name}</b>:",
+        reply_markup=build_admin_back_kb(f"manage_cluster|{cluster_name}")
+    )
+
+
+@router.message(AdminClusterStates.waiting_for_days_input, IsAdminFilter())
+async def handle_days_input(message: Message, state: FSMContext, session: Any):
+    try:
+        days = int(message.text.strip())
+        if days <= 0:
+            raise ValueError
+
+        user_data = await state.get_data()
+        cluster_name = user_data.get("cluster_name")
+
+        now = int(time.time() * 1000)
+        add_ms = days * 86400 * 1000
+
+        keys = await session.fetch(
+            "SELECT tg_id, client_id, email, expiry_time FROM keys WHERE server_id = $1",
+            cluster_name,
+        )
+
+        if not keys:
+            await message.answer("❌ Нет подписок в этом кластере.")
+            await state.clear()
+            return
+
+        for key in keys:
+            new_expiry = (key["expiry_time"] or now) + add_ms
+            await renew_key_in_cluster(
+                cluster_name,
+                email=key["email"],
+                client_id=key["client_id"],
+                new_expiry_time=new_expiry,
+                total_gb=TOTAL_GB,
+            )
+            await update_key_expiry(key["client_id"], new_expiry, session)
+
+        await message.answer(f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>.")
+    except ValueError:
+        await message.answer("❌ Введите корректное число дней.")
+        return
+    except Exception as e:
+        logger.error(f"Ошибка при добавлении дней: {e}")
+        await message.answer("❌ Произошла ошибка при продлении времени.")
+    finally:
+        await state.clear()
