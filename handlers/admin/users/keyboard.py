@@ -4,7 +4,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES
+from config import RENEWAL_PRICES, TOTAL_GB
 from ..panel.keyboard import build_admin_back_btn
 
 
@@ -26,6 +26,11 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     current_time = datetime.now(tz=timezone.utc)
+
+    builder.button(
+        text="➕ Создать ключ",
+        callback_data=AdminUserEditorCallback(action="users_create_key", tg_id=tg_id).pack(),
+    )
 
     for record in key_records:
         email = record["email"]
@@ -174,6 +179,13 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
         text="📊 Трафик",
         callback_data=AdminUserEditorCallback(action="users_traffic", data=email, tg_id=key_details["tg_id"]).pack(),
     )
+    if TOTAL_GB > 0:
+        builder.button(
+            text="♻️ Сбросить трафик",
+            callback_data=AdminUserEditorCallback(
+                action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
     builder.row(build_editor_back_btn(key_details["tg_id"], True))
     builder.adjust(1)
     return builder.as_markup()

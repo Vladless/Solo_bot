@@ -25,6 +25,8 @@ from config import (
     RENEWAL_PLANS,
     TRIAL_TIME,
     USERNAME_BOT,
+    REFERRAL_BUTTON,
+    GIFT_BUTTON
 )
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
@@ -87,10 +89,15 @@ async def process_callback_view_profile(
         else:
             builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
         builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
-        builder.row(
-            InlineKeyboardButton(text=INVITE, callback_data="invite"),
-            InlineKeyboardButton(text=GIFTS, callback_data="gifts"),
-        )
+
+        row_buttons = []
+        if REFERRAL_BUTTON:
+            row_buttons.append(InlineKeyboardButton(text=INVITE, callback_data="invite"))
+        if GIFT_BUTTON:
+            row_buttons.append(InlineKeyboardButton(text=GIFTS, callback_data="gifts"))
+        if row_buttons:
+            builder.row(*row_buttons)
+
         if INSTRUCTIONS_BUTTON:
             builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
         if admin:

@@ -258,6 +258,20 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             delete_immediately = NOTIFY_DELETE_DELAY == 0
             delete_after_delay = False
 
+            if NOTIFY_DELETE_DELAY > 0 and last_notification_time is not None:
+                minutes_since = (current_time - last_notification_time) / (1000 * 60)
+                if minutes_since >= NOTIFY_DELETE_DELAY / 2 and minutes_since < NOTIFY_DELETE_DELAY:
+                    try:
+                        await conn.execute(
+                            "DELETE FROM notifications WHERE tg_id = $1 AND notification_type = $2",
+                            tg_id,
+                            notification_id,
+                        )
+                        logger.info(f"⛔ Уведомление {notification_id} для {tg_id} удалено (прошло больше половины задержки).")
+                    except Exception as e:
+                        logger.error(f"Ошибка при удалении уведомления: {e}")
+                    continue
+
             if last_notification_time is not None:
                 delete_after_delay = (current_time - last_notification_time) / (1000 * 60) >= NOTIFY_DELETE_DELAY
                 logger.info(

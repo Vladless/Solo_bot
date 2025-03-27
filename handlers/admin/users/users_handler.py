@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -11,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from config import TOTAL_GB
+from config import TOTAL_GB, PUBLIC_LINK, RENEWAL_PRICES
 
 from database import (
     delete_key,
@@ -22,9 +23,10 @@ from database import (
     update_balance,
     update_key_expiry,
     update_trial,
+    store_key
 )
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import delete_key_from_cluster, get_user_traffic, renew_key_in_cluster, update_subscription
+from handlers.keys.key_utils import delete_key_from_cluster, get_user_traffic, renew_key_in_cluster, update_subscription, create_key_on_cluster, reset_traffic_in_cluster
 from handlers.utils import sanitize_key_name
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -43,6 +45,7 @@ from .keyboard import (
 )
 from logger import logger
 from utils.csv_export import export_referrals_csv
+from handlers.utils import generate_random_email
 
 
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
@@ -784,3 +787,125 @@ async def handle_users_export_referrals(
     await callback_query.message.answer_document(
         document=csv_file, caption=f"Список рефералов для пользователя {referrer_tg_id}."
     )
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key"), IsAdminFilter())
+async def handle_create_key_select_cluster(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any):
+    tg_id = callback_data.tg_id
+    await state.update_data(tg_id=tg_id)
+
+    servers = await get_servers(session)
+    cluster_names = list(servers.keys())
+
+    if not cluster_names:
+        await callback_query.message.edit_text("❌ Нет доступных кластеров для создания ключа.", reply_markup=build_editor_kb(tg_id))
+        return
+
+    builder = InlineKeyboardBuilder()
+    for cluster in cluster_names:
+        builder.button(
+            text=f"🌐 {cluster}",
+            callback_data=AdminUserEditorCallback(action="users_create_key_cluster", tg_id=tg_id, data=cluster).pack(),
+        )
+    builder.row(build_admin_back_btn())
+
+    await callback_query.message.edit_text(
+        "🌐 <b>Выберите кластер для создания ключа:</b>",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key_cluster"), IsAdminFilter())
+async def handle_create_key_cluster(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
+    tg_id = callback_data.tg_id
+    cluster_name = callback_data.data
+
+    await state.update_data(tg_id=tg_id, cluster_name=cluster_name)
+
+    builder = InlineKeyboardBuilder()
+    for months, _ in RENEWAL_PRICES.items():
+        builder.button(
+            text=f"{months} мес.",
+            callback_data=f"create_key_duration|{tg_id}|{cluster_name}|{months}"
+        )
+    builder.adjust(1)
+    builder.row(build_admin_back_btn())
+
+    await callback_query.message.edit_text(
+        text=f"🕒 <b>Выберите срок действия ключа для кластера {cluster_name}:</b>",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("create_key_duration|"), IsAdminFilter())
+async def handle_create_key_duration(callback_query: CallbackQuery, session: Any):
+    try:
+        parts = callback_query.data.split("|")
+        tg_id = int(parts[1])
+        cluster_name = parts[2]
+        months = int(parts[3])
+
+        client_id = str(uuid.uuid4())
+        email = generate_random_email()
+        expiry = datetime.now(tz=timezone.utc) + timedelta(days=30 * months)
+        expiry_ms = int(expiry.timestamp() * 1000)
+
+        await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms)
+
+        public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
+        await store_key(
+            tg_id=tg_id,
+            client_id=client_id,
+            email=email,
+            expiry_time=expiry_ms,
+            key=public_link,
+            server_id=cluster_name,
+            session=session,
+        )
+
+        await callback_query.message.edit_text(
+            f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {months} мес.!",
+            reply_markup=build_editor_kb(tg_id)
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при создании ключа: {e}")
+        await callback_query.message.edit_text(
+            "❌ Не удалось создать ключ. Попробуйте позже.",
+            reply_markup=build_editor_kb(tg_id)
+        )
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_reset_traffic"), IsAdminFilter())
+async def handle_reset_traffic(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    record = await session.fetchrow(
+        "SELECT server_id, client_id FROM keys WHERE tg_id = $1 AND email = $2",
+        tg_id,
+        email,
+    )
+
+    if not record:
+        await callback_query.message.edit_text(
+            "❌ Ключ не найден в базе данных.",
+            reply_markup=build_editor_kb(tg_id)
+        )
+        return
+
+    cluster_id = record["server_id"]
+
+    try:
+        await reset_traffic_in_cluster(cluster_id, email)
+        await callback_query.message.edit_text(
+            f"✅ Трафик для ключа <b>{email}</b> успешно сброшен.",
+            reply_markup=build_editor_kb(tg_id)
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при сбросе трафика: {e}")
+        await callback_query.message.edit_text(
+            "❌ Произошла ошибка при сбросе трафика. Попробуйте позже.",
+            reply_markup=build_editor_kb(tg_id)
+        )

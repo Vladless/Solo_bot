@@ -480,3 +480,51 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
     except Exception as e:
         logger.error(f"Ошибка при изменении состояния клиента {email} в кластере {cluster_id}: {e}")
         return {"status": "error", "error": str(e)}
+
+
+async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
+    """
+    Сбрасывает трафик клиента на всех серверах указанного кластера (или конкретного сервера).
+
+    Args:
+        cluster_id (str): ID кластера или имя сервера
+        email (str): Email клиента (будет преобразован в уникальный для SUPERNODE)
+    """
+    try:
+        servers = await get_servers()
+        cluster = servers.get(cluster_id)
+
+        if not cluster:
+            found_servers = []
+            for _, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        found_servers.append(server_info)
+
+            if found_servers:
+                cluster = found_servers
+            else:
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
+
+        tasks = []
+        for server_info in cluster:
+            api_url = server_info["api_url"]
+            inbound_id = server_info.get("inbound_id")
+            server_name = server_info.get("server_name", "unknown")
+
+            if not inbound_id:
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+                continue
+
+            xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+
+            unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
+
+            tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.info(f"✅ Трафик клиента {email} успешно сброшен на всех серверах кластера {cluster_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
+        raise

@@ -29,7 +29,7 @@ async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
     """Запрашивает у администратора новый домен."""
     await state.set_state(AdminManagementStates.waiting_for_new_domain)
     await callback_query.message.edit_text(
-        text="🌐 Введите новый домен (без https://):\nПример: pocomachodomen.ru",
+        text="🌐 Введите новый домен (без https://):\nПример: solobotdomen.ru",
     )
 
 
