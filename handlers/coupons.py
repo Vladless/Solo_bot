@@ -13,6 +13,7 @@ from database import (
     update_balance,
     update_coupon_usage_count,
 )
+from handlers.buttons import MAIN_MENU
 from handlers.texts import (
     COUPON_ACTIVATED_SUCCESS_MSG,
     COUPON_ALREADY_USED_MSG,
@@ -34,7 +35,7 @@ router = Router()
 @router.message(F.text == "/activate_coupon")
 async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if isinstance(callback_query_or_message, CallbackQuery):
         target_message = callback_query_or_message.message
@@ -56,7 +57,7 @@ async def process_coupon_code(message: Message, state: FSMContext, session: Any)
     activation_result = await activate_coupon(message.chat.id, coupon_code, session)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await message.answer(activation_result, reply_markup=builder.as_markup())
     await state.clear()

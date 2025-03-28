@@ -5,7 +5,9 @@ from aiogram.types import CallbackQuery, Message
 
 from bot import version
 from filters.admin import IsAdminFilter
+
 from .keyboard import AdminPanelCallback, build_panel_kb
+
 
 router = Router()
 

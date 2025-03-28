@@ -20,8 +20,8 @@ from config import (
     CHANNEL_REQUIRED,
     CHANNEL_URL,
     DONATIONS_ENABLE,
+    SHOW_START_MENU_ONCE,
     SUPPORT_CHAT_URL,
-    SHOW_START_MENU_ONCE
 )
 from database import (
     add_connection,
@@ -31,8 +31,10 @@ from database import (
     get_trial,
     update_balance,
 )
+from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
+from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     COUPON_SUCCESS_MSG,
     GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
@@ -46,9 +48,10 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
+
 from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
-from handlers.profile import process_callback_view_profile
+
 
 router = Router()
 
@@ -128,7 +131,8 @@ async def process_start_logic(
 
                 usage_exists = await session.fetchval(
                     "SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
-                    coupon["id"], message.chat.id,
+                    coupon["id"],
+                    message.chat.id,
                 )
                 if usage_exists:
                     await message.answer("❌ Вы уже использовали этот купон!")
@@ -147,7 +151,8 @@ async def process_start_logic(
                 )
                 await session.execute(
                     "INSERT INTO coupon_usages (coupon_id, user_id, used_at) VALUES ($1, $2, NOW())",
-                    coupon["id"], message.chat.id,
+                    coupon["id"],
+                    message.chat.id,
                 )
                 await message.answer(COUPON_SUCCESS_MSG.format(amount=coupon["amount"]))
                 return await process_callback_view_profile(message, state, admin)
@@ -188,9 +193,7 @@ async def process_start_logic(
                 if not existing_referral:
                     await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
 
-                await session.execute(
-                    "UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id
-                )
+                await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id)
 
                 await create_key(
                     message.chat.id,
@@ -255,7 +258,6 @@ async def process_start_logic(
         return await show_start_menu(message, admin, session)
 
 
-
 @router.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback_query.from_user.id
@@ -300,24 +302,24 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
             builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
-    
+
     if not SHOW_START_MENU_ONCE:
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if CHANNEL_EXISTS:
         builder.row(
-            InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL),
-            InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL),
+            InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
+            InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL),
         )
     else:
-        builder.row(InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL))
+        builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
 
     if admin:
         builder.row(
             InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
         )
 
-    builder.row(InlineKeyboardButton(text="🌐 О VPN", callback_data="about_vpn"))
+    builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 
     await edit_or_send_message(
         target_message=message,
@@ -331,19 +333,15 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 async def handle_about_vpn(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
-        builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
-        )
-    support_btn = InlineKeyboardButton(text="📞 Поддержка", url=SUPPORT_CHAT_URL)
+        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+    support_btn = InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL)
     if CHANNEL_EXISTS:
-        channel_btn = InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)
+        channel_btn = InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL)
         builder.row(support_btn, channel_btn)
     else:
         builder.row(support_btn)
 
-    builder.row(
-        InlineKeyboardButton(text="← Назад", callback_data="start")
-    )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
     text = get_about_vpn("3.2.3-minor")
 
     await edit_or_send_message(

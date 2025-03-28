@@ -14,11 +14,12 @@ from filters.private import IsPrivateFilter
 from logger import logger
 from middlewares import register_middleware
 
+
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-version = "4.1-beta(12)"
+version = "4.1-beta(28)"
 
 register_middleware(dp)
 

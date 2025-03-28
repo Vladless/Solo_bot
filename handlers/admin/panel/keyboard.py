@@ -4,6 +4,8 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from handlers.buttons import BACK, MAIN_MENU
+
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
     action: str
@@ -28,7 +30,7 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
         InlineKeyboardButton(text="🤖 Управление", callback_data=AdminPanelCallback(action="management").pack()),
     )
-    builder.button(text="Личный кабинет", callback_data="profile")
+    builder.button(text=MAIN_MENU, callback_data="profile")
     builder.adjust(1, 1, 2, 1, 2, 1)
     return builder.as_markup()
 
@@ -42,7 +44,7 @@ def build_restart_kb() -> InlineKeyboardMarkup:
 
 
 def build_admin_back_kb(action: str = "admin") -> InlineKeyboardMarkup:
-    return build_admin_singleton_kb("🔙 Назад", action)
+    return build_admin_singleton_kb(BACK, action)
 
 
 def build_admin_singleton_kb(text: str, action: str) -> InlineKeyboardMarkup:
@@ -52,7 +54,7 @@ def build_admin_singleton_kb(text: str, action: str) -> InlineKeyboardMarkup:
 
 
 def build_admin_back_btn(action: str = "admin") -> InlineKeyboardButton:
-    return build_admin_btn("🔙 Назад", action)
+    return build_admin_btn(BACK, action)
 
 
 def build_admin_btn(text: str, action: str) -> InlineKeyboardButton:

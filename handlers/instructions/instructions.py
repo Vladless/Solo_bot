@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -11,6 +12,15 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CONNECT_MACOS, CONNECT_WINDOWS, SUPPORT_CHAT_URL
 from database import get_key_details
+from handlers.buttons import (
+    BACK,
+    CONNECT_MACOS_BUTTON,
+    CONNECT_WINDOWS_BUTTON,
+    MAIN_MENU,
+    SUPPORT,
+    TV_CONTINUE,
+    TV_INSTRUCTIONS,
+)
 from handlers.texts import (
     CONNECT_TV_TEXT,
     INSTRUCTIONS,
@@ -19,6 +29,7 @@ from handlers.texts import (
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
+
 
 router = Router()
 
@@ -30,8 +41,8 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     image_path = os.path.join("img", "instructions.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if isinstance(callback_query_or_message, CallbackQuery):
         target_message = callback_query_or_message.message
@@ -52,7 +63,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     record = await get_key_details(key_name, session)
     if not record:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         await edit_or_send_message(
             target_message=callback_query.message,
             text="❌ <b>Ключ не найден. Проверьте имя ключа.</b> 🔍",
@@ -66,11 +77,11 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     instruction_message = f"{key_message_text}{INSTRUCTION_PC}"
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💻 Подключить Windows", url=f"{CONNECT_WINDOWS}{key}"))
-    builder.row(InlineKeyboardButton(text="💻 Подключить MacOS", url=f"{CONNECT_MACOS}{key}"))
-    builder.row(InlineKeyboardButton(text="🆘 Поддержка", url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}"))
+    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}"))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -85,9 +96,9 @@ async def process_connect_tv(callback_query: CallbackQuery):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="▶ Продолжить", callback_data=f"continue_tv|{key_name}"))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -107,9 +118,9 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📖 Полная инструкция", url="https://vpn4tv.com/quick-guide.html"))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"connect_tv|{key_name}"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=TV_INSTRUCTIONS, url="https://vpn4tv.com/quick-guide.html"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message, text=message_text, reply_markup=builder.as_markup(), media_path=None

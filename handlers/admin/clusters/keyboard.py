@@ -4,13 +4,15 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from handlers.buttons import BACK
+
 from ..panel.keyboard import build_admin_back_btn
 from ..servers.keyboard import AdminServerCallback
 
 
 class AdminClusterCallback(CallbackData, prefix="admin_cluster"):
     action: str
-    data: Optional[str] = None
+    data: str | None = None
 
 
 def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:

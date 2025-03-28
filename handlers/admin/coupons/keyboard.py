@@ -2,6 +2,8 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from handlers.buttons import BACK
+
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -31,7 +33,7 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
     if current_page > 1:
         pagination_buttons.append(
             InlineKeyboardButton(
-                text="⬅️ Назад",
+                text=BACK,
                 callback_data=AdminPanelCallback(action="coupons_list", page=current_page - 1).pack(),
             )
         )

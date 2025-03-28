@@ -1,13 +1,15 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from asyncpg import Connection
 
 from filters.admin import IsAdminFilter
-from .keyboard import AdminPanelCallback, build_management_kb
 from logger import logger
+
 from ..panel.keyboard import build_admin_back_kb
+from .keyboard import AdminPanelCallback, build_management_kb
+
 
 router = Router()
 

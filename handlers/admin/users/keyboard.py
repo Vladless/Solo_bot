@@ -5,8 +5,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RENEWAL_PRICES, TOTAL_GB
+from database import get_clusters
+from handlers.buttons import BACK
+
 from ..panel.keyboard import build_admin_back_btn
-from database import  get_clusters 
 
 
 class AdminUserEditorCallback(CallbackData, prefix="admin_users"):
@@ -69,7 +71,7 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
 def build_users_balance_change_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="🔙 Назад",  # todo: fix magic text was set
+        text=BACK,  # todo: fix magic text was set
         callback_data=AdminUserEditorCallback(action="users_balance_edit", tg_id=tg_id).pack(),
     )
     return builder.as_markup()
@@ -104,7 +106,7 @@ def build_users_balance_kb(tg_id: int) -> InlineKeyboardMarkup:
 def build_users_key_show_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="🔙 Назад",  # todo: fix magic text was set
+        text=BACK,  # todo: fix magic text was set
         callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email, edit=True).pack(),
     )
     return builder.as_markup()
@@ -133,7 +135,7 @@ def build_users_key_expiry_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
         callback_data=AdminUserKeyEditorCallback(action="set", tg_id=tg_id, data=email).pack(),
     )
     builder.button(
-        text="🔙 Назад",  # todo: fix magic text was set
+        text=BACK,  # todo: fix magic text was set
         callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
     )
     builder.adjust(2, 2, 2, 2, 2, 1)
@@ -154,7 +156,7 @@ def build_user_delete_kb(tg_id: int):
 def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="🔙 Назад", callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack()
+        text=BACK, callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack()
     )
     builder.adjust(1)
     return builder.as_markup()
@@ -206,7 +208,7 @@ def build_key_delete_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
 
 
 def build_editor_kb(tg_id: int, edit: bool = False) -> InlineKeyboardMarkup:
-    return build_editor_singleton_kb("🔙 Назад", tg_id, edit)
+    return build_editor_singleton_kb(BACK, tg_id, edit)
 
 
 def build_editor_singleton_kb(text: str, tg_id: int, edit: bool = False) -> InlineKeyboardMarkup:
@@ -216,7 +218,7 @@ def build_editor_singleton_kb(text: str, tg_id: int, edit: bool = False) -> Inli
 
 
 def build_editor_back_btn(tg_id: int, edit: bool = False) -> InlineKeyboardButton:
-    return build_editor_btn("🔙 Назад", tg_id, edit)
+    return build_editor_btn(BACK, tg_id, edit)
 
 
 def build_editor_btn(text: str, tg_id: int, edit: bool = False) -> InlineKeyboardButton:
@@ -230,11 +232,8 @@ async def build_cluster_selection_kb(session, tg_id: int, email: str, action: st
     clusters = await get_clusters(session)
 
     for cluster_id in clusters:
-        builder.button(
-            text=cluster_id,
-            callback_data=f"{action}|{tg_id}|{email}|{cluster_id}"
-        )
+        builder.button(text=cluster_id, callback_data=f"{action}|{tg_id}|{email}|{cluster_id}")
 
-    builder.button(text="⬅️ Назад", callback_data=f"edit_user_key|{tg_id}|{email}")
+    builder.button(text=BACK, callback_data=f"edit_user_key|{tg_id}|{email}")
     builder.adjust(1)
     return builder.as_markup()

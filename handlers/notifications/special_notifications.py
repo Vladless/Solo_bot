@@ -1,8 +1,10 @@
 import asyncio
+
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
+
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -13,9 +15,11 @@ from database import (
     check_notification_time,
     create_blocked_user,
 )
+from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import get_user_traffic
-from handlers.texts import TRIAL_INACTIVE_FIRST_MSG, TRIAL_INACTIVE_BONUS_MSG, ZERO_TRAFFIC_MSG
+from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
 from logger import logger
+
 
 router = Router()
 
@@ -65,7 +69,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                         callback_data="create_key",
                     )
                 )
-                builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
                 keyboard = builder.as_markup()
 
                 trial_extended = await conn.fetchval(
@@ -165,7 +169,7 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
 
             builder = InlineKeyboardBuilder()
             builder.row(types.InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
-            builder.row(types.InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+            builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             keyboard = builder.as_markup()
 
             message = ZERO_TRAFFIC_MSG.format(email=email)

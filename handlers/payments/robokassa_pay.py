@@ -8,9 +8,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from handlers.payments.utils import send_payment_success_notification
-from robokassa import HashAlgorithm, Robokassa
-
 from config import (
     DATABASE_URL,
     ROBOKASSA_ENABLE,
@@ -19,6 +16,8 @@ from config import (
     ROBOKASSA_PASSWORD2,
     ROBOKASSA_TEST_MODE,
 )
+from robokassa import HashAlgorithm, Robokassa
+
 from database import (
     add_connection,
     add_payment,
@@ -27,9 +26,12 @@ from database import (
     get_temporary_data,
     update_balance,
 )
-from handlers.texts import PAYMENT_OPTIONS
+from handlers.payments.utils import send_payment_success_notification
+from handlers.texts import PAYMENT_OPTIONS, ENTER_SUM, DEFAULT_PAYMENT_MESSAGE
 from handlers.utils import edit_or_send_message
 from logger import logger
+
+from handlers.buttons import BACK, PAY_2
 
 router = Router()
 
@@ -89,7 +91,7 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
                     callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
 
     key_count = await get_key_count(tg_id)
 
@@ -151,14 +153,14 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить", url=payment_url)],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa")],
+            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
+            [InlineKeyboardButton(text=BACK, callback_data="pay_robokassa")],
         ]
     )
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=f"Вы выбрали пополнение на {amount} рублей. Для оплаты перейдите по ссылке ниже:",
+        text=DEFAULT_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
         force_text=True,
     )
@@ -230,11 +232,11 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="pay_robokassa"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_robokassa"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text="Пожалуйста, введите сумму пополнения.",
+        text=ENTER_SUM,
         reply_markup=builder.as_markup(),
         force_text=True,
     )
@@ -285,7 +287,7 @@ async def handle_custom_amount_input(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_url))
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="pay_robokassa"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_robokassa"))
 
         if state_type == "waiting_for_payment":
             message_text = (

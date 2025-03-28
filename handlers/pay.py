@@ -10,10 +10,11 @@ from config import (
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
 )
-
+from handlers.buttons import CRYPTOBOT, MAIN_MENU, ROBOKASSA, STARS, YOOKASSA, YOOMONEY
 from handlers.texts import PAYMENT_METHODS_MSG
 
 from .utils import edit_or_send_message
+
 
 router = Router()
 
@@ -25,41 +26,41 @@ async def handle_pay(callback_query: CallbackQuery):
     if YOOKASSA_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💳 ЮКасса: быстрая оплата",
+                text=YOOKASSA,
                 callback_data="pay_yookassa",
             )
         )
     if YOOMONEY_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💳 ЮМани: перевод по карте",
+                text=YOOMONEY,
                 callback_data="pay_yoomoney",
             )
         )
     if CRYPTO_BOT_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="💰 CryptoBot: криптовалюта",
+                text=CRYPTOBOT,
                 callback_data="pay_cryptobot",
             )
         )
     if STARS_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="⭐ Оплата Звездами",
+                text=STARS,
                 callback_data="pay_stars",
             )
         )
     if ROBOKASSA_ENABLE:
         builder.row(
             InlineKeyboardButton(
-                text="⭐ RoboKassa",
+                text=ROBOKASSA,
                 callback_data="pay_robokassa",
             )
         )
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,

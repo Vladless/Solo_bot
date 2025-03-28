@@ -5,12 +5,14 @@ from aiogram.types import CallbackQuery
 
 from database import delete_server, get_servers
 from filters.admin import IsAdminFilter
+
+from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminServerCallback,
     build_delete_server_kb,
     build_manage_server_kb,
 )
-from ..panel.keyboard import build_admin_back_kb
+
 
 router = Router()
 

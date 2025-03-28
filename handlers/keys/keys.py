@@ -2,19 +2,21 @@ import asyncio
 import locale
 import os
 import time
+
 from datetime import datetime, timedelta
+from io import BytesIO
 from typing import Any
 
 import asyncpg
 import pytz
-from aiogram import F, Router, types
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.yookassa_pay import process_custom_amount_input
-
 import qrcode
-from io import BytesIO
+
+from aiogram import F, Router, types
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from config import (
@@ -27,12 +29,12 @@ from config import (
     ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
     PUBLIC_LINK,
+    QRCODE,
     RENEWAL_PLANS,
+    TOGGLE_CLIENT,
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
-    TOGGLE_CLIENT,
-    QRCODE
 )
 from database import (
     check_server_name_by_cluster,
@@ -46,44 +48,65 @@ from database import (
     update_balance,
     update_key_expiry,
 )
-from handlers.buttons.add_subscribe import (
+from handlers.buttons import (
+    ADD_SUB,
+    ALIAS,
+    ANDROID,
+    APPLY,
+    BACK,
+    CANCEL,
+    CHANGE_LOCATION,
+    CONNECT_DEVICE,
+    CONNECT_PHONE,
+    DELETE,
     DOWNLOAD_ANDROID_BUTTON,
     DOWNLOAD_IOS_BUTTON,
+    FREEZE,
     IMPORT_ANDROID,
     IMPORT_IOS,
+    IPHONE,
+    MAIN_MENU,
+    MANUAL_INSTRUCTIONS,
+    PAYMENT,
+    PC,
     PC_BUTTON,
+    QR,
+    RENEW,
+    RENEW_FULL,
+    TV,
     TV_BUTTON,
+    UNFREEZE,
 )
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     renew_key_in_cluster,
-    update_subscription,
     toggle_client_on_cluster,
+    update_subscription,
 )
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
+    ANDROID_DESCRIPTION_TEMPLATE,
+    DELETE_KEY_CONFIRM_MSG,
     DISCOUNTS,
+    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    FROZEN_SUBSCRIPTION_MSG,
+    INSUFFICIENT_FUNDS_RENEWAL_MSG,
+    IOS_DESCRIPTION_TEMPLATE,
+    KEY_DELETED_MSG_SIMPLE,
     KEY_NOT_FOUND_MSG,
+    NO_SUBSCRIPTIONS_MSG,
     PLAN_SELECTION_MSG,
     SUBSCRIPTION_DESCRIPTION,
-    SUCCESS_RENEWAL_MSG,
-    key_message,
-    NO_SUBSCRIPTIONS_MSG,
-    FROZEN_SUBSCRIPTION_MSG,
-    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
-    SUBSCRIPTION_UNFROZEN_MSG,
-    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
     SUBSCRIPTION_FROZEN_MSG,
-    DELETE_KEY_CONFIRM_MSG,
-    KEY_DELETED_MSG_SIMPLE,
-    INSUFFICIENT_FUNDS_RENEWAL_MSG,
-    ANDROID_DESCRIPTION_TEMPLATE,
-    IOS_DESCRIPTION_TEMPLATE
+    SUBSCRIPTION_UNFROZEN_MSG,
+    SUCCESS_RENEWAL_MSG,
+    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
+    key_message,
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
+
 
 locale.setlocale(locale.LC_TIME, "ru_RU.UTF-8")
 
@@ -139,7 +162,7 @@ def build_keys_response(records):
                 formatted_date_full = "без срока действия"
 
             key_button = InlineKeyboardButton(text=f"🔑 {key_display}", callback_data=f"view_key|{email}")
-            rename_button = InlineKeyboardButton(text="✏️", callback_data=f"rename_key|{client_id}")
+            rename_button = InlineKeyboardButton(text=ALIAS, callback_data=f"rename_key|{client_id}")
             builder.row(key_button, rename_button)
 
             response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
@@ -148,8 +171,8 @@ def build_keys_response(records):
     else:
         response_message = NO_SUBSCRIPTIONS_MSG
 
-    builder.row(InlineKeyboardButton(text="➕ Добавить подписку", callback_data="create_key"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
     return inline_keyboard, response_message
@@ -163,9 +186,7 @@ async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
     await state.update_data(client_id=client_id, target_message=callback.message)
 
     await edit_or_send_message(
-        target_message=callback.message,
-        text="✏️ Введите новое имя подписки (до 10 символов):",
-        reply_markup=None
+        target_message=callback.message, text="✏️ Введите новое имя подписки (до 10 символов):", reply_markup=None
     )
 
 
@@ -211,12 +232,12 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 builder = InlineKeyboardBuilder()
                 builder.row(
                     InlineKeyboardButton(
-                        text="🟢 Разморозить подписку",
+                        text=UNFREEZE,
                         callback_data=f"unfreeze_subscription|{key_name}",
                     )
                 )
-                builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
-                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
                 keyboard = builder.as_markup()
                 image_path = os.path.join("img", "pic_view.jpg")
@@ -272,53 +293,49 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 if CONNECT_PHONE_BUTTON:
                     builder.row(
                         InlineKeyboardButton(
-                            text="📱 Подключить телефон",
+                            text=CONNECT_PHONE,
                             callback_data=f"connect_phone|{key_name}",
                         )
                     )
                     builder.row(
-                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-                )
+                        InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                        InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
+                    )
                 else:
                     builder.row(
                         InlineKeyboardButton(
-                            text="📲 Подключить устройство",
+                            text=CONNECT_DEVICE,
                             callback_data=f"connect_device|{key_name}",
                         )
                     )
                 if QRCODE:
                     builder.row(
                         InlineKeyboardButton(
-                            text="📷 Показать QR-код",
+                            text=QR,
                             callback_data=f"show_qr|{key}",
                         )
                     )
                 if ENABLE_DELETE_KEY_BUTTON:
                     builder.row(
-                        InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
-                        InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_key|{key_name}"),
+                        InlineKeyboardButton(text=RENEW, callback_data=f"renew_key|{key_name}"),
+                        InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
                     )
                 else:
-                    builder.row(
-                        InlineKeyboardButton(text="⏳ Продлить подписку", callback_data=f"renew_key|{key_name}")
-                    )
+                    builder.row(InlineKeyboardButton(text=RENEW_FULL, callback_data=f"renew_key|{key_name}"))
 
                 if USE_COUNTRY_SELECTION:
-                    builder.row(
-                        InlineKeyboardButton(text="🌍 Сменить локацию", callback_data=f"change_location|{key_name}")
-                    )
+                    builder.row(InlineKeyboardButton(text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"))
 
                 if TOGGLE_CLIENT:
                     builder.row(
                         InlineKeyboardButton(
-                            text="🛑 Заморозить подписку",
+                            text=FREEZE,
                             callback_data=f"freeze_subscription|{key_name}",
                         )
                     )
 
-                builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
-                builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
                 keyboard = builder.as_markup()
                 image_path = os.path.join("img", "pic_view.jpg")
@@ -371,8 +388,8 @@ async def show_qr_code(callback_query: types.CallbackQuery, session: Any):
             f.write(buffer.read())
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{record['email']}"))
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -388,20 +405,18 @@ async def show_qr_code(callback_query: types.CallbackQuery, session: Any):
         await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
 
 
-
-
 @router.callback_query(F.data.startswith("connect_device|"))
 async def handle_connect_device(callback_query: CallbackQuery):
     try:
         key_name = callback_query.data.split("|")[1]
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="🍏 Айфон", callback_data=f"connect_ios|{key_name}"))
-        builder.row(InlineKeyboardButton(text="🤖 Андроид", callback_data=f"connect_android|{key_name}"))
-        builder.row(InlineKeyboardButton(text="💻 Компьютер", callback_data=f"connect_pc|{key_name}"))
-        builder.row(InlineKeyboardButton(text="📺 Телевизор", callback_data=f"connect_tv|{key_name}"))
-    #    builder.row(InlineKeyboardButton(text="📶 Роутер", callback_data=f"connect_router|{key_name}"))
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+        builder.row(InlineKeyboardButton(text=IPHONE, callback_data=f"connect_ios|{key_name}"))
+        builder.row(InlineKeyboardButton(text=ANDROID, callback_data=f"connect_android|{key_name}"))
+        builder.row(InlineKeyboardButton(text=PC, callback_data=f"connect_pc|{key_name}"))
+        builder.row(InlineKeyboardButton(text=TV, callback_data=f"connect_tv|{key_name}"))
+        #    builder.row(InlineKeyboardButton(text=ROUTER, callback_data=f"connect_router|{key_name}"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -422,11 +437,11 @@ async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, 
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="✅ Подтвердить",
+            text=APPLY,
             callback_data=f"unfreeze_subscription_confirm|{key_name}",
         ),
         InlineKeyboardButton(
-            text="❌ Отмена",
+            text=CANCEL,
             callback_data=f"view_key|{key_name}",
         ),
     )
@@ -486,7 +501,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
             )
             text_ok = SUBSCRIPTION_UNFROZEN_MSG
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_ok,
@@ -497,7 +512,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 f"Произошла ошибка при включении подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_error,
@@ -513,7 +528,6 @@ async def process_callback_freeze_subscription(callback_query: CallbackQuery, se
     """
     Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
     """
-    tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
     confirm_text = FREEZE_SUBSCRIPTION_CONFIRM_MSG
@@ -521,11 +535,11 @@ async def process_callback_freeze_subscription(callback_query: CallbackQuery, se
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="✅ Подтвердить",
+            text=APPLY,
             callback_data=f"freeze_subscription_confirm|{key_name}",
         ),
         InlineKeyboardButton(
-            text="❌ Отмена",
+            text=CANCEL,
             callback_data=f"view_key|{key_name}",
         ),
     )
@@ -563,7 +577,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
             if time_left < 0:
                 time_left = 0
 
-            update_result = await session.execute(
+            await session.execute(
                 """
                 UPDATE keys
                 SET expiry_time = $1,
@@ -578,7 +592,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
 
             text_ok = SUBSCRIPTION_FROZEN_MSG
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_ok,
@@ -589,7 +603,7 @@ async def process_callback_freeze_subscription_confirm(callback_query: CallbackQ
                 f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_error,
@@ -638,8 +652,8 @@ async def process_callback_connect_phone(callback_query: CallbackQuery):
         InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"),
         InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"),
     )
-    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{email}"))
+    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
 
     await edit_or_send_message(
         target_message=callback_query.message, text=description, reply_markup=builder.as_markup(), media_path=None
@@ -670,12 +684,11 @@ async def process_callback_connect_ios(callback_query: CallbackQuery):
 
     description = IOS_DESCRIPTION_TEMPLATE.format(key_link=key_link)
 
-
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
     builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"))
-    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -712,8 +725,8 @@ async def process_callback_connect_android(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
     builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"))
-    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -750,11 +763,11 @@ async def process_callback_delete_key(callback_query: CallbackQuery):
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text="✅ Да, удалить",
+                        text=APPLY,
                         callback_data=f"confirm_delete|{client_id}",
                     )
                 ],
-                [types.InlineKeyboardButton(text="❌ Нет, отменить", callback_data="view_keys")],
+                [types.InlineKeyboardButton(text=CANCEL, callback_data="view_keys")],
             ]
         )
 
@@ -777,7 +790,7 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
         if record:
             client_id = record["client_id"]
             response_message = KEY_DELETED_MSG_SIMPLE
-            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
+            back_button = types.InlineKeyboardButton(text=BACK, callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
             await delete_key(client_id, session)
@@ -802,7 +815,7 @@ async def process_callback_confirm_delete(callback_query: CallbackQuery, session
             await delete_key(client_id, session)
         else:
             response_message = "Ключ не найден или уже удален."
-            back_button = types.InlineKeyboardButton(text="Назад", callback_data="view_keys")
+            back_button = types.InlineKeyboardButton(text=BACK, callback_data="view_keys")
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
             await edit_or_send_message(
                 target_message=callback_query.message, text=response_message, reply_markup=keyboard, media_path=None
@@ -837,7 +850,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
                     )
                 )
 
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
 
             balance = await get_balance(tg_id)
 
@@ -914,8 +927,8 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
                 else:
                     logger.info(f"[RENEW] Отправка сообщения о доплате пользователю {tg_id}")
                     builder = InlineKeyboardBuilder()
-                    builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
-                    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+                    builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+                    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
                     await edit_or_send_message(
                         target_message=callback_query.message,
@@ -946,7 +959,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
     response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if callback_query:
         try:

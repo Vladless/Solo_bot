@@ -1,7 +1,10 @@
 import asyncio
+import time
+
 from typing import Any
 
 import asyncpg
+
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -12,18 +15,19 @@ from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB
 from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_key_on_cluster, create_client_on_server, renew_key_in_cluster
+from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster
 from logger import logger
+
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
-    build_clusters_editor_kb,
-    build_manage_cluster_kb,
     AdminClusterCallback,
     AdminServerCallback,
+    build_cluster_management_kb,
+    build_clusters_editor_kb,
+    build_manage_cluster_kb,
     build_sync_cluster_kb,
-    build_cluster_management_kb
 )
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
-import time
+
 
 router = Router()
 
@@ -523,7 +527,9 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
             )
             await update_key_expiry(key["client_id"], new_expiry, session)
 
-        await message.answer(f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>.")
+        await message.answer(
+            f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
+        )
     except ValueError:
         await message.answer("❌ Введите корректное число дней.")
         return

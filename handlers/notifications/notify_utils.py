@@ -1,7 +1,8 @@
-import os
 import asyncio
+import os
 
 import aiofiles
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
@@ -26,6 +27,7 @@ def rate_limited_send(func):
                 tg_id = kwargs.get("tg_id") or args[1]
                 logger.error(f"❌ Ошибка отправки сообщения пользователю {tg_id}: {e}")
                 return False
+
     return wrapper
 
 

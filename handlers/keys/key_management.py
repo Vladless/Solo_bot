@@ -1,18 +1,18 @@
 import asyncio
 import uuid
+
 from datetime import datetime, timedelta
 from typing import Any
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.yookassa_pay import process_custom_amount_input
 from py3xui import AsyncApi
 
 from bot import bot
-from panels.three_xui import delete_client
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -41,16 +41,23 @@ from database import (
     update_balance,
     update_trial,
 )
-from handlers.buttons.add_subscribe import (
+from handlers.buttons import (
+    BACK,
+    CONNECT_DEVICE,
+    CONNECT_PHONE,
     DOWNLOAD_ANDROID_BUTTON,
     DOWNLOAD_IOS_BUTTON,
     IMPORT_ANDROID,
     IMPORT_IOS,
+    MAIN_MENU,
+    PAYMENT,
     PC_BUTTON,
+    SUPPORT,
     TV_BUTTON,
 )
 from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     DISCOUNTS,
@@ -61,6 +68,8 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger
+from panels.three_xui import delete_client
+
 
 router = Router()
 
@@ -124,7 +133,7 @@ async def handle_key_creation(
                 callback_data=f"select_plan_{plan_id}",
             )
         )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if isinstance(message_or_query, CallbackQuery):
         target_message = message_or_query.message
@@ -171,8 +180,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
             await handle_custom_amount_input(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="pay"))
-            builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+            builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
@@ -231,7 +240,7 @@ async def create_key(
             else:
                 callback_data = f"select_country|{country}|{ts}"
             builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         if target_message:
             await edit_or_send_message(
@@ -293,9 +302,9 @@ async def create_key(
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if CONNECT_PHONE_BUTTON:
-        builder.row(InlineKeyboardButton(text="📱 Подключить телефон", callback_data=f"connect_phone|{key_name}"))
+        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(
             InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
             InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
@@ -303,11 +312,11 @@ async def create_key(
     else:
         builder.row(
             InlineKeyboardButton(
-                text="📲 Подключить устройство",
+                text=CONNECT_DEVICE,
                 callback_data=f"connect_device|{key_name}",
             )
         )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     expiry_time_local = expiry_time.replace(tzinfo=None).astimezone(moscow_tz)
     remaining_time = expiry_time_local - datetime.now(moscow_tz)
@@ -354,7 +363,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         for country in countries:
             callback_data = f"select_country|{country}|{ts}|{old_key_name}"
             builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{old_key_name}"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -516,9 +525,9 @@ async def finalize_key_creation(
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if CONNECT_PHONE_BUTTON:
-        builder.row(InlineKeyboardButton(text="📱 Подключить телефон", callback_data=f"connect_phone|{key_name}"))
+        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
     else:
         builder.row(
             InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
@@ -532,7 +541,7 @@ async def finalize_key_creation(
         InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
         InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
     )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     remaining_time = expiry_time - datetime.now(moscow_tz)
     days = remaining_time.days

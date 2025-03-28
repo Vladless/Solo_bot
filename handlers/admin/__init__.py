@@ -14,6 +14,7 @@ from .servers import router as servers_router
 from .stats import router as stats_router
 from .users import router as users_router
 
+
 router = Router(name="admins_main_router")
 
 router.include_routers(

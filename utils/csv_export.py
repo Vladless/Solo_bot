@@ -1,4 +1,5 @@
 import csv
+
 from io import StringIO
 from typing import Any
 
@@ -153,19 +154,19 @@ async def export_hot_leads_csv(session: Any) -> BufferedInputFile:
         AND k.tg_id IS NULL
         ORDER BY u.updated_at DESC
     """
-    
+
     users = await session.fetch(query)
-    
+
     buffer = StringIO()
     buffer.write("tg_id,username,first_name,last_name,updated_at\n")
-    
+
     for user in users:
         buffer.write(
             f"{user['tg_id']},{user['username'] or ''},"
             f"{user['first_name'] or ''},{user['last_name'] or ''},"
             f"{user['updated_at']}\n"
         )
-    
+
     buffer.seek(0)
     return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="hot_leads_export.csv")
 

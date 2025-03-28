@@ -7,6 +7,7 @@ import string
 import aiofiles
 import aiohttp
 import asyncpg
+
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 from bot import bot

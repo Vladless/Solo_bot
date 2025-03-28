@@ -5,7 +5,9 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, LabeledPrice, Mes
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR
+from handlers.buttons import BACK, MAIN_MENU
 from logger import logger
+
 from .utils import edit_or_send_message
 
 
@@ -30,7 +32,7 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
             callback_data="enter_custom_donate_amount",
         )
     )
-    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     text = (
         "🌟 Поддержите наш проект! 💪\n\n"
@@ -48,7 +50,7 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "enter_custom_donate_amount")
 async def process_enter_donate_amount(callback_query: CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="donate"))
     text = "💸 Введите сумму доната в рублях:"
 
     await edit_or_send_message(
@@ -74,7 +76,7 @@ async def process_donate_amount_input(message: Message, state: FSMContext):
         try:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="Задонатить", pay=True))
-            builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="donate"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data="donate"))
 
             await message.answer_invoice(
                 title=f"Донат проекту {amount} рублей",
@@ -102,7 +104,7 @@ async def on_successful_donate(message: Message, state: FSMContext):
     try:
         amount = float(message.successful_payment.invoice_payload.split("_")[0])
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         await message.answer(
             text=f"🙏 Спасибо за донат {amount} рублей! Ваша поддержка очень важна для нас. 💖",
             reply_markup=builder.as_markup(),

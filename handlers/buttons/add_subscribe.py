@@ -1,6 +1,0 @@
-DOWNLOAD_IOS_BUTTON = "🍏 Скачать iOS"
-DOWNLOAD_ANDROID_BUTTON = "🤖 Скачать Android"
-IMPORT_IOS = "🍏 Подключить"
-IMPORT_ANDROID = "🤖 Подключить"
-PC_BUTTON = "💻 Компьютеры"
-TV_BUTTON = "📺 Андроид TV"
