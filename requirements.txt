@@ -43,3 +43,4 @@ wrapt==1.16.0
 yarl==1.15.5
 yookassa==3.3.0
 httpx
+qrcode
