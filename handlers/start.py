@@ -21,6 +21,7 @@ from config import (
     CHANNEL_URL,
     DONATIONS_ENABLE,
     SUPPORT_CHAT_URL,
+    SHOW_START_MENU_ONCE
 )
 from database import (
     add_connection,
@@ -123,7 +124,7 @@ async def process_start_logic(
                 )
                 if not coupon:
                     await message.answer("❌ Купон не найден!")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 usage_exists = await session.fetchval(
                     "SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
@@ -131,11 +132,11 @@ async def process_start_logic(
                 )
                 if usage_exists:
                     await message.answer("❌ Вы уже использовали этот купон!")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 if coupon["is_used"] or coupon["usage_count"] >= coupon["usage_limit"]:
                     await message.answer("❌ Этот купон уже использован!")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 await update_balance(message.chat.id, coupon["amount"])
                 await session.execute(
@@ -149,35 +150,43 @@ async def process_start_logic(
                     coupon["id"], message.chat.id,
                 )
                 await message.answer(COUPON_SUCCESS_MSG.format(amount=coupon["amount"]))
-                return await show_start_menu(message, admin, session)
+                return await process_callback_view_profile(message, state, admin)
 
             if "gift_" in text:
                 parts = text.split("gift_")[1].split("_")
                 if len(parts) < 2:
                     await message.answer("❌ Неверный формат ссылки на подарок.")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
                 gift_id = parts[0]
-                gift_info = await session.fetchrow(
-                    "SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id FROM gifts WHERE gift_id = $1",
-                    gift_id,
-                )
+                async with session.transaction():
+                    gift_info = await session.fetchrow(
+                        """
+                        SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id 
+                        FROM gifts 
+                        WHERE gift_id = $1
+                        FOR UPDATE
+                        """,
+                        gift_id,
+                    )
                 if not gift_info:
                     await message.answer(GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG)
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 if gift_info["is_used"]:
                     await message.answer("Этот подарок уже был использован.")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 if gift_info["sender_tg_id"] == message.chat.id:
                     await message.answer("❌ Вы не можете получить подарок от самого себя.")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
                 if gift_info["recipient_tg_id"]:
                     await message.answer("❌ Этот подарок уже был активирован другим пользователем.")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
 
-                await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
+                existing_referral = await get_referral_by_referred_id(message.chat.id, session)
+                if not existing_referral:
+                    await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
 
                 await session.execute(
                     "UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id
@@ -207,13 +216,13 @@ async def process_start_logic(
                     connection_exists_now = await check_connection_exists(message.chat.id)
                     if connection_exists_now:
                         await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
-                        return await show_start_menu(message, admin, session)
+                        return await process_callback_view_profile(message, state, admin)
                     if referrer_tg_id == message.chat.id:
                         await message.answer("❌ Вы не можете быть рефералом самого себя.")
-                        return await show_start_menu(message, admin, session)
+                        return await process_callback_view_profile(message, state, admin)
                     existing_referral = await get_referral_by_referred_id(message.chat.id, session)
                     if existing_referral:
-                        return await show_start_menu(message, admin, session)
+                        return await process_callback_view_profile(message, state, admin)
 
                     await add_referral(message.chat.id, referrer_tg_id, session)
                     await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
@@ -224,7 +233,7 @@ async def process_start_logic(
                         )
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
-                    return await show_start_menu(message, admin, session)
+                    return await process_callback_view_profile(message, state, admin)
                 except (ValueError, IndexError):
                     pass
 
@@ -237,7 +246,10 @@ async def process_start_logic(
 
     final_exists = await check_connection_exists(message.chat.id)
     if final_exists:
-        return await process_callback_view_profile(message, state, admin)
+        if SHOW_START_MENU_ONCE:
+            return await process_callback_view_profile(message, state, admin)
+        else:
+            return await show_start_menu(message, admin, session)
     else:
         await add_connection(tg_id=message.chat.id, session=session)
         return await show_start_menu(message, admin, session)
@@ -288,8 +300,9 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
             builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
-
-#    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+    
+    if not SHOW_START_MENU_ONCE:
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
 
     if CHANNEL_EXISTS:
         builder.row(

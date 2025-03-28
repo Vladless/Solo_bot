@@ -485,7 +485,7 @@ async def handle_add_time(callback_query: CallbackQuery, callback_data: AdminClu
 
     await callback_query.message.edit_text(
         f"⏳ Введите количество дней, на которое хотите продлить все подписки в кластере <b>{cluster_name}</b>:",
-        reply_markup=build_admin_back_kb(f"manage_cluster|{cluster_name}")
+        reply_markup=build_admin_back_kb("clusters"),
     )
 
 

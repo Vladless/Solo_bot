@@ -6,6 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RENEWAL_PRICES, TOTAL_GB
 from ..panel.keyboard import build_admin_back_btn
+from database import  get_clusters 
 
 
 class AdminUserEditorCallback(CallbackData, prefix="admin_users"):
@@ -222,3 +223,18 @@ def build_editor_btn(text: str, tg_id: int, edit: bool = False) -> InlineKeyboar
     return InlineKeyboardButton(
         text=text, callback_data=AdminUserEditorCallback(action="users_editor", tg_id=tg_id, edit=edit).pack()
     )
+
+
+async def build_cluster_selection_kb(session, tg_id: int, email: str, action: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    clusters = await get_clusters(session)
+
+    for cluster_id in clusters:
+        builder.button(
+            text=cluster_id,
+            callback_data=f"{action}|{tg_id}|{email}|{cluster_id}"
+        )
+
+    builder.button(text="⬅️ Назад", callback_data=f"edit_user_key|{tg_id}|{email}")
+    builder.adjust(1)
+    return builder.as_markup()

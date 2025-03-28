@@ -415,6 +415,14 @@ async def store_key(
         raise
 
 
+async def get_clusters(session) -> list[str]:
+    """
+    Получает список уникальных имён кластеров из таблицы servers.
+    """
+    rows = await session.fetch("SELECT DISTINCT cluster_name FROM servers ORDER BY cluster_name")
+    return [row["cluster_name"] for row in rows]
+
+
 async def get_keys(tg_id: int, session: Any):
     """
     Получает список ключей для указанного пользователя.

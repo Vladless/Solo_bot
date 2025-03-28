@@ -9,8 +9,12 @@ import asyncpg
 import pytz
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from handlers.payments.yookassa_pay import process_custom_amount_input
+
+import qrcode
+from io import BytesIO
 
 from bot import bot
 from config import (
@@ -28,6 +32,7 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
     TOGGLE_CLIENT,
+    QRCODE
 )
 from database import (
     check_server_name_by_cluster,
@@ -72,6 +77,8 @@ from handlers.texts import (
     DELETE_KEY_CONFIRM_MSG,
     KEY_DELETED_MSG_SIMPLE,
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
+    ANDROID_DESCRIPTION_TEMPLATE,
+    IOS_DESCRIPTION_TEMPLATE
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
@@ -269,21 +276,24 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                             callback_data=f"connect_phone|{key_name}",
                         )
                     )
-                else:
                     builder.row(
-                        InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-                        InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
-                    )
-                    builder.row(
-                        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key}"),
-                        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key}"),
-                    )
-
-                builder.row(
                     InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
                     InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
                 )
-
+                else:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="📲 Подключить устройство",
+                            callback_data=f"connect_device|{key_name}",
+                        )
+                    )
+                if QRCODE:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text="📷 Показать QR-код",
+                            callback_data=f"show_qr|{key}",
+                        )
+                    )
                 if ENABLE_DELETE_KEY_BUTTON:
                     builder.row(
                         InlineKeyboardButton(text="⏳ Продлить", callback_data=f"renew_key|{key_name}"),
@@ -331,6 +341,77 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             callback_query,
             f"Ошибка при получении информации о ключе: {e}",
         )
+
+
+@router.callback_query(F.data.startswith("show_qr|"))
+async def show_qr_code(callback_query: types.CallbackQuery, session: Any):
+    try:
+        key_value = callback_query.data.split("|")[1]
+
+        record = await session.fetchrow(
+            "SELECT key, email FROM keys WHERE key = $1",
+            key_value,
+        )
+
+        if not record:
+            await callback_query.message.answer("❌ Подписка не найдена.")
+            return
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(record["key"])
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        qr_path = f"/tmp/qrcode_{record['email']}.png"
+        with open(qr_path, "wb") as f:
+            f.write(buffer.read())
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{record['email']}"))
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="🔲 <b>Ваш QR-код для подключения</b>",
+            reply_markup=builder.as_markup(),
+            media_path=qr_path,
+        )
+
+        os.remove(qr_path)
+
+    except Exception as e:
+        logger.error(f"Ошибка при генерации QR: {e}", exc_info=True)
+        await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
+
+
+
+
+@router.callback_query(F.data.startswith("connect_device|"))
+async def handle_connect_device(callback_query: CallbackQuery):
+    try:
+        key_name = callback_query.data.split("|")[1]
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🍏 Айфон", callback_data=f"connect_ios|{key_name}"))
+        builder.row(InlineKeyboardButton(text="🤖 Андроид", callback_data=f"connect_android|{key_name}"))
+        builder.row(InlineKeyboardButton(text="💻 Компьютер", callback_data=f"connect_pc|{key_name}"))
+        builder.row(InlineKeyboardButton(text="📺 Телевизор", callback_data=f"connect_tv|{key_name}"))
+    #    builder.row(InlineKeyboardButton(text="📶 Роутер", callback_data=f"connect_router|{key_name}"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_key|{key_name}"))
+
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="📲 <b>Выберите устройство, которое хотите подключить:</b>",
+            reply_markup=builder.as_markup(),
+            media_path=None,
+        )
+    except Exception as e:
+        await callback_query.message.answer("❌ Ошибка при показе меню подключения.")
+        logger.error(f"Ошибка в handle_connect_device: {e}")
 
 
 @router.callback_query(F.data.startswith("unfreeze_subscription|"))
@@ -565,12 +646,95 @@ async def process_callback_connect_phone(callback_query: CallbackQuery):
     )
 
 
+@router.callback_query(F.data.startswith("connect_ios|"))
+async def process_callback_connect_ios(callback_query: CallbackQuery):
+    email = callback_query.data.split("|")[1]
+
+    conn = None
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        key_data = await conn.fetchrow("SELECT key FROM keys WHERE email = $1", email)
+        if not key_data:
+            await callback_query.message.answer("❌ Ошибка: ключ не найден.")
+            return
+
+        key_link = key_data["key"]
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении ключа для {email} (iOS): {e}")
+        await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        return
+    finally:
+        if conn:
+            await conn.close()
+
+    description = IOS_DESCRIPTION_TEMPLATE.format(key_link=key_link)
+
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
+    builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"))
+    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=description,
+        reply_markup=builder.as_markup(),
+        media_path=None,
+    )
+
+
+@router.callback_query(F.data.startswith("connect_android|"))
+async def process_callback_connect_android(callback_query: CallbackQuery):
+    email = callback_query.data.split("|")[1]
+
+    conn = None
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        key_data = await conn.fetchrow("SELECT key FROM keys WHERE email = $1", email)
+        if not key_data:
+            await callback_query.message.answer("❌ Ошибка: ключ не найден.")
+            return
+
+        key_link = key_data["key"]
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении ключа для {email} (Android): {e}")
+        await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
+        return
+    finally:
+        if conn:
+            await conn.close()
+
+    description = ANDROID_DESCRIPTION_TEMPLATE.format(key_link=key_link)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
+    builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"))
+    builder.row(InlineKeyboardButton(text="📖 Ручная установка", callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=description,
+        reply_markup=builder.as_markup(),
+        media_path=None,
+    )
+
+
 @router.callback_query(F.data.startswith("update_subscription|"))
 async def process_callback_update_subscription(callback_query: CallbackQuery, session: Any):
     tg_id = callback_query.message.chat.id
     email = callback_query.data.split("|")[1]
 
     try:
+        try:
+            await callback_query.message.delete()
+        except TelegramBadRequest as e:
+            if "message can't be deleted" not in str(e):
+                raise
+
         await update_subscription(tg_id, email, session)
         await process_callback_view_key(callback_query, session)
     except Exception as e:

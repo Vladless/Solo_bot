@@ -286,7 +286,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
         raise e
 
 
-async def update_subscription(tg_id: int, email: str, session: Any) -> None:
+async def update_subscription(tg_id: int, email: str, session: Any, cluster_override: str = None) -> None:
     record = await session.fetchrow(
         """
         SELECT k.key, k.expiry_time, k.email, k.server_id, k.client_id
@@ -302,27 +302,21 @@ async def update_subscription(tg_id: int, email: str, session: Any) -> None:
 
     expiry_time = record["expiry_time"]
     client_id = record["client_id"]
+    old_cluster_id = record["server_id"]
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
+    await delete_key_from_cluster(old_cluster_id, email, client_id)
+
     await session.execute(
-        """
-        DELETE FROM keys
-        WHERE tg_id = $1 AND email = $2
-        """,
+        "DELETE FROM keys WHERE tg_id = $1 AND email = $2",
         tg_id,
         email,
     )
 
-    least_loaded_cluster_id = await get_least_loaded_cluster()
+    new_cluster_id = cluster_override or await get_least_loaded_cluster()
 
     await asyncio.gather(
-        update_key_on_cluster(
-            tg_id,
-            client_id,
-            email,
-            expiry_time,
-            least_loaded_cluster_id,
-        ),
+        update_key_on_cluster(tg_id, client_id, email, expiry_time, new_cluster_id),
         return_exceptions=True,
     )
 
@@ -332,7 +326,7 @@ async def update_subscription(tg_id: int, email: str, session: Any) -> None:
         email,
         expiry_time,
         public_link,
-        server_id=least_loaded_cluster_id,
+        server_id=new_cluster_id,
         session=session,
     )
 

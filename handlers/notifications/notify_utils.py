@@ -1,11 +1,32 @@
 import os
+import asyncio
 
 import aiofiles
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
 from logger import logger
+
+
+def rate_limited_send(func):
+    async def wrapper(*args, **kwargs):
+        while True:
+            try:
+                return await func(*args, **kwargs)
+            except TelegramRetryAfter as e:
+                retry_in = int(e.retry_after) + 1
+                logger.warning(f"⚠️ Flood control: повтор через {retry_in} сек.")
+                await asyncio.sleep(retry_in)
+            except TelegramForbiddenError:
+                tg_id = kwargs.get("tg_id") or args[1]
+                logger.warning(f"Пользователь {tg_id} заблокировал бота.")
+                return False
+            except Exception as e:
+                tg_id = kwargs.get("tg_id") or args[1]
+                logger.error(f"❌ Ошибка отправки сообщения пользователю {tg_id}: {e}")
+                return False
+    return wrapper
 
 
 async def send_notification(
@@ -37,6 +58,7 @@ async def send_notification(
         return await _send_text_notification(bot, tg_id, caption, keyboard)
 
 
+@rate_limited_send
 async def _send_photo_notification(
     bot: Bot,
     tg_id: int,
@@ -60,6 +82,7 @@ async def _send_photo_notification(
         return await _send_text_notification(bot, tg_id, caption, keyboard)
 
 
+@rate_limited_send
 async def _send_text_notification(
     bot: Bot,
     tg_id: int,

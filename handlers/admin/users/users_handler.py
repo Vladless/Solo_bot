@@ -42,6 +42,7 @@ from .keyboard import (
     build_users_balance_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
+    build_cluster_selection_kb
 )
 from logger import logger
 from utils.csv_export import export_referrals_csv
@@ -476,16 +477,23 @@ async def handle_update_key(callback_query: CallbackQuery, callback_data: AdminU
     tg_id = callback_data.tg_id
     email = callback_data.data
 
+    await callback_query.message.edit_text(
+        text=f"📡 Выберите кластер, на котором пересоздать ключ <b>{email}</b>:",
+        reply_markup=await build_cluster_selection_kb(session, tg_id, email, action="confirm_admin_key_reissue")
+    )
+
+
+@router.callback_query(F.data.startswith("confirm_admin_key_reissue|"), IsAdminFilter())
+async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Any):
+    _, tg_id, email, cluster_id = callback_query.data.split("|")
+    tg_id = int(tg_id)
+
     try:
-        await update_subscription(tg_id, email, session)
-        await handle_key_edit(callback_query, callback_data, session, True)
-    except TelegramBadRequest:
-        pass
+        await update_subscription(tg_id, email, session, cluster_override=cluster_id)
+        await handle_key_edit(callback_query, AdminUserEditorCallback(tg_id=tg_id, data=email, action="view_key"), session, True)
     except Exception as e:
-        logger.error(f"Ошибка при обновлении ключа {email} администратором: {e}")
-        await callback_query.message.answer(
-            text=f"❗ Произошла ошибка при обновлении ключа: {e}", reply_markup=build_user_key_kb(tg_id, email)
-        )
+        logger.error(f"Ошибка при перевыпуске ключа {email}: {e}")
+        await callback_query.message.answer(f"❗ Ошибка: {e}")
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_delete_key"), IsAdminFilter())

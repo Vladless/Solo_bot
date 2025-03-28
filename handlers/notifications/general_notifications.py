@@ -50,53 +50,60 @@ router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
 
 
+notification_lock = asyncio.Lock()
+
+
 async def periodic_notifications(bot: Bot):
     """
-    Обработчик, который:
-    1. Получает список всех ключей.
-    2. Отправляет уведомления пользователям о неактивном пробном периоде (если триал включен).
-    3. Отправляет уведомления об истекающих ключах (10h и 24h).
-    4. Проверяет истекшие ключи.
-    5. Проверяет пользователей с нулевым трафиком.
+    Периодическая проверка и отправка уведомлений.
+    Защищена от одновременного запуска с помощью asyncio.Lock.
     """
     while True:
-        conn = None
-        try:
-            conn = await asyncpg.connect(DATABASE_URL)
-            current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
+        if notification_lock.locked():
+            logger.warning("⛔ Предыдущая задача уведомлений ещё выполняется. Пропуск итерации.")
+            await asyncio.sleep(NOTIFICATION_TIME)
+            continue
 
-            threshold_time_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
-            threshold_time_24h = int((datetime.now(moscow_tz) + timedelta(days=1)).timestamp() * 1000)
-
-            logger.info("Начало обработки уведомлений.")
-
+        async with notification_lock:
+            conn = None
             try:
-                keys = await get_all_keys(session=conn)
-                keys = [k for k in keys if not k["is_frozen"]]
+                conn = await asyncpg.connect(DATABASE_URL)
+                current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
+
+                threshold_time_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
+                threshold_time_24h = int((datetime.now(moscow_tz) + timedelta(days=1)).timestamp() * 1000)
+
+                logger.info("🚀 Запуск обработки уведомлений")
+
+                try:
+                    keys = await get_all_keys(session=conn)
+                    keys = [k for k in keys if not k["is_frozen"]]
+                except Exception as e:
+                    logger.error(f"Ошибка при получении ключей: {e}")
+                    keys = []
+
+                if not TRIAL_TIME_DISABLE:
+                    await notify_inactive_trial_users(bot, conn)
+                    await asyncio.sleep(0.5)
+
+                await notify_24h_keys(bot, conn, current_time, threshold_time_24h, keys)
+                await asyncio.sleep(1)
+                await notify_10h_keys(bot, conn, current_time, threshold_time_10h, keys)
+                await asyncio.sleep(1)
+                await handle_expired_keys(bot, conn, current_time, keys)
+                await asyncio.sleep(0.5)
+                if NOTIFY_INACTIVE_TRAFFIC:
+                    await notify_users_no_traffic(bot, conn, current_time, keys)
+                    await asyncio.sleep(0.5)
+
+                logger.info("✅ Завершена обработка уведомлений")
+
             except Exception as e:
-                logger.error(f"Ошибка при получении ключей: {e}")
-                keys = []
-
-            if not TRIAL_TIME_DISABLE:
-                await notify_inactive_trial_users(bot, conn)
-                await asyncio.sleep(0.5)
-
-            await notify_24h_keys(bot, conn, current_time, threshold_time_24h, keys)
-            await asyncio.sleep(1)
-            await notify_10h_keys(bot, conn, current_time, threshold_time_10h, keys)
-            await asyncio.sleep(1)
-            await handle_expired_keys(bot, conn, current_time, keys)
-            await asyncio.sleep(0.5)
-            if NOTIFY_INACTIVE_TRAFFIC:
-                await notify_users_no_traffic(bot, conn, current_time, keys)
-                await asyncio.sleep(0.5)
-
-        except Exception as e:
-            logger.error(f"❌ Ошибка в periodic_notifications: {e}")
-        finally:
-            if conn:
-                await conn.close()
-                logger.info("Соединение с базой данных закрыто.")
+                logger.error(f"❌ Ошибка в periodic_notifications: {e}")
+            finally:
+                if conn:
+                    await conn.close()
+                    logger.info("🔌 Соединение с базой данных закрыто.")
 
         await asyncio.sleep(NOTIFICATION_TIME)
 

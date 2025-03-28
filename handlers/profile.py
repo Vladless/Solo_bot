@@ -26,7 +26,10 @@ from config import (
     TRIAL_TIME,
     USERNAME_BOT,
     REFERRAL_BUTTON,
-    GIFT_BUTTON
+    GIFT_BUTTON,
+    ADMIN_ID,
+    TOP_REFERRAL_BUTTON,
+    SHOW_START_MENU_ONCE
 )
 from database import get_balance, get_key_count, get_last_payments, get_referral_stats, get_trial
 from handlers.buttons.profile import (
@@ -40,7 +43,7 @@ from handlers.buttons.profile import (
     MY_SUBS,
     PAYMENT,
 )
-from handlers.texts import BALANCE_MANAGEMENT_TEXT, BALANCE_HISTORY_HEADER, INVITE_TEXT_NON_INLINE
+from handlers.texts import BALANCE_MANAGEMENT_TEXT, BALANCE_HISTORY_HEADER, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT
 from logger import logger
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import profile_message_send, invite_message_send, get_referral_link
@@ -104,8 +107,10 @@ async def process_callback_view_profile(
             builder.row(
                 InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
             )
-
-        builder.row(InlineKeyboardButton(text="💬 О сервисе", callback_data="about_vpn"))
+        if SHOW_START_MENU_ONCE:
+            builder.row(InlineKeyboardButton(text="💬 О сервисе", callback_data="about_vpn"))
+        else:
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="start"))
 
         await edit_or_send_message(
             target_message=target_message,
@@ -223,6 +228,8 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery):
     else:
         invite_text = INVITE_TEXT_NON_INLINE.format(referral_link=referral_link)
         builder.button(text="👥 Пригласить друга", switch_inline_query=invite_text)
+    if TOP_REFERRAL_BUTTON:
+       builder.button(text="🏆 Топ-5", callback_data="top_referrals")
     builder.button(text="👤 Личный кабинет", callback_data="profile")
     builder.adjust(1)
 
@@ -259,3 +266,43 @@ async def inline_referral_handler(inline_query: InlineQuery):
         )
 
     await inline_query.answer(results=results, cache_time=86400, is_personal=True)
+
+
+@router.callback_query(F.data == "top_referrals")
+async def top_referrals_handler(callback_query: CallbackQuery):
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        top_referrals = await conn.fetch(
+            """
+            SELECT referrer_tg_id, COUNT(*) as referral_count
+            FROM referrals
+            GROUP BY referrer_tg_id
+            ORDER BY referral_count DESC
+            LIMIT 5
+            """
+        )
+
+        is_admin = callback_query.from_user.id in ADMIN_ID
+        rows = ""
+
+        for i, row in enumerate(top_referrals, 1):
+            tg_id = str(row['referrer_tg_id'])
+            count = row['referral_count']
+            display_id = tg_id if is_admin else f"{tg_id[:5]}*****"
+            rows += f"{i}. {display_id} - {count} чел.\n"
+
+        text = TOP_REFERRALS_TEXT.format(rows=rows)
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="invite"))
+        builder.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text=text,
+            reply_markup=builder.as_markup(),
+            media_path=None,
+            disable_web_page_preview=False,
+        )
+    finally:
+        await conn.close()
