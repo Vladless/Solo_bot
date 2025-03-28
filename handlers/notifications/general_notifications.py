@@ -323,11 +323,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
                 if hours > 0:
                     if minutes > 0:
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
-                            email=email, hours=hours, minutes=minutes
-                        )
+                        hour_suffix = "час" if hours == 1 else "часа" if 2 <= hours <= 4 else "часов"
+                        time_str = f"{hours} {hour_suffix} и {minutes} минут"
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(email=email, time_str=time_str)
                     else:
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(email=email, hours=hours)
+                        hour_suffix = "час" if hours == 1 else "часа" if 2 <= hours <= 4 else "часов"
+                        time_str = f"{hours} {hour_suffix}"
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(email=email, time_str=time_str)
                 else:
                     delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(email=email, minutes=NOTIFY_DELETE_DELAY)
             else:
