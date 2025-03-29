@@ -302,7 +302,6 @@ async def create_key(
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(
@@ -316,6 +315,7 @@ async def create_key(
                 callback_data=f"connect_device|{key_name}",
             )
         )
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     expiry_time_local = expiry_time.replace(tzinfo=None).astimezone(moscow_tz)

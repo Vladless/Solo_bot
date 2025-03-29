@@ -182,11 +182,15 @@ def build_keys_response(records):
 async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
     client_id = callback.data.split("|")[1]
     await state.set_state(RenameKeyState.waiting_for_new_alias)
-
     await state.update_data(client_id=client_id, target_message=callback.message)
 
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+
     await edit_or_send_message(
-        target_message=callback.message, text="✏️ Введите новое имя подписки (до 10 символов):", reply_markup=None
+        target_message=callback.message,
+        text="✏️ Введите новое имя подписки (до 10 символов):",
+        reply_markup=builder.as_markup()
     )
 
 
@@ -688,6 +692,7 @@ async def process_callback_connect_ios(callback_query: CallbackQuery):
     builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
     builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"))
     builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
@@ -726,6 +731,7 @@ async def process_callback_connect_android(callback_query: CallbackQuery):
     builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
     builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"))
     builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
