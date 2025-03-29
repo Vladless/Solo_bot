@@ -528,19 +528,17 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
+        builder.row(
+            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+        )
     else:
         builder.row(
-            InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
-            InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
+            InlineKeyboardButton(
+                text=CONNECT_DEVICE,
+                callback_data=f"connect_device|{key_name}",
+            )
         )
-        builder.row(
-            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{public_link}"),
-            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{public_link}"),
-        )
-    builder.row(
-        InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-        InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-    )
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     remaining_time = expiry_time - datetime.now(moscow_tz)
