@@ -316,7 +316,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                     builder.row(
                         InlineKeyboardButton(
                             text=QR,
-                            callback_data=f"show_qr|{key}",
+                            callback_data=f"show_qr|{key_name}",
                         )
                     )
                 if ENABLE_DELETE_KEY_BUTTON:
@@ -367,13 +367,9 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
 @router.callback_query(F.data.startswith("show_qr|"))
 async def show_qr_code(callback_query: types.CallbackQuery, session: Any):
     try:
-        key_value = callback_query.data.split("|")[1]
+        key_name = callback_query.data.split("|")[1]
 
-        record = await session.fetchrow(
-            "SELECT key, email FROM keys WHERE key = $1",
-            key_value,
-        )
-
+        record = await session.fetchrow("SELECT key, email FROM keys WHERE email = $1", key_name)
         if not record:
             await callback_query.message.answer("❌ Подписка не найдена.")
             return
@@ -845,10 +841,13 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
             for plan_id, plan_details in RENEWAL_PLANS.items():
                 months = plan_details["months"]
                 price = plan_details["price"]
-                discount = DISCOUNTS.get(plan_id, 0)
-                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)" + (
-                    f" {discount}% скидка" if discount > 0 else ""
-                )
+
+                discount = DISCOUNTS.get(plan_id, 0) if isinstance(DISCOUNTS, dict) else 0
+
+                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)"
+                if discount > 0:
+                    button_text += f" {discount}% скидка"
+
                 builder.row(
                     InlineKeyboardButton(
                         text=button_text,
@@ -874,7 +873,8 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
         else:
             await callback_query.message.answer("<b>Ключ не найден.</b>")
     except Exception as e:
-        logger.error(e)
+        logger.error(f"Ошибка в process_callback_renew_key: {e}")
+        await callback_query.message.answer("❌ Произошла ошибка при обработке. Попробуйте позже.")
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))

@@ -69,12 +69,14 @@ async def process_callback_view_profile(
 ):
     if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
-        username = html.escape(callback_query_or_message.from_user.full_name)
+        user = callback_query_or_message.from_user
         target_message = callback_query_or_message.message
     else:
         chat_id = callback_query_or_message.chat.id
-        username = html.escape(callback_query_or_message.from_user.full_name)
+        user = callback_query_or_message.from_user
         target_message = callback_query_or_message
+
+    username = html.escape(user.full_name) if user and user.full_name else "Пользователь"
 
     image_path = os.path.join("img", "profile.jpg")
     logger.info(f"Переход в профиль. Используется изображение: {image_path}")
