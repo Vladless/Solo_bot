@@ -1,7 +1,7 @@
 import html
 import os
 
-from typing import Any
+from typing import Any, Optional
 
 import asyncpg
 
@@ -15,6 +15,7 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
     Message,
+    User
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -68,15 +69,26 @@ async def process_callback_view_profile(
     admin: bool,
 ):
     if isinstance(callback_query_or_message, CallbackQuery):
-        chat_id = callback_query_or_message.message.chat.id
-        user = callback_query_or_message.from_user
+        chat = callback_query_or_message.message.chat
+        from_user = callback_query_or_message.from_user
+        chat_id = chat.id
         target_message = callback_query_or_message.message
     else:
-        chat_id = callback_query_or_message.chat.id
-        user = callback_query_or_message.from_user
+        chat = callback_query_or_message.chat
+        from_user = callback_query_or_message.from_user
+        chat_id = chat.id
         target_message = callback_query_or_message
 
-    username = html.escape(user.full_name) if user and user.full_name else "Пользователь"
+    user = chat if chat.type == "private" else from_user
+
+    if getattr(user, "full_name", None):
+        username = html.escape(user.full_name)
+    elif getattr(user, "first_name", None):
+        username = html.escape(user.first_name)
+    elif getattr(user, "username", None):
+        username = "@" + html.escape(user.username)
+    else:
+        username = "Пользователь"
 
     image_path = os.path.join("img", "profile.jpg")
     logger.info(f"Переход в профиль. Используется изображение: {image_path}")
