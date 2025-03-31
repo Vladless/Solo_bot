@@ -87,6 +87,7 @@ from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     ANDROID_DESCRIPTION_TEMPLATE,
+    CHOOSE_DEVICE_TEXT,
     DELETE_KEY_CONFIRM_MSG,
     DISCOUNTS,
     FREEZE_SUBSCRIPTION_CONFIRM_MSG,
@@ -420,7 +421,7 @@ async def handle_connect_device(callback_query: CallbackQuery):
 
         await edit_or_send_message(
             target_message=callback_query.message,
-            text="📲 <b>Выберите устройство, которое хотите подключить:</b>",
+            text=CHOOSE_DEVICE_TEXT,
             reply_markup=builder.as_markup(),
             media_path=None,
         )
