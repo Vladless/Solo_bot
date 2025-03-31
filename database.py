@@ -549,8 +549,8 @@ async def update_balance(
     amount: float,
     session: Any = None,
     is_admin: bool = False,
-    skip_referral: bool = False,  # <- флаг "пропустить реферальное начисление"
-    skip_cashback: bool = False,  # <- флаг "пропустить кэшбэк"
+    skip_referral: bool = False,
+    skip_cashback: bool = False,
 ):
     """
     Обновляет баланс пользователя в базе данных.
@@ -563,7 +563,6 @@ async def update_balance(
             conn = await asyncpg.connect(DATABASE_URL)
             session = conn
 
-        # Если пополнение не от админа и не сказали пропустить кэшбэк
         if CASHBACK > 0 and amount > 0 and not is_admin and not skip_cashback:
             extra = amount * (CASHBACK / 100.0)
         else:
@@ -589,7 +588,6 @@ async def update_balance(
             f"({'+ кешбэк' if extra > 0 else 'без кешбэка'}), стало: {new_balance}"
         )
 
-        # Если не админ и не пропустили реферальное начисление — обрабатываем реферальную цепочку
         if not is_admin and not skip_referral:
             await handle_referral_on_balance_update(tg_id, int(amount))
 
@@ -1233,6 +1231,21 @@ async def add_notification(tg_id: int, notification_type: str, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при добавлении notification для пользователя {tg_id}: {e}")
         raise
+
+
+async def delete_notification(tg_id: int, notification_type: str, session):
+    """
+    Удаляет уведомление пользователя по типу (например: 'email_key_expired').
+    """
+    try:
+        await session.execute(
+            "DELETE FROM notifications WHERE tg_id = $1 AND notification_type = $2",
+            tg_id,
+            notification_type,
+        )
+        logger.info(f"🗑 Уведомление '{notification_type}' для пользователя {tg_id} удалено.")
+    except Exception as e:
+        logger.error(f"❌ Ошибка при удалении уведомления '{notification_type}' для пользователя {tg_id}: {e}")
 
 
 async def check_notification_time(tg_id: int, notification_type: str, hours: int = 12, session: Any = None) -> bool:

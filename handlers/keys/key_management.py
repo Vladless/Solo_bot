@@ -8,7 +8,7 @@ import pytz
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, InputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
@@ -16,11 +16,7 @@ from bot import bot
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    CONNECT_ANDROID,
-    CONNECT_IOS,
     CONNECT_PHONE_BUTTON,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
     NOTIFY_EXTRA_DAYS,
     PUBLIC_LINK,
     RENEWAL_PRICES,
@@ -45,10 +41,6 @@ from handlers.buttons import (
     BACK,
     CONNECT_DEVICE,
     CONNECT_PHONE,
-    DOWNLOAD_ANDROID_BUTTON,
-    DOWNLOAD_IOS_BUTTON,
-    IMPORT_ANDROID,
-    IMPORT_IOS,
     MAIN_MENU,
     PAYMENT,
     PC_BUTTON,
@@ -323,17 +315,23 @@ async def create_key(
     days = remaining_time.days
     key_message_text = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
 
+    default_media_path = "img/pic.jpg"
+
     if target_message:
         await edit_or_send_message(
-            target_message=target_message, text=key_message_text, reply_markup=builder.as_markup(), media_path=None
-        )
-    else:
-        await bot.send_message(
-            chat_id=tg_id,
+            target_message=target_message,
             text=key_message_text,
             reply_markup=builder.as_markup(),
+            media_path=default_media_path,
         )
-
+    else:
+        photo = InputFile(default_media_path)
+        await bot.send_photo(
+            chat_id=tg_id,
+            photo=photo,
+            caption=key_message_text,
+            reply_markup=builder.as_markup(),
+        )
     if state:
         await state.clear()
 

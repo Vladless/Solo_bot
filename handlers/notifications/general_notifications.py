@@ -29,6 +29,7 @@ from database import (
     get_last_notification_time,
     update_balance,
     update_key_expiry,
+    delete_notification
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
@@ -269,22 +270,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             delete_immediately = NOTIFY_DELETE_DELAY == 0
             delete_after_delay = False
 
-            if NOTIFY_DELETE_DELAY > 0 and last_notification_time is not None:
-                minutes_since = (current_time - last_notification_time) / (1000 * 60)
-                if minutes_since >= NOTIFY_DELETE_DELAY / 2 and minutes_since < NOTIFY_DELETE_DELAY:
-                    try:
-                        await conn.execute(
-                            "DELETE FROM notifications WHERE tg_id = $1 AND notification_type = $2",
-                            tg_id,
-                            notification_id,
-                        )
-                        logger.info(
-                            f"⛔ Уведомление {notification_id} для {tg_id} удалено (прошло больше половины задержки)."
-                        )
-                    except Exception as e:
-                        logger.error(f"Ошибка при удалении уведомления: {e}")
-                    continue
-
             if last_notification_time is not None:
                 delete_after_delay = (current_time - last_notification_time) / (1000 * 60) >= NOTIFY_DELETE_DELAY
                 logger.info(
@@ -355,7 +340,13 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
 
 async def process_auto_renew_or_notify(
-    bot, conn, key: dict, notification_id: str, renewal_period_months: int, standard_photo: str, standard_caption: str
+    bot,
+    conn,
+    key: dict,
+    notification_id: str,
+    renewal_period_months: int,
+    standard_photo: str,
+    standard_caption: str
 ):
     """
     Если баланс пользователя позволяет, продлевает ключ на максимальный возможный срок и списывает средства;
@@ -405,6 +396,7 @@ async def process_auto_renew_or_notify(
             await update_key_expiry(client_id, new_expiry_time, conn)
 
             await add_notification(tg_id, renew_notification_id, session=conn)
+            await delete_notification(tg_id, notification_id, session=conn)
 
             logger.info(
                 f"✅ Ключ {client_id} продлён на {renewal_period_months} мес. для пользователя {tg_id}. Списано {renewal_cost}."

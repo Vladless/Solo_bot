@@ -142,6 +142,10 @@ async def process_start_logic(
                     await message.answer("❌ Этот купон уже использован!")
                     return await process_callback_view_profile(message, state, admin)
 
+                connection_exists = await check_connection_exists(message.chat.id)
+                if not connection_exists:
+                    await add_connection(tg_id=message.chat.id, session=session)
+
                 await update_balance(message.chat.id, coupon["amount"])
                 await session.execute(
                     "UPDATE coupons SET usage_count = $1, is_used = $2 WHERE code = $3",
@@ -192,6 +196,10 @@ async def process_start_logic(
                 existing_referral = await get_referral_by_referred_id(message.chat.id, session)
                 if not existing_referral:
                     await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
+
+                connection_exists = await check_connection_exists(message.chat.id)
+                if not connection_exists:
+                    await add_connection(tg_id=message.chat.id, session=session)
 
                 await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id)
 

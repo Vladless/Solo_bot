@@ -7,7 +7,7 @@ import asyncpg
 from py3xui import AsyncApi
 
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB
-from database import get_servers, store_key
+from database import get_servers, store_key, delete_notification
 from handlers.utils import get_least_loaded_cluster
 from logger import logger
 from panels.three_xui import (
@@ -144,6 +144,12 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                     return False
 
                 tg_id = tg_id_record["tg_id"]
+
+                notification_prefixes = ["key_24h", "key_10h", "key_expired", "renew"]
+                for notif in notification_prefixes:
+                    notification_id = f"{email}_{notif}"
+                    await delete_notification(tg_id, notification_id, session=conn)
+                logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
         tasks = []
         for server_info in cluster:
             xui = AsyncApi(
