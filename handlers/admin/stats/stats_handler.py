@@ -121,7 +121,7 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             f"├ 📆 За неделю: <b>{total_payments_week} ₽</b>\n"
             f"├ 📆 За месяц: <b>{total_payments_month} ₽</b>\n"
             f"└ 🏦 Всего: <b>{total_payments_all_time} ₽</b>\n\n"
-            f"🔥 <b>Горящие лиды</b>: <b>{hot_leads_count}</b> (платили, но не активировали ключи)\n\n"
+            f"🔥 <b>Горящие лиды</b>: <b>{hot_leads_count}</b> (платили, но не продлили)\n\n"
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
 
