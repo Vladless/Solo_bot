@@ -294,6 +294,28 @@ async def inline_referral_handler(inline_query: InlineQuery):
 async def top_referrals_handler(callback_query: CallbackQuery):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
+        user_referral_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1",
+            callback_query.from_user.id
+        ) or 0
+
+        personal_block = "Твоё место в рейтинге:\n"
+        if user_referral_count > 0:
+            user_position = await conn.fetchval(
+                """
+                SELECT COUNT(*) + 1 FROM (
+                    SELECT COUNT(*) as cnt 
+                    FROM referrals 
+                    GROUP BY referrer_tg_id 
+                    HAVING COUNT(*) > $1
+                ) AS better_users
+                """,
+                user_referral_count
+            )
+            personal_block += f"{user_position}. {callback_query.from_user.id} - {user_referral_count} чел."
+        else:
+            personal_block += "Ты еще не приглашал пользователей в проект."
+
         top_referrals = await conn.fetch(
             """
             SELECT referrer_tg_id, COUNT(*) as referral_count
@@ -306,14 +328,13 @@ async def top_referrals_handler(callback_query: CallbackQuery):
 
         is_admin = callback_query.from_user.id in ADMIN_ID
         rows = ""
-
         for i, row in enumerate(top_referrals, 1):
             tg_id = str(row["referrer_tg_id"])
             count = row["referral_count"]
             display_id = tg_id if is_admin else f"{tg_id[:5]}*****"
             rows += f"{i}. {display_id} - {count} чел.\n"
 
-        text = TOP_REFERRALS_TEXT.format(rows=rows)
+        text = TOP_REFERRALS_TEXT.format(personal_block=personal_block, rows=rows)
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))
