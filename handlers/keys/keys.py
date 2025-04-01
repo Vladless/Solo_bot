@@ -1,7 +1,9 @@
 import asyncio
+import html
 import locale
 import os
 import time
+import re
 
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -154,7 +156,7 @@ def build_keys_response(records):
             client_id = record["client_id"]
             expiry_time = record.get("expiry_time")
 
-            key_display = alias.strip() if alias else email
+            key_display = html.escape(alias.strip() if alias else email)
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
@@ -200,7 +202,11 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
     alias = message.text.strip()
 
     if len(alias) > 10:
-        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.")
+        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.\nПовторите ввод.")
+        return
+
+    if not alias or not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
+        await message.answer("❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод.")
         return
 
     data = await state.get_data()
