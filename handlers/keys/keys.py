@@ -1,4 +1,5 @@
 import asyncio
+import html
 import locale
 import os
 import time
@@ -155,7 +156,7 @@ def build_keys_response(records):
             client_id = record["client_id"]
             expiry_time = record.get("expiry_time")
 
-            key_display = alias.strip() if alias else email
+            key_display = html.escape(alias.strip() if alias else email)
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
