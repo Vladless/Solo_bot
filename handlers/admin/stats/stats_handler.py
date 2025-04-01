@@ -41,6 +41,16 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
             )
         )
+        total_payments_last_month = int(
+            await session.fetchval(
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month')
+                AND created_at < date_trunc('month', CURRENT_DATE)
+                """
+            )
+        )
         total_payments_all_time = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments"))
 
         all_keys = await session.fetch("SELECT created_at, expiry_time FROM keys")
@@ -120,6 +130,7 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             f"├ 📅 За день: <b>{total_payments_today} ₽</b>\n"
             f"├ 📆 За неделю: <b>{total_payments_week} ₽</b>\n"
             f"├ 📆 За месяц: <b>{total_payments_month} ₽</b>\n"
+            f"├ 📆 За прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
             f"└ 🏦 Всего: <b>{total_payments_all_time} ₽</b>\n\n"
             f"🔥 <b>Горящие лиды</b>: <b>{hot_leads_count}</b> (платили, но не продлили)\n\n"
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
