@@ -1,9 +1,11 @@
 import html
+from io import BytesIO
 import os
 
-from typing import Any, Optional
-
 import asyncpg
+import qrcode
+
+from typing import Any, Optional
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -48,6 +50,7 @@ from handlers.buttons import (
     MAIN_MENU,
     MY_SUBS,
     PAYMENT,
+    QR,
     TOP_FIVE,
 )
 from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT
@@ -250,6 +253,7 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery):
     else:
         invite_text = INVITE_TEXT_NON_INLINE.format(referral_link=referral_link)
         builder.button(text=INVITE, switch_inline_query=invite_text)
+    builder.button(text=QR, callback_data=f"show_referral_qr|{chat_id}")
     if TOP_REFERRAL_BUTTON:
         builder.button(text=TOP_FIVE, callback_data="top_referrals")
     builder.button(text=MAIN_MENU, callback_data="profile")
@@ -289,6 +293,43 @@ async def inline_referral_handler(inline_query: InlineQuery):
 
     await inline_query.answer(results=results, cache_time=86400, is_personal=True)
 
+
+@router.callback_query(F.data.startswith("show_referral_qr|"))
+async def show_referral_qr(callback_query: CallbackQuery):
+    try:
+        chat_id = callback_query.data.split("|")[1]
+        referral_link = get_referral_link(chat_id)
+
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(referral_link)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        qr_path = f"/tmp/qrcode_referral_{chat_id}.png"
+        with open(qr_path, "wb") as f:
+            f.write(buffer.read())
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="📷 <b>Ваш QR-код для реферальной ссылки.</b>",
+            reply_markup=builder.as_markup(),
+            media_path=qr_path,
+        )
+
+        os.remove(qr_path)
+
+    except Exception as e:
+        logger.error(f"Ошибка при генерации QR-кода для реферальной ссылки: {e}", exc_info=True)
+        await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
+        
 
 @router.callback_query(F.data == "top_referrals")
 async def top_referrals_handler(callback_query: CallbackQuery):

@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB, USE_COUNTRY_SELECTION
 from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster
@@ -39,6 +39,10 @@ class AdminClusterStates(StatesGroup):
     waiting_for_server_name = State()
     waiting_for_subscription_url = State()
     waiting_for_days_input = State()
+    waiting_for_new_cluster_name = State()
+    waiting_for_new_server_name = State()
+    waiting_for_server_transfer = State()
+    waiting_for_cluster_transfer = State()
 
 
 @router.callback_query(
@@ -537,4 +541,290 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
         logger.error(f"Ошибка при добавлении дней: {e}")
         await message.answer("❌ Произошла ошибка при продлении времени.")
     finally:
+        await state.clear()
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "rename"), IsAdminFilter())
+async def handle_rename_cluster(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+    cluster_name = callback_data.data
+    await state.update_data(old_cluster_name=cluster_name)
+
+    text = (
+        f"✏️ <b>Введите новое имя для кластера '{cluster_name}':</b>\n\n"
+        "▸ Имя должно быть уникальным.\n"
+        "▸ Имя не должно превышать 12 символов.\n\n"
+        "📌 <i>Пример:</i> <code>new_cluster</code>"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_admin_back_kb("clusters"),
+    )
+    await state.set_state(AdminClusterStates.waiting_for_new_cluster_name)
+
+
+@router.message(AdminClusterStates.waiting_for_new_cluster_name, IsAdminFilter())
+async def handle_new_cluster_name_input(message: Message, state: FSMContext, session: Any):
+    if not message.text:
+        await message.answer(
+            text="❌ Имя кластера не может быть пустым! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+        return
+
+    new_cluster_name = message.text.strip()
+    if len(new_cluster_name) > 12:
+        await message.answer(
+            text="❌ Имя кластера не должно превышать 12 символов! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+        return
+
+    user_data = await state.get_data()
+    old_cluster_name = user_data.get("old_cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        existing_cluster = await conn.fetchval(
+            "SELECT cluster_name FROM servers WHERE cluster_name = $1 LIMIT 1",
+            new_cluster_name
+        )
+        if existing_cluster:
+            await message.answer(
+                text=f"❌ Кластер с именем '{new_cluster_name}' уже существует. Введите другое имя.",
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
+
+        keys_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM keys WHERE server_id = $1",
+            old_cluster_name
+        )
+
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE servers SET cluster_name = $1 WHERE cluster_name = $2",
+                new_cluster_name,
+                old_cluster_name
+            )
+
+            if keys_count > 0:
+                await conn.execute(
+                    "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                    new_cluster_name,
+                    old_cluster_name
+                )
+
+        await message.answer(
+            text=f"✅ Название кластера успешно изменено с '{old_cluster_name}' на '{new_cluster_name}'!\n\n⚠️ Не забудьте сделать \"Синхронизацию\".",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при смене имени кластера {old_cluster_name} на {new_cluster_name}: {e}")
+        await message.answer(
+            text=f"❌ Произошла ошибка при смене имени кластера: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
+        await state.clear()
+
+
+@router.callback_query(AdminServerCallback.filter(F.action == "rename"), IsAdminFilter())
+async def handle_rename_server(callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
+    old_server_name = callback_data.data
+
+    servers = await get_servers()
+    cluster_name = None
+    for c_name, server_list in servers.items():
+        for server in server_list:
+            if server["server_name"] == old_server_name:
+                cluster_name = c_name
+                break
+        if cluster_name:
+            break
+
+    if not cluster_name:
+        await callback_query.message.edit_text(
+            text=f"❌ Не удалось найти кластер для сервера '{old_server_name}'.",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+        return
+
+    await state.update_data(old_server_name=old_server_name, cluster_name=cluster_name)
+
+    text = (
+        f"✏️ <b>Введите новое имя для сервера '{old_server_name}' в кластере '{cluster_name}':</b>\n\n"
+        "▸ Имя должно быть уникальным в пределах кластера.\n"
+        "▸ Имя не должно превышать 12 символов.\n\n"
+        "📌 <i>Пример:</i> <code>new_server</code>"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_admin_back_kb("clusters"),
+    )
+    await state.set_state(AdminClusterStates.waiting_for_new_server_name)
+
+
+@router.message(AdminClusterStates.waiting_for_new_server_name, IsAdminFilter())
+async def handle_new_server_name_input(message: Message, state: FSMContext, session: Any):
+    if not message.text:
+        await message.answer(
+            text="❌ Имя сервера не может быть пустым! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+        return
+
+    new_server_name = message.text.strip()
+    if len(new_server_name) > 12:
+        await message.answer(
+            text="❌ Имя сервера не должно превышать 12 символов! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+        return
+
+    user_data = await state.get_data()
+    old_server_name = user_data.get("old_server_name")
+    cluster_name = user_data.get("cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        existing_server = await conn.fetchval(
+            "SELECT server_name FROM servers WHERE cluster_name = $1 AND server_name = $2 LIMIT 1",
+            cluster_name,
+            new_server_name
+        )
+        if existing_server:
+            await message.answer(
+                text=f"❌ Сервер с именем '{new_server_name}' уже существует в кластере '{cluster_name}'. Введите другое имя.",
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
+
+        keys_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM keys WHERE server_id = $1",
+            old_server_name
+        )
+
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE servers SET server_name = $1 WHERE cluster_name = $2 AND server_name = $3",
+                new_server_name,
+                cluster_name,
+                old_server_name
+            )
+
+            if keys_count > 0:
+                await conn.execute(
+                    "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                    new_server_name,
+                    old_server_name
+                )
+
+        # Формируем текст сообщения с учетом USE_COUNTRY_SELECTION
+        base_text = f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!"
+        sync_reminder = "\n\n⚠️ Не забудьте сделать \"Синхронизацию\"."
+        final_text = base_text + (sync_reminder if USE_COUNTRY_SELECTION else "")
+
+        await message.answer(
+            text=final_text,
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при смене имени сервера {old_server_name} на {new_server_name}: {e}")
+        await message.answer(
+            text=f"❌ Произошла ошибка при смене имени сервера: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("transfer_to_server|"))
+async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data.split("|")
+    new_server_name = data[1]
+    old_server_name = data[2]
+
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_server_name,
+                old_server_name
+            )
+
+            await conn.execute(
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
+                cluster_name,
+                old_server_name
+            )
+
+        base_text = f"✅ Ключи успешно перенесены на сервер '{new_server_name}', сервер '{old_server_name}' удален!"
+        sync_reminder = "\n\n⚠️ Не забудьте сделать \"Синхронизацию\"."
+        final_text = base_text + (sync_reminder if USE_COUNTRY_SELECTION else "")
+
+        await callback_query.message.edit_text(
+            text=final_text,
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при переносе ключей на сервер {new_server_name}: {e}")
+        await callback_query.message.edit_text(
+            text=f"❌ Произошла ошибка при переносе ключей: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("transfer_to_cluster|"))
+async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data.split("|")
+    new_cluster_name = data[1]
+    old_cluster_name = data[2]
+    old_server_name = data[3]
+
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_cluster_name,
+                old_server_name
+            )
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_cluster_name,
+                old_cluster_name
+            )
+
+            await conn.execute(
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
+                cluster_name,
+                old_server_name
+            )
+
+        await callback_query.message.edit_text(
+            text=f"✅ Ключи успешно перенесены в кластер '{new_cluster_name}', сервер '{old_server_name}' и кластер '{old_cluster_name}' удалены!\n\n⚠️ Не забудьте сделать \"Синхронизацию\".",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при переносе ключей в кластер {new_cluster_name}: {e}")
+        await callback_query.message.edit_text(
+            text=f"❌ Произошла ошибка при переносе ключей: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
         await state.clear()

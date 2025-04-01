@@ -60,7 +60,9 @@ async def process_coupon_code(message: Message, state: FSMContext, session: Any)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await message.answer(activation_result, reply_markup=builder.as_markup())
-    await state.clear()
+
+    if activation_result.startswith(COUPON_ACTIVATED_SUCCESS_MSG.split('.')[0]):
+        await state.clear()
 
 
 async def activate_coupon(user_id: int, coupon_code: str, session: Any):

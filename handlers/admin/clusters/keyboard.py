@@ -95,6 +95,12 @@ def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
+            text="✏️ Сменить название",
+            callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="🔙 Назад",
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
