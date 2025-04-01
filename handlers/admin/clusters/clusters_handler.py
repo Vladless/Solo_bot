@@ -41,6 +41,8 @@ class AdminClusterStates(StatesGroup):
     waiting_for_days_input = State()
     waiting_for_new_cluster_name = State()
     waiting_for_new_server_name = State()
+    waiting_for_server_transfer = State()
+    waiting_for_cluster_transfer = State()
 
 
 @router.callback_query(
@@ -541,6 +543,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
     finally:
         await state.clear()
 
+
 @router.callback_query(AdminClusterCallback.filter(F.action == "rename"), IsAdminFilter())
 async def handle_rename_cluster(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
     cluster_name = callback_data.data
@@ -727,6 +730,90 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
         logger.error(f"Ошибка при смене имени сервера {old_server_name} на {new_server_name}: {e}")
         await message.answer(
             text=f"❌ Произошла ошибка при смене имени сервера: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("transfer_to_server|"))
+async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data.split("|")
+    new_server_name = data[1]
+    old_server_name = data[2]
+
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_server_name,
+                old_server_name
+            )
+
+            await conn.execute(
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
+                cluster_name,
+                old_server_name
+            )
+
+        await callback_query.message.edit_text(
+            text=f"✅ Ключи успешно перенесены на сервер '{new_server_name}', сервер '{old_server_name}' удален!",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при переносе ключей на сервер {new_server_name}: {e}")
+        await callback_query.message.edit_text(
+            text=f"❌ Произошла ошибка при переносе ключей: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    finally:
+        await conn.close()
+        await state.clear()
+
+
+@router.callback_query(F.data.startswith("transfer_to_cluster|"))
+async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data.split("|")
+    new_cluster_name = data[1]
+    old_cluster_name = data[2]
+    old_server_name = data[3]
+
+    user_data = await state.get_data()
+    cluster_name = user_data.get("cluster_name")
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_cluster_name,
+                old_server_name
+            )
+            await conn.execute(
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
+                new_cluster_name,
+                old_cluster_name
+            )
+
+            await conn.execute(
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
+                cluster_name,
+                old_server_name
+            )
+
+        await callback_query.message.edit_text(
+            text=f"✅ Ключи успешно перенесены в кластер '{new_cluster_name}', сервер '{old_server_name}' и кластер '{old_cluster_name}' удалены!",
+            reply_markup=build_admin_back_kb("clusters"),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при переносе ключей в кластер {new_cluster_name}: {e}")
+        await callback_query.message.edit_text(
+            text=f"❌ Произошла ошибка при переносе ключей: {e}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
