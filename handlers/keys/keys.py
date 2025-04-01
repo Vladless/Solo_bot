@@ -2,6 +2,7 @@ import asyncio
 import locale
 import os
 import time
+import re
 
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -200,7 +201,11 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
     alias = message.text.strip()
 
     if len(alias) > 10:
-        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.")
+        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.\nПовторите ввод.")
+        return
+
+    if not alias or not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
+        await message.answer("❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод.")
         return
 
     data = await state.get_data()
