@@ -31,6 +31,7 @@ from database import (
     get_trial,
     update_balance,
 )
+from handlers.admin.coupons.coupons_handler import handle_coupon_activation
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
 from handlers.captcha import generate_captcha
 from handlers.keys.key_management import create_key
@@ -119,47 +120,8 @@ async def process_start_logic(
         try:
             if "coupons_" in text:
                 logger.info(f"Обнаружена ссылка на купон: {text}")
-                coupon_code = text.split("coupons_")[1].strip()
-
-                coupon = await session.fetchrow(
-                    "SELECT id, code, amount, usage_limit, usage_count, is_used FROM coupons WHERE code = $1",
-                    coupon_code,
-                )
-                if not coupon:
-                    await message.answer("❌ Купон не найден!")
-                    return await process_callback_view_profile(message, state, admin)
-
-                usage_exists = await session.fetchval(
-                    "SELECT 1 FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
-                    coupon["id"],
-                    message.chat.id,
-                )
-                if usage_exists:
-                    await message.answer("❌ Вы уже использовали этот купон!")
-                    return await process_callback_view_profile(message, state, admin)
-
-                if coupon["is_used"] or coupon["usage_count"] >= coupon["usage_limit"]:
-                    await message.answer("❌ Этот купон уже использован!")
-                    return await process_callback_view_profile(message, state, admin)
-
-                connection_exists = await check_connection_exists(message.chat.id)
-                if not connection_exists:
-                    await add_connection(tg_id=message.chat.id, session=session)
-
-                await update_balance(message.chat.id, coupon["amount"])
-                await session.execute(
-                    "UPDATE coupons SET usage_count = $1, is_used = $2 WHERE code = $3",
-                    coupon["usage_count"] + 1,
-                    coupon["usage_count"] + 1 >= coupon["usage_limit"],
-                    coupon_code,
-                )
-                await session.execute(
-                    "INSERT INTO coupon_usages (coupon_id, user_id, used_at) VALUES ($1, $2, NOW())",
-                    coupon["id"],
-                    message.chat.id,
-                )
-                await message.answer(COUPON_SUCCESS_MSG.format(amount=coupon["amount"]))
-                return await process_callback_view_profile(message, state, admin)
+                await handle_coupon_activation(message, state, session)
+                return
 
             if "gift_" in text:
                 parts = text.split("gift_")[1].split("_")
