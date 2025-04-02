@@ -72,10 +72,21 @@ CREATE TABLE IF NOT EXISTS coupons
     id          SERIAL PRIMARY KEY,
     code        TEXT UNIQUE NOT NULL,
     amount      INTEGER     NOT NULL,
+    days        INTEGER CHECK (days > 0 OR days IS NULL),
     usage_limit INTEGER     NOT NULL DEFAULT 1,
     usage_count INTEGER     NOT NULL DEFAULT 0,
     is_used     BOOLEAN     NOT NULL DEFAULT FALSE
 );
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'coupons' AND column_name = 'days'
+    ) THEN
+        ALTER TABLE coupons ADD COLUMN days INTEGER CHECK (days > 0 OR days IS NULL);
+    END IF;
+END$$;
 
 CREATE TABLE IF NOT EXISTS coupon_usages
 (
