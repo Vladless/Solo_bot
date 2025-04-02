@@ -113,9 +113,12 @@ async def process_callback_view_profile(
 
         builder = InlineKeyboardBuilder()
         if trial_status == 0 or key_count == 0:
-            builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
-        else:
+        if key_count > 0:
             builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
+        elif trial_status == 0:
+            builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
+        else:
+            builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
         builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
 
         row_buttons = []
