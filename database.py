@@ -124,33 +124,36 @@ async def check_server_name_by_cluster(server_name: str, session: Any) -> dict |
         raise
 
 
-async def create_coupon(coupon_code: str, amount: float, usage_limit: int, session: Any):
+async def create_coupon(coupon_code: str, amount: int, usage_limit: int, session: Any, days: int = None):
     """
     Создает новый купон в базе данных.
 
     Args:
         coupon_code (str): Уникальный код купона.
-        amount (float): Сумма, которую дает купон.
+        amount (int): Сумма, которую дает купон (0 для купонов на дни).
         usage_limit (int): Максимальное количество использований купона.
         session (Any): Сессия базы данных для выполнения запроса.
+        days (int, optional): Количество дней для продления подписки.
 
     Raises:
         Exception: В случае ошибки при создании купона.
 
     Example:
-        await create_coupon('SALE50', 50.0, 5, session)
+        await create_coupon('SALE50', 50, 5, session)
+        await create_coupon('DAYS10', 0, 50, session, days=10)
     """
     try:
         await session.execute(
             """
-            INSERT INTO coupons (code, amount, usage_limit, usage_count, is_used)
-            VALUES ($1, $2, $3, 0, FALSE)
-        """,
+            INSERT INTO coupons (code, amount, usage_limit, usage_count, is_used, days)
+            VALUES ($1, $2, $3, 0, FALSE, $4)
+            """,
             coupon_code,
             amount,
             usage_limit,
+            days,
         )
-        logger.info(f"Успешно создан купон с кодом {coupon_code} на сумму {amount}")
+        logger.info(f"Успешно создан купон с кодом {coupon_code} на сумму {amount} или {days} дней")
     except Exception as e:
         logger.error(f"Ошибка при создании купона {coupon_code}: {e}")
         raise
@@ -170,7 +173,8 @@ async def get_coupon_by_code(coupon_code: str, session: Any) -> dict | None:
             - usage_limit (int): Лимит использований
             - usage_count (int): Текущее количество использований
             - is_used (bool): Флаг использования
-            - amount (float): Сумма купона
+            - amount (int): Сумма купона
+            - days (int): Количество дней (если есть)
 
     Raises:
         Exception: В случае ошибки при выполнении запроса
@@ -178,7 +182,7 @@ async def get_coupon_by_code(coupon_code: str, session: Any) -> dict | None:
     try:
         result = await session.fetchrow(
             """
-            SELECT id, usage_limit, usage_count, is_used, amount
+            SELECT id, usage_limit, usage_count, is_used, amount, days
             FROM coupons
             WHERE code = $1 AND (usage_count < usage_limit OR usage_limit = 0) AND is_used = FALSE
             """,
@@ -213,7 +217,7 @@ async def get_all_coupons(session: Any, page: int = 1, per_page: int = 10):
         offset = (page - 1) * per_page
         coupons = await session.fetch(
             """
-            SELECT code, amount, usage_limit, usage_count
+            SELECT id, code, amount, usage_limit, usage_count, days, is_used  -- Добавлено id
             FROM coupons
             ORDER BY id
             LIMIT $1 OFFSET $2
@@ -221,12 +225,9 @@ async def get_all_coupons(session: Any, page: int = 1, per_page: int = 10):
             per_page,
             offset,
         )
-
         total_count = await session.fetchval("SELECT COUNT(*) FROM coupons")
-        total_pages = -(-total_count // per_page)  # Округление вверх
-
+        total_pages = -(-total_count // per_page)
         logger.info(f"Успешно получено {len(coupons)} купонов из базы данных (страница {page})")
-
         return {"coupons": coupons, "total": total_count, "pages": total_pages, "current_page": page}
     except Exception as e:
         logger.error(f"Критическая ошибка при получении списка купонов: {e}")
@@ -1683,12 +1684,12 @@ async def get_last_payments(tg_id: int, session: Any):
         raise
 
 
-async def get_coupon_details(coupon_id: str, session: Any):
+async def get_coupon_details(coupon_id: int, session: Any):
     """
     Получает детали купона по его ID.
 
     Args:
-        coupon_id (str): ID купона
+        coupon_id (int): ID купона
         session (Any): Сессия базы данных
 
     Returns:
@@ -1700,20 +1701,17 @@ async def get_coupon_details(coupon_id: str, session: Any):
     try:
         record = await session.fetchrow(
             """
-            SELECT id, code, discount, usage_count, usage_limit, is_used
+            SELECT id, code, amount, days, usage_count, usage_limit, is_used
             FROM coupons
             WHERE id = $1
             """,
             coupon_id,
         )
-
         if record:
             logger.info(f"Успешно получены детали купона {coupon_id}")
             return dict(record)
-
         logger.warning(f"Купон {coupon_id} не найден")
         return None
-
     except Exception as e:
         logger.error(f"Ошибка при получении деталей купона {coupon_id}: {e}")
         raise
