@@ -3,9 +3,11 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+from aiogram.enums import ParseMode
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import USERNAME_BOT
+from config import USERNAME_BOT, INLINE_MODE
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from logger import logger
@@ -54,7 +56,8 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
     text = message.text.strip()
     parts = text.split()
 
-    kb = build_admin_back_kb("coupons")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Назад", callback_data=AdminPanelCallback(action="coupons").pack())
 
     if len(parts) != 3:
         text = (
@@ -62,11 +65,7 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
             "🏷️ <b>код</b> 💰 <b>сумма</b> 🔢 <b>лимит</b>\n"
             "Пример: <b>'COUPON1 50 5'</b> 👈"
         )
-
-        await message.answer(
-            text=text,
-            reply_markup=kb,
-        )
+        await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
     try:
@@ -75,28 +74,32 @@ async def handle_coupon_data_input(message: Message, state: FSMContext, session:
         usage_limit = int(parts[2])
     except ValueError:
         text = "⚠️ <b>Проверьте правильность введенных данных!</b>\n💱 Сумма должна быть числом, а лимит — целым числом."
-
-        await message.answer(
-            text=text,
-            reply_markup=kb,
-        )
+        await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
     try:
         await create_coupon(coupon_code, coupon_amount, usage_limit, session)
 
+        coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
         text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
-            f"💰 Сумма: <b>{coupon_amount} рублей</b> \n"
+            f"💰 Сумма: <b>{coupon_amount} рублей</b>\n"
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>\n"
-            f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}</code>\n"
+            f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
         )
 
-        await message.answer(text=text, reply_markup=kb)
+        kb = InlineKeyboardBuilder()
+        if INLINE_MODE:
+            kb.button(text="📤 Поделиться", switch_inline_query=f"coupon_{coupon_code}")
+        kb.button(text="Назад", callback_data=AdminPanelCallback(action="coupons").pack())
+        kb.adjust(1)
+
+        await message.answer(text=text, reply_markup=kb.as_markup())
         await state.clear()
 
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
+        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
 
 
 @router.callback_query(
@@ -172,3 +175,52 @@ async def update_coupons_list(message, session: Any, page: int = 1):
             f"🔗 <b>Ссылка:</b> <code>https://t.me/{USERNAME_BOT}?start=coupons_{coupon['code']}</code>\n"
         )
     await message.edit_text(text=coupon_list, reply_markup=kb)
+
+
+@router.inline_query(F.query.startswith("coupon_"))
+async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
+    if not INLINE_MODE:
+        return
+
+    coupon_code = inline_query.query.split("coupon_")[1]
+    coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+
+    coupons = await get_all_coupons(session, page=1, per_page=10)
+    coupon = next((c for c in coupons["coupons"] if c["code"] == coupon_code), None)
+
+    if not coupon:
+        await inline_query.answer(
+            results=[],
+            switch_pm_text="Купон не найден",
+            switch_pm_parameter="coupons",
+            cache_time=1,
+        )
+        return
+
+    title = f"Купон {coupon['code']}"
+    description = f"Получи {coupon['amount']} рублей!"
+    message_text = (
+        f"🎫 <b>Купон:</b> {coupon['code']}\n"
+        f"💰 <b>Бонус:</b> {coupon['amount']} рублей\n"
+        f"👇 Нажми, чтобы активировать!"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Активировать купон", url=coupon_link)
+
+    result = InlineQueryResultArticle(
+        id=coupon_code,
+        title=title,
+        description=description,
+        input_message_content=InputTextMessageContent(
+            message_text=message_text,
+            parse_mode=ParseMode.HTML
+        ),
+        reply_markup=builder.as_markup(),
+    )
+
+    await inline_query.answer(
+        results=[result],
+        cache_time=86400,
+        is_personal=True
+    )
