@@ -612,14 +612,19 @@ async def process_user_search(
 
     balance = int(balance)
 
+    user_data = await session.fetchrow("SELECT username, created_at, updated_at FROM users WHERE tg_id = $1", tg_id)
     username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    created_at = user_data["created_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+    updated_at = user_data["updated_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
 
     text = (
         f"<b>📊 Информация о пользователе</b>"
         f"\n\n🆔 ID: <b>{tg_id}</b>"
         f"\n📄 Логин: <b>@{username}</b>"
+        f"\n📅 Дата регистрации: <b>{created_at}</b>"
+        f"\n🏃 Дата активности: <b>{updated_at}</b>"
         f"\n💰 Баланс: <b>{balance}</b>"
         f"\n👥 Количество рефералов: <b>{referral_count}</b>"
     )
