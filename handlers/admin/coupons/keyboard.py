@@ -1,14 +1,18 @@
+from typing import Optional
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK
+from handlers.utils import format_days
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
 class AdminCouponDeleteCallback(CallbackData, prefix="admin_coupon_delete"):
     coupon_code: str
+    confirm: Optional[bool] = None
 
 
 def build_coupons_kb() -> InlineKeyboardMarkup:
@@ -50,3 +54,17 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
     builder.row(build_admin_back_btn("coupons"))
     builder.adjust(2)
     return builder.as_markup()
+
+
+def format_coupons_list(coupons: list, username_bot: str) -> str:
+    coupon_list = "📜 Список всех купонов:\n\n"
+    for coupon in coupons:
+        value_text = f"💰 <b>Сумма:</b> {coupon['amount']} рублей" if coupon["amount"] > 0 else f"⏳ <b>{format_days(coupon['days'])}</b>"
+        coupon_list += (
+            f"🏷️ <b>Код:</b> {coupon['code']}\n"
+            f"{value_text}\n"
+            f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
+            f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n"
+            f"🔗 <b>Ссылка:</b> <code>https://t.me/{username_bot}?start=coupons_{coupon['code']}</code>\n\n"
+        )
+    return coupon_list

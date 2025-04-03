@@ -616,7 +616,7 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
                 )
 
         await message.answer(
-            text=f"✅ Название кластера успешно изменено с '{old_cluster_name}' на '{new_cluster_name}'!\n\n⚠️ Не забудьте сделать \"Синхронизацию\".",
+            text=f"✅ Название кластера успешно изменено с '{old_cluster_name}' на '{new_cluster_name}'!",
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
@@ -722,10 +722,7 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
                     old_server_name
                 )
 
-        # Формируем текст сообщения с учетом USE_COUNTRY_SELECTION
-        base_text = f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!"
-        sync_reminder = "\n\n⚠️ Не забудьте сделать \"Синхронизацию\"."
-        final_text = base_text + (sync_reminder if USE_COUNTRY_SELECTION else "")
+        final_text = f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!"
 
         await message.answer(
             text=final_text,

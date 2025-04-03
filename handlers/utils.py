@@ -152,6 +152,27 @@ def format_time_until_deletion(seconds: int) -> str:
     return " и ".join(parts) if parts else "менее минуты"
 
 
+def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
+    n = abs(num) % 100
+    if 10 < n < 20:
+        return form3
+    return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
+
+def format_days(days: int) -> str:
+    """
+    Форматирует количество дней с правильным склонением.
+    
+    Args:
+        days (int): Количество дней.
+    
+    Returns:
+        str: Строка с числом и склонённым словом "день/дня/дней".
+    """
+    if days <= 0:
+        return "0 дней"
+    return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
+
+
 async def edit_or_send_message(
     target_message: Message,
     text: str,
