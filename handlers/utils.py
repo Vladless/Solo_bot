@@ -152,6 +152,27 @@ def format_time_until_deletion(seconds: int) -> str:
     return " и ".join(parts) if parts else "менее минуты"
 
 
+def format_days(days: int) -> str:
+    """
+    Форматирует количество дней с правильным склонением.
+    
+    Args:
+        days (int): Количество дней.
+    
+    Returns:
+        str: Строка с числом и склонённым словом "день/дня/дней".
+    """
+    if days <= 0:
+        return "0 дней"
+    
+    if days % 10 == 1 and days % 100 != 11:
+        return f"{days} день"
+    elif days % 10 in [2, 3, 4] and days % 100 not in [12, 13, 14]:
+        return f"{days} дня"
+    else:
+        return f"{days} дней"
+
+
 async def edit_or_send_message(
     target_message: Message,
     text: str,
