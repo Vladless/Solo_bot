@@ -1,9 +1,12 @@
+from typing import Optional
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from typing import Optional
 
 from handlers.buttons import BACK
+from handlers.utils import format_days
+
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -56,7 +59,7 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
 def format_coupons_list(coupons: list, username_bot: str) -> str:
     coupon_list = "📜 Список всех купонов:\n\n"
     for coupon in coupons:
-        value_text = f"💰 <b>Сумма:</b> {coupon['amount']} рублей" if coupon["amount"] > 0 else f"⏳ <b>Дней:</b> {coupon['days']}"
+        value_text = f"💰 <b>Сумма:</b> {coupon['amount']} рублей" if coupon["amount"] > 0 else f"⏳ <b>{format_days(coupon['days'])}</b>"
         coupon_list += (
             f"🏷️ <b>Код:</b> {coupon['code']}\n"
             f"{value_text}\n"
