@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any
 import html
 import pytz
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -31,6 +31,7 @@ from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.profile import process_callback_view_profile
+from handlers.utils import format_days
 from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
@@ -186,7 +187,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
         text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
-            f"⏳ Дней: <b>{days}</b>\n"
+            f"⏳ <b>{format_days(days)}</b>\n"
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>\n"
             f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
         )
@@ -302,10 +303,10 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         return
 
     title = f"Купон {coupon['code']}"
-    description = f"Получи {coupon['amount']} рублей!" if coupon["amount"] > 0 else f"Продли подписку на {coupon['days']} дней!"
+    description = f"Получи {coupon['amount']} рублей!" if coupon["amount"] > 0 else f"Продли подписку на {format_days(coupon['days'])}!"
     message_text = (
         f"🎫 <b>Купон:</b> {coupon['code']}\n"
-        f"{'💰 <b>Бонус:</b> ' + str(coupon['amount']) + ' рублей' if coupon['amount'] > 0 else '⏳ <b>Продление:</b> ' + str(coupon['days']) + ' дней'}\n"
+        f"{'💰 <b>Бонус:</b> ' + str(coupon['amount']) + ' рублей' if coupon['amount'] > 0 else '⏳ <b>Продление:</b> ' + format_days(coupon['days'])}\n"
         f"👇 Нажми, чтобы активировать!"
     )
 
@@ -328,7 +329,6 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         cache_time=86400,
         is_personal=True
     )
-
 
 @router.message(F.text.regexp(r"^/start coupons_(.+)$"))
 async def handle_coupon_activation(message: Message, state: FSMContext, session: Any, admin: bool = False):
@@ -464,7 +464,7 @@ async def handle_key_extension(callback_query: CallbackQuery, state: FSMContext,
 
         alias = key.get("alias") or key["email"]
         expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime("%d.%m.%y, %H:%M")
-        text = f"✅ Купон активирован, подписка <b>{alias}</b> продлена на {coupon['days']}⏳ дней до {expiry_date}📆."
+        text = f"✅ Купон активирован, подписка <b>{alias}</b> продлена на {format_days(coupon['days'])}⏳ до {expiry_date}📆."
 
         await callback_query.message.answer(text)
         await process_callback_view_profile(callback_query.message, state, admin)
