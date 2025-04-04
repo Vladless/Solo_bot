@@ -96,20 +96,14 @@ async def handle_key_creation(
             extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
             expiry_time = current_time + timedelta(days=TRIAL_TIME + extra_days)
             logger.info(f"Доступен {TRIAL_TIME + extra_days}-дневный пробный период пользователю {tg_id}.")
-            updated = await update_trial(tg_id, 1, session)
-            if updated:
-                await edit_or_send_message(
-                    target_message=message_or_query
-                    if isinstance(message_or_query, Message)
-                    else message_or_query.message,
-                    text=CREATING_CONNECTION_MSG,
-                    reply_markup=None,
-                )
-
-                await create_key(tg_id, expiry_time, state, session, message_or_query)
-                return
-            else:
-                logger.error(f"Не удалось обновить статус триального периода для пользователя {tg_id}.")
+            await edit_or_send_message(
+                target_message=message_or_query if isinstance(message_or_query, Message) else message_or_query.message,
+                text=CREATING_CONNECTION_MSG,
+                reply_markup=None,
+            )
+            await state.update_data(is_trial=True)
+            await create_key(tg_id, expiry_time, state, session, message_or_query)
+            return
 
     builder = InlineKeyboardBuilder()
     for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
@@ -144,7 +138,7 @@ async def handle_key_creation(
 
 
 @router.callback_query(F.data.startswith("select_plan_"))
-async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
+async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state: FSMContext):
     tg_id = callback_query.message.chat.id
     plan_id = callback_query.data.split("_")[-1]
     plan_price = RENEWAL_PRICES.get(plan_id)
@@ -191,9 +185,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any):
     )
 
     expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
-    await create_key(tg_id, expiry_time, None, session, callback_query, None, plan_id)
-    await update_balance(tg_id, -plan_price, session)
-
+    await state.update_data(plan_id=plan_id)
+    await create_key(tg_id, expiry_time, state, session, callback_query)
 
 async def create_key(
     tg_id: int,
@@ -214,13 +207,8 @@ async def create_key(
     if USE_COUNTRY_SELECTION:
         logger.info("[Country Selection] USE_COUNTRY_SELECTION включен. Получение наименее загруженного кластера")
         least_loaded_cluster = await get_least_loaded_cluster()
-        logger.info(
-            f"[Country Selection] Наименее загруженный кластер: {least_loaded_cluster}. Получаем список серверов"
-        )
-        servers = await session.fetch(
-            "SELECT server_name FROM servers WHERE cluster_name = $1",
-            least_loaded_cluster,
-        )
+        logger.info(f"[Country Selection] Наименее загруженный кластер: {least_loaded_cluster}. Получаем список серверов")
+        servers = await session.fetch("SELECT server_name FROM servers WHERE cluster_name = $1", least_loaded_cluster)
         countries = [server["server_name"] for server in servers]
         logger.info(f"[Country Selection] Список серверов: {countries}")
 
@@ -280,7 +268,14 @@ async def create_key(
             least_loaded_cluster,
             session,
         )
-        await update_trial(tg_id, 1, session)
+        data = await state.get_data()
+        if data.get("is_trial"):
+            trial_status = await get_trial(tg_id, session)
+            if trial_status in [0, -1]:
+                await update_trial(tg_id, 1, session)
+        if data.get("plan_id"):
+            plan_price = RENEWAL_PRICES.get(data["plan_id"])
+            await update_balance(tg_id, -plan_price, session)
         logger.info(f"[Database] Ключ сохранён в базе данных для пользователя {tg_id}")
     except Exception as e:
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
@@ -375,7 +370,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
 
 
 @router.callback_query(F.data.startswith("select_country|"))
-async def handle_country_selection(callback_query: CallbackQuery, session: Any):
+async def handle_country_selection(callback_query: CallbackQuery, session: Any, state: FSMContext):
     """
     Обрабатывает выбор страны.
     Формат callback data:
@@ -402,7 +397,7 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any):
     logger.info(f"Пользователь {tg_id} выбрал страну: {selected_country}")
     logger.info(f"Получено время истечения (timestamp): {ts}")
 
-    await finalize_key_creation(tg_id, expiry_time, selected_country, None, session, callback_query, old_key_name)
+    await finalize_key_creation(tg_id, expiry_time, selected_country, state, session, callback_query, old_key_name)
 
 
 async def finalize_key_creation(
@@ -516,6 +511,14 @@ async def finalize_key_creation(
                 public_link,
                 selected_country,
             )
+            data = await state.get_data()
+            if data.get("is_trial"):
+                trial_status = await get_trial(tg_id, session)
+                if trial_status in [0, -1]:
+                    await update_trial(tg_id, 1, session)
+            if data.get("plan_id"):
+                plan_price = RENEWAL_PRICES.get(data["plan_id"])
+                await update_balance(tg_id, -plan_price, session)
 
     except Exception as e:
         logger.error(f"Error while creating the key for user {tg_id}: {e}")
