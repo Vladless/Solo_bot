@@ -5,7 +5,7 @@ import os
 import asyncpg
 import qrcode
 
-from typing import Any, Optional
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -17,7 +17,6 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
     Message,
-    User
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -52,6 +51,7 @@ from handlers.buttons import (
     PAYMENT,
     QR,
     TOP_FIVE,
+    TRIAL_SUB
 )
 from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT
 from logger import logger
@@ -115,7 +115,7 @@ async def process_callback_view_profile(
         if key_count > 0:
             builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
         elif trial_status == 0:
-            builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
+            builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
         else:
             builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
         builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))

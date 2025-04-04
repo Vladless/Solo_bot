@@ -37,6 +37,7 @@ from config import (
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
+    INSTRUCTIONS_BUTTON
 )
 from database import (
     check_server_name_by_cluster,
@@ -659,7 +660,8 @@ async def process_callback_connect_phone(callback_query: CallbackQuery):
         InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"),
         InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"),
     )
-    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    if INSTRUCTIONS_BUTTON:
+       builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
 
     await edit_or_send_message(
@@ -694,7 +696,8 @@ async def process_callback_connect_ios(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
     builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"))
-    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    if INSTRUCTIONS_BUTTON:
+        builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -733,7 +736,8 @@ async def process_callback_connect_android(callback_query: CallbackQuery):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
     builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"))
-    builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+    if INSTRUCTIONS_BUTTON:
+        builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

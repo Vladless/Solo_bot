@@ -8,7 +8,7 @@ import pytz
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, InputFile
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
@@ -320,7 +320,7 @@ async def create_key(
             media_path=default_media_path,
         )
     else:
-        photo = InputFile(default_media_path)
+        photo = FSInputFile(default_media_path)
         await bot.send_photo(
             chat_id=tg_id,
             photo=photo,
