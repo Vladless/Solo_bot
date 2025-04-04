@@ -112,7 +112,6 @@ async def process_callback_view_profile(
             profile_message += f"\n<blockquote> <i>{NEWS_MESSAGE}</i></blockquote>"
 
         builder = InlineKeyboardBuilder()
-        if trial_status == 0 or key_count == 0:
         if key_count > 0:
             builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
         elif trial_status == 0:
