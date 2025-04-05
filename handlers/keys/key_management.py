@@ -268,14 +268,15 @@ async def create_key(
             least_loaded_cluster,
             session,
         )
-        data = await state.get_data()
-        if data.get("is_trial"):
-            trial_status = await get_trial(tg_id, session)
-            if trial_status in [0, -1]:
-                await update_trial(tg_id, 1, session)
-        if data.get("plan_id"):
-            plan_price = RENEWAL_PRICES.get(data["plan_id"])
-            await update_balance(tg_id, -plan_price, session)
+        if state is not None:
+            data = await state.get_data()
+            if data.get("is_trial"):
+                trial_status = await get_trial(tg_id, session)
+                if trial_status in [0, -1]:
+                    await update_trial(tg_id, 1, session)
+            if data.get("plan_id"):
+                plan_price = RENEWAL_PRICES.get(data["plan_id"])
+                await update_balance(tg_id, -plan_price, session)
         logger.info(f"[Database] Ключ сохранён в базе данных для пользователя {tg_id}")
     except Exception as e:
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
@@ -310,8 +311,6 @@ async def create_key(
     days = remaining_time.days
     key_message_text = key_message_success(public_link, f"⏳ Осталось дней: {days} 📅")
 
-    default_media_path = "img/pic.jpg"
-
     if target_message:
         await edit_or_send_message(
             target_message=target_message,
@@ -320,11 +319,9 @@ async def create_key(
             media_path=default_media_path,
         )
     else:
-        photo = FSInputFile(default_media_path)
-        await bot.send_photo(
+        await bot.send_message(
             chat_id=tg_id,
-            photo=photo,
-            caption=key_message_text,
+            text=key_message_text,
             reply_markup=builder.as_markup(),
         )
     if state:
