@@ -268,7 +268,11 @@ async def create_key(
             least_loaded_cluster,
             session,
         )
-        data = await state.get_data()
+
+        data = {}
+        if state:
+            data = await state.get_data()
+
         if data.get("is_trial"):
             trial_status = await get_trial(tg_id, session)
             if trial_status in [0, -1]:
