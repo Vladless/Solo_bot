@@ -120,7 +120,8 @@ async def process_start_logic(
         try:
             if "coupons_" in text:
                 logger.info(f"Обнаружена ссылка на купон: {text}")
-                await handle_coupon_activation(message, state, session)
+                user_id = message.chat.id
+                await handle_coupon_activation(message, state, session, admin, text=text, user_id=user_id)
                 return
 
             if "gift_" in text:
