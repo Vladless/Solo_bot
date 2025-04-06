@@ -45,3 +45,4 @@ yookassa==3.3.0
 httpx
 qrcode
 pillow
+rich
