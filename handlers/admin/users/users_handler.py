@@ -69,6 +69,8 @@ class UserEditorState(StatesGroup):
     waiting_for_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
+    selecting_cluster = State()
+    selecting_duration = State()
 
 
 @router.callback_query(
@@ -817,6 +819,7 @@ async def handle_create_key_select_cluster(
 ):
     tg_id = callback_data.tg_id
     await state.update_data(tg_id=tg_id)
+    await state.set_state(UserEditorState.selecting_cluster)
 
     servers = await get_servers(session)
     cluster_names = list(servers.keys())
@@ -831,7 +834,7 @@ async def handle_create_key_select_cluster(
     for cluster in cluster_names:
         builder.button(
             text=f"🌐 {cluster}",
-            callback_data=AdminUserEditorCallback(action="users_create_key_cluster", tg_id=tg_id, data=cluster).pack(),
+            callback_data=cluster
         )
     builder.row(build_admin_back_btn())
 
@@ -840,18 +843,16 @@ async def handle_create_key_select_cluster(
     )
 
 
-@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key_cluster"), IsAdminFilter())
-async def handle_create_key_cluster(
-    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext
-):
-    tg_id = callback_data.tg_id
-    cluster_name = callback_data.data
+@router.callback_query(UserEditorState.selecting_cluster, IsAdminFilter())
+async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMContext):
+    cluster_name = callback_query.data
 
-    await state.update_data(tg_id=tg_id, cluster_name=cluster_name)
+    await state.update_data(cluster_name=cluster_name)
+    await state.set_state(UserEditorState.selecting_duration)
 
     builder = InlineKeyboardBuilder()
     for months, _ in RENEWAL_PRICES.items():
-        builder.button(text=f"{months} мес.", callback_data=f"create_key_duration|{tg_id}|{cluster_name}|{months}")
+        builder.button(text=f"{months} мес.", callback_data=str(months))
     builder.adjust(1)
     builder.row(build_admin_back_btn())
 
@@ -860,13 +861,14 @@ async def handle_create_key_cluster(
     )
 
 
-@router.callback_query(F.data.startswith("create_key_duration|"), IsAdminFilter())
-async def handle_create_key_duration(callback_query: CallbackQuery, session: Any):
+@router.callback_query(UserEditorState.selecting_duration, IsAdminFilter())
+async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMContext, session: Any):
     try:
-        parts = callback_query.data.split("|")
-        tg_id = int(parts[1])
-        cluster_name = parts[2]
-        months = int(parts[3])
+        months = int(callback_query.data)
+        data = await state.get_data()
+
+        tg_id = data["tg_id"]
+        cluster_name = data["cluster_name"]
 
         client_id = str(uuid.uuid4())
         email = generate_random_email()
@@ -887,6 +889,8 @@ async def handle_create_key_duration(callback_query: CallbackQuery, session: Any
             session=session,
         )
 
+        await state.clear()
+
         await callback_query.message.edit_text(
             f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {months} мес.!",
             reply_markup=build_editor_kb(tg_id),
@@ -895,7 +899,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, session: Any
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(tg_id)
+            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(data.get("tg_id", 0))
         )
 
 
