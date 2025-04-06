@@ -7,7 +7,7 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.text import Text
 
-from config import SERVICE_NAME
+from config import BOT_SERVICE
 
 try:
     sys.stdin.reconfigure(encoding='utf-8')
@@ -23,6 +23,7 @@ BACK_DIR = os.path.expanduser("~/.solobot_backup")
 TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
+SERVICE_NAME = BOT_SERVICE
 
 console = Console()
 
