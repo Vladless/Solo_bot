@@ -331,8 +331,12 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
     )
 
 @router.message(F.text.regexp(r"^/start coupons_(.+)$"))
-async def handle_coupon_activation(message: Message, state: FSMContext, session: Any, admin: bool = False):
-    coupon_code = message.text.split("coupons_")[1]
+async def handle_coupon_activation(
+    message: Message, state: FSMContext, session: Any, admin: bool = False, text: str = None, user_id: int = None
+):
+    coupon_text = text if text is not None else message.text
+    logger.info(f"Текст купона в handle_coupon_activation: {coupon_text}")
+    coupon_code = coupon_text.split("coupons_")[1]
 
     coupons = await get_all_coupons(session, page=1, per_page=10)
     coupon = next((c for c in coupons["coupons"] if c["code"] == coupon_code), None)
@@ -345,37 +349,39 @@ async def handle_coupon_activation(message: Message, state: FSMContext, session:
         await message.answer("❌ Лимит активаций купона исчерпан.")
         return
 
+    effective_user_id = user_id if user_id is not None else message.from_user.id
+
     usage = await session.fetchrow(
         "SELECT * FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
         coupon["id"],
-        message.from_user.id
+        effective_user_id
     )
     if usage:
         await message.answer("❌ Вы уже активировали этот купон.")
         return
 
-    connection_exists = await check_connection_exists(message.from_user.id)
+    connection_exists = await check_connection_exists(effective_user_id)
     if not connection_exists:
-        await add_connection(tg_id=message.from_user.id, session=session)
+        await add_connection(tg_id=effective_user_id, session=session)
 
     if coupon["amount"] > 0:
         await session.execute(
             "UPDATE connections SET balance = balance + $1 WHERE tg_id = $2",
             coupon["amount"],
-            message.from_user.id
+            effective_user_id
         )
         await session.execute(
             "UPDATE coupons SET usage_count = usage_count + 1, is_used = $1 WHERE id = $2",
             coupon["usage_count"] + 1 >= coupon["usage_limit"],
             coupon["id"]
         )
-        await create_coupon_usage(coupon["id"], message.from_user.id, session)
+        await create_coupon_usage(coupon["id"], effective_user_id, session)
         await message.answer(f"✅ Купон активирован, на баланс начислено {coupon['amount']} рублей.")
         await process_callback_view_profile(message, state, admin)
         return
 
     if coupon["days"] is not None and coupon["days"] > 0:
-        keys = await get_keys(message.from_user.id, session)
+        keys = await get_keys(effective_user_id, session)
         active_keys = [k for k in keys if not k["is_frozen"]]
 
         if not active_keys:
@@ -403,7 +409,7 @@ async def handle_coupon_activation(message: Message, state: FSMContext, session:
 
         await message.answer(response_message, reply_markup=builder.as_markup())
         await state.set_state(AdminCouponsState.waiting_for_key_selection)
-        await state.update_data(coupon_id=coupon["id"])
+        await state.update_data(coupon_id=coupon["id"], user_id=effective_user_id)
         return
 
     await message.answer("❌ Купон недействителен (нет суммы или дней).")
