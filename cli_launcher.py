@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.text import Text
+import re
 
 from config import BOT_SERVICE
 
@@ -41,10 +42,17 @@ def print_logo():
 
 
 def backup_project():
-    console.print("[yellow]Создаётся резервная копия проекта...[/yellow]")
-    subprocess.run(["rm", "-rf", BACK_DIR])
-    subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
+    console.print("[yellow]📦 Создаётся резервная копия проекта...[/yellow]")
+    with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
+        subprocess.run(["rm", "-rf", BACK_DIR])
+        subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
     console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
+
+
+def install_rsync_if_needed():
+    if subprocess.run(["which", "rsync"], capture_output=True).returncode != 0:
+        console.print("[blue]📦 Установка rsync...[/blue]")
+        os.system("sudo apt update && sudo apt install -y rsync")
 
 
 def install_git_if_needed():
@@ -55,20 +63,62 @@ def install_git_if_needed():
 
 def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
-    os.system("source venv/bin/activate && pip install -r requirements.txt")
+    with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
+        try:
+            subprocess.run("source venv/bin/activate && pip install -r requirements.txt", shell=True, check=True)
+        except subprocess.CalledProcessError:
+            console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
 
 
 def restart_service():
     console.print("[blue]🚀 Перезапуск службы...[/blue]")
-    os.system(f"sudo systemctl restart {SERVICE_NAME}")
+    with console.status("[bold yellow]Перезапуск...[/bold yellow]"):
+        subprocess.run(f"sudo systemctl restart {SERVICE_NAME}", shell=True)
+
+
+def get_local_version():
+    path = os.path.join(PROJECT_DIR, "bot.py")
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
+            if match:
+                return match.group(1)
+    return None
+
+
+def get_remote_version():
+    try:
+        response = requests.get("https://raw.githubusercontent.com/Vladless/Solo_bot/main/bot.py", timeout=10)
+        if response.status_code == 200:
+            for line in response.text.splitlines():
+                match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
+                if match:
+                    return match.group(1)
+    except Exception:
+        return None
+    return None
 
 
 def update_from_beta():
+    local_version = get_local_version()
+    remote_version = get_remote_version()
+
+    if local_version and remote_version:
+        console.print(f"[cyan]🔢 Локальная версия: {local_version} | Последняя в main: {remote_version}[/cyan]")
+        if local_version == remote_version:
+            if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
+                return
+    else:
+        console.print("[red]⚠️ Не удалось определить версии.[/red]")
+
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки BETA[/yellow]"):
         return
 
     backup_project()
     install_git_if_needed()
+    install_rsync_if_needed()
 
     os.chdir(PROJECT_DIR)
     git_dir = os.path.join(PROJECT_DIR, ".git")
@@ -83,7 +133,7 @@ def update_from_beta():
         if os.system(f"git clone {GITHUB_REPO} {TEMP_DIR}") != 0:
             console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
             return
-        subprocess.run(["cp", "-r", f"{TEMP_DIR}/.", PROJECT_DIR])
+        subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
     install_dependencies()
@@ -97,6 +147,7 @@ def update_from_release():
 
     backup_project()
     install_git_if_needed()
+    install_rsync_if_needed()
 
     try:
         response = requests.get(
@@ -113,7 +164,7 @@ def update_from_release():
             console.print("[red]❌ Ошибка при клонировании релиза. Обновление отменено.[/red]")
             return
 
-        subprocess.run(["cp", "-r", f"{TEMP_DIR}/.", PROJECT_DIR])
+        subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
         install_dependencies()
@@ -128,8 +179,8 @@ def show_update_menu():
     table = Table(title="Выберите способ обновления", title_style="bold green")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Источник", style="white")
-    table.add_row("1", "Обновить с BETA (git pull или clone)")
-    table.add_row("2", "Обновить с последнего релиза (GitHub Release)")
+    table.add_row("1", "Обновить до BETA (git pull или clone)")
+    table.add_row("2", "Обновить до последнего релиза (GitHub Release)")
     table.add_row("3", "Назад в меню")
 
     console.print(table)
@@ -151,7 +202,7 @@ def show_menu():
     table.add_row("2", "Запустить напрямую: venv/bin/python main.py")
     table.add_row("3", "Перезапустить бота (systemd)")
     table.add_row("4", "Остановить бота (systemd)")
-    table.add_row("5", "Показать логи (50 строк)")
+    table.add_row("5", "Показать логи (80 строк)")
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
     table.add_row("8", "Выход")
@@ -184,13 +235,13 @@ def main():
             if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
                 os.system(f"sudo systemctl stop {SERVICE_NAME}")
         elif choice == "5":
-            os.system(f"sudo journalctl -u {SERVICE_NAME} -n 50 --no-pager")
+            os.system(f"sudo journalctl -u {SERVICE_NAME} -n 80 --no-pager")
         elif choice == "6":
             os.system(f"sudo systemctl status {SERVICE_NAME}")
         elif choice == "7":
             show_update_menu()
         elif choice == "8":
-            console.print("[bold cyan]👋 Выход из CLI. Удачного дня![/bold cyan]")
+            console.print("[bold cyan] Выход из CLI. Удачного дня![/bold cyan]")
             break
 
 
