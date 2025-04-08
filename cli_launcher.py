@@ -65,7 +65,7 @@ def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
     with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
         try:
-            subprocess.run("source venv/bin/activate && pip install -r requirements.txt", shell=True, check=True)
+            subprocess.run("bash -c 'source venv/bin/activate && pip install -r requirements.txt'", shell=True, check=True)
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
 
