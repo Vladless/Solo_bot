@@ -187,7 +187,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
 
     expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
     await state.update_data(plan_id=plan_id)
-    await create_key(tg_id, expiry_time, state, session, callback_query)
+    await create_key(tg_id, expiry_time, state, session, callback_query, plan=int(plan_id))
 
 async def create_key(
     tg_id: int,
