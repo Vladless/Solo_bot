@@ -88,9 +88,10 @@ def get_local_version():
     return None
 
 
-def get_remote_version():
+def get_remote_version(branch="main"):
     try:
-        response = requests.get("https://raw.githubusercontent.com/Vladless/Solo_bot/main/bot.py", timeout=10)
+        url = f"https://raw.githubusercontent.com/Vladless/Solo_bot/{branch}/bot.py"
+        response = requests.get(url, timeout=10)
         if response.status_code == 200:
             for line in response.text.splitlines():
                 match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
@@ -103,17 +104,17 @@ def get_remote_version():
 
 def update_from_beta():
     local_version = get_local_version()
-    remote_version = get_remote_version()
+    remote_version = get_remote_version(branch="dev")
 
     if local_version and remote_version:
-        console.print(f"[cyan]🔢 Локальная версия: {local_version} | Последняя в main: {remote_version}[/cyan]")
+        console.print(f"[cyan]🔢 Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
         if local_version == remote_version:
             if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
     else:
         console.print("[red]⚠️ Не удалось определить версии.[/red]")
 
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки BETA[/yellow]"):
+    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
         return
 
     backup_project()
@@ -121,28 +122,23 @@ def update_from_beta():
     install_rsync_if_needed()
 
     os.chdir(PROJECT_DIR)
-    git_dir = os.path.join(PROJECT_DIR, ".git")
 
-    if os.path.isdir(git_dir):
-        console.print("[cyan]🔄 Найден .git. Выполняется git pull...[/cyan]")
-        os.system("git reset --hard")
-        os.system("git pull")
-    else:
-        console.print("[cyan]📥 .git не найден. Клонируем репозиторий заново...[/cyan]")
-        subprocess.run(["rm", "-rf", TEMP_DIR])
-        if os.system(f"git clone {GITHUB_REPO} {TEMP_DIR}") != 0:
-            console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
-            return
-        subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
-        subprocess.run(["rm", "-rf", TEMP_DIR])
+    console.print("[cyan]📥 Клонируем репозиторий dev во временную папку...[/cyan]")
+    subprocess.run(["rm", "-rf", TEMP_DIR])
+    if os.system(f"git clone -b dev {GITHUB_REPO} {TEMP_DIR}") != 0:
+        console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
+        return
+
+    subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
+    subprocess.run(["rm", "-rf", TEMP_DIR])
 
     install_dependencies()
     restart_service()
-    console.print("[green]✅ Обновление с ветки BETA завершено.[/green]")
+    console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
 
 
 def update_from_release():
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до последнего релиза[/yellow]"):
+    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
 
     backup_project()
@@ -151,18 +147,27 @@ def update_from_release():
 
     try:
         response = requests.get(
-            "https://api.github.com/repos/Vladless/Solo_bot/releases/latest", timeout=10
+            "https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10
         )
-        tag_name = response.json().get("tag_name")
+        releases = response.json()[:3]
+        tag_choices = [r["tag_name"] for r in releases]
 
-        if not tag_name:
-            raise ValueError("Не удалось получить тег релиза")
+        if not tag_choices:
+            raise ValueError("Не удалось получить список релизов")
+
+        console.print("\n[bold green]Доступные релизы:[/bold green]")
+        for idx, tag in enumerate(tag_choices, 1):
+            console.print(f"[cyan]{idx}.[/cyan] {tag}")
+
+        selected = Prompt.ask(
+            "[bold blue]Выберите номер релиза[/bold blue]",
+            choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+        )
+        tag_name = tag_choices[int(selected) - 1]
 
         console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
-        if os.system(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}") != 0:
-            console.print("[red]❌ Ошибка при клонировании релиза. Обновление отменено.[/red]")
-            return
+        subprocess.run(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}", shell=True, check=True)
 
         subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
@@ -179,8 +184,8 @@ def show_update_menu():
     table = Table(title="Выберите способ обновления", title_style="bold green")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Источник", style="white")
-    table.add_row("1", "Обновить до BETA (git pull или clone)")
-    table.add_row("2", "Обновить до последнего релиза (GitHub Release)")
+    table.add_row("1", "Обновить до BETA")
+    table.add_row("2", "Обновить до последнего релиза")
     table.add_row("3", "Назад в меню")
 
     console.print(table)
