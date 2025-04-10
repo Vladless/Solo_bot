@@ -49,7 +49,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         )
         """
     )
-    logger.info(f"👥 Найдено {len(inactive_trial_users)} неактивных пользователей.")
+    logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
 
     for user in inactive_trial_users:
         tg_id = user["tg_id"]

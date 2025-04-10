@@ -65,7 +65,7 @@ async def periodic_notifications(bot: Bot):
     """
     while True:
         if notification_lock.locked():
-            logger.warning("⛔ Предыдущая задача уведомлений ещё выполняется. Пропуск итерации.")
+            logger.warning("Предыдущая задача уведомлений ещё выполняется. Пропуск итерации.")
             await asyncio.sleep(NOTIFICATION_TIME)
             continue
 
@@ -78,7 +78,7 @@ async def periodic_notifications(bot: Bot):
                 threshold_time_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
                 threshold_time_24h = int((datetime.now(moscow_tz) + timedelta(days=1)).timestamp() * 1000)
 
-                logger.info("🚀 Запуск обработки уведомлений")
+                logger.info("Запуск обработки уведомлений")
 
                 try:
                     keys = await get_all_keys(session=conn)
@@ -101,14 +101,14 @@ async def periodic_notifications(bot: Bot):
                     await notify_users_no_traffic(bot, conn, current_time, keys)
                     await asyncio.sleep(0.5)
 
-                logger.info("✅ Завершена обработка уведомлений")
+                logger.info("Завершена обработка уведомлений")
 
             except Exception as e:
-                logger.error(f"❌ Ошибка в periodic_notifications: {e}")
+                logger.error(f"Ошибка в periodic_notifications: {e}")
             finally:
                 if conn:
                     await conn.close()
-                    logger.info("🔌 Соединение с базой данных закрыто.")
+                    logger.info("Соединение с базой данных закрыто.")
 
         await asyncio.sleep(NOTIFICATION_TIME)
 
@@ -161,7 +161,7 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление пользователю {tg_id}: {e}")
 
-    logger.info("✅ Обработка всех уведомлений за 24 часа завершена.")
+    logger.info("Обработка всех уведомлений за 24 часа завершена.")
     await asyncio.sleep(1)
 
 
@@ -221,7 +221,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление пользователю {tg_id}: {e}")
 
-    logger.info("✅ Обработка всех уведомлений за 10 часов завершена.")
+    logger.info("Обработка всех уведомлений за 10 часов завершена.")
     await asyncio.sleep(1)
 
 
@@ -292,11 +292,11 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                             KEY_DELETED_MSG.format(email=email),
                             keyboard,
                         )
-                        logger.info(f"📢 Отправлено уведомление об удалении подписки {email} пользователю {tg_id}.")
+                        logger.info(f"Отправлено уведомление об удалении подписки {email} пользователю {tg_id}.")
                     except Exception as e:
                         logger.error(f"Не удалось отправить уведомление об удалении пользователю {tg_id}: {e}")
                 except Exception as e:
-                    logger.error(f"❌ Ошибка удаления ключа {client_id} для пользователя {tg_id}: {e}")
+                    logger.error(f"Ошибка удаления ключа {client_id} для пользователя {tg_id}: {e}")
                 continue
 
         if last_notification_time is None:
@@ -330,12 +330,12 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 )
                 await add_notification(tg_id, notification_id, session=conn)
                 logger.info(
-                    f"📢 Отправлено уведомление о необходимости продления подписки {email} пользователю {tg_id}."
+                    f"Отправлено уведомление о необходимости продления подписки {email} пользователю {tg_id}."
                 )
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о продлении подписки пользователю {tg_id}: {e}")
 
-    logger.info("✅ Обработка истекших ключей завершена.")
+    logger.info("Обработка истекших ключей завершена.")
     await asyncio.sleep(1)
 
 

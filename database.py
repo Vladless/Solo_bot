@@ -382,6 +382,7 @@ async def store_key(
     key: str,
     server_id: str,
     session: Any,
+    remnawave_link: str = None,
 ):
     """
     Сохраняет информацию о ключе в базу данных.
@@ -391,8 +392,9 @@ async def store_key(
         client_id (str): Уникальный идентификатор клиента
         email (str): Электронная почта или имя устройства
         expiry_time (int): Время истечения ключа в миллисекундах
-        key (str): Ключ доступа
-        server_id (str): Идентификатор сервера
+        key (str): Ключ доступа (публичная ссылка)
+        server_id (str): Идентификатор сервера или кластера
+        remnawave_link (str, optional): Подписка Remnawave (если есть)
 
     Raises:
         Exception: Если возникает ошибка при сохранении ключа в базу данных
@@ -400,8 +402,8 @@ async def store_key(
     try:
         await session.execute(
             """
-            INSERT INTO keys (tg_id, client_id, email, created_at, expiry_time, key, server_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO keys (tg_id, client_id, email, created_at, expiry_time, key, server_id, remnawave_link)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             tg_id,
             client_id,
@@ -410,6 +412,7 @@ async def store_key(
             expiry_time,
             key,
             server_id,
+            remnawave_link,
         )
         logger.info(f"Ключ успешно сохранен для пользователя {tg_id} на сервере {server_id}")
     except Exception as e:
@@ -1346,7 +1349,7 @@ async def get_servers(session: Any = None):
 
         result = await conn.fetch(
             """
-            SELECT cluster_name, server_name, api_url, subscription_url, inbound_id 
+            SELECT cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type
             FROM servers
             """
         )
@@ -1361,6 +1364,7 @@ async def get_servers(session: Any = None):
                 "api_url": row["api_url"],
                 "subscription_url": row["subscription_url"],
                 "inbound_id": row["inbound_id"],
+                "panel_type": row["panel_type"],
             })
 
         return servers
@@ -1442,7 +1446,7 @@ async def store_gift_link(
 async def get_key_details(email, session):
     record = await session.fetchrow(
         """
-        SELECT k.server_id, k.key, k.email, k.is_frozen, k.expiry_time, k.client_id, k.created_at, c.tg_id, c.balance
+        SELECT k.server_id, k.key, k.remnawave_link, k.email, k.is_frozen, k.expiry_time, k.client_id, k.created_at, c.tg_id, c.balance
         FROM keys k
         JOIN connections c ON k.tg_id = c.tg_id
         WHERE k.email = $1
@@ -1470,6 +1474,7 @@ async def get_key_details(email, session):
 
     return {
         "key": record["key"],
+        "remnawave_link": record["remnawave_link"],
         "server_id": record["server_id"],
         "created_at": record["created_at"],
         "expiry_time": record["expiry_time"],

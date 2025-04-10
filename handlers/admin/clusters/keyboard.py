@@ -130,3 +130,17 @@ def build_sync_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineKey
     builder.row(build_admin_back_btn("clusters"))
 
     return builder.as_markup()
+
+
+def build_panel_type_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🌐 3X-UI",
+        callback_data=AdminClusterCallback(action="panel_3xui").pack()
+    )
+    builder.button(
+        text="🌀 Remnawave",
+        callback_data=AdminClusterCallback(action="panel_remnawave").pack()
+    )
+    builder.row(build_admin_back_btn("clusters"))
+    return builder.as_markup()

@@ -34,10 +34,9 @@ from database import (
 from handlers.admin.coupons.coupons_handler import handle_coupon_activation
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
 from handlers.captcha import generate_captcha
-from handlers.keys.key_management import create_key
+from handlers.keys.key_mode.key_create import create_key
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
-    COUPON_SUCCESS_MSG,
     GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
     NEW_REFERRAL_NOTIFICATION,
     NOT_SUBSCRIBED_YET_MSG,
@@ -287,7 +286,7 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 
     if admin:
         builder.row(
-            InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+            InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
         )
 
     builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))

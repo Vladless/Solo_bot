@@ -95,37 +95,25 @@ async def combine_unique_lines(urls: list[str], identifier: str, query_string: s
     return list(all_lines)
 
 
-async def get_subscription_urls(server_id: str, email: str, conn) -> list[str]:
-    """
-    Получает список URL-адресов для подписки в зависимости от режима выбора страны.
-
-    Args:
-        server_id: Идентификатор сервера или кластера
-        email: Email пользователя
-        conn: Соединение с базой данных
-
-    Returns:
-        Список URL-адресов для подписки
-    """
+async def get_subscription_urls(server_id: str, email: str, conn, include_remnawave_key: str = None) -> list[str]:
+    urls = []
     if USE_COUNTRY_SELECTION:
-        logger.info(f"Режим выбора страны активен. Ищем сервер {server_id} в БД.")
+        logger.info(f"[Sub] Страна-режим активен. Ищем сервер {server_id}.")
         server_data = await conn.fetchrow("SELECT subscription_url FROM servers WHERE server_name = $1", server_id)
-        if not server_data:
-            logger.warning(f"Не найден сервер {server_id} в БД!")
-            return []
-        subscription_url = server_data["subscription_url"]
-        urls = [f"{subscription_url}/{email}"]
-        logger.info(f"Используем подписку {urls[0]}")
-        return urls
+        if server_data and server_data["subscription_url"]:
+            urls.append(f"{server_data['subscription_url']}/{email}")
+    else:
+        servers = await get_servers(conn)
+        cluster_servers = servers.get(server_id, [])
+        for server in cluster_servers:
+            if url := server.get("subscription_url"):
+                urls.append(f"{url}/{email}")
 
-    servers = await get_servers(conn)
-    logger.info(f"Режим выбора страны отключен. Используем кластер {server_id}.")
-    cluster_servers = servers.get(server_id, [])
-    if not cluster_servers:
-        logger.warning(f"Не найдены сервера для {server_id}")
-        return []
-    urls = [f"{server['subscription_url']}/{email}" for server in cluster_servers]
-    logger.info(f"Найдено {len(urls)} URL-адресов в кластере {server_id}")
+    if include_remnawave_key:
+        urls.append(include_remnawave_key)
+        logger.info(f"[Sub] Добавлена Remnawave ссылка: {include_remnawave_key}")
+
+    logger.info(f"[Sub] Список URL подписок: {urls}")
     return urls
 
 
@@ -346,7 +334,10 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
         expiry_time_ms = client_data.get("expiry_time")
         time_left = format_time_left(expiry_time_ms)
 
-        urls = await get_subscription_urls(server_id, email, conn)
+        urls = await get_subscription_urls(
+    server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
+)
+
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
 

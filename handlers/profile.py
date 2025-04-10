@@ -132,7 +132,7 @@ async def process_callback_view_profile(
             builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
         if admin:
             builder.row(
-                InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+                InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
             )
         if SHOW_START_MENU_ONCE:
             builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))

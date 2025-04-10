@@ -13,14 +13,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import PUBLIC_LINK, RENEWAL_PRICES, TOTAL_GB
+from config import RENEWAL_PRICES, TOTAL_GB
 from database import (
     delete_key,
     delete_user_data,
     get_balance,
     get_client_id_by_email,
     get_servers,
-    store_key,
     update_balance,
     update_key_expiry,
     update_trial,
@@ -48,7 +47,6 @@ from .keyboard import (
     build_key_edit_kb,
     build_user_delete_kb,
     build_user_edit_kb,
-    build_user_key_kb,
     build_users_balance_change_kb,
     build_users_balance_kb,
     build_users_key_expiry_kb,
@@ -875,19 +873,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
         expiry = datetime.now(tz=timezone.utc) + timedelta(days=30 * months)
         expiry_ms = int(expiry.timestamp() * 1000)
 
-        await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms)
-
-        public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
-
-        await store_key(
-            tg_id=tg_id,
-            client_id=client_id,
-            email=email,
-            expiry_time=expiry_ms,
-            key=public_link,
-            server_id=cluster_name,
-            session=session,
-        )
+        await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms, plan=months, session=session)
 
         await state.clear()
 

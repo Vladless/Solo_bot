@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 import pytz
 import html
@@ -46,7 +46,7 @@ from handlers.texts import (
     NO_SUBSCRIPTIONS_MSG,
     key_message,
 )
-from handlers.utils import edit_or_send_message, handle_error
+from handlers.utils import edit_or_send_message, handle_error, is_full_remnawave_cluster
 from logger import logger
 
 
@@ -170,135 +170,134 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
     key_name = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(key_name, session)
-        if record:
-            is_frozen = record["is_frozen"]
+        if not record:
+            await callback_query.message.answer(text="<b>Информация о подписке не найдена.</b>")
+            return
 
-            if is_frozen:
-                response_message = FROZEN_SUBSCRIPTION_MSG
+        is_frozen = record["is_frozen"]
 
-                builder = InlineKeyboardBuilder()
+        builder = InlineKeyboardBuilder()
+        image_path = os.path.join("img", "pic_view.jpg")
+        if not os.path.isfile(image_path):
+            await callback_query.message.answer("Файл изображения не найден.")
+            return
+
+        if is_frozen:
+            builder.row(
+                InlineKeyboardButton(
+                    text=UNFREEZE,
+                    callback_data=f"unfreeze_subscription|{key_name}",
+                )
+            )
+            builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=FROZEN_SUBSCRIPTION_MSG,
+                reply_markup=builder.as_markup(),
+                media_path=image_path,
+            )
+            return
+
+        key = record.get("key")
+        remnawave_link = record.get("remnawave_link")
+        final_link = key or remnawave_link
+
+        expiry_time = record["expiry_time"]
+        server_name = record["server_id"]
+        expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+        time_left = expiry_date - datetime.utcnow()
+
+        if time_left.total_seconds() <= 0:
+            days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
+        else:
+            total_seconds = int(time_left.total_seconds())
+            days = total_seconds // 86400
+            hours = (total_seconds % 86400) // 3600
+            minutes = (total_seconds % 3600) // 60
+            days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+
+        formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
+        response_message = key_message(
+            final_link,
+            formatted_expiry_date,
+            days_left_message,
+            server_name,
+            server_name if USE_COUNTRY_SELECTION else None,
+        )
+
+        if (not key or not key.startswith(PUBLIC_LINK)) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔄 Обновить подписку",
+                    callback_data=f"update_subscription|{key_name}",
+                )
+            )
+
+        is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
+        if is_full_remnawave and final_link:
+            builder.row(
+                InlineKeyboardButton(
+                    text=CONNECT_DEVICE,
+                    web_app=WebAppInfo(url=final_link),
+                )
+            )
+        else:
+            if CONNECT_PHONE_BUTTON:
                 builder.row(
                     InlineKeyboardButton(
-                        text=UNFREEZE,
-                        callback_data=f"unfreeze_subscription|{key_name}",
+                        text=CONNECT_PHONE,
+                        callback_data=f"connect_phone|{key_name}",
                     )
                 )
-                builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
-                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
-                keyboard = builder.as_markup()
-                image_path = os.path.join("img", "pic_view.jpg")
-
-                if not os.path.isfile(image_path):
-                    await callback_query.message.answer("Файл изображения не найден.")
-                    return
-
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=response_message,
-                    reply_markup=keyboard,
-                    media_path=image_path,
+                builder.row(
+                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
                 )
-
             else:
-                key = record["key"]
-                expiry_time = record["expiry_time"]
-                server_name = record["server_id"]
-                country = server_name
-                expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-                current_date = datetime.utcnow()
-                time_left = expiry_date - current_date
-
-                if time_left.total_seconds() <= 0:
-                    days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
-                else:
-                    total_seconds = int(time_left.total_seconds())
-                    days = total_seconds // 86400
-                    hours = (total_seconds % 86400) // 3600
-                    minutes = (total_seconds % 3600) // 60
-                    days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
-
-                formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
-                response_message = key_message(
-                    key,
-                    formatted_expiry_date,
-                    days_left_message,
-                    server_name,
-                    country if USE_COUNTRY_SELECTION else None,
+                builder.row(
+                    InlineKeyboardButton(
+                        text=CONNECT_DEVICE,
+                        callback_data=f"connect_device|{key_name}",
+                    )
                 )
 
-                builder = InlineKeyboardBuilder()
-
-                if not key.startswith(PUBLIC_LINK) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text="🔄 Обновить подписку",
-                            callback_data=f"update_subscription|{key_name}",
-                        )
-                    )
-
-                if CONNECT_PHONE_BUTTON:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=CONNECT_PHONE,
-                            callback_data=f"connect_phone|{key_name}",
-                        )
-                    )
-                    builder.row(
-                        InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                        InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-                    )
-                else:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=CONNECT_DEVICE,
-                            callback_data=f"connect_device|{key_name}",
-                        )
-                    )
-                if QRCODE:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=QR,
-                            callback_data=f"show_qr|{key_name}",
-                        )
-                    )
-                if ENABLE_DELETE_KEY_BUTTON:
-                    builder.row(
-                        InlineKeyboardButton(text=RENEW, callback_data=f"renew_key|{key_name}"),
-                        InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
-                    )
-                else:
-                    builder.row(InlineKeyboardButton(text=RENEW_FULL, callback_data=f"renew_key|{key_name}"))
-
-                if USE_COUNTRY_SELECTION:
-                    builder.row(InlineKeyboardButton(text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"))
-
-                if TOGGLE_CLIENT:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=FREEZE,
-                            callback_data=f"freeze_subscription|{key_name}",
-                        )
-                    )
-
-                builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
-                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
-                keyboard = builder.as_markup()
-                image_path = os.path.join("img", "pic_view.jpg")
-
-                if not os.path.isfile(image_path):
-                    await callback_query.message.answer("Файл изображения не найден.")
-                    return
-
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=response_message,
-                    reply_markup=keyboard,
-                    media_path=image_path,
+        if QRCODE:
+            builder.row(
+                InlineKeyboardButton(
+                    text=QR,
+                    callback_data=f"show_qr|{key_name}",
                 )
+            )
+        if ENABLE_DELETE_KEY_BUTTON:
+            builder.row(
+                InlineKeyboardButton(text=RENEW, callback_data=f"renew_key|{key_name}"),
+                InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
+            )
         else:
-            await callback_query.message.answer(text="<b>Информация о подписке не найдена.</b>")
+            builder.row(InlineKeyboardButton(text=RENEW_FULL, callback_data=f"renew_key|{key_name}"))
+
+        if USE_COUNTRY_SELECTION:
+            builder.row(InlineKeyboardButton(text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"))
+
+        if TOGGLE_CLIENT:
+            builder.row(
+                InlineKeyboardButton(
+                    text=FREEZE,
+                    callback_data=f"freeze_subscription|{key_name}",
+                )
+            )
+
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text=response_message,
+            reply_markup=builder.as_markup(),
+            media_path=image_path,
+        )
     except Exception as e:
         await handle_error(
             tg_id,

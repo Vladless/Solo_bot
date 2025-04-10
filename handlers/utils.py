@@ -248,3 +248,25 @@ def convert_to_bytes(value: float, unit: str) -> int:
     TB = GB * 1024
     units = {"KB": KB, "MB": MB, "GB": GB, "TB": TB}
     return int(value * units.get(unit.upper(), 1))
+
+
+async def is_full_remnawave_cluster(cluster_id: str, session) -> bool:
+    """
+    Универсальная проверка:
+    - Если cluster_id — это имя кластера, проверяет, что все его сервера используют Remnawave.
+    - Если cluster_id — это имя одиночного сервера, проверяет, что он Remnawave.
+    """
+    cluster_servers = await session.fetch(
+        "SELECT panel_type FROM servers WHERE cluster_name = $1",
+        cluster_id,
+    )
+
+    if cluster_servers:
+        panel_types = [s["panel_type"].lower() for s in cluster_servers if s.get("panel_type")]
+        return all(pt == "remnawave" for pt in panel_types)
+
+    server = await session.fetchrow(
+        "SELECT panel_type FROM servers WHERE server_name = $1",
+        cluster_id,
+    )
+    return server and server["panel_type"].lower() == "remnawave"
