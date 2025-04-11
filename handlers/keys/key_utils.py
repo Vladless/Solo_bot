@@ -242,21 +242,29 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                     logger.warning(f"Не указан inbound_id для продления Remnawave на сервере {server_name}")
 
         if remnawave_inbound_ids:
-            remna = RemnawaveAPI(cluster[0]["api_url"])
-            logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-            if logged_in:
-                expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
-                updated = await remna.update_user(
-                    uuid=client_id,
-                    expire_at=expire_iso,
-                    active_user_inbounds=remnawave_inbound_ids,
-                )
-                if updated:
-                    logger.info(f"Подписка Remnawave {client_id} успешно продлена")
-                else:
-                    logger.warning(f"Не удалось продлить подписку Remnawave {client_id}")
+            remnawave_server = next(
+                (srv for srv in cluster if srv.get("panel_type", "").lower() == "remnawave" and srv.get("inbound_id") in remnawave_inbound_ids),
+                None
+            )
+
+            if not remnawave_server:
+                logger.error("❌ Не найден Remnawave сервер для продления")
             else:
-                logger.error("Не удалось войти в Remnawave API")
+                remna = RemnawaveAPI(remnawave_server["api_url"])
+                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+                if logged_in:
+                    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
+                    updated = await remna.update_user(
+                        uuid=client_id,
+                        expire_at=expire_iso,
+                        active_user_inbounds=remnawave_inbound_ids,
+                    )
+                    if updated:
+                        logger.info(f"Подписка Remnawave {client_id} успешно продлена")
+                    else:
+                        logger.warning(f"Не удалось продлить подписку Remnawave {client_id}")
+                else:
+                    logger.error("Не удалось войти в Remnawave API")
 
         for server_info in cluster:
             panel_type = server_info.get("panel_type", "3x-ui").lower()

@@ -16,7 +16,7 @@ from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB, USE_COUNTRY_SELECTION, REMNAWAVE_PASSWORD, REMNAWAVE_LOGIN
 from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster
+from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster, delete_key_from_cluster
 from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
@@ -437,10 +437,10 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
     try:
         query_keys = """
-                SELECT tg_id, client_id, email, expiry_time
-                FROM keys
-                WHERE server_id = $1
-            """
+            SELECT tg_id, client_id, email, expiry_time
+            FROM keys
+            WHERE server_id = $1
+        """
         keys_to_sync = await session.fetch(query_keys, cluster_name)
 
         if not keys_to_sync:
@@ -450,33 +450,44 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
             )
             return
 
-        text = f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
-
         await callback_query.message.edit_text(
-            text=text,
+            text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
         )
-
         for key in keys_to_sync:
             try:
-                await create_key_on_cluster(
+                await delete_key_from_cluster(cluster_name, key["email"], key["client_id"])
+
+                await session.execute(
+                    "DELETE FROM keys WHERE tg_id = $1 AND client_id = $2",
+                    key["tg_id"],
+                    key["client_id"]
+                )
+
+                result = await create_key_on_cluster(
                     cluster_name,
                     key["tg_id"],
                     key["client_id"],
                     key["email"],
                     key["expiry_time"],
+                    session=session,
                 )
-                await asyncio.sleep(0.6)
+
+                await asyncio.sleep(0.5)
+
             except Exception as e:
-                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
+                logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в {cluster_name}: {e}")
+
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
             reply_markup=build_admin_back_kb("clusters"),
         )
+
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
+            text=f"❌ Произошла ошибка при синхронизации: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
         )
 
 

@@ -385,21 +385,19 @@ async def store_key(
     remnawave_link: str = None,
 ):
     """
-    Сохраняет информацию о ключе в базу данных.
-
-    Args:
-        tg_id (int): Telegram ID пользователя
-        client_id (str): Уникальный идентификатор клиента
-        email (str): Электронная почта или имя устройства
-        expiry_time (int): Время истечения ключа в миллисекундах
-        key (str): Ключ доступа (публичная ссылка)
-        server_id (str): Идентификатор сервера или кластера
-        remnawave_link (str, optional): Подписка Remnawave (если есть)
-
-    Raises:
-        Exception: Если возникает ошибка при сохранении ключа в базу данных
+    Сохраняет информацию о ключе в базу данных, если ключ ещё не существует.
     """
     try:
+        existing_key = await session.fetchrow(
+            "SELECT 1 FROM keys WHERE tg_id = $1 AND client_id = $2",
+            tg_id,
+            client_id,
+        )
+
+        if existing_key:
+            logger.info(f"[Store Key] Ключ уже существует — пропускаем: tg_id={tg_id}, client_id={client_id}")
+            return
+
         await session.execute(
             """
             INSERT INTO keys (tg_id, client_id, email, created_at, expiry_time, key, server_id, remnawave_link)
@@ -414,9 +412,10 @@ async def store_key(
             server_id,
             remnawave_link,
         )
-        logger.info(f"Ключ успешно сохранен для пользователя {tg_id} на сервере {server_id}")
+        logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+
     except Exception as e:
-        logger.error(f"Ошибка при сохранении ключа для пользователя {tg_id}: {e}")
+        logger.error(f"❌ Ошибка при сохранении ключа для tg_id={tg_id}, client_id={client_id}: {e}")
         raise
 
 
