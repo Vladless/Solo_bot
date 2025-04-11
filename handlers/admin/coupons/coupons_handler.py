@@ -18,19 +18,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import INLINE_MODE, USERNAME_BOT
 from database import (
-    add_connection,
-    check_connection_exists,
     create_coupon,
-    create_coupon_usage,
     delete_coupon,
     get_all_coupons,
-    get_keys,
-    update_key_expiry,
 )
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
-from handlers.keys.key_utils import renew_key_in_cluster
-from handlers.profile import process_callback_view_profile
 from handlers.utils import format_days
 from logger import logger
 
@@ -45,7 +38,6 @@ class AdminCouponsState(StatesGroup):
     waiting_for_coupon_type = State()
     waiting_for_balance_data = State()
     waiting_for_days_data = State()
-    waiting_for_key_selection = State()
 
 
 @router.callback_query(
@@ -329,161 +321,3 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         cache_time=86400,
         is_personal=True
     )
-
-@router.message(F.text.regexp(r"^/start coupons_(.+)$"))
-async def handle_coupon_activation(
-    message: Message, state: FSMContext, session: Any, admin: bool = False, text: str = None, user_id: int = None
-):
-    coupon_text = text if text is not None else message.text
-    logger.info(f"Текст купона в handle_coupon_activation: {coupon_text}")
-    coupon_code = coupon_text.split("coupons_")[1]
-
-    coupons = await get_all_coupons(session, page=1, per_page=10)
-    coupon = next((c for c in coupons["coupons"] if c["code"] == coupon_code), None)
-
-    if not coupon:
-        await message.answer("❌ Купон не найден.")
-        return
-
-    if coupon["usage_count"] >= coupon["usage_limit"] or coupon["is_used"]:
-        await message.answer("❌ Лимит активаций купона исчерпан.")
-        return
-
-    effective_user_id = user_id if user_id is not None else message.from_user.id
-
-    usage = await session.fetchrow(
-        "SELECT * FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
-        coupon["id"],
-        effective_user_id
-    )
-    if usage:
-        await message.answer("❌ Вы уже активировали этот купон.")
-        return
-
-    connection_exists = await check_connection_exists(effective_user_id)
-    if not connection_exists:
-        await add_connection(tg_id=effective_user_id, session=session)
-
-    if coupon["amount"] > 0:
-        await session.execute(
-            "UPDATE connections SET balance = balance + $1 WHERE tg_id = $2",
-            coupon["amount"],
-            effective_user_id
-        )
-        await session.execute(
-            "UPDATE coupons SET usage_count = usage_count + 1, is_used = $1 WHERE id = $2",
-            coupon["usage_count"] + 1 >= coupon["usage_limit"],
-            coupon["id"]
-        )
-        await create_coupon_usage(coupon["id"], effective_user_id, session)
-        await message.answer(f"✅ Купон активирован, на баланс начислено {coupon['amount']} рублей.")
-        await process_callback_view_profile(message, state, admin)
-        return
-
-    if coupon["days"] is not None and coupon["days"] > 0:
-        keys = await get_keys(effective_user_id, session)
-        active_keys = [k for k in keys if not k["is_frozen"]]
-
-        if not active_keys:
-            await message.answer("❌ У вас нет активных подписок для продления.")
-            return
-
-        builder = InlineKeyboardBuilder()
-        moscow_tz = pytz.timezone("Europe/Moscow")
-        response_message = "<b>🔑 Выберите подписку для продления:</b>\n\n<blockquote>"
-
-        for key in active_keys:
-            alias = key.get("alias")
-            email = key["email"]
-            client_id = key["client_id"]
-            expiry_time = key.get("expiry_time")
-
-            key_display = html.escape(alias.strip() if alias else email)
-            expiry_date = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz).strftime("до %d.%m.%y, %H:%M")
-            response_message += f"• <b>{key_display}</b> ({expiry_date})\n"
-            builder.button(text=key_display, callback_data=f"extend_key|{client_id}|{coupon['id']}")
-
-        response_message += "</blockquote>"
-        builder.button(text="Отмена", callback_data="cancel_coupon_activation")
-        builder.adjust(1)
-
-        await message.answer(response_message, reply_markup=builder.as_markup())
-        await state.set_state(AdminCouponsState.waiting_for_key_selection)
-        await state.update_data(coupon_id=coupon["id"], user_id=effective_user_id)
-        return
-
-    await message.answer("❌ Купон недействителен (нет суммы или дней).")
-
-
-@router.callback_query(F.data.startswith("extend_key|"))
-async def handle_key_extension(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool = False):
-    parts = callback_query.data.split("|")
-    client_id = parts[1]
-    coupon_id = int(parts[2])
-
-    coupon = await session.fetchrow("SELECT * FROM coupons WHERE id = $1", coupon_id)
-    if not coupon or coupon["usage_count"] >= coupon["usage_limit"]:
-        await callback_query.message.edit_text("❌ Купон недействителен или лимит исчерпан.")
-        await state.clear()
-        return
-
-    usage = await session.fetchrow(
-        "SELECT * FROM coupon_usages WHERE coupon_id = $1 AND user_id = $2",
-        coupon_id,
-        callback_query.from_user.id
-    )
-    if usage:
-        await callback_query.message.edit_text("❌ Вы уже активировали этот купон.")
-        await state.clear()
-        return
-
-    key = await session.fetchrow(
-        "SELECT * FROM keys WHERE tg_id = $1 AND client_id = $2",
-        callback_query.from_user.id,
-        client_id
-    )
-    if not key or key["is_frozen"]:
-        await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
-        await state.clear()
-        return
-
-    now_ms = int(datetime.now().timestamp() * 1000)
-    current_expiry = key["expiry_time"]
-    new_expiry = max(now_ms, current_expiry) + (coupon["days"] * 86400 * 1000)
-
-    try:
-        await renew_key_in_cluster(
-            cluster_id=key["server_id"],
-            email=key["email"],
-            client_id=client_id,
-            new_expiry_time=new_expiry,
-            total_gb=0
-        )
-        await update_key_expiry(client_id, new_expiry, session)
-
-        await session.execute(
-            "UPDATE coupons SET usage_count = usage_count + 1, is_used = $1 WHERE id = $2",
-            coupon["usage_count"] + 1 >= coupon["usage_limit"],
-            coupon["id"]
-        )
-        await create_coupon_usage(coupon["id"], callback_query.from_user.id, session)
-
-        alias = key.get("alias") or key["email"]
-        expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime("%d.%m.%y, %H:%M")
-        text = f"✅ Купон активирован, подписка <b>{alias}</b> продлена на {format_days(coupon['days'])}⏳ до {expiry_date}📆."
-
-        await callback_query.message.answer(text)
-        await process_callback_view_profile(callback_query.message, state, admin)
-        await state.clear()
-
-    except Exception as e:
-        logger.error(f"Ошибка при продлении ключа: {e}")
-        await callback_query.message.edit_text("❌ Произошла ошибка при продлении подписки.")
-        await state.clear()
-
-
-@router.callback_query(F.data == "cancel_coupon_activation")
-async def cancel_coupon_activation(callback_query: CallbackQuery, state: FSMContext, admin: bool = False):
-    await callback_query.message.answer("⚠️ Активация купона отменена.")
-    await process_callback_view_profile(callback_query.message, state, admin)
-    await state.clear()

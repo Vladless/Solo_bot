@@ -106,8 +106,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
     plan, client_id = callback_query.data.split("|")[1], callback_query.data.split("|")[2]
     days_to_extend = 30 * int(plan)
 
-    gb_multiplier = {"1": 1, "3": 3, "6": 6, "12": 12}
-    total_gb = TOTAL_GB * gb_multiplier.get(plan, 1) if TOTAL_GB > 0 else 0
+    total_gb = int((int(plan) or 1) * TOTAL_GB * 1024**3)
 
     try:
         record = await get_key_by_server(tg_id, client_id, session)
@@ -178,17 +177,11 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
 
 
 async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_gb, cost, callback_query, plan):
-    logger.info(
-        f"[RENEW] Начинаю процесс продления ключа с параметрами: "
-        f"tg_id={tg_id}, client_id={client_id}, email={email}, "
-        f"new_expiry_time={new_expiry_time}, total_gb={total_gb}, cost={cost}, "
-        f"callback_query={'есть' if callback_query else 'отсутствует'}, plan={plan}"
-    )
-
-    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
+    logger.info(f"[Info] Продление ключа {client_id} на {plan} мес. (Start)")
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
 
     if callback_query:
         try:
@@ -199,52 +192,33 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
                 media_path=None,
             )
         except Exception as e:
-            logger.error(f"Ошибка редактирования сообщения в complete_key_renewal: {e}")
+            logger.error(f"[Error] Ошибка при редактировании сообщения: {e}")
             await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
     else:
         await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
     conn = await asyncpg.connect(DATABASE_URL)
-
-    logger.info(f"[RENEW] Получение данных о ключе для email: {email}")
     key_info = await get_key_details(email, conn)
     if not key_info:
-        logger.error(f"[RENEW] Ключ с client_id {client_id} для пользователя {tg_id} не найден.")
+        logger.error(f"[Error] Ключ с client_id={client_id} не найден в БД.")
         await conn.close()
         return
 
     server_id = key_info["server_id"]
 
     if USE_COUNTRY_SELECTION:
-        logger.info(f"[RENEW] USE_COUNTRY_SELECTION включён. Проверяю информацию о сервере {server_id}")
         cluster_info = await check_server_name_by_cluster(server_id, conn)
         if not cluster_info:
-            logger.error(f"[RENEW] Сервер {server_id} не найден в таблице servers.")
+            logger.error(f"[Error] Сервер {server_id} не найден в таблице servers.")
             await conn.close()
             return
         cluster_id = cluster_info["cluster_name"]
-        logger.info(f"[RENEW] Информация о сервере получена: {cluster_info}. Использую cluster_id: {cluster_id}")
     else:
         cluster_id = server_id
-        logger.info(f"[RENEW] USE_COUNTRY_SELECTION выключен. Использую server_id в качестве cluster_id: {cluster_id}")
 
-    logger.info(f"[RENEW] Запуск продления ключа для пользователя {tg_id} на {plan} мес. в кластере {cluster_id}.")
-
-    async def renew_key_on_cluster():
-        logger.info(
-            f"[RENEW] Запуск renew_key_on_cluster с параметрами: "
-            f"cluster_id={cluster_id}, email={email}, client_id={client_id}, "
-            f"new_expiry_time={new_expiry_time}, total_gb={total_gb}"
-        )
-        await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb)
-        logger.info("[RENEW] Продление ключа на сервере завершено. Обновляю срок действия в базе данных.")
-        await update_key_expiry(client_id, new_expiry_time, conn)
-        logger.info("[RENEW] Срок действия ключа обновлён. Обновляю баланс пользователя.")
-        await update_balance(tg_id, -cost, conn)
-        logger.info(f"[RENEW] Ключ {client_id} успешно продлён на {plan} мес. для пользователя {tg_id}.")
-
-    logger.info("[RENEW] Инициализация процесса продления ключа в кластере.")
-    await renew_key_on_cluster()
-
-    logger.info("[RENEW] Процесс продления ключа завершён. Закрываю соединение с базой данных.")
+    await renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb)
+    await update_key_expiry(client_id, new_expiry_time, conn)
+    await update_balance(tg_id, -cost, conn)
     await conn.close()
+
+    logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")

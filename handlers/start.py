@@ -31,7 +31,6 @@ from database import (
     get_trial,
     update_balance,
 )
-from handlers.admin.coupons.coupons_handler import handle_coupon_activation
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
 from handlers.captcha import generate_captcha
 from handlers.keys.key_mode.key_create import create_key
@@ -48,6 +47,7 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
+from handlers.coupons import activate_coupon
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
@@ -119,8 +119,8 @@ async def process_start_logic(
         try:
             if "coupons_" in text:
                 logger.info(f"Обнаружена ссылка на купон: {text}")
-                user_id = message.chat.id
-                await handle_coupon_activation(message, state, session, admin, text=text, user_id=user_id)
+                coupon_code = text.split("coupons_")[1]
+                await activate_coupon(message, state, session, coupon_code=coupon_code, admin=admin)
                 return
 
             if "gift_" in text:
