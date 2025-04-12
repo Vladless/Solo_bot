@@ -9,6 +9,7 @@ import pytz
 import html
 from datetime import datetime
 
+from config import ADMIN_ID
 from database import (
     check_coupon_usage,
     create_coupon_usage,
@@ -100,7 +101,8 @@ async def activate_coupon(
             await update_coupon_usage_count(coupon_record["id"], session)
             await create_coupon_usage(coupon_record["id"], user_id, session)
             await message.answer(f"✅ Купон активирован, на баланс начислено {coupon_record['amount']} рублей.")
-            await process_callback_view_profile(message, state, admin)
+            is_admin = message.from_user.id in ADMIN_ID
+            await process_callback_view_profile(message, state, admin=is_admin)
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при активации купона на баланс: {e}")
