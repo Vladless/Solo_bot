@@ -58,7 +58,7 @@ from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import get_referral_link, invite_message_send, profile_message_send
-from .utils import edit_or_send_message
+from .utils import edit_or_send_message, format_days
 
 
 router = Router()
@@ -273,12 +273,12 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery):
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery):
     referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
-
+    trial_time_formatted = format_days(TRIAL_TIME)
     results: list[InlineQueryResultArticle] = []
 
     for index, offer in enumerate(REFERRAL_OFFERS):
         description = offer["description"][:64]
-        message_text = offer["message"].format(trial_time=TRIAL_TIME)[:4096]
+        message_text = offer["message"].format(trial_time=TRIAL_TIME, trial_time_formatted=trial_time_formatted)[:4096]
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=offer["title"], url=referral_link))
