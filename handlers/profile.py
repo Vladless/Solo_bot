@@ -29,7 +29,6 @@ from config import (
     NEWS_MESSAGE,
     REFERRAL_BUTTON,
     REFERRAL_OFFERS,
-    RENEWAL_PLANS,
     SHOW_START_MENU_ONCE,
     TOP_REFERRAL_BUTTON,
     TRIAL_TIME,
@@ -167,12 +166,13 @@ async def balance_handler(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     text = BALANCE_MANAGEMENT_TEXT.format(balance=balance)
+    image_path = os.path.join("img", "pic.jpg")
 
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
-        media_path=None,
+        media_path=image_path,
         disable_web_page_preview=False,
     )
 
@@ -206,29 +206,6 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
         text=history_text,
         reply_markup=builder.as_markup(),
         media_path=None,
-        disable_web_page_preview=False,
-    )
-
-
-@router.message(F.text == "/tariffs")
-@router.callback_query(F.data == "view_tariffs")
-async def view_tariffs_handler(callback_query: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
-    image_path = os.path.join("img", "tariffs.jpg")
-    tariffs_message = "<b>🚀 Доступные тарифы VPN:</b>\n\n" + "\n".join([
-        f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
-        f"{RENEWAL_PLANS[months]['price']} "
-        f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
-        for months in sorted(RENEWAL_PLANS.keys(), key=int)
-    ])
-
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=tariffs_message,
-        reply_markup=builder.as_markup(),
-        media_path=image_path,
         disable_web_page_preview=False,
     )
 

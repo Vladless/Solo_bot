@@ -313,11 +313,12 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
     builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
     text = get_about_vpn("3.2.3-minor")
+    image_path = os.path.join("img", "pic.jpg")
 
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
-        media_path=None,
+        media_path=image_path,
         force_text=False,
     )
