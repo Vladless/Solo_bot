@@ -507,19 +507,24 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
         tg_id,
         email,
     )
-
     new_cluster_id = cluster_override or await get_least_loaded_cluster()
 
     new_client_id, remnawave_key = await update_key_on_cluster(
         tg_id, client_id, email, expiry_time, new_cluster_id
     )
 
+    servers = await get_servers()
+    cluster_servers = servers.get(new_cluster_id, [])
+    has_xui = any(s.get("panel_type", "").lower() == "3x-ui" for s in cluster_servers)
+
+    final_key_link = public_link if has_xui else None
+
     await store_key(
         tg_id,
         new_client_id,
         email,
         expiry_time,
-        key=public_link,
+        key=final_key_link,
         remnawave_link=remnawave_key,
         server_id=new_cluster_id,
         session=session,
@@ -528,7 +533,7 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
 
 async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, Any]:
     """
-    Получает трафик пользователя на всех серверах, где у него есть ключ.
+    Получает трафик пользователя на всех серверах, где у него есть ключ (3x-ui и Remnawave).
 
     Args:
         session (Any): Сессия базы данных.
@@ -538,7 +543,6 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
     Returns:
         dict[str, Any]: Структура с данными о трафике.
     """
-
     query = "SELECT client_id, server_id FROM keys WHERE tg_id = $1 AND email = $2"
     rows = await session.fetch(query, tg_id, email)
 
@@ -548,7 +552,8 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
     server_ids = {row["server_id"] for row in rows}
 
     query_servers = """
-        SELECT server_name, api_url FROM servers 
+        SELECT server_name, cluster_name, api_url, panel_type
+        FROM servers 
         WHERE server_name = ANY($1) OR cluster_name = ANY($1)
     """
     server_rows = await session.fetch(query_servers, list(server_ids))
@@ -557,37 +562,55 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
         logger.error(f"Не найдено серверов для: {server_ids}")
         return {"status": "error", "message": f"Серверы не найдены: {', '.join(server_ids)}"}
 
-    servers_map = {row["server_name"]: row["api_url"] for row in server_rows}
+    servers_map = {row["server_name"]: row for row in server_rows}
 
     user_traffic_data = {}
 
-    async def fetch_traffic(api_url: str, client_id: str, server: str) -> tuple[str, Any]:
-        """
-        Получает трафик с сервера для заданного client_id.
-        Возвращает кортеж: (server, used_gb) или (server, ошибка).
-        """
-        xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+    async def fetch_traffic(server_info: dict, client_id: str) -> tuple[str, Any]:
+        server_name = server_info["server_name"]
+        api_url = server_info["api_url"]
+        panel_type = server_info.get("panel_type", "3x-ui").lower()
+
         try:
-            traffic_info = await get_client_traffic(xui, client_id)
-            if traffic_info["status"] == "success" and traffic_info["traffic"]:
-                client_data = traffic_info["traffic"][0]
-                used_gb = (client_data.up + client_data.down) / 1073741824
-                return server, round(used_gb, 2)
+            if panel_type == "3x-ui":
+                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+                await xui.login()
+                traffic_info = await get_client_traffic(xui, client_id)
+                if traffic_info["status"] == "success" and traffic_info["traffic"]:
+                    client_data = traffic_info["traffic"][0]
+                    used_gb = (client_data.up + client_data.down) / 1073741824
+                    return server_name, round(used_gb, 2)
+                else:
+                    return server_name, "Ошибка получения трафика"
+
+            elif panel_type == "remnawave":
+                remna = RemnawaveAPI(api_url)
+                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+                if not logged_in:
+                    return server_name, "Не удалось авторизоваться"
+
+                user_data = await remna.get_user_by_uuid(client_id)
+                if not user_data:
+                    return server_name, "Клиент не найден"
+
+                used_bytes = user_data.get("usedTrafficBytes", 0)
+                used_gb = used_bytes / 1073741824
+                return server_name, round(used_gb, 2)
+
             else:
-                return server, "Ошибка получения трафика"
+                return server_name, f"Неизвестная панель: {panel_type}"
+
         except Exception as e:
-            return server, f"Ошибка: {e}"
+            return server_name, f"Ошибка: {e}"
 
     tasks = []
     for row in rows:
         client_id = row["client_id"]
         server_id = row["server_id"]
-        if server_id in servers_map:
-            api_url = servers_map[server_id]
-            tasks.append(fetch_traffic(api_url, client_id, server_id))
-        else:
-            for server, api_url in servers_map.items():
-                tasks.append(fetch_traffic(api_url, client_id, server))
+
+        matched_servers = [s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id]
+        for server_info in matched_servers:
+            tasks.append(fetch_traffic(server_info, client_id))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
     for server, result in results:
@@ -674,6 +697,7 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
 async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
     """
     Сбрасывает трафик клиента на всех серверах указанного кластера (или конкретного сервера).
+    Работает с 3x-ui и Remnawave.
 
     Args:
         cluster_id (str): ID кластера или имя сервера
@@ -696,24 +720,57 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         tasks = []
-        for server_info in cluster:
-            api_url = server_info["api_url"]
-            inbound_id = server_info.get("inbound_id")
-            server_name = server_info.get("server_name", "unknown")
+        remnawave_done = False
 
-            if not inbound_id:
-                logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+        for server_info in cluster:
+            panel_type = server_info.get("panel_type", "3x-ui").lower()
+            server_name = server_info.get("server_name", "unknown")
+            api_url = server_info.get("api_url")
+            inbound_id = server_info.get("inbound_id")
+
+            if panel_type == "remnawave" and not remnawave_done:
+                conn = await asyncpg.connect(DATABASE_URL)
+                try:
+                    row = await conn.fetchrow(
+                        "SELECT client_id FROM keys WHERE email = $1 AND server_id = $2 LIMIT 1",
+                        email,
+                        cluster_id,
+                    )
+                finally:
+                    await conn.close()
+
+                if not row:
+                    logger.warning(f"[Remnawave Reset] client_id не найден для {email} на {server_name}")
+                    continue
+
+                client_id = row["client_id"]
+
+                remna = RemnawaveAPI(api_url)
+                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+                if not logged_in:
+                    logger.warning(f"[Reset Traffic] Не удалось авторизоваться в Remnawave ({server_name})")
+                    continue
+
+                tasks.append(remna.reset_user_traffic(client_id))
+                remnawave_done = True
                 continue
 
-            xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+            if panel_type == "3x-ui":
+                if not inbound_id:
+                    logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+                    continue
 
-            unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
+                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
+                await xui.login()
 
-            tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))
+                unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
+                tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))
+            else:
+                logger.warning(f"[Reset Traffic] Неизвестный тип панели '{panel_type}' на {server_name}")
 
         await asyncio.gather(*tasks, return_exceptions=True)
-        logger.info(f"Трафик клиента {email} успешно сброшен на всех серверах кластера {cluster_id}")
+        logger.info(f"[Reset Traffic] Трафик клиента {email} успешно сброшен в кластере {cluster_id}")
 
     except Exception as e:
-        logger.error(f"Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
+        logger.error(f"[Reset Traffic] Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
         raise
