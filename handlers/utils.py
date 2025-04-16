@@ -115,62 +115,36 @@ async def handle_error(tg_id: int, callback_query: object | None = None, message
         logger.error(f"Ошибка при обработке ошибки: {e}")
 
 
-def format_time_until_deletion(seconds: int) -> str:
-    if seconds <= 0:
-        return "0 минут"
-
-    days = seconds // (3600 * 24)
-    hours = (seconds % (3600 * 24)) // 3600
-    minutes = (seconds % 3600 + 59) // 60
-
-    parts = []
-
-    if days > 0:
-        if days == 1:
-            parts.append(f"{days} день")
-        elif 2 <= days <= 4:
-            parts.append(f"{days} дня")
-        else:
-            parts.append(f"{days} дней")
-
-    if hours > 0:
-        if hours == 1:
-            parts.append(f"{hours} час")
-        elif 2 <= hours <= 4:
-            parts.append(f"{hours} часа")
-        else:
-            parts.append(f"{hours} часов")
-
-    if minutes > 0 and days == 0:
-        if minutes == 1:
-            parts.append("1 минута")
-        elif 2 <= minutes <= 4:
-            parts.append(f"{minutes} минуты")
-        else:
-            parts.append(f"{minutes} минут")
-
-    return " и ".join(parts) if parts else "менее минуты"
-
-
 def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
+    """Универсальная функция для получения правильной формы множественного числа"""
     n = abs(num) % 100
     if 10 < n < 20:
         return form3
     return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
 
+def format_months(months: int) -> str:
+    """Форматирует количество месяцев с правильным склонением"""
+    if months <= 0:
+        return "0 месяцев"
+    return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
+
 def format_days(days: int) -> str:
-    """
-    Форматирует количество дней с правильным склонением.
-    
-    Args:
-        days (int): Количество дней.
-    
-    Returns:
-        str: Строка с числом и склонённым словом "день/дня/дней".
-    """
+    """Форматирует количество дней с правильным склонением"""
     if days <= 0:
         return "0 дней"
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
+
+def format_hours(hours: int) -> str:
+    """Форматирует количество часов с правильным склонением"""
+    if hours <= 0:
+        return "0 часов"
+    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
+def format_minutes(minutes: int) -> str:
+    """Форматирует количество минут с правильным склонением"""
+    if minutes <= 0:
+        return "0 минут"
+    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
 
 
 async def edit_or_send_message(
@@ -248,3 +222,25 @@ def convert_to_bytes(value: float, unit: str) -> int:
     TB = GB * 1024
     units = {"KB": KB, "MB": MB, "GB": GB, "TB": TB}
     return int(value * units.get(unit.upper(), 1))
+
+
+async def is_full_remnawave_cluster(cluster_id: str, session) -> bool:
+    """
+    Универсальная проверка:
+    - Если cluster_id — это имя кластера, проверяет, что все его сервера используют Remnawave.
+    - Если cluster_id — это имя одиночного сервера, проверяет, что он Remnawave.
+    """
+    cluster_servers = await session.fetch(
+        "SELECT panel_type FROM servers WHERE cluster_name = $1",
+        cluster_id,
+    )
+
+    if cluster_servers:
+        panel_types = [s["panel_type"].lower() for s in cluster_servers if s.get("panel_type")]
+        return all(pt == "remnawave" for pt in panel_types)
+
+    server = await session.fetchrow(
+        "SELECT panel_type FROM servers WHERE server_name = $1",
+        cluster_id,
+    )
+    return server and server["panel_type"].lower() == "remnawave"

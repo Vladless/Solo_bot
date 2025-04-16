@@ -10,12 +10,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
+from datetime import datetime, timedelta
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB, USE_COUNTRY_SELECTION
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB, USE_COUNTRY_SELECTION, REMNAWAVE_PASSWORD, REMNAWAVE_LOGIN
 from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster
+from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster, delete_key_from_cluster
 from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
@@ -26,7 +27,9 @@ from .keyboard import (
     build_clusters_editor_kb,
     build_manage_cluster_kb,
     build_sync_cluster_kb,
+    build_panel_type_kb
 )
+from panels.remnawave import RemnawaveAPI
 
 
 router = Router()
@@ -143,9 +146,11 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     text = (
         f"<b>Введите API URL для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "Ссылку можно найти в поисковой строке браузера, при входе в 3X-UI.\n\n"
-        "ℹ️ Формат API URL:\n"
-        "<code>https://your_domain:port/panel_path/</code>"
+        "🔍 Ссылку можно найти в адресной строке браузера при входе в панель управления сервером.\n\n"
+        "ℹ️ <b>Формат для 3X-UI:</b>\n"
+        "<code>https://your-domain.com:port/panel_path/</code>\n\n"
+        "ℹ️ <b>Формат для Remnawave:</b>\n"
+        "<code>https://your-domain.com/api</code>"
     )
 
     await message.answer(
@@ -158,58 +163,38 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
 @router.message(AdminClusterStates.waiting_for_api_url, IsAdminFilter())
 async def handle_api_url_input(message: Message, state: FSMContext):
-    if not message.text or not message.text.strip().startswith("https://"):
-        await message.answer(
-            text="❌ API URL должен начинаться с <code>https://</code>. Попробуйте снова.",
-            reply_markup=build_admin_back_kb("clusters"),
-        )
-        return
-
     api_url = message.text.strip().rstrip("/")
 
     user_data = await state.get_data()
     cluster_name = user_data.get("cluster_name")
     server_name = user_data.get("server_name")
+
     await state.update_data(api_url=api_url)
 
     text = (
         f"<b>Введите subscription_url для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "Ссылку можно найти в панели 3X-UI, в информации о клиенте.\n\n"
-        "ℹ️ Формат Subscription URL:\n"
-        "<code>https://your_domain:port_sub/sub_path/</code>"
+        "Если вы используете Remnawave — введите <code>0</code>\n\n"
+        "<i>Формат:</i> <code>https://your_domain:port/sub_path</code>"
     )
 
-    await message.answer(
-        text=text,
-        reply_markup=build_admin_back_kb("clusters"),
-    )
-
+    await message.answer(text=text, reply_markup=build_admin_back_kb("clusters"))
     await state.set_state(AdminClusterStates.waiting_for_subscription_url)
 
 
 @router.message(AdminClusterStates.waiting_for_subscription_url, IsAdminFilter())
 async def handle_subscription_url_input(message: Message, state: FSMContext):
-    if not message.text or not message.text.strip().startswith("https://"):
-        await message.answer(
-            text="❌ subscription_url должен начинаться с <code>https://</code>. Попробуйте снова.",
-            reply_markup=build_admin_back_kb("clusters"),
-        )
-        return
-
-    subscription_url = message.text.strip().rstrip("/")
+    raw = message.text.strip()
+    subscription_url = None if raw == "0" else raw.rstrip("/")
 
     user_data = await state.get_data()
     cluster_name = user_data.get("cluster_name")
     server_name = user_data.get("server_name")
+
     await state.update_data(subscription_url=subscription_url)
 
-    text = (
-        f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "Это номер подключения vless в вашей панели 3x-ui. Обычно это <b>1</b> при чистой настройке по гайду.\n\n"
-    )
-
     await message.answer(
-        text=text,
+        text=f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
+             f"Для Remnawave это UUID Инбаунда, для 3x-ui — просто ID (например, <code>1</code>).",
         reply_markup=build_admin_back_kb("clusters"),
     )
     await state.set_state(AdminClusterStates.waiting_for_inbound_id)
@@ -218,39 +203,48 @@ async def handle_subscription_url_input(message: Message, state: FSMContext):
 @router.message(AdminClusterStates.waiting_for_inbound_id, IsAdminFilter())
 async def handle_inbound_id_input(message: Message, state: FSMContext):
     inbound_id = message.text.strip()
+    await state.update_data(inbound_id=inbound_id)
 
-    if not inbound_id.isdigit():
-        await message.answer(
-            text="❌ inbound_id должен быть числовым значением. Попробуйте снова.",
-            reply_markup=build_admin_back_kb("clusters"),
-        )
-        return
+    await message.answer(
+        text=(
+            "🧩 <b>Выберите тип панели для этого сервера:</b>\n\n"
+            "⚠️ <b>Внимание:</b> Некоторые функции <b>Remnawave</b> находятся в разработке.\n"
+            "Поддержка режима выбора стран — <b>ограничена</b>."
+        ),
+        reply_markup=build_panel_type_kb(),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action.in_(["panel_3xui", "panel_remnawave"])), IsAdminFilter())
+async def handle_panel_type_selection(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+    panel_type = "3x-ui" if callback_data.action == "panel_3xui" else "remnawave"
 
     user_data = await state.get_data()
     cluster_name = user_data.get("cluster_name")
     server_name = user_data.get("server_name")
     api_url = user_data.get("api_url")
     subscription_url = user_data.get("subscription_url")
+    inbound_id = user_data.get("inbound_id")
 
     conn = await asyncpg.connect(DATABASE_URL)
     await conn.execute(
         """
-        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id) 
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type)
+        VALUES ($1, $2, $3, $4, $5, $6)
         """,
         cluster_name,
         server_name,
         api_url,
         subscription_url,
         inbound_id,
+        panel_type,
     )
     await conn.close()
 
-    await message.answer(
-        text=f"✅ Кластер {cluster_name} и сервер {server_name} успешно добавлены!",
+    await callback_query.message.edit_text(
+        text=f"✅ Сервер <b>{server_name}</b> с панелью <b>{panel_type}</b> успешно добавлен в кластер <b>{cluster_name}</b>!",
         reply_markup=build_admin_back_kb("clusters"),
     )
-
     await state.clear()
 
 
@@ -281,30 +275,59 @@ async def handle_cluster_availability(
         await callback_query.message.edit_text(text=f"Кластер '{cluster_name}' не содержит серверов.")
         return
 
-    text = (
-        f"🖥️ Проверка доступности серверов для кластера {cluster_name}.\n\n"
-        "Это может занять до 1 минуты, пожалуйста, подождите..."
+    await callback_query.message.edit_text(
+        text=(
+            f"🖥️ Проверка доступности серверов для кластера {cluster_name}.\n\n"
+            "Это может занять до 1 минуты, пожалуйста, подождите..."
+        )
     )
-    await callback_query.message.edit_text(text=text)
 
     total_online_users = 0
     result_text = f"<b>🖥️ Проверка доступности серверов</b>\n\n⚙️ Кластер: <b>{cluster_name}</b>\n\n"
 
+    now = datetime.utcnow()
+    start_time = now - timedelta(minutes=5)
+    start_iso = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
     for server in cluster_servers:
-        xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=None)
+        server_name = server["server_name"]
+        panel_type = server.get("panel_type", "3x-ui").lower()
+        prefix = "[3x]" if panel_type == "3x-ui" else "[Re]"
+
         try:
-            await xui.login()
-            online_clients = await xui.client.online()
-            inbound_id = int(server["inbound_id"])
-            online_inbound_users = 0
-            for client_email in online_clients:
-                client = await xui.client.get_by_email(client_email)
-                if client and client.inbound_id == inbound_id:
-                    online_inbound_users += 1
-            total_online_users += online_inbound_users
-            result_text += f"🌍 <b>{server['server_name']}</b> - {online_inbound_users} онлайн\n"
+            if panel_type == "3x-ui":
+                xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=None)
+                await xui.login()
+                inbound_id = int(server["inbound_id"])
+                online_clients = await xui.client.online()
+                online_inbound_users = 0
+
+                for client_email in online_clients:
+                    client = await xui.client.get_by_email(client_email)
+                    if client and client.inbound_id == inbound_id:
+                        online_inbound_users += 1
+
+                total_online_users += online_inbound_users
+                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_inbound_users} онлайн\n"
+
+            elif panel_type == "remnawave":
+                remna = RemnawaveAPI(server["api_url"])
+                if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                    raise Exception("Не удалось авторизоваться")
+
+                node_uuid = server.get("inbound_id")
+                if not node_uuid:
+                    raise Exception("Не указан UUID ноды (inbound_id)")
+
+                data = await remna.get_node_users_usage(node_uuid, start=start_iso, end=end_iso)
+                online_remna_users = len(data) if data else 0
+                total_online_users += online_remna_users
+                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+
         except Exception as e:
-            result_text += f"❌ <b>{server['server_name']}</b> - ошибка: {str(e) if str(e).strip() else 'Сервер недоступен'}\n"
+            error_text = str(e) or "Сервер недоступен"
+            result_text += f"❌ <b>{prefix} {server_name}</b> - ошибка: {error_text}\n"
 
     result_text += f"\n👥 Всего пользователей онлайн: {total_online_users}"
     await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("clusters"))
@@ -414,10 +437,10 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
     try:
         query_keys = """
-                SELECT tg_id, client_id, email, expiry_time
-                FROM keys
-                WHERE server_id = $1
-            """
+            SELECT tg_id, client_id, email, expiry_time
+            FROM keys
+            WHERE server_id = $1
+        """
         keys_to_sync = await session.fetch(query_keys, cluster_name)
 
         if not keys_to_sync:
@@ -427,33 +450,44 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
             )
             return
 
-        text = f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
-
         await callback_query.message.edit_text(
-            text=text,
+            text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
         )
-
         for key in keys_to_sync:
             try:
-                await create_key_on_cluster(
+                await delete_key_from_cluster(cluster_name, key["email"], key["client_id"])
+
+                await session.execute(
+                    "DELETE FROM keys WHERE tg_id = $1 AND client_id = $2",
+                    key["tg_id"],
+                    key["client_id"]
+                )
+
+                result = await create_key_on_cluster(
                     cluster_name,
                     key["tg_id"],
                     key["client_id"],
                     key["email"],
                     key["expiry_time"],
+                    session=session,
                 )
-                await asyncio.sleep(0.6)
+
+                await asyncio.sleep(0.5)
+
             except Exception as e:
-                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в кластер {cluster_name}: {e}")
+                logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в {cluster_name}: {e}")
+
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
             reply_markup=build_admin_back_kb("clusters"),
         )
+
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
+            text=f"❌ Произошла ошибка при синхронизации: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
         )
 
 

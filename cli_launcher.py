@@ -65,6 +65,10 @@ def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
     with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
         try:
+            if not os.path.exists("venv"):
+                console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю...[/yellow]")
+                subprocess.run("python3 -m venv venv", shell=True, check=True)
+
             subprocess.run("bash -c 'source venv/bin/activate && pip install -r requirements.txt'", shell=True, check=True)
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
@@ -221,34 +225,35 @@ def main():
         sys.exit(1)
     
     os.chdir(PROJECT_DIR) 
-
     print_logo()
 
-    while True:
-        show_menu()
-        choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 9)])
+    try:
+        while True:
+            show_menu()
+            choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 9)])
 
-        if choice == "1":
-            os.system(f"sudo systemctl start {SERVICE_NAME}")
-        elif choice == "2":
-            if Confirm.ask("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
-                os.system("sudo venv/bin/python main.py")
-        elif choice == "3":
-            if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
-                os.system(f"sudo systemctl restart {SERVICE_NAME}")
-        elif choice == "4":
-            if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
-                os.system(f"sudo systemctl stop {SERVICE_NAME}")
-        elif choice == "5":
-            os.system(f"sudo journalctl -u {SERVICE_NAME} -n 80 --no-pager")
-        elif choice == "6":
-            os.system(f"sudo systemctl status {SERVICE_NAME}")
-        elif choice == "7":
-            show_update_menu()
-        elif choice == "8":
-            console.print("[bold cyan] Выход из CLI. Удачного дня![/bold cyan]")
-            break
-
+            if choice == "1":
+                os.system(f"sudo systemctl start {SERVICE_NAME}")
+            elif choice == "2":
+                if Confirm.ask("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
+                    os.system("sudo venv/bin/python main.py")
+            elif choice == "3":
+                if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
+                    os.system(f"sudo systemctl restart {SERVICE_NAME}")
+            elif choice == "4":
+                if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
+                    os.system(f"sudo systemctl stop {SERVICE_NAME}")
+            elif choice == "5":
+                os.system(f"sudo journalctl -u {SERVICE_NAME} -n 80 --no-pager")
+            elif choice == "6":
+                os.system(f"sudo systemctl status {SERVICE_NAME}")
+            elif choice == "7":
+                show_update_menu()
+            elif choice == "8":
+                console.print("[bold cyan] Выход из CLI. Удачного дня![/bold cyan]")
+                break
+    except KeyboardInterrupt:
+        console.print("\n[bold red]⏹ Прерывание. Выход из CLI.[/bold red]")
 
 
 if __name__ == "__main__":

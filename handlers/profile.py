@@ -29,7 +29,6 @@ from config import (
     NEWS_MESSAGE,
     REFERRAL_BUTTON,
     REFERRAL_OFFERS,
-    RENEWAL_PLANS,
     SHOW_START_MENU_ONCE,
     TOP_REFERRAL_BUTTON,
     TRIAL_TIME,
@@ -58,7 +57,7 @@ from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import get_referral_link, invite_message_send, profile_message_send
-from .utils import edit_or_send_message
+from .utils import edit_or_send_message, format_days
 
 
 router = Router()
@@ -132,7 +131,7 @@ async def process_callback_view_profile(
             builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
         if admin:
             builder.row(
-                InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+                InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
             )
         if SHOW_START_MENU_ONCE:
             builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
@@ -167,12 +166,13 @@ async def balance_handler(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     text = BALANCE_MANAGEMENT_TEXT.format(balance=balance)
+    image_path = os.path.join("img", "pic.jpg")
 
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
-        media_path=None,
+        media_path=image_path,
         disable_web_page_preview=False,
     )
 
@@ -206,29 +206,6 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
         text=history_text,
         reply_markup=builder.as_markup(),
         media_path=None,
-        disable_web_page_preview=False,
-    )
-
-
-@router.message(F.text == "/tariffs")
-@router.callback_query(F.data == "view_tariffs")
-async def view_tariffs_handler(callback_query: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
-    image_path = os.path.join("img", "tariffs.jpg")
-    tariffs_message = "<b>🚀 Доступные тарифы VPN:</b>\n\n" + "\n".join([
-        f"{months} {'месяц' if months == '1' else 'месяца' if int(months) in [2, 3, 4] else 'месяцев'}: "
-        f"{RENEWAL_PLANS[months]['price']} "
-        f"{'💳' if months == '1' else '🌟' if months == '3' else '🔥' if months == '6' else '🚀'} рублей"
-        for months in sorted(RENEWAL_PLANS.keys(), key=int)
-    ])
-
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=tariffs_message,
-        reply_markup=builder.as_markup(),
-        media_path=image_path,
         disable_web_page_preview=False,
     )
 
@@ -273,12 +250,12 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery):
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery):
     referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
-
+    trial_time_formatted = format_days(TRIAL_TIME)
     results: list[InlineQueryResultArticle] = []
 
     for index, offer in enumerate(REFERRAL_OFFERS):
         description = offer["description"][:64]
-        message_text = offer["message"].format(trial_time=TRIAL_TIME)[:4096]
+        message_text = offer["message"].format(trial_time=TRIAL_TIME, trial_time_formatted=trial_time_formatted)[:4096]
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=offer["title"], url=referral_link))

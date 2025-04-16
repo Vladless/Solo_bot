@@ -31,13 +31,11 @@ from database import (
     get_trial,
     update_balance,
 )
-from handlers.admin.coupons.coupons_handler import handle_coupon_activation
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
 from handlers.captcha import generate_captcha
-from handlers.keys.key_management import create_key
+from handlers.keys.key_mode.key_create import create_key
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
-    COUPON_SUCCESS_MSG,
     GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
     NEW_REFERRAL_NOTIFICATION,
     NOT_SUBSCRIBED_YET_MSG,
@@ -49,6 +47,7 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
+from handlers.coupons import activate_coupon
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
@@ -120,8 +119,8 @@ async def process_start_logic(
         try:
             if "coupons_" in text:
                 logger.info(f"Обнаружена ссылка на купон: {text}")
-                user_id = message.chat.id
-                await handle_coupon_activation(message, state, session, admin, text=text, user_id=user_id)
+                coupon_code = text.split("coupons_")[1]
+                await activate_coupon(message, state, session, coupon_code=coupon_code, admin=admin)
                 return
 
             if "gift_" in text:
@@ -287,7 +286,7 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 
     if admin:
         builder.row(
-            InlineKeyboardButton(text="🔧 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
+            InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack())
         )
 
     builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
@@ -314,11 +313,12 @@ async def handle_about_vpn(callback_query: CallbackQuery):
 
     builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
     text = get_about_vpn("3.2.3-minor")
+    image_path = os.path.join("img", "pic.jpg")
 
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
         reply_markup=builder.as_markup(),
-        media_path=None,
+        media_path=image_path,
         force_text=False,
     )

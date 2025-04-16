@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS keys
 
 DO $$
 BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns 
+        WHERE table_name = 'keys' AND column_name = 'key' AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE keys ALTER COLUMN key DROP NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'keys' AND column_name = 'remnawave_link'
+    ) THEN
+        ALTER TABLE keys ADD COLUMN remnawave_link TEXT;
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'keys' AND column_name = 'is_frozen'
@@ -114,6 +129,10 @@ CREATE TABLE IF NOT EXISTS servers
     inbound_id       TEXT NOT NULL,
     UNIQUE (cluster_name, server_name) 
 );
+
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS panel_type TEXT NOT NULL DEFAULT '3x-ui';
+ALTER TABLE servers
+    ALTER COLUMN subscription_url DROP NOT NULL;
 
 
 CREATE TABLE IF NOT EXISTS gifts

@@ -19,6 +19,7 @@ from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import get_user_traffic
 from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
 from logger import logger
+from handlers.utils import format_days
 
 
 router = Router()
@@ -49,7 +50,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         )
         """
     )
-    logger.info(f"👥 Найдено {len(inactive_trial_users)} неактивных пользователей.")
+    logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
 
     for user in inactive_trial_users:
         tg_id = user["tg_id"]
@@ -84,12 +85,21 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
                 if trial_extended:
                     total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
+                    trial_time_formatted = format_days(TRIAL_TIME)
+                    extra_days_formatted = format_days(NOTIFY_EXTRA_DAYS)
+                    total_days_formatted = format_days(total_days)
                     message = TRIAL_INACTIVE_BONUS_MSG.format(
-                        display_name=display_name, NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS, total_days=total_days
+                        display_name=display_name,
+                        extra_days_formatted=extra_days_formatted,
+                        total_days_formatted=total_days_formatted,
                     )
                     await conn.execute("UPDATE connections SET trial = -1 WHERE tg_id = $1", tg_id)
                 else:
-                    message = TRIAL_INACTIVE_FIRST_MSG.format(display_name=display_name, TRIAL_TIME=TRIAL_TIME)
+                    trial_time_formatted = format_days(TRIAL_TIME)
+                    message = TRIAL_INACTIVE_FIRST_MSG.format(
+                        display_name=display_name,
+                        trial_time_formatted=trial_time_formatted,
+                    )
 
                 try:
                     await bot.send_message(tg_id, message, reply_markup=keyboard)

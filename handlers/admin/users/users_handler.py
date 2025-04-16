@@ -13,14 +13,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import PUBLIC_LINK, RENEWAL_PRICES, TOTAL_GB
+from config import RENEWAL_PRICES, TOTAL_GB, USE_COUNTRY_SELECTION
 from database import (
     delete_key,
     delete_user_data,
     get_balance,
     get_client_id_by_email,
     get_servers,
-    store_key,
     update_balance,
     update_key_expiry,
     update_trial,
@@ -48,7 +47,6 @@ from .keyboard import (
     build_key_edit_kb,
     build_user_delete_kb,
     build_user_edit_kb,
-    build_user_key_kb,
     build_users_balance_change_kb,
     build_users_balance_kb,
     build_users_key_expiry_kb,
@@ -71,6 +69,7 @@ class UserEditorState(StatesGroup):
     waiting_for_message_text = State()
     selecting_cluster = State()
     selecting_duration = State()
+    selecting_country = State()
 
 
 @router.callback_query(
@@ -246,8 +245,15 @@ async def handle_balance_add(
     tg_id = callback_data.tg_id
     amount = callback_data.data
 
-    if amount:
-        await update_balance(tg_id, int(amount), session, is_admin=True)
+    if amount is not None:
+        amount = int(amount)
+        if amount >= 0:
+            await update_balance(tg_id, amount, session, is_admin=True)
+        else:
+            current_balance = await get_balance(tg_id)
+            new_balance = max(0, current_balance + amount)
+            await set_user_balance(tg_id, new_balance, session)
+
         await handle_balance_change(callback_query, callback_data, session)
         return
 
@@ -304,8 +310,11 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Any
         text = f"✅ К балансу пользователя добавлено <b>{amount}Р</b>"
         await update_balance(tg_id, amount, session)
     elif op_type == "take":
-        text = f"✅ Из баланса пользователя было вычтено <b>{amount}Р</b>"
-        await update_balance(tg_id, -amount, session)
+        current_balance = await get_balance(tg_id)
+        new_balance = max(0, current_balance - amount)
+        deducted = current_balance if amount > current_balance else amount
+        text = f"✅ Из баланса пользователя было вычтено <b>{deducted}Р</b>"
+        await set_user_balance(tg_id, new_balance, session)
     else:
         text = f"✅ Баланс пользователя изменен на <b>{amount}Р</b>"
         await set_user_balance(tg_id, amount, session)
@@ -330,9 +339,11 @@ async def handle_key_edit(
         )
         return
 
+    key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
+
     text = (
         f"<b>🔑 Информация о ключе</b>"
-        f"\n\n<code>{key_details['key']}</code>"
+        f"\n\n<code>{key_value}</code>"
         f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']} (UTC)</b>"
         f"\n🌐 Кластер: <b>{key_details['cluster_name']}</b>"
         f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
@@ -645,7 +656,7 @@ async def process_user_search(
 async def get_key_details(email, session):
     record = await session.fetchrow(
         """
-        SELECT k.client_id, k.key, k.expiry_time, k.server_id, c.tg_id, c.balance
+        SELECT k.client_id, k.key, k.remnawave_link, k.expiry_time, k.server_id, c.tg_id, c.balance
         FROM keys k
         JOIN connections c ON k.tg_id = c.tg_id
         WHERE k.email = $1
@@ -664,6 +675,7 @@ async def get_key_details(email, session):
         "balance": record["balance"],
         "tg_id": record["tg_id"],
         "key": record["key"],
+        "remnawave_link": record["remnawave_link"],
         "cluster_name": cluster_name,
         "expiry_time": record["expiry_time"],
         "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
@@ -814,11 +826,35 @@ async def handle_users_export_referrals(
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key"), IsAdminFilter())
-async def handle_create_key_select_cluster(
-    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
-):
+async def handle_create_key_start(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any):
     tg_id = callback_data.tg_id
     await state.update_data(tg_id=tg_id)
+
+    if USE_COUNTRY_SELECTION:
+        await state.set_state(UserEditorState.selecting_country)
+
+        rows = await session.fetch("SELECT DISTINCT server_name FROM servers ORDER BY server_name")
+        countries = [row["server_name"] for row in rows]
+
+        if not countries:
+            await callback_query.message.edit_text(
+                "❌ Нет доступных стран для создания ключа.",
+                reply_markup=build_editor_kb(tg_id)
+            )
+            return
+
+        builder = InlineKeyboardBuilder()
+        for country in countries:
+            builder.button(text=country, callback_data=country)
+        builder.adjust(1)
+        builder.row(build_admin_back_btn())
+
+        await callback_query.message.edit_text(
+            "🌍 <b>Выберите страну для создания ключа:</b>",
+            reply_markup=builder.as_markup()
+        )
+        return
+
     await state.set_state(UserEditorState.selecting_cluster)
 
     servers = await get_servers(session)
@@ -826,20 +862,37 @@ async def handle_create_key_select_cluster(
 
     if not cluster_names:
         await callback_query.message.edit_text(
-            "❌ Нет доступных кластеров для создания ключа.", reply_markup=build_editor_kb(tg_id)
+            "❌ Нет доступных кластеров для создания ключа.",
+            reply_markup=build_editor_kb(tg_id)
         )
         return
 
     builder = InlineKeyboardBuilder()
     for cluster in cluster_names:
-        builder.button(
-            text=f"🌐 {cluster}",
-            callback_data=cluster
-        )
+        builder.button(text=f"🌐 {cluster}", callback_data=cluster)
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        "🌐 <b>Выберите кластер для создания ключа:</b>", reply_markup=builder.as_markup()
+        "🌐 <b>Выберите кластер для создания ключа:</b>",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(UserEditorState.selecting_country, IsAdminFilter())
+async def handle_create_key_country(callback_query: CallbackQuery, state: FSMContext):
+    country = callback_query.data
+    await state.update_data(country=country)
+    await state.set_state(UserEditorState.selecting_duration)
+
+    builder = InlineKeyboardBuilder()
+    for months, _ in RENEWAL_PRICES.items():
+        builder.button(text=f"{months} мес.", callback_data=str(months))
+    builder.adjust(1)
+    builder.row(build_admin_back_btn())
+
+    await callback_query.message.edit_text(
+        text=f"🕒 <b>Выберите срок действия ключа для страны {country}:</b>",
+        reply_markup=builder.as_markup()
     )
 
 
@@ -866,40 +919,57 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
     try:
         months = int(callback_query.data)
         data = await state.get_data()
-
         tg_id = data["tg_id"]
-        cluster_name = data["cluster_name"]
 
         client_id = str(uuid.uuid4())
         email = generate_random_email()
         expiry = datetime.now(tz=timezone.utc) + timedelta(days=30 * months)
         expiry_ms = int(expiry.timestamp() * 1000)
 
-        await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms)
+        if USE_COUNTRY_SELECTION and "country" in data:
+            country = data["country"]
+            await create_key_on_cluster(
+                country, 
+                tg_id,
+                client_id,
+                email,
+                expiry_ms,
+                plan=months,
+                session=session
+            )
 
-        public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+            await state.clear()
+            await callback_query.message.edit_text(
+                f"✅ Ключ успешно создан для страны <b>{country}</b> на {months} мес.",
+                reply_markup=build_editor_kb(tg_id),
+            )
 
-        await store_key(
-            tg_id=tg_id,
-            client_id=client_id,
-            email=email,
-            expiry_time=expiry_ms,
-            key=public_link,
-            server_id=cluster_name,
-            session=session,
-        )
+        elif "cluster_name" in data:
+            cluster_name = data["cluster_name"]
+            await create_key_on_cluster(
+                cluster_name,
+                tg_id,
+                client_id,
+                email,
+                expiry_ms,
+                plan=months,
+                session=session
+            )
 
-        await state.clear()
+            await state.clear()
+            await callback_query.message.edit_text(
+                f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {months} мес.",
+                reply_markup=build_editor_kb(tg_id),
+            )
 
-        await callback_query.message.edit_text(
-            f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {months} мес.!",
-            reply_markup=build_editor_kb(tg_id),
-        )
+        else:
+            await callback_query.message.edit_text("❌ Не удалось определить источник — страна или кластер.")
 
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(data.get("tg_id", 0))
+            "❌ Не удалось создать ключ. Попробуйте позже.",
+            reply_markup=build_editor_kb(data.get("tg_id", 0))
         )
 
 
