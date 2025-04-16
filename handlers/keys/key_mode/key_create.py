@@ -7,8 +7,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from .key_cluster_mode import key_cluster_mode
-from .key_country_mode import key_country_mode
 
 from config import (
     NOTIFY_EXTRA_DAYS,
@@ -39,6 +37,9 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+
+from .key_cluster_mode import key_cluster_mode
+from .key_country_mode import key_country_mode
 
 
 router = Router()

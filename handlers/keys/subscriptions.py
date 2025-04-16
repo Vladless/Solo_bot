@@ -335,8 +335,8 @@ async def handle_subscription(request: web.Request, old_subscription: bool = Fal
         time_left = format_time_left(expiry_time_ms)
 
         urls = await get_subscription_urls(
-    server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
-)
+            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
+        )
 
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)

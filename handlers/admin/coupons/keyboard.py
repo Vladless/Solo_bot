@@ -12,7 +12,7 @@ from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 class AdminCouponDeleteCallback(CallbackData, prefix="admin_coupon_delete"):
     coupon_code: str
-    confirm: Optional[bool] = None
+    confirm: bool | None = None
 
 
 def build_coupons_kb() -> InlineKeyboardMarkup:
@@ -59,7 +59,11 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
 def format_coupons_list(coupons: list, username_bot: str) -> str:
     coupon_list = "📜 Список всех купонов:\n\n"
     for coupon in coupons:
-        value_text = f"💰 <b>Сумма:</b> {coupon['amount']} рублей" if coupon["amount"] > 0 else f"⏳ <b>{format_days(coupon['days'])}</b>"
+        value_text = (
+            f"💰 <b>Сумма:</b> {coupon['amount']} рублей"
+            if coupon["amount"] > 0
+            else f"⏳ <b>{format_days(coupon['days'])}</b>"
+        )
         coupon_list += (
             f"🏷️ <b>Код:</b> {coupon['code']}\n"
             f"{value_text}\n"

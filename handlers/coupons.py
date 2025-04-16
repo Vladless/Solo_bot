@@ -1,16 +1,20 @@
+import html
+
+from datetime import datetime
 from typing import Any
+
+import pytz
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-import pytz
-import html
-from datetime import datetime
 
 from config import ADMIN_ID
 from database import (
+    add_connection,
+    check_connection_exists,
     check_coupon_usage,
     create_coupon_usage,
     get_coupon_by_code,
@@ -18,18 +22,16 @@ from database import (
     update_balance,
     update_coupon_usage_count,
     update_key_expiry,
-    check_connection_exists,
-    add_connection,
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import renew_key_in_cluster
+from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     COUPON_ALREADY_USED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
 )
 from handlers.utils import edit_or_send_message, format_days
-from handlers.profile import process_callback_view_profile
 from logger import logger
 
 
@@ -67,9 +69,7 @@ async def process_coupon_code(message: Message, state: FSMContext, session: Any)
     await activate_coupon(message, state, session, coupon_code=coupon_code)
 
 
-async def activate_coupon(
-    message: Message, state: FSMContext, session: Any, coupon_code: str, admin: bool = False
-):
+async def activate_coupon(message: Message, state: FSMContext, session: Any, coupon_code: str, admin: bool = False):
     logger.info(f"Активация купона: {coupon_code}")
     coupon_record = await get_coupon_by_code(coupon_code, session)
 
@@ -172,9 +172,7 @@ async def handle_key_extension(callback_query: CallbackQuery, state: FSMContext,
             return
 
         key = await session.fetchrow(
-            "SELECT * FROM keys WHERE tg_id = $1 AND client_id = $2",
-            callback_query.from_user.id,
-            client_id
+            "SELECT * FROM keys WHERE tg_id = $1 AND client_id = $2", callback_query.from_user.id, client_id
         )
         if not key or key["is_frozen"]:
             await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
@@ -186,11 +184,7 @@ async def handle_key_extension(callback_query: CallbackQuery, state: FSMContext,
         new_expiry = max(now_ms, current_expiry) + (coupon["days"] * 86400 * 1000)
 
         await renew_key_in_cluster(
-            cluster_id=key["server_id"],
-            email=key["email"],
-            client_id=client_id,
-            new_expiry_time=new_expiry,
-            total_gb=0
+            cluster_id=key["server_id"], email=key["email"], client_id=client_id, new_expiry_time=new_expiry, total_gb=0
         )
         await update_key_expiry(client_id, new_expiry, session)
 
@@ -198,7 +192,9 @@ async def handle_key_extension(callback_query: CallbackQuery, state: FSMContext,
         await create_coupon_usage(coupon["id"], callback_query.from_user.id, session)
 
         alias = key.get("alias") or key["email"]
-        expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime("%d.%m.%y, %H:%M")
+        expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime(
+            "%d.%m.%y, %H:%M"
+        )
         await callback_query.message.answer(
             f"✅ Купон активирован, подписка <b>{alias}</b> продлена на {format_days(coupon['days'])}⏳ до {expiry_date}📆."
         )

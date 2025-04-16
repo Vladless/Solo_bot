@@ -17,30 +17,21 @@ from config import (
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
     PUBLIC_LINK,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
-    REMNAWAVE_LOGIN,
-    REMNAWAVE_PASSWORD
 )
 from database import (
     add_connection,
     check_connection_exists,
+    check_server_name_by_cluster,
     get_key_details,
     get_trial,
     update_balance,
     update_trial,
-    check_server_name_by_cluster,
 )
-from handlers.buttons import (
-    BACK,
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    MAIN_MENU,
-    PC_BUTTON,
-    SUPPORT,
-    TV_BUTTON,
-    SUPPORT
-)
+from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_client_on_server
 from handlers.texts import (
     SELECT_COUNTRY_MSG,
@@ -48,8 +39,8 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger
-from panels.three_xui import delete_client
 from panels.remnawave import RemnawaveAPI
+from panels.three_xui import delete_client
 
 
 router = Router()
@@ -73,7 +64,6 @@ async def key_country_mode(
         least_loaded_cluster,
     )
 
-
     if not servers:
         logger.error(f"Нет серверов в кластере {least_loaded_cluster}")
         error_message = "❌ Нет доступных серверов для создания ключа."
@@ -88,7 +78,7 @@ async def key_country_mode(
     tasks = [asyncio.create_task(check_server_availability(server)) for server in servers]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for server, result in zip(servers, results):
+    for server, result in zip(servers, results, strict=False):
         if result is True:
             available_servers.append(server["server_name"])
 
@@ -173,7 +163,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for server, result in zip(servers, results):
+        for server, result in zip(servers, results, strict=False):
             if result is True:
                 available_servers.append(server["server_name"])
 
@@ -266,6 +256,8 @@ async def finalize_key_creation(
         email = key_name.lower()
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
+    remna = None
+
     try:
         server_info = await session.fetchrow(
             "SELECT api_url, inbound_id, server_name, panel_type FROM servers WHERE server_name = $1",
@@ -280,31 +272,53 @@ async def finalize_key_creation(
         remnawave_link = None
         created_at = int(datetime.now(moscow_tz).timestamp() * 1000)
 
-        if old_key_name and panel_type == "3x-ui":
+        if old_key_name:
             old_server_id = old_key_details.get("server_id")
             if old_server_id:
                 old_server_info = await session.fetchrow(
-                    "SELECT api_url, inbound_id, server_name FROM servers WHERE server_name = $1",
+                    "SELECT api_url, inbound_id, server_name, panel_type FROM servers WHERE server_name = $1",
                     old_server_id,
                 )
                 if old_server_info:
-                    xui = AsyncApi(
-                        old_server_info["api_url"],
-                        username=ADMIN_USERNAME,
-                        password=ADMIN_PASSWORD,
-                        logger=logger,
-                    )
-                    await delete_client(
-                        xui,
-                        old_server_info["inbound_id"],
-                        email,
-                        client_id,
-                    )
+                    old_panel_type = old_server_info["panel_type"].lower()
+                    try:
+                        if old_panel_type == "3x-ui":
+                            xui = AsyncApi(
+                                old_server_info["api_url"],
+                                username=ADMIN_USERNAME,
+                                password=ADMIN_PASSWORD,
+                                logger=logger,
+                            )
+                            await delete_client(
+                                xui,
+                                old_server_info["inbound_id"],
+                                email,
+                                client_id,
+                            )
+                            await session.execute(
+                                "UPDATE keys SET key = NULL WHERE tg_id = $1 AND email = $2",
+                                tg_id,
+                                email,
+                            )
+                            logger.info(f"[Delete] Удалён клиент {email} с 3x-ui сервера {old_server_id}")
+                        elif old_panel_type == "remnawave":
+                            remna = RemnawaveAPI(old_server_info["api_url"])
+                            if await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                                await remna.delete_user(client_id)
+                                await session.execute(
+                                    "UPDATE keys SET remnawave_link = NULL WHERE tg_id = $1 AND email = $2",
+                                    tg_id,
+                                    email,
+                                )
+                                logger.info(f"[Delete] Удалён клиент {client_id} с Remnawave сервера {old_server_id}")
+                            else:
+                                logger.warning(f"[Delete] Не удалось авторизоваться в Remnawave ({old_server_id})")
+                    except Exception as e:
+                        logger.warning(f"[Delete] Ошибка при удалении клиента с сервера {old_server_id}: {e}")
 
         if panel_type == "remnawave":
             remna = RemnawaveAPI(server_info["api_url"])
-            logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-            if not logged_in:
+            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({selected_country})")
 
             expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
@@ -322,6 +336,14 @@ async def finalize_key_creation(
             client_id = result.get("uuid")
             remnawave_link = result.get("subscriptionUrl")
             logger.info(f"[Key Creation] Remnawave пользователь создан: {result}")
+
+            if old_key_name:
+                await session.execute(
+                    "UPDATE keys SET client_id = $1 WHERE tg_id = $2 AND email = $3",
+                    client_id,
+                    tg_id,
+                    email,
+                )
 
         if panel_type == "3x-ui":
             semaphore = asyncio.Semaphore(2)
@@ -344,6 +366,21 @@ async def finalize_key_creation(
                 tg_id,
                 old_key_name,
             )
+            if panel_type == "3x-ui":
+                await session.execute(
+                    "UPDATE keys SET key = $1 WHERE tg_id = $2 AND email = $3",
+                    public_link,
+                    tg_id,
+                    email,
+                )
+            elif panel_type == "remnawave":
+                await session.execute(
+                    "UPDATE keys SET remnawave_link = $1 WHERE tg_id = $2 AND email = $3",
+                    remnawave_link,
+                    tg_id,
+                    email,
+                )
+
         else:
             await session.execute(
                 """
@@ -428,10 +465,9 @@ async def check_server_availability(server_info: dict) -> bool:
             logger.info(f"[Ping] 3x-ui сервер {server_name} доступен.")
             return True
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"[Ping] Сервер {server_name} не ответил вовремя.")
         return False
     except Exception as e:
         logger.warning(f"[Ping] Ошибка при проверке сервера {server_name}: {e}")
         return False
-

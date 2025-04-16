@@ -1,11 +1,11 @@
 import html
-from io import BytesIO
 import os
+
+from io import BytesIO
+from typing import Any
 
 import asyncpg
 import qrcode
-
-from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -50,7 +50,7 @@ from handlers.buttons import (
     PAYMENT,
     QR,
     TOP_FIVE,
-    TRIAL_SUB
+    TRIAL_SUB,
 )
 from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT
 from logger import logger
@@ -308,16 +308,16 @@ async def show_referral_qr(callback_query: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка при генерации QR-кода для реферальной ссылки: {e}", exc_info=True)
         await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
-        
+
 
 @router.callback_query(F.data == "top_referrals")
 async def top_referrals_handler(callback_query: CallbackQuery):
     conn = await asyncpg.connect(DATABASE_URL)
     try:
-        user_referral_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1",
-            callback_query.from_user.id
-        ) or 0
+        user_referral_count = (
+            await conn.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", callback_query.from_user.id)
+            or 0
+        )
 
         personal_block = "Твоё место в рейтинге:\n"
         if user_referral_count > 0:
@@ -330,7 +330,7 @@ async def top_referrals_handler(callback_query: CallbackQuery):
                     HAVING COUNT(*) > $1
                 ) AS better_users
                 """,
-                user_referral_count
+                user_referral_count,
             )
             personal_block += f"{user_position}. {callback_query.from_user.id} - {user_referral_count} чел."
         else:

@@ -1,4 +1,5 @@
 import os
+
 from io import BytesIO
 from typing import Any
 
@@ -6,19 +7,10 @@ import asyncpg
 import qrcode
 
 from aiogram import F, Router, types
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    CONNECT_ANDROID,
-    CONNECT_IOS,
-    DATABASE_URL,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
-    INSTRUCTIONS_BUTTON
-)
-
+from config import CONNECT_ANDROID, CONNECT_IOS, DATABASE_URL, DOWNLOAD_ANDROID, DOWNLOAD_IOS, INSTRUCTIONS_BUTTON
 from handlers.buttons import (
     ANDROID,
     BACK,
@@ -108,7 +100,7 @@ async def process_callback_connect_phone(callback_query: CallbackQuery):
         InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"),
     )
     if INSTRUCTIONS_BUTTON:
-       builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
+        builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
 
     await edit_or_send_message(

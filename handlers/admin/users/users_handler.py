@@ -826,7 +826,9 @@ async def handle_users_export_referrals(
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key"), IsAdminFilter())
-async def handle_create_key_start(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any):
+async def handle_create_key_start(
+    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
+):
     tg_id = callback_data.tg_id
     await state.update_data(tg_id=tg_id)
 
@@ -838,8 +840,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
 
         if not countries:
             await callback_query.message.edit_text(
-                "❌ Нет доступных стран для создания ключа.",
-                reply_markup=build_editor_kb(tg_id)
+                "❌ Нет доступных стран для создания ключа.", reply_markup=build_editor_kb(tg_id)
             )
             return
 
@@ -850,8 +851,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
         builder.row(build_admin_back_btn())
 
         await callback_query.message.edit_text(
-            "🌍 <b>Выберите страну для создания ключа:</b>",
-            reply_markup=builder.as_markup()
+            "🌍 <b>Выберите страну для создания ключа:</b>", reply_markup=builder.as_markup()
         )
         return
 
@@ -862,8 +862,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
 
     if not cluster_names:
         await callback_query.message.edit_text(
-            "❌ Нет доступных кластеров для создания ключа.",
-            reply_markup=build_editor_kb(tg_id)
+            "❌ Нет доступных кластеров для создания ключа.", reply_markup=build_editor_kb(tg_id)
         )
         return
 
@@ -873,8 +872,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        "🌐 <b>Выберите кластер для создания ключа:</b>",
-        reply_markup=builder.as_markup()
+        "🌐 <b>Выберите кластер для создания ключа:</b>", reply_markup=builder.as_markup()
     )
 
 
@@ -891,8 +889,7 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"🕒 <b>Выберите срок действия ключа для страны {country}:</b>",
-        reply_markup=builder.as_markup()
+        text=f"🕒 <b>Выберите срок действия ключа для страны {country}:</b>", reply_markup=builder.as_markup()
     )
 
 
@@ -928,15 +925,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         if USE_COUNTRY_SELECTION and "country" in data:
             country = data["country"]
-            await create_key_on_cluster(
-                country, 
-                tg_id,
-                client_id,
-                email,
-                expiry_ms,
-                plan=months,
-                session=session
-            )
+            await create_key_on_cluster(country, tg_id, client_id, email, expiry_ms, plan=months, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
@@ -946,15 +935,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         elif "cluster_name" in data:
             cluster_name = data["cluster_name"]
-            await create_key_on_cluster(
-                cluster_name,
-                tg_id,
-                client_id,
-                email,
-                expiry_ms,
-                plan=months,
-                session=session
-            )
+            await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms, plan=months, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
@@ -968,8 +949,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.",
-            reply_markup=build_editor_kb(data.get("tg_id", 0))
+            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(data.get("tg_id", 0))
         )
 
 

@@ -1,6 +1,7 @@
 import asyncio
 import time
 
+from datetime import datetime, timedelta
 from typing import Any
 
 import asyncpg
@@ -10,14 +11,27 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
-from datetime import datetime, timedelta
 
 from backup import create_backup_and_send_to_admins
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, TOTAL_GB, USE_COUNTRY_SELECTION, REMNAWAVE_PASSWORD, REMNAWAVE_LOGIN
+from config import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    DATABASE_URL,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    TOTAL_GB,
+    USE_COUNTRY_SELECTION,
+)
 from database import check_unique_server_name, get_servers, update_key_expiry
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import create_client_on_server, create_key_on_cluster, renew_key_in_cluster, delete_key_from_cluster
+from handlers.keys.key_utils import (
+    create_client_on_server,
+    create_key_on_cluster,
+    delete_key_from_cluster,
+    renew_key_in_cluster,
+)
 from logger import logger
+from panels.remnawave import RemnawaveAPI
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
@@ -26,10 +40,9 @@ from .keyboard import (
     build_cluster_management_kb,
     build_clusters_editor_kb,
     build_manage_cluster_kb,
+    build_panel_type_kb,
     build_sync_cluster_kb,
-    build_panel_type_kb
 )
-from panels.remnawave import RemnawaveAPI
 
 
 router = Router()
@@ -194,7 +207,7 @@ async def handle_subscription_url_input(message: Message, state: FSMContext):
 
     await message.answer(
         text=f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-             f"Для Remnawave это UUID Инбаунда, для 3x-ui — просто ID (например, <code>1</code>).",
+        f"Для Remnawave это UUID Инбаунда, для 3x-ui — просто ID (например, <code>1</code>).",
         reply_markup=build_admin_back_kb("clusters"),
     )
     await state.set_state(AdminClusterStates.waiting_for_inbound_id)
@@ -216,7 +229,9 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action.in_(["panel_3xui", "panel_remnawave"])), IsAdminFilter())
-async def handle_panel_type_selection(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+async def handle_panel_type_selection(
+    callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext
+):
     panel_type = "3x-ui" if callback_data.action == "panel_3xui" else "remnawave"
 
     user_data = await state.get_data()
@@ -437,7 +452,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
     try:
         query_keys = """
-            SELECT tg_id, client_id, email, expiry_time
+            SELECT tg_id, client_id, email, expiry_time, remnawave_link
             FROM keys
             WHERE server_id = $1
         """
@@ -458,25 +473,23 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
                 await delete_key_from_cluster(cluster_name, key["email"], key["client_id"])
 
                 await session.execute(
-                    "DELETE FROM keys WHERE tg_id = $1 AND client_id = $2",
-                    key["tg_id"],
-                    key["client_id"]
+                    "DELETE FROM keys WHERE tg_id = $1 AND client_id = $2", key["tg_id"], key["client_id"]
                 )
 
-                result = await create_key_on_cluster(
+                await create_key_on_cluster(
                     cluster_name,
                     key["tg_id"],
                     key["client_id"],
                     key["email"],
                     key["expiry_time"],
                     session=session,
+                    remnawave_link=key.get("remnawave_link"),
                 )
 
                 await asyncio.sleep(0.5)
 
             except Exception as e:
                 logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в {cluster_name}: {e}")
-
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
@@ -622,8 +635,7 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         existing_cluster = await conn.fetchval(
-            "SELECT cluster_name FROM servers WHERE cluster_name = $1 LIMIT 1",
-            new_cluster_name
+            "SELECT cluster_name FROM servers WHERE cluster_name = $1 LIMIT 1", new_cluster_name
         )
         if existing_cluster:
             await message.answer(
@@ -632,23 +644,16 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
             )
             return
 
-        keys_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM keys WHERE server_id = $1",
-            old_cluster_name
-        )
+        keys_count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", old_cluster_name)
 
         async with conn.transaction():
             await conn.execute(
-                "UPDATE servers SET cluster_name = $1 WHERE cluster_name = $2",
-                new_cluster_name,
-                old_cluster_name
+                "UPDATE servers SET cluster_name = $1 WHERE cluster_name = $2", new_cluster_name, old_cluster_name
             )
 
             if keys_count > 0:
                 await conn.execute(
-                    "UPDATE keys SET server_id = $1 WHERE server_id = $2",
-                    new_cluster_name,
-                    old_cluster_name
+                    "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_cluster_name
                 )
 
         await message.answer(
@@ -729,7 +734,7 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
         existing_server = await conn.fetchval(
             "SELECT server_name FROM servers WHERE cluster_name = $1 AND server_name = $2 LIMIT 1",
             cluster_name,
-            new_server_name
+            new_server_name,
         )
         if existing_server:
             await message.answer(
@@ -738,24 +743,19 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
             )
             return
 
-        keys_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM keys WHERE server_id = $1",
-            old_server_name
-        )
+        keys_count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", old_server_name)
 
         async with conn.transaction():
             await conn.execute(
                 "UPDATE servers SET server_name = $1 WHERE cluster_name = $2 AND server_name = $3",
                 new_server_name,
                 cluster_name,
-                old_server_name
+                old_server_name,
             )
 
             if keys_count > 0:
                 await conn.execute(
-                    "UPDATE keys SET server_id = $1 WHERE server_id = $2",
-                    new_server_name,
-                    old_server_name
+                    "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_server_name, old_server_name
                 )
 
         final_text = f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!"
@@ -787,20 +787,14 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         async with conn.transaction():
-            await conn.execute(
-                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
-                new_server_name,
-                old_server_name
-            )
+            await conn.execute("UPDATE keys SET server_id = $1 WHERE server_id = $2", new_server_name, old_server_name)
 
             await conn.execute(
-                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
-                cluster_name,
-                old_server_name
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, old_server_name
             )
 
         base_text = f"✅ Ключи успешно перенесены на сервер '{new_server_name}', сервер '{old_server_name}' удален!"
-        sync_reminder = "\n\n⚠️ Не забудьте сделать \"Синхронизацию\"."
+        sync_reminder = '\n\n⚠️ Не забудьте сделать "Синхронизацию".'
         final_text = base_text + (sync_reminder if USE_COUNTRY_SELECTION else "")
 
         await callback_query.message.edit_text(
@@ -831,21 +825,13 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
     conn = await asyncpg.connect(DATABASE_URL)
     try:
         async with conn.transaction():
+            await conn.execute("UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_server_name)
             await conn.execute(
-                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
-                new_cluster_name,
-                old_server_name
-            )
-            await conn.execute(
-                "UPDATE keys SET server_id = $1 WHERE server_id = $2",
-                new_cluster_name,
-                old_cluster_name
+                "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_cluster_name
             )
 
             await conn.execute(
-                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
-                cluster_name,
-                old_server_name
+                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, old_server_name
             )
 
         await callback_query.message.edit_text(

@@ -24,12 +24,12 @@ from database import (
     add_notification,
     check_notification_time,
     delete_key,
+    delete_notification,
     get_all_keys,
     get_balance,
     get_last_notification_time,
     update_balance,
     update_key_expiry,
-    delete_notification
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
@@ -329,9 +329,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                     keyboard,
                 )
                 await add_notification(tg_id, notification_id, session=conn)
-                logger.info(
-                    f"Отправлено уведомление о необходимости продления подписки {email} пользователю {tg_id}."
-                )
+                logger.info(f"Отправлено уведомление о необходимости продления подписки {email} пользователю {tg_id}.")
             except Exception as e:
                 logger.error(f"Не удалось отправить уведомление о продлении подписки пользователю {tg_id}: {e}")
 
@@ -340,13 +338,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
 
 async def process_auto_renew_or_notify(
-    bot,
-    conn,
-    key: dict,
-    notification_id: str,
-    renewal_period_months: int,
-    standard_photo: str,
-    standard_caption: str
+    bot, conn, key: dict, notification_id: str, renewal_period_months: int, standard_photo: str, standard_caption: str
 ):
     """
     Если баланс пользователя позволяет, продлевает ключ на максимальный возможный срок и списывает средства;

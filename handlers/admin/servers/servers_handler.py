@@ -4,10 +4,10 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.buttons import BACK
 
 from database import delete_server, get_servers
 from filters.admin import IsAdminFilter
+from handlers.buttons import BACK
 
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
@@ -73,10 +73,7 @@ async def process_callback_delete_server(
         )
         return
 
-    keys_count = await session.fetchval(
-        "SELECT COUNT(*) FROM keys WHERE server_id = $1",
-        server_name
-    )
+    keys_count = await session.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", server_name)
 
     if keys_count > 0:
         await state.update_data(server_name=server_name, cluster_name=cluster_name)
@@ -87,7 +84,7 @@ async def process_callback_delete_server(
             FROM servers
             WHERE server_name != $1
             """,
-            server_name
+            server_name,
         )
 
         if all_servers:
@@ -96,13 +93,12 @@ async def process_callback_delete_server(
                 builder.row(
                     InlineKeyboardButton(
                         text=f"{server['server_name']} ({server['key_count']})",
-                        callback_data=f"transfer_to_server|{server['server_name']}|{server_name}"
+                        callback_data=f"transfer_to_server|{server['server_name']}|{server_name}",
                     )
                 )
             builder.row(
                 InlineKeyboardButton(
-                    text=BACK,
-                    callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+                    text=BACK, callback_data=AdminServerCallback(action="manage", data=server_name).pack()
                 )
             )
 
@@ -114,22 +110,16 @@ async def process_callback_delete_server(
             return
 
     remaining_servers = await session.fetchval(
-        "SELECT COUNT(*) FROM servers WHERE cluster_name = $1 AND server_name != $2",
-        cluster_name,
-        server_name
+        "SELECT COUNT(*) FROM servers WHERE cluster_name = $1 AND server_name != $2", cluster_name, server_name
     )
 
     if remaining_servers == 0:
         other_clusters = await session.fetch(
-            "SELECT DISTINCT cluster_name FROM servers WHERE cluster_name != $1",
-            cluster_name
+            "SELECT DISTINCT cluster_name FROM servers WHERE cluster_name != $1", cluster_name
         )
 
         if other_clusters:
-            cluster_keys_count = await session.fetchval(
-                "SELECT COUNT(*) FROM keys WHERE server_id = $1",
-                cluster_name
-            )
+            cluster_keys_count = await session.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", cluster_name)
 
             if cluster_keys_count > 0:
                 await state.update_data(server_name=server_name, cluster_name=cluster_name)
@@ -141,7 +131,7 @@ async def process_callback_delete_server(
                     WHERE cluster_name != $1
                     GROUP BY cluster_name
                     """,
-                    cluster_name
+                    cluster_name,
                 )
 
                 builder = InlineKeyboardBuilder()
@@ -149,13 +139,12 @@ async def process_callback_delete_server(
                     builder.row(
                         InlineKeyboardButton(
                             text=f"{cluster['cluster_name']} ({cluster['key_count']})",
-                            callback_data=f"transfer_to_cluster|{cluster['cluster_name']}|{cluster_name}|{server_name}"
+                            callback_data=f"transfer_to_cluster|{cluster['cluster_name']}|{cluster_name}|{server_name}",
                         )
                     )
                 builder.row(
                     InlineKeyboardButton(
-                        text=BACK,
-                        callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+                        text=BACK, callback_data=AdminServerCallback(action="manage", data=server_name).pack()
                     )
                 )
 
@@ -167,9 +156,7 @@ async def process_callback_delete_server(
                 return
 
         await session.execute(
-            "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
-            cluster_name,
-            server_name
+            "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, server_name
         )
         await callback_query.message.edit_text(
             text=f"✅ Сервер '{server_name}' удален. Кластер '{cluster_name}' также удален, так как в нем не осталось серверов.",
@@ -177,9 +164,7 @@ async def process_callback_delete_server(
         )
     else:
         await session.execute(
-            "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2",
-            cluster_name,
-            server_name
+            "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, server_name
         )
         await callback_query.message.edit_text(
             text=f"✅ Сервер '{server_name}' удален.",

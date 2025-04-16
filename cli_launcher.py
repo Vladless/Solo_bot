@@ -1,18 +1,21 @@
 import os
-import sys
+import re
 import subprocess
+import sys
+
 import requests
+
 from rich.console import Console
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
-import re
 
 from config import BOT_SERVICE
 
+
 try:
-    sys.stdin.reconfigure(encoding='utf-8')
-    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
@@ -30,14 +33,17 @@ console = Console()
 
 
 def print_logo():
-    logo = Text("""
+    logo = Text(
+        """
 ███████╗ ██████╗ ██╗      ██████╗ ██████╗  ██████╗ ████████╗
 ██╔════╝██╔═══██╗██║     ██╔═══██╗██╔══██╗██╔═══██╗╚══██╔══╝
 ███████╗██║   ██║██║     ██║   ██║██████╔╝██║   ██║   ██║   
 ╚════██║██║   ██║██║     ██║   ██║██╔══██╗██║   ██║   ██║   
 ███████║╚██████╔╝███████╗╚██████╔╝██████╔╝╚██████╔╝   ██║   
 ╚══════╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   
-""", style="bold cyan")
+""",
+        style="bold cyan",
+    )
     console.print(logo)
 
 
@@ -69,7 +75,9 @@ def install_dependencies():
                 console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю...[/yellow]")
                 subprocess.run("python3 -m venv venv", shell=True, check=True)
 
-            subprocess.run("bash -c 'source venv/bin/activate && pip install -r requirements.txt'", shell=True, check=True)
+            subprocess.run(
+                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'", shell=True, check=True
+            )
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
 
@@ -84,7 +92,7 @@ def get_local_version():
     path = os.path.join(PROJECT_DIR, "bot.py")
     if not os.path.isfile(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
             if match:
@@ -133,7 +141,7 @@ def update_from_beta():
         console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
         return
 
-    subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
+    subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
     install_dependencies()
@@ -150,9 +158,7 @@ def update_from_release():
     install_rsync_if_needed()
 
     try:
-        response = requests.get(
-            "https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10
-        )
+        response = requests.get("https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10)
         releases = response.json()[:3]
         tag_choices = [r["tag_name"] for r in releases]
 
@@ -164,8 +170,7 @@ def update_from_release():
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
         selected = Prompt.ask(
-            "[bold blue]Выберите номер релиза[/bold blue]",
-            choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+            "[bold blue]Выберите номер релиза[/bold blue]", choices=[str(i) for i in range(1, len(tag_choices) + 1)]
         )
         tag_name = tag_choices[int(selected) - 1]
 
@@ -173,7 +178,7 @@ def update_from_release():
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}", shell=True, check=True)
 
-        subprocess.run(f'rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/', shell=True)
+        subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
         install_dependencies()
@@ -223,8 +228,8 @@ def main():
     if os.geteuid() != 0:
         console.print("[bold red]⛔ Требуется запуск от имени root или через sudo.[/bold red]")
         sys.exit(1)
-    
-    os.chdir(PROJECT_DIR) 
+
+    os.chdir(PROJECT_DIR)
     print_logo()
 
     try:

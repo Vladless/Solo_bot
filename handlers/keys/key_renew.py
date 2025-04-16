@@ -4,7 +4,6 @@ from typing import Any
 import asyncpg
 
 from aiogram import F, Router
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 

@@ -158,13 +158,14 @@ def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
         return form3
     return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
 
+
 def format_days(days: int) -> str:
     """
     Форматирует количество дней с правильным склонением.
-    
+
     Args:
         days (int): Количество дней.
-    
+
     Returns:
         str: Строка с числом и склонённым словом "день/дня/дней".
     """

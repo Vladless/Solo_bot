@@ -1,13 +1,24 @@
 import asyncio
 
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
 
 from py3xui import AsyncApi
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-from database import get_servers, store_key, delete_notification
+from config import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    DATABASE_URL,
+    LIMIT_IP,
+    PUBLIC_LINK,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    SUPERNODE,
+    TOTAL_GB,
+)
+from database import delete_notification, get_servers, store_key
 from handlers.utils import get_least_loaded_cluster
 from logger import logger
 from panels.remnawave import RemnawaveAPI
@@ -20,8 +31,6 @@ from panels.three_xui import (
     toggle_client,
 )
 
-from datetime import datetime, timezone
-
 
 async def create_key_on_cluster(
     cluster_id: str,
@@ -31,6 +40,7 @@ async def create_key_on_cluster(
     expiry_timestamp: int,
     plan: int = None,
     session=None,
+    remnawave_link: str = None,
 ):
     try:
         servers = await get_servers()
@@ -71,6 +81,9 @@ async def create_key_on_cluster(
                     logger.warning("Нет inbound_id у серверов Remnawave")
                 else:
                     traffic_limit_bytes = int((plan or 1) * TOTAL_GB * 1024**3)
+                    short_uuid = None
+                    if remnawave_link and "/" in remnawave_link:
+                        short_uuid = remnawave_link.rstrip("/").split("/")[-1]
 
                     user_data = {
                         "username": email,
@@ -80,6 +93,9 @@ async def create_key_on_cluster(
                         "telegramId": tg_id,
                         "activeUserInbounds": inbound_ids,
                     }
+
+                    if short_uuid:
+                        user_data["shortUuid"] = short_uuid
 
                     result = await remna.create_user(user_data)
                     if not result:
@@ -243,8 +259,13 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
 
         if remnawave_inbound_ids:
             remnawave_server = next(
-                (srv for srv in cluster if srv.get("panel_type", "").lower() == "remnawave" and srv.get("inbound_id") in remnawave_inbound_ids),
-                None
+                (
+                    srv
+                    for srv in cluster
+                    if srv.get("panel_type", "").lower() == "remnawave"
+                    and srv.get("inbound_id") in remnawave_inbound_ids
+                ),
+                None,
             )
 
             if not remnawave_server:
@@ -258,7 +279,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                         uuid=client_id,
                         expire_at=expire_iso,
                         active_user_inbounds=remnawave_inbound_ids,
-                        traffic_limit_bytes=total_gb
+                        traffic_limit_bytes=total_gb,
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
@@ -426,9 +447,9 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     remnawave_key = result.get("subscriptionUrl")
                     logger.info(f"[Update] Remnawave: клиент заново создан, новый UUID: {remnawave_client_id}")
                 else:
-                    logger.error(f"[Update] Ошибка создания Remnawave клиента")
+                    logger.error("[Update] Ошибка создания Remnawave клиента")
             else:
-                logger.error(f"[Update] Не удалось авторизоваться в Remnawave")
+                logger.error("[Update] Не удалось авторизоваться в Remnawave")
 
         if not remnawave_client_id:
             logger.warning(f"[Update] Remnawave client_id не получен. Используется исходный: {client_id}")
@@ -509,9 +530,7 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
     )
     new_cluster_id = cluster_override or await get_least_loaded_cluster()
 
-    new_client_id, remnawave_key = await update_key_on_cluster(
-        tg_id, client_id, email, expiry_time, new_cluster_id
-    )
+    new_client_id, remnawave_key = await update_key_on_cluster(tg_id, client_id, email, expiry_time, new_cluster_id)
 
     servers = await get_servers()
     cluster_servers = servers.get(new_cluster_id, [])
@@ -608,7 +627,9 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
         client_id = row["client_id"]
         server_id = row["server_id"]
 
-        matched_servers = [s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id]
+        matched_servers = [
+            s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id
+        ]
         for server_info in matched_servers:
             tasks.append(fetch_traffic(server_info, client_id))
 

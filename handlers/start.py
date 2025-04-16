@@ -29,10 +29,10 @@ from database import (
     check_connection_exists,
     get_referral_by_referred_id,
     get_trial,
-    update_balance,
 )
-from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
+from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB
 from handlers.captcha import generate_captcha
+from handlers.coupons import activate_coupon
 from handlers.keys.key_mode.key_create import create_key
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
@@ -47,7 +47,6 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
-from handlers.coupons import activate_coupon
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .utils import edit_or_send_message
@@ -69,13 +68,15 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     if CAPTCHA_ENABLE and captcha:
-        captcha_data = await generate_captcha(message, state)
-        await edit_or_send_message(
-            target_message=message,
-            text=captcha_data["text"],
-            reply_markup=captcha_data["markup"],
-        )
-        return
+        connection_exists = await check_connection_exists(message.chat.id)
+        if not connection_exists:
+            captcha_data = await generate_captcha(message, state)
+            await edit_or_send_message(
+                target_message=message,
+                text=captcha_data["text"],
+                reply_markup=captcha_data["markup"],
+            )
+            return
 
     state_data = await state.get_data()
     text_to_process = state_data.get("original_text", message.text)
@@ -269,7 +270,7 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
         trial_status = await get_trial(message.chat.id, session)
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
         if trial_status == 0:
-            builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
+            builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 

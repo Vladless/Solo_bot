@@ -3,7 +3,6 @@ import time
 from typing import Any
 
 from aiogram import F, Router
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
