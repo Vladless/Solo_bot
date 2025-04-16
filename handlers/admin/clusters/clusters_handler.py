@@ -331,12 +331,25 @@ async def handle_cluster_availability(
                 if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                     raise Exception("Не удалось авторизоваться")
 
-                node_uuid = server.get("inbound_id")
-                if not node_uuid:
-                    raise Exception("Не указан UUID ноды (inbound_id)")
+                server_inbound_id = server.get("inbound_id")
+                if not server_inbound_id:
+                    raise Exception("Не указан inbound_id сервера")
 
-                data = await remna.get_node_users_usage(node_uuid, start=start_iso, end=end_iso)
-                online_remna_users = len(data) if data else 0
+                all_nodes = await remna.get_all_nodes()
+                if not all_nodes:
+                    raise Exception("Не удалось получить список нод")
+
+                matching_node = None
+                for node in all_nodes:
+                    excluded_inbounds = node.get("excludedInbounds", [])
+                    if server_inbound_id not in excluded_inbounds:
+                        matching_node = node
+                        break
+
+                if not matching_node:
+                    raise Exception("Нода, обслуживающая этот inbound_id, не найдена")
+
+                online_remna_users = matching_node.get("usersOnline", 0)
                 total_online_users += online_remna_users
                 result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
 
