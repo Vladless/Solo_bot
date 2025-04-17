@@ -2,21 +2,24 @@ from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import get_servers
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
-
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminServerCallback,
     build_manage_server_kb,
 )
 
-
 router = Router()
+
+
+class ServerLimitState(StatesGroup):
+    waiting_for_limit = State()
 
 
 @router.callback_query(AdminServerCallback.filter(F.action == "manage"), IsAdminFilter())
@@ -32,12 +35,15 @@ async def handle_server_manage(callback_query: CallbackQuery, callback_data: Adm
         api_url = server["api_url"]
         subscription_url = server["subscription_url"]
         inbound_id = server["inbound_id"]
+        max_keys = server.get("max_keys")
+        limit_display = f"{max_keys}" if max_keys else "не задан"
 
         text = (
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
             f"<b>📡 API URL:</b> {api_url}\n"
             f"<b>🌐 Subscription URL:</b> {subscription_url}\n"
-            f"<b>🔑 Inbound ID:</b> {inbound_id}"
+            f"<b>🔑 Inbound ID:</b> {inbound_id}\n"
+            f"<b>📈 Лимит ключей:</b> {limit_display}"
         )
 
         await callback_query.message.edit_text(
@@ -197,14 +203,75 @@ async def toggle_server_enabled(callback_query: CallbackQuery, callback_data: Ad
         await callback_query.message.edit_text("❌ Сервер не найден.")
         return
 
+    max_keys = server.get("max_keys")
+    limit_display = f"{max_keys}" if max_keys else "не задан"
+
     text = (
         f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
         f"<b>📡 API URL:</b> {server['api_url']}\n"
         f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-        f"<b>🔑 Inbound ID:</b> {server['inbound_id']}"
+        f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+        f"<b>📈 Лимит ключей:</b> {limit_display}"
     )
 
     await callback_query.message.edit_text(
         text=text,
-        reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=new_status)
+        reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=new_status),
     )
+
+
+@router.callback_query(AdminServerCallback.filter(F.action == "set_limit"), IsAdminFilter())
+async def ask_server_limit(callback: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
+    server_name = callback_data.data
+    await state.set_state(ServerLimitState.waiting_for_limit)
+    await state.update_data(server_name=server_name)
+    await callback.message.edit_text(
+        f"Введите лимит ключей для сервера <b>{server_name}</b> (целое число, 0 — без лимита):",
+    )
+
+
+@router.message(ServerLimitState.waiting_for_limit, IsAdminFilter())
+async def save_server_limit(message: types.Message, state: FSMContext, session: Any):
+    try:
+        limit = int(message.text.strip())
+        if limit < 0:
+            raise ValueError
+
+        data = await state.get_data()
+        server_name = data["server_name"]
+
+        new_value = limit if limit > 0 else None
+        await session.execute(
+            "UPDATE servers SET max_keys = $1 WHERE server_name = $2",
+            new_value, server_name
+        )
+
+        servers = await get_servers(include_enabled=True)
+        cluster_name, server = next(
+            ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name), (None, None)
+        )
+
+        if not server:
+            await message.answer("❌ Сервер не найден.")
+            await state.clear()
+            return
+
+        max_keys = server.get("max_keys")
+        limit_display = f"{max_keys}" if max_keys is not None else "не задан"
+
+        text = (
+            f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
+            f"<b>📡 API URL:</b> {server['api_url']}\n"
+            f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
+            f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+            f"<b>📈 Лимит ключей:</b> {limit_display}"
+        )
+
+        await message.answer(
+            text,
+            reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True))
+        )
+        await state.clear()
+
+    except ValueError:
+        await message.answer("❌ Введите корректное целое число (0 = без лимита)")

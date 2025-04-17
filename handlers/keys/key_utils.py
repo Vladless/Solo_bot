@@ -17,6 +17,7 @@ from config import (
     REMNAWAVE_PASSWORD,
     SUPERNODE,
     TOTAL_GB,
+    ADMIN_ID
 )
 from database import delete_notification, get_servers, store_key
 from handlers.utils import get_least_loaded_cluster
@@ -30,6 +31,8 @@ from panels.three_xui import (
     get_client_traffic,
     toggle_client,
 )
+
+from bot import bot
 
 
 async def create_key_on_cluster(
@@ -64,10 +67,24 @@ async def create_key_on_cluster(
             logger.warning(f"[Key Creation] Нет доступных серверов в кластере {cluster_id}")
             return
 
-        semaphore = asyncio.Semaphore(2)
+        async with asyncpg.create_pool(DATABASE_URL) as pool:
+            async with pool.acquire() as conn:
+                remnawave_servers = [
+                    s for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "remnawave"
+                    and await check_server_key_limit(s, conn)
+                ]
+                xui_servers = [
+                    s for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "3x-ui"
+                    and await check_server_key_limit(s, conn)
+                ]
 
-        remnawave_servers = [s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "remnawave"]
-        xui_servers = [s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
+        if not remnawave_servers and not xui_servers:
+            logger.warning(f"[Key Creation] Нет серверов с доступным лимитом в кластере {cluster_id}")
+            return
+
+        semaphore = asyncio.Semaphore(2)
 
         remnawave_created = False
         remnawave_key = None
@@ -800,3 +817,47 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
     except Exception as e:
         logger.error(f"[Reset Traffic] Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
         raise
+
+
+async def check_server_key_limit(server_info: dict, conn) -> bool:
+    """
+    Универсальная проверка лимита ключей для сервера в режимах кластеров и стран.
+    """
+    server_name = server_info.get("server_name")
+    cluster_name = server_info.get("cluster_name")
+    max_keys = server_info.get("max_keys")
+
+    if not max_keys:
+        return True
+
+    identifier = cluster_name if cluster_name else server_name
+    total_keys = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", identifier)
+
+    if total_keys >= max_keys:
+        logger.warning(f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}")
+        return False
+
+    usage_percent = total_keys / max_keys
+
+    if usage_percent >= 0.9:
+        notif_key = f"server_warn_{server_name}"
+        already_sent = await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM notifications WHERE tg_id = 0 AND notification_type = $1)",
+            notif_key
+        )
+        if not already_sent:
+            for admin_id in ADMIN_ID:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"⚠️ Сервер <b>{server_name}</b> почти заполнен ({int(usage_percent * 100)}%)."
+                        f"\nРекомендуется создать новый для балансировки.",
+                    )
+                except Exception:
+                    pass
+            await conn.execute(
+                "INSERT INTO notifications (tg_id, notification_type) VALUES (0, $1) ON CONFLICT DO NOTHING",
+                notif_key,
+            )
+
+    return True

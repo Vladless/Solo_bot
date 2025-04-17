@@ -1347,7 +1347,8 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
         conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
 
         query = """
-            SELECT cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type
+            SELECT cluster_name, server_name, api_url, subscription_url,
+                   inbound_id, panel_type, max_keys
         """
         if include_enabled:
             query += ", enabled"
@@ -1369,6 +1370,8 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
                 "inbound_id": row["inbound_id"],
                 "panel_type": row["panel_type"],
                 "enabled": row.get("enabled", True),
+                "max_keys": row.get("max_keys"),
+                "cluster_name": row["cluster_name"],
             })
 
         return servers
