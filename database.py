@@ -1341,17 +1341,21 @@ async def get_last_notification_time(tg_id: int, notification_type: str, session
             await conn.close()
 
 
-async def get_servers(session: Any = None):
+async def get_servers(session: Any = None, include_enabled: bool = False):
     conn = None
     try:
         conn = session if session is not None else await asyncpg.connect(DATABASE_URL)
 
-        result = await conn.fetch(
-            """
+        query = """
             SELECT cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type
-            FROM servers
-            """
-        )
+        """
+        if include_enabled:
+            query += ", enabled"
+
+        query += " FROM servers"
+
+        result = await conn.fetch(query)
+
         servers = {}
         for row in result:
             cluster_name = row["cluster_name"]
@@ -1364,6 +1368,7 @@ async def get_servers(session: Any = None):
                 "subscription_url": row["subscription_url"],
                 "inbound_id": row["inbound_id"],
                 "panel_type": row["panel_type"],
+                "enabled": row.get("enabled", True),
             })
 
         return servers

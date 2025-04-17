@@ -43,7 +43,7 @@ async def create_key_on_cluster(
     remnawave_link: str = None,
 ):
     try:
-        servers = await get_servers()
+        servers = await get_servers(include_enabled=True)
         cluster = servers.get(cluster_id)
         server_id_to_store = cluster_id
 
@@ -59,10 +59,15 @@ async def create_key_on_cluster(
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
+        enabled_servers = [s for s in cluster if s.get("enabled", True)]
+        if not enabled_servers:
+            logger.warning(f"[Key Creation] Нет доступных серверов в кластере {cluster_id}")
+            return
+
         semaphore = asyncio.Semaphore(2)
 
-        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
-        xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
+        remnawave_servers = [s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "remnawave"]
+        xui_servers = [s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
 
         remnawave_created = False
         remnawave_key = None

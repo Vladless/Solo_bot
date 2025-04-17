@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from database import delete_server, get_servers
+from database import get_servers
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 
@@ -22,7 +22,7 @@ router = Router()
 @router.callback_query(AdminServerCallback.filter(F.action == "manage"), IsAdminFilter())
 async def handle_server_manage(callback_query: CallbackQuery, callback_data: AdminServerCallback):
     server_name = callback_data.data
-    servers = await get_servers()
+    servers = await get_servers(include_enabled=True)
 
     cluster_name, server = next(
         ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name), (None, None)
@@ -42,7 +42,7 @@ async def handle_server_manage(callback_query: CallbackQuery, callback_data: Adm
 
         await callback_query.message.edit_text(
             text=text,
-            reply_markup=build_manage_server_kb(server_name, cluster_name),
+            reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
         )
     else:
         await callback_query.message.edit_text(text="❌ Сервер не найден.")
@@ -170,3 +170,41 @@ async def process_callback_delete_server(
             text=f"✅ Сервер '{server_name}' удален.",
             reply_markup=build_admin_back_kb("clusters"),
         )
+
+
+@router.callback_query(
+    AdminServerCallback.filter(F.action.in_(["enable", "disable"])), IsAdminFilter()
+)
+async def toggle_server_enabled(callback_query: CallbackQuery, callback_data: AdminServerCallback, session: Any):
+    server_name = callback_data.data
+    action = callback_data.action
+
+    new_status = action == "enable"
+
+    await session.execute(
+        "UPDATE servers SET enabled = $1 WHERE server_name = $2",
+        new_status,
+        server_name
+    )
+
+    servers = await get_servers(include_enabled=True)
+
+    cluster_name, server = next(
+        ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name), (None, None)
+    )
+
+    if not server:
+        await callback_query.message.edit_text("❌ Сервер не найден.")
+        return
+
+    text = (
+        f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
+        f"<b>📡 API URL:</b> {server['api_url']}\n"
+        f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
+        f"<b>🔑 Inbound ID:</b> {server['inbound_id']}"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=new_status)
+    )
