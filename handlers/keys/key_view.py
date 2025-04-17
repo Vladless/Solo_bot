@@ -229,7 +229,14 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             server_name,
             server_name if USE_COUNTRY_SELECTION else None,
         )
-
+        
+        if (not key or not key.startswith(PUBLIC_LINK)) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔄 Обновить подписку",
+                    callback_data=f"update_subscription|{key_name}",
+                )
+            )
 
         is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
         if is_full_remnawave and final_link:
