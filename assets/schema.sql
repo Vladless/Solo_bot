@@ -154,6 +154,13 @@ CREATE TABLE IF NOT EXISTS servers
     UNIQUE (cluster_name, server_name) 
 );
 
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS panel_type TEXT NOT NULL DEFAULT '3x-ui';
+ ALTER TABLE servers
+     ALTER COLUMN subscription_url DROP NOT NULL;
+ ALTER TABLE servers
+ ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ ALTER TABLE servers ADD COLUMN IF NOT EXISTS max_keys INTEGER;
+
 CREATE TABLE IF NOT EXISTS gifts
 (
     gift_id         TEXT PRIMARY KEY NOT NULL,      
