@@ -24,11 +24,11 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from database import (
-    add_connection,
     add_referral,
-    check_connection_exists,
     get_referral_by_referred_id,
     get_trial,
+    add_user,
+    check_user_exists
 )
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB
 from handlers.captcha import generate_captcha
@@ -64,12 +64,11 @@ async def handle_start_callback_query(
 
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True):
-    """Обрабатывает команду /start, включая логику проверки подписки, рефералов и подарков."""
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     if CAPTCHA_ENABLE and captcha:
-        connection_exists = await check_connection_exists(message.chat.id)
-        if not connection_exists:
+        user_exists = await check_user_exists(message.chat.id)
+        if not user_exists:
             captcha_data = await generate_captcha(message, state)
             await edit_or_send_message(
                 target_message=message,
@@ -160,11 +159,20 @@ async def process_start_logic(
                 if not existing_referral:
                     await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
 
-                connection_exists = await check_connection_exists(message.chat.id)
-                if not connection_exists:
-                    await add_connection(tg_id=message.chat.id, session=session)
+                user_exists = await check_user_exists(message.chat.id)
+                if not user_exists:
+                    from_user = message.from_user
+                    await add_user(
+                        tg_id=from_user.id,
+                        username=from_user.username,
+                        first_name=from_user.first_name,
+                        last_name=from_user.last_name,
+                        language_code=from_user.language_code,
+                        is_bot=from_user.is_bot,
+                        session=session,
+                    )
 
-                await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id)
+                await session.execute("UPDATE users SET trial = 1 WHERE tg_id = $1", message.chat.id)
 
                 await create_key(
                     message.chat.id,
@@ -187,8 +195,8 @@ async def process_start_logic(
             if "referral_" in text:
                 try:
                     referrer_tg_id = int(text.split("referral_")[1])
-                    connection_exists_now = await check_connection_exists(message.chat.id)
-                    if connection_exists_now:
+                    user_exists_now = await check_user_exists(message.chat.id)
+                    if user_exists_now:
                         await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
                         return await process_callback_view_profile(message, state, admin)
                     if referrer_tg_id == message.chat.id:
@@ -199,6 +207,16 @@ async def process_start_logic(
                         return await process_callback_view_profile(message, state, admin)
 
                     await add_referral(message.chat.id, referrer_tg_id, session)
+                    from_user = message.from_user
+                    await add_user(
+                        tg_id=from_user.id,
+                        username=from_user.username,
+                        first_name=from_user.first_name,
+                        last_name=from_user.last_name,
+                        language_code=from_user.language_code,
+                        is_bot=from_user.is_bot,
+                        session=session,
+                    )
                     await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
                     try:
                         await bot.send_message(
@@ -218,14 +236,23 @@ async def process_start_logic(
             await message.answer("❌ Произошла ошибка. Попробуйте позже.")
             return
 
-    final_exists = await check_connection_exists(message.chat.id)
+    final_exists = await check_user_exists(message.chat.id)
     if final_exists:
         if SHOW_START_MENU_ONCE:
             return await process_callback_view_profile(message, state, admin)
         else:
             return await show_start_menu(message, admin, session)
     else:
-        await add_connection(tg_id=message.chat.id, session=session)
+        from_user = message.from_user
+        await add_user(
+            tg_id=from_user.id,
+            username=from_user.username,
+            first_name=from_user.first_name,
+            last_name=from_user.last_name,
+            language_code=from_user.language_code,
+            is_bot=from_user.is_bot,
+            session=session,
+        )
         return await show_start_menu(message, admin, session)
 
 

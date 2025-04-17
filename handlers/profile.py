@@ -153,7 +153,7 @@ async def process_callback_view_profile(
 @router.callback_query(F.data == "balance")
 async def balance_handler(callback_query: CallbackQuery, session: Any):
     result = await session.fetchrow(
-        "SELECT balance FROM connections WHERE tg_id = $1",
+        "SELECT balance FROM users WHERE tg_id = $1",
         callback_query.from_user.id,
     )
     balance = result["balance"] if result else 0.0

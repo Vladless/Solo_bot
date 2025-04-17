@@ -13,8 +13,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import ADMIN_ID
 from database import (
-    add_connection,
-    check_connection_exists,
+    add_user,
+    check_user_exists,
     check_coupon_usage,
     create_coupon_usage,
     get_coupon_by_code,
@@ -91,9 +91,18 @@ async def activate_coupon(message: Message, state: FSMContext, session: Any, cou
         await state.clear()
         return
 
-    connection_exists = await check_connection_exists(user_id)
-    if not connection_exists:
-        await add_connection(tg_id=user_id, session=session)
+    user_exists = await check_user_exists(user_id)
+    if not user_exists:
+        from_user = message.from_user
+        await add_user(
+            tg_id=from_user.id,
+            username=from_user.username,
+            first_name=from_user.first_name,
+            last_name=from_user.last_name,
+            language_code=from_user.language_code,
+            is_bot=from_user.is_bot,
+            session=session,
+        )
 
     if coupon_record["amount"] > 0:
         try:

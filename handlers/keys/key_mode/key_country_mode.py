@@ -23,8 +23,8 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from database import (
-    add_connection,
-    check_connection_exists,
+    add_user,
+    check_user_exists,
     check_server_name_by_cluster,
     get_key_details,
     get_trial,
@@ -40,7 +40,7 @@ from handlers.texts import (
 from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
 from logger import logger
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import delete_client
+from panels.three_xui import delete_client, get_xui_instance
 
 
 router = Router()
@@ -230,9 +230,23 @@ async def finalize_key_creation(
     callback_query: CallbackQuery,
     old_key_name: str = None,
 ):
-    if not await check_connection_exists(tg_id):
-        await add_connection(tg_id, balance=0.0, trial=0, session=session)
-        logger.info(f"[Connection] Подключение создано для пользователя {tg_id}")
+    if not await check_user_exists(tg_id):
+        if isinstance(callback_query, CallbackQuery):
+            from_user = callback_query.from_user
+        else:
+            from_user = callback_query.from_user
+
+        await add_user(
+            tg_id=from_user.id,
+            username=from_user.username,
+            first_name=from_user.first_name,
+            last_name=from_user.last_name,
+            language_code=from_user.language_code,
+            is_bot=from_user.is_bot,
+            session=session,
+        )
+        logger.info(f"[User] Новый пользователь {tg_id} добавлен")
+
 
     expiry_time = expiry_time.astimezone(moscow_tz)
 
@@ -283,12 +297,8 @@ async def finalize_key_creation(
                     old_panel_type = old_server_info["panel_type"].lower()
                     try:
                         if old_panel_type == "3x-ui":
-                            xui = AsyncApi(
-                                old_server_info["api_url"],
-                                username=ADMIN_USERNAME,
-                                password=ADMIN_PASSWORD,
-                                logger=logger,
-                            )
+                            xui = await get_xui_instance(old_server_info["api_url"])
+
                             await delete_client(
                                 xui,
                                 old_server_info["inbound_id"],

@@ -23,6 +23,8 @@ from database import (
     update_balance,
     update_key_expiry,
     update_trial,
+    get_key_details,
+    set_user_balance
 )
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
@@ -614,23 +616,27 @@ async def process_user_search(
 ) -> None:
     await state.clear()
 
-    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-
-    if balance is None:
+    user_data = await session.fetchrow(
+        "SELECT username, balance, created_at, updated_at FROM users WHERE tg_id = $1", tg_id
+    )
+    if not user_data:
         await message.answer(
             text="🚫 Пользователь с указанным ID не найден!",
             reply_markup=build_admin_back_kb(),
         )
         return
 
-    balance = int(balance)
-
-    user_data = await session.fetchrow("SELECT username, created_at, updated_at FROM users WHERE tg_id = $1", tg_id)
-    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
-    key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    balance = int(user_data["balance"] or 0)
+    username = user_data["username"]
     created_at = user_data["created_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
     updated_at = user_data["updated_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+
+    referral_count = await session.fetchval(
+        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
+    )
+    key_records = await session.fetch(
+        "SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id
+    )
 
     text = (
         f"<b>📊 Информация о пользователе</b>"
@@ -651,35 +657,6 @@ async def process_user_search(
             pass
     else:
         await message.answer(text=text, reply_markup=kb)
-
-
-async def get_key_details(email, session):
-    record = await session.fetchrow(
-        """
-        SELECT k.client_id, k.key, k.remnawave_link, k.expiry_time, k.server_id, c.tg_id, c.balance
-        FROM keys k
-        JOIN connections c ON k.tg_id = c.tg_id
-        WHERE k.email = $1
-        """,
-        email,
-    )
-
-    if not record:
-        return None
-
-    cluster_name = record["server_id"]
-    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=timezone.utc)
-
-    return {
-        "client_id": record["client_id"],
-        "balance": record["balance"],
-        "tg_id": record["tg_id"],
-        "key": record["key"],
-        "remnawave_link": record["remnawave_link"],
-        "cluster_name": cluster_name,
-        "expiry_time": record["expiry_time"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
-    }
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exception | None:
@@ -713,17 +690,6 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
 
     await update_key_on_all_servers()
     await update_key_expiry(client_id, expiry_time, session)
-
-
-async def set_user_balance(tg_id: int, balance: int, session: Any) -> None:
-    try:
-        await session.execute(
-            "UPDATE connections SET balance = $1 WHERE tg_id = $2",
-            balance,
-            tg_id,
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_traffic"), IsAdminFilter())
@@ -783,13 +749,17 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
     Восстанавливает пробники для пользователей, у которых нет активной подписки.
     """
     query = """
-        UPDATE connections
+        UPDATE users
         SET trial = 0
         WHERE tg_id IN (
-            SELECT DISTINCT c.tg_id
-            FROM connections c
-            LEFT JOIN keys k ON c.tg_id = k.tg_id
-            WHERE k.tg_id IS NULL AND c.trial != 0
+            SELECT u.tg_id
+            FROM users u
+            LEFT JOIN (
+                SELECT tg_id
+                FROM keys
+                WHERE expiry_time > EXTRACT(EPOCH FROM NOW()) * 1000
+            ) k ON u.tg_id = k.tg_id
+            WHERE k.tg_id IS NULL AND u.trial != 0
         )
     """
     await session.execute(query)
@@ -798,7 +768,7 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text="✅ Пробники успешно восстановлены для пользователей, у которых нет активных подписок.",
+        text="✅ Пробники успешно восстановлены для пользователей без активных подписок.",
         reply_markup=builder.as_markup(),
     )
 

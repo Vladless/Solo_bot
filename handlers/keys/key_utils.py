@@ -5,11 +5,7 @@ from typing import Any
 
 import asyncpg
 
-from py3xui import AsyncApi
-
 from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
     DATABASE_URL,
     LIMIT_IP,
     PUBLIC_LINK,
@@ -30,6 +26,7 @@ from panels.three_xui import (
     extend_client_key,
     get_client_traffic,
     toggle_client,
+    get_xui_instance
 )
 
 from bot import bot
@@ -190,12 +187,7 @@ async def create_client_on_server(
     Создает клиента на указанном сервере.
     """
     async with semaphore:
-        xui = AsyncApi(
-            server_info["api_url"],
-            username=ADMIN_USERNAME,
-            password=ADMIN_PASSWORD,
-            logger=logger,
-        )
+        xui = await get_xui_instance(server_info["api_url"])
 
         inbound_id = server_info.get("inbound_id")
         server_name = server_info.get("server_name", "unknown")
@@ -315,12 +307,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
             server_name = server_info.get("server_name", "unknown")
 
             if panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server_info["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=logger,
-                )
+                xui = await get_xui_instance(server_info["api_url"])
 
                 inbound_id = server_info.get("inbound_id")
 
@@ -387,12 +374,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 continue
 
             elif panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server_info["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=logger,
-                )
+                xui = await get_xui_instance(server_info["api_url"])
 
                 inbound_id = server_info.get("inbound_id")
                 if not inbound_id:
@@ -484,12 +466,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 logger.warning(f"[Update] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
+            xui = await get_xui_instance(server_info["api_url"])
 
             if SUPERNODE:
                 sub_id = email
@@ -614,8 +591,7 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
 
         try:
             if panel_type == "3x-ui":
-                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
-                await xui.login()
+                xui = await get_xui_instance(api_url)
                 traffic_info = await get_client_traffic(xui, client_id)
                 if traffic_info["status"] == "success" and traffic_info["traffic"]:
                     client_data = traffic_info["traffic"][0]
@@ -695,12 +671,7 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
         tasks = []
 
         for server_info in cluster:
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
+            xui = await get_xui_instance(server_info["api_url"])
 
             inbound_id = server_info.get("inbound_id")
             server_name = server_info.get("server_name", "unknown")
@@ -803,8 +774,7 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
                     logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                     continue
 
-                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
-                await xui.login()
+                xui = await get_xui_instance(api_url)
 
                 unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
                 tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))

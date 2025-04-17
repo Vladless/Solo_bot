@@ -12,18 +12,17 @@ async def export_users_csv(session: Any) -> BufferedInputFile:
     """
     query = """
         SELECT 
-            u.tg_id, 
-            u.username, 
-            u.first_name, 
-            u.last_name, 
-            u.language_code, 
-            u.is_bot, 
-            c.balance, 
-            c.trial,
-            u.created_at  -- Добавляем дату регистрации
-        FROM users u
-        LEFT JOIN connections c ON u.tg_id = c.tg_id
-        ORDER BY u.created_at ASC  -- Сортировка от старых к новым
+            tg_id, 
+            username, 
+            first_name, 
+            last_name, 
+            language_code, 
+            is_bot, 
+            balance, 
+            trial,
+            created_at  
+        FROM users
+        ORDER BY created_at ASC
     """
 
     users = await session.fetch(query)

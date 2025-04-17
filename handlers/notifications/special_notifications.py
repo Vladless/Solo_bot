@@ -36,17 +36,11 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
 
     inactive_trial_users = await conn.fetch(
         """
-        SELECT tg_id, username, first_name, last_name FROM users 
-        WHERE tg_id IN (
-            SELECT tg_id FROM connections 
-            WHERE trial IN (0, -1)
-        )
-        AND tg_id NOT IN (
-            SELECT tg_id FROM blocked_users
-        )
-        AND tg_id NOT IN (
-            SELECT DISTINCT tg_id FROM keys
-        )
+        SELECT u.tg_id, u.username, u.first_name, u.last_name 
+        FROM users u
+        WHERE u.trial IN (0, -1)
+          AND u.tg_id NOT IN (SELECT tg_id FROM blocked_users)
+          AND u.tg_id NOT IN (SELECT DISTINCT tg_id FROM keys)
         """
     )
     logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
@@ -85,9 +79,11 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 if trial_extended:
                     total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
                     message = TRIAL_INACTIVE_BONUS_MSG.format(
-                        display_name=display_name, NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS, total_days=total_days
+                        display_name=display_name,
+                        NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS,
+                        total_days=total_days,
                     )
-                    await conn.execute("UPDATE connections SET trial = -1 WHERE tg_id = $1", tg_id)
+                    await conn.execute("UPDATE users SET trial = -1 WHERE tg_id = $1", tg_id)
                 else:
                     message = TRIAL_INACTIVE_FIRST_MSG.format(display_name=display_name, TRIAL_TIME=TRIAL_TIME)
 

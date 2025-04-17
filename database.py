@@ -294,13 +294,10 @@ async def update_trial(tg_id: int, status: int, session: Any):
     try:
         await session.execute(
             """
-            INSERT INTO connections (tg_id, trial) 
-            VALUES ($1, $2) 
-            ON CONFLICT (tg_id) 
-            DO UPDATE SET trial = $2
+            UPDATE users SET trial = $1 WHERE tg_id = $2
             """,
-            tg_id,
             status,
+            tg_id,
         )
         status_text = "восстановлен" if status == 0 else "использован"
         logger.info(f"Триальный период успешно {status_text} для пользователя {tg_id}")
@@ -310,65 +307,56 @@ async def update_trial(tg_id: int, status: int, session: Any):
         return False
 
 
-async def add_connection(tg_id: int, balance: float = 0.0, trial: int = 0, session: Any = None):
+async def add_user(
+    tg_id: int,
+    username: str = None,
+    first_name: str = None,
+    last_name: str = None,
+    language_code: str = None,
+    is_bot: bool = False,
+    session: Any = None,
+):
     """
-    Добавляет новое подключение для пользователя в базу данных.
+    Добавляет нового пользователя в таблицу users.
 
     Args:
-        tg_id (int): Telegram ID пользователя
-        balance (float, optional): Начальный баланс пользователя. По умолчанию 0.0.
-        trial (int, optional): Статус триального периода. По умолчанию 0.
-        session (Any, optional): Сессия базы данных.
-
-    Raises:
-        Exception: Если возникает ошибка при добавлении подключения в базу данных.
+        tg_id (int): Telegram ID
+        session (Any): Сессия базы данных
+        ... остальные поля из Telegram профиля
     """
     try:
         await session.execute(
             """
-            INSERT INTO connections (tg_id, balance, trial)
-            VALUES ($1, $2, $3)
+            INSERT INTO users (tg_id, username, first_name, last_name, language_code, is_bot)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (tg_id) DO NOTHING
             """,
-            tg_id,
-            balance,
-            trial,
+            tg_id, username, first_name, last_name, language_code, is_bot,
         )
-        logger.info(
-            f"Успешно добавлено новое подключение для пользователя {tg_id} с балансом {balance} и статусом триала {trial}"
-        )
+        logger.info(f"[DB] Новый пользователь добавлен: {tg_id}")
     except Exception as e:
-        logger.error(f"Не удалось добавить подключение для пользователя {tg_id}. Причина: {e}")
+        logger.error(f"[DB] Ошибка при добавлении пользователя {tg_id}: {e}")
         raise
 
 
-async def check_connection_exists(tg_id: int):
+async def check_user_exists(tg_id: int) -> bool:
     """
-    Проверяет существование подключения для указанного пользователя в базе данных.
+    Проверяет существование пользователя в таблице users.
 
     Args:
-        tg_id (int): Telegram ID пользователя для проверки.
+        tg_id (int): Telegram ID
 
     Returns:
-        bool: True, если подключение существует, иначе False.
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных.
+        bool: True, если пользователь найден, иначе False
     """
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        exists = await conn.fetchval(
-            """
-            SELECT EXISTS(SELECT 1 FROM connections WHERE tg_id = $1)
-            """,
-            tg_id,
-        )
-        logger.info(
-            f"Проверка существования подключения для пользователя {tg_id}: {'найдено' if exists else 'не найдено'}"
-        )
+        exists = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM users WHERE tg_id = $1)", tg_id)
+        logger.info(f"[DB] Пользователь {tg_id} {'найден' if exists else 'не найден'}")
         return exists
     except Exception as e:
-        logger.error(f"Ошибка при проверке подключения для пользователя {tg_id}: {e}")
-        raise
+        logger.error(f"[DB] Ошибка при проверке пользователя {tg_id}: {e}")
+        return False
     finally:
         if conn:
             await conn.close()
@@ -537,7 +525,7 @@ async def get_balance(tg_id: int) -> float:
     conn = None
     try:
         conn = await asyncpg.connect(DATABASE_URL)
-        balance = await conn.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
+        balance = await conn.fetchval("SELECT balance FROM users WHERE tg_id = $1", tg_id)
         return round(balance, 1) if balance is not None else 0.0
     except Exception as e:
         logger.error(f"Ошибка при получении баланса для пользователя {tg_id}: {e}")
@@ -573,13 +561,13 @@ async def update_balance(
 
         total_amount = int(amount + extra)
 
-        current_balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id) or 0
+        current_balance = await session.fetchval("SELECT balance FROM users WHERE tg_id = $1", tg_id) or 0
 
         new_balance = current_balance + total_amount
 
         await session.execute(
             """
-            UPDATE connections
+            UPDATE users
             SET balance = $1
             WHERE tg_id = $2
             """,
@@ -604,7 +592,7 @@ async def update_balance(
 
 async def get_trial(tg_id: int, session: Any) -> int:
     """
-    Получает статус триала для пользователя из базы данных.
+    Получает статус триала для пользователя из таблицы users.
 
     Args:
         tg_id (int): Telegram ID пользователя
@@ -614,11 +602,11 @@ async def get_trial(tg_id: int, session: Any) -> int:
         int: Статус триала (0 - не использован, 1 - использован)
     """
     try:
-        trial = await session.fetchval("SELECT trial FROM connections WHERE tg_id = $1", tg_id)
-        logger.info(f"Получен статус триала для пользователя {tg_id}: {trial}")
+        trial = await session.fetchval("SELECT trial FROM users WHERE tg_id = $1", tg_id)
+        logger.info(f"[DB] Статус триала для пользователя {tg_id}: {trial}")
         return trial if trial is not None else 0
     except Exception as e:
-        logger.error(f"Ошибка при получении статуса триала для пользователя {tg_id}: {e}")
+        logger.error(f"[DB] Ошибка получения trial для пользователя {tg_id}: {e}")
         return 0
 
 
@@ -979,42 +967,6 @@ async def update_key_expiry(client_id: str, new_expiry_time: int, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при обновлении времени истечения ключа для клиента {client_id}: {e}")
         raise
-
-
-async def add_balance_to_client(client_id: str, amount: float):
-    """
-    Добавление баланса клиенту по его идентификатору Telegram.
-
-    Args:
-        client_id (str): Идентификатор клиента в Telegram
-        amount (float): Сумма для пополнения баланса
-
-    Raises:
-        Exception: В случае ошибки при подключении к базе данных или обновлении баланса
-    """
-    conn = None
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        logger.info(f"Установлено подключение к базе данных для пополнения баланса клиента {client_id}")
-
-        await conn.execute(
-            """
-            UPDATE connections
-            SET balance = balance + $1
-            WHERE tg_id = $2
-            """,
-            amount,
-            client_id,
-        )
-        logger.info(f"Успешно пополнен баланс клиента {client_id} на сумму {amount}")
-
-    except Exception as e:
-        logger.error(f"Ошибка при пополнении баланса для клиента {client_id}: {e}")
-        raise
-    finally:
-        if conn:
-            await conn.close()
-            logger.info("Закрытие подключения к базе данных")
 
 
 async def get_client_id_by_email(email: str):
@@ -1386,9 +1338,9 @@ async def delete_user_data(session: Any, tg_id: int):
         await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
     except Exception as e:
         logger.warning(f"У Вас версия без подарков для {tg_id}: {e}")
+
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM connections WHERE tg_id = $1", tg_id)
     await delete_key(tg_id, session)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
 
@@ -1450,12 +1402,24 @@ async def store_gift_link(
             await conn.close()
 
 
+async def set_user_balance(tg_id: int, balance: int, session: Any) -> None:
+    try:
+        await session.execute(
+            "UPDATE users SET balance = $1 WHERE tg_id = $2",
+            balance,
+            tg_id,
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
+
+
 async def get_key_details(email, session):
     record = await session.fetchrow(
         """
-        SELECT k.server_id, k.key, k.remnawave_link, k.email, k.is_frozen, k.expiry_time, k.client_id, k.created_at, c.tg_id, c.balance
+        SELECT k.server_id, k.key, k.remnawave_link, k.email, k.is_frozen,
+               k.expiry_time, k.client_id, k.created_at, u.tg_id, u.balance
         FROM keys k
-        JOIN connections c ON k.tg_id = c.tg_id
+        JOIN users u ON k.tg_id = u.tg_id
         WHERE k.email = $1
         """,
         email,
@@ -1693,39 +1657,6 @@ async def get_last_payments(tg_id: int, session: Any):
         return records
     except Exception as e:
         logger.error(f"Ошибка при получении последних платежей для пользователя {tg_id}: {e}")
-        raise
-
-
-async def get_coupon_details(coupon_id: int, session: Any):
-    """
-    Получает детали купона по его ID.
-
-    Args:
-        coupon_id (int): ID купона
-        session (Any): Сессия базы данных
-
-    Returns:
-        dict: Словарь с деталями купона или None если купон не найден
-
-    Raises:
-        Exception: В случае ошибки при выполнении запроса
-    """
-    try:
-        record = await session.fetchrow(
-            """
-            SELECT id, code, amount, days, usage_count, usage_limit, is_used
-            FROM coupons
-            WHERE id = $1
-            """,
-            coupon_id,
-        )
-        if record:
-            logger.info(f"Успешно получены детали купона {coupon_id}")
-            return dict(record)
-        logger.warning(f"Купон {coupon_id} не найден")
-        return None
-    except Exception as e:
-        logger.error(f"Ошибка при получении деталей купона {coupon_id}: {e}")
         raise
 
 
