@@ -4,6 +4,7 @@ from typing import Any
 import asyncpg
 
 from aiogram import F, Router
+
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -41,7 +42,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
 )
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, format_months
 from logger import logger
 
 
@@ -66,7 +67,8 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
 
                 discount = DISCOUNTS.get(plan_id, 0) if isinstance(DISCOUNTS, dict) else 0
 
-                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)"
+                months_formatted = format_months(months)
+                button_text = f"📅 {months_formatted} ({price} руб.)"
                 if discount > 0:
                     button_text += f" {discount}% скидка"
 
@@ -180,7 +182,8 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
+    months_formatted = format_months(int(plan))
+    response_message = SUCCESS_RENEWAL_MSG.format(months_formatted=months_formatted)
 
     if callback_query:
         try:
