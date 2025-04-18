@@ -1428,8 +1428,6 @@ async def get_key_details(email, session):
     if not record:
         return None
 
-    cluster_name = record["server_id"]
-
     moscow_tz = pytz.timezone("Europe/Moscow")
     expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=moscow_tz)
     current_date = datetime.now(moscow_tz)
@@ -1443,20 +1441,26 @@ async def get_key_details(email, session):
         hours_left = time_left.seconds // 3600
         days_left_message = f"Осталось часов: <b>{hours_left}</b>"
 
+    public_link = record["key"]
+    remna_link = record["remnawave_link"]
+
     return {
-        "key": record["key"],
-        "remnawave_link": record["remnawave_link"],
+        "key": public_link,
+        "remnawave_link": remna_link,
         "server_id": record["server_id"],
         "created_at": record["created_at"],
         "expiry_time": record["expiry_time"],
         "client_id": record["client_id"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
-        "days_left_message": days_left_message,
-        "server_name": cluster_name,
-        "balance": record["balance"],
         "tg_id": record["tg_id"],
         "email": record["email"],
         "is_frozen": record["is_frozen"],
+        "balance": record["balance"],
+
+        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
+        "days_left_message": days_left_message,
+        "link": public_link or remna_link,
+        "cluster_name": record["server_id"],
+        "location_name": record["server_id"],
     }
 
 
