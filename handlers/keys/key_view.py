@@ -232,7 +232,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             server_name if USE_COUNTRY_SELECTION else None,
         )
 
-        if (not key or not key.startswith(PUBLIC_LINK)) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+        if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
             builder.row(
                 InlineKeyboardButton(
                     text="🔄 Обновить подписку",
