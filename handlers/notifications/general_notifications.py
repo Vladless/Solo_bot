@@ -44,6 +44,7 @@ from handlers.texts import (
     KEY_RENEWED,
     KEY_RENEWED_TEMP_MSG,
 )
+from handlers.utils import format_hours, format_minutes
 from logger import logger
 
 from .notify_utils import send_notification
@@ -137,8 +138,8 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
             continue
 
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
-        days_left_message = (
-            f"⏳ Осталось времени: {hours_left} часов" if hours_left > 0 else "⏳ Последний день подписки!"
+        hours_left_formatted = (
+            f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
         )
 
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
@@ -146,7 +147,7 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
         notification_text = KEY_EXPIRY_24H.format(
             email=email,
-            days_left_message=days_left_message,
+            hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
         )
 
@@ -192,8 +193,8 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
             continue
 
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
-        hours_left_message = (
-            f"⏳ Осталось времени: {hours_left} часов" if hours_left > 0 else "⏳ Последний день подписки!"
+        hours_left_formatted = (
+            f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
         )
 
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
@@ -201,7 +202,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
         notification_text = KEY_EXPIRY_10H.format(
             email=email,
-            hours_left_message=hours_left_message,
+            hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
         )
 
@@ -308,15 +309,21 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 
                 if hours > 0:
                     if minutes > 0:
-                        hour_suffix = "час" if hours == 1 else "часа" if 2 <= hours <= 4 else "часов"
-                        time_str = f"{hours} {hour_suffix} и {minutes} минут"
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(email=email, time_str=time_str)
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
+                            email=email,
+                            hours_formatted=format_hours(hours),
+                            minutes_formatted=format_minutes(minutes)
+                        )
                     else:
-                        hour_suffix = "час" if hours == 1 else "часа" if 2 <= hours <= 4 else "часов"
-                        time_str = f"{hours} {hour_suffix}"
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(email=email, time_str=time_str)
+                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(
+                            email=email,
+                            hours_formatted=format_hours(hours)
+                        )
                 else:
-                    delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(email=email, minutes=NOTIFY_DELETE_DELAY)
+                    delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(
+                        email=email,
+                        minutes_formatted=format_minutes(minutes)
+                    )
             else:
                 delay_message = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
 
