@@ -273,6 +273,17 @@ def prepare_headers(
             "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
+    elif "v2raytun" in user_agent:
+        encoded_project_name = f"{project_name}\n{subscription_info}"
+        announce_str = f"🔑 Выберите сервер ⬇️ | 💬 Поддержка ➡️"
+        return {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": "inline",
+            "update-always": "true",
+            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce-url": f"{SUPPORT_CHAT_URL}",
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+        }
     else:
         encoded_project_name = f"{project_name}\n{subscription_info}"
         return {
