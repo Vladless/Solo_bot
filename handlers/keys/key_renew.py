@@ -180,7 +180,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
+    response_message = SUCCESS_RENEWAL_MSG.format(months_formatted=format_months(int(plan)))
 
     if callback_query:
         try:
