@@ -41,7 +41,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
 )
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, format_months
 from logger import logger
 
 
@@ -66,7 +66,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
 
                 discount = DISCOUNTS.get(plan_id, 0) if isinstance(DISCOUNTS, dict) else 0
 
-                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)"
+                button_text = f"📅 {format_months(months)} ({price} руб.)"
                 if discount > 0:
                     button_text += f" {discount}% скидка"
 

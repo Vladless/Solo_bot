@@ -48,7 +48,7 @@ from handlers.texts import (
     NO_SUBSCRIPTIONS_MSG,
     key_message,
 )
-from handlers.utils import edit_or_send_message, handle_error, is_full_remnawave_cluster
+from handlers.utils import edit_or_send_message, handle_error, is_full_remnawave_cluster, format_days, format_hours, format_minutes
 from logger import logger
 
 
@@ -215,13 +215,13 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
         time_left = expiry_date - datetime.utcnow()
 
         if time_left.total_seconds() <= 0:
-            days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
+            days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла"
         else:
             total_seconds = int(time_left.total_seconds())
             days = total_seconds // 86400
             hours = (total_seconds % 86400) // 3600
             minutes = (total_seconds % 3600) // 60
-            days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+            days_left_message = f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
 
         formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
         response_message = key_message(

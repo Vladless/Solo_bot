@@ -74,8 +74,9 @@ async def activate_coupon(message: Message, state: FSMContext, session: Any, cou
     coupon_record = await get_coupon_by_code(coupon_code, session)
 
     if not coupon_record:
-        await message.answer(COUPON_NOT_FOUND_MSG)
-        await state.clear()
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="exit_coupon_input"))
+        await message.answer(COUPON_NOT_FOUND_MSG, reply_markup=builder.as_markup())
         return
 
     if coupon_record["usage_count"] >= coupon_record["usage_limit"] or coupon_record["is_used"]:
@@ -220,3 +221,10 @@ async def cancel_coupon_activation(callback_query: CallbackQuery, state: FSMCont
     await callback_query.message.edit_text("⚠️ Активация купона отменена.")
     await process_callback_view_profile(callback_query.message, state, admin)
     await state.clear()
+
+
+@router.callback_query(F.data == "exit_coupon_input")
+async def handle_exit_coupon_input(callback_query: CallbackQuery, state: FSMContext):
+    await state.clear()
+    is_admin = callback_query.from_user.id in ADMIN_ID
+    await process_callback_view_profile(callback_query.message, state, admin=is_admin)

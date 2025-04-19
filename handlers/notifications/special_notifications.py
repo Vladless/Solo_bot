@@ -18,6 +18,7 @@ from database import (
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import get_user_traffic
 from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
+from handlers.utils import format_days
 from logger import logger
 
 
@@ -80,12 +81,15 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                     total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
                     message = TRIAL_INACTIVE_BONUS_MSG.format(
                         display_name=display_name,
-                        NOTIFY_EXTRA_DAYS=NOTIFY_EXTRA_DAYS,
-                        total_days=total_days,
+                        extra_days_formatted=format_days(NOTIFY_EXTRA_DAYS),
+                        total_days_formatted=format_days(total_days),
                     )
                     await conn.execute("UPDATE users SET trial = -1 WHERE tg_id = $1", tg_id)
                 else:
-                    message = TRIAL_INACTIVE_FIRST_MSG.format(display_name=display_name, TRIAL_TIME=TRIAL_TIME)
+                    message = TRIAL_INACTIVE_FIRST_MSG.format(
+                        display_name=display_name,
+                        trial_time_formatted=format_days(TRIAL_TIME)
+                    )
 
                 try:
                     await bot.send_message(tg_id, message, reply_markup=keyboard)
