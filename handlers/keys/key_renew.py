@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot import bot
 from config import (
     DATABASE_URL,
-    RENEWAL_PLANS,
+    RENEWAL_PRICES,
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
@@ -60,9 +60,8 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
 
             builder = InlineKeyboardBuilder()
 
-            for plan_id, plan_details in RENEWAL_PLANS.items():
-                months = plan_details["months"]
-                price = plan_details["price"]
+            for plan_id, price in RENEWAL_PRICES.items():
+                months = int(plan_id)
 
                 discount = DISCOUNTS.get(plan_id, 0) if isinstance(DISCOUNTS, dict) else 0
 
@@ -120,7 +119,11 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
             else:
                 new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
 
-            cost = RENEWAL_PLANS[plan]["price"]
+            cost = RENEWAL_PRICES.get(plan)
+            if cost is None:
+                await callback_query.message.answer("❌ Неверный тарифный план.")
+                return
+
             balance = await get_balance(tg_id)
 
             if balance < cost:

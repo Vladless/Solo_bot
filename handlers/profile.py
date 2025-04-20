@@ -28,7 +28,6 @@ from config import (
     INSTRUCTIONS_BUTTON,
     NEWS_MESSAGE,
     REFERRAL_BUTTON,
-    REFERRAL_OFFERS,
     SHOW_START_MENU_ONCE,
     TOP_REFERRAL_BUTTON,
     TRIAL_TIME,
@@ -52,7 +51,7 @@ from handlers.buttons import (
     TOP_FIVE,
     TRIAL_SUB,
 )
-from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT
+from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT, REFERRAL_OFFERS
 from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
