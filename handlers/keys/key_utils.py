@@ -13,10 +13,9 @@ from config import (
     REMNAWAVE_PASSWORD,
     SUPERNODE,
     TOTAL_GB,
-    ADMIN_ID
 )
 from database import delete_notification, get_servers, store_key
-from handlers.utils import get_least_loaded_cluster
+from handlers.utils import get_least_loaded_cluster, check_server_key_limit
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import (
@@ -787,47 +786,3 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
     except Exception as e:
         logger.error(f"[Reset Traffic] Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
         raise
-
-
-async def check_server_key_limit(server_info: dict, conn) -> bool:
-    """
-    Универсальная проверка лимита ключей для сервера в режимах кластеров и стран.
-    """
-    server_name = server_info.get("server_name")
-    cluster_name = server_info.get("cluster_name")
-    max_keys = server_info.get("max_keys")
-
-    if not max_keys:
-        return True
-
-    identifier = cluster_name if cluster_name else server_name
-    total_keys = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", identifier)
-
-    if total_keys >= max_keys:
-        logger.warning(f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}")
-        return False
-
-    usage_percent = total_keys / max_keys
-
-    if usage_percent >= 0.9:
-        notif_key = f"server_warn_{server_name}"
-        already_sent = await conn.fetchval(
-            "SELECT EXISTS (SELECT 1 FROM notifications WHERE tg_id = 0 AND notification_type = $1)",
-            notif_key
-        )
-        if not already_sent:
-            for admin_id in ADMIN_ID:
-                try:
-                    await bot.send_message(
-                        admin_id,
-                        f"⚠️ Сервер <b>{server_name}</b> почти заполнен ({int(usage_percent * 100)}%)."
-                        f"\nРекомендуется создать новый для балансировки.",
-                    )
-                except Exception:
-                    pass
-            await conn.execute(
-                "INSERT INTO notifications (tg_id, notification_type) VALUES (0, $1) ON CONFLICT DO NOTHING",
-                notif_key,
-            )
-
-    return True

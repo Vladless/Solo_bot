@@ -35,7 +35,7 @@ from handlers.keys.key_utils import (
     reset_traffic_in_cluster,
     update_subscription,
 )
-from handlers.utils import generate_random_email, sanitize_key_name
+from handlers.utils import generate_random_email
 from logger import logger
 from utils.csv_export import export_referrals_csv
 
@@ -62,10 +62,8 @@ router = Router()
 
 
 class UserEditorState(StatesGroup):
-    # search
     waiting_for_user_data = State()
     waiting_for_key_name = State()
-    # updating data
     waiting_for_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
@@ -116,9 +114,7 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
     if message.text.isdigit():
         tg_id = int(message.text)
     else:
-        # Удаление '@' символа в начале сообщения
         username = message.text.strip().lstrip("@")
-        # Удаление начала ссылки на профиль
         username = username.replace("https://t.me/", "")
 
         user = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
@@ -133,24 +129,6 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
         tg_id = user["tg_id"]
 
     await process_user_search(message, state, session, tg_id)
-
-
-@router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
-async def handle_key_name_input(message: Message, state: FSMContext, session: Any):
-    kb = build_admin_back_kb()
-
-    if not message.text:
-        await message.answer(text="🚫 Пожалуйста, отправьте текстовое сообщение.", reply_markup=kb)
-        return
-
-    key_name = sanitize_key_name(message.text)
-    key_details = await get_key_details(key_name, session)
-
-    if not key_details:
-        await message.answer(text="🚫 Пользователь с указанным именем ключа не найден.", reply_markup=kb)
-        return
-
-    await process_user_search(message, state, session, key_details["tg_id"])
 
 
 @router.callback_query(

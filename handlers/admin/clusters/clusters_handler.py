@@ -70,9 +70,10 @@ async def handle_servers(callback_query: CallbackQuery):
 
     text = (
         "<b>🔧 Управление кластерами</b>\n\n"
-        "<i>📌 Здесь вы можете добавить новый кластер.</i>\n\n"
-        "<i>🌐 <b>Кластеры</b> — это пространство серверов, в пределах которого создается подписка.</i>\n"
-        "💡 Если вы хотите выдавать по 1 серверу, то добавьте всего 1 сервер в кластер.\n\n"
+        "<blockquote>"
+        "🌐 <b>Кластеры</b> — это пространство серверов, в пределах которого создается подписка.\n"
+        "💡 Если вы хотите выдавать по 1 серверу, то добавьте всего 1 сервер в кластер."
+        "</blockquote>\n\n"
         "<i>⚠️ <b>Важно:</b> Кластеры удаляются автоматически, если удалить все серверы внутри них.</i>\n\n"
     )
 
@@ -269,11 +270,20 @@ async def handle_clusters_manage(
 ):
     cluster_name = callback_data.data
 
-    servers = await get_servers(session)
-    cluster_servers = servers.get(cluster_name, [])
-
     await callback_query.message.edit_text(
         text=f"<b>🔧 Управление кластером {cluster_name}</b>",
+        reply_markup=build_cluster_management_kb(cluster_name),
+    )
+
+
+@router.callback_query(F.data.startswith("cluster_servers|"), IsAdminFilter())
+async def handle_cluster_servers(callback: CallbackQuery):
+    cluster_name = callback.data.split("|", 1)[1]
+    servers = await get_servers()
+    cluster_servers = servers.get(cluster_name, [])
+
+    await callback.message.edit_text(
+        text=f"<b>📡 Серверы в кластере {cluster_name}</b>",
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
 
@@ -302,8 +312,6 @@ async def handle_cluster_availability(
 
     now = datetime.utcnow()
     start_time = now - timedelta(minutes=5)
-    start_iso = start_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-    end_iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     for server in cluster_servers:
         server_name = server["server_name"]
@@ -535,16 +543,6 @@ async def handle_add_server(callback_query: CallbackQuery, callback_data: AdminS
     )
 
     await state.set_state(AdminClusterStates.waiting_for_server_name)
-
-
-@router.callback_query(AdminClusterCallback.filter(F.action == "manage_cluster"), IsAdminFilter())
-async def handle_manage_cluster_menu(callback_query: CallbackQuery, callback_data: AdminClusterCallback):
-    cluster_name = callback_data.data
-
-    await callback_query.message.edit_text(
-        text=f"<b>🛠 Управление кластером {cluster_name}</b>\nВыберите действие:",
-        reply_markup=build_cluster_management_kb(cluster_name),
-    )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "add_time"), IsAdminFilter())
