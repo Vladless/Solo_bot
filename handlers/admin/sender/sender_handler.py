@@ -114,6 +114,17 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
             """,
             cluster_name,
         )
+    elif send_to == "hotleads":
+        tg_ids = await session.fetch(
+            """
+            SELECT DISTINCT u.tg_id
+            FROM users u
+            JOIN payments p ON u.tg_id = p.tg_id
+            LEFT JOIN keys k ON u.tg_id = k.tg_id
+            WHERE p.status = 'success'
+            AND k.tg_id IS NULL
+            """
+        )
     else:
         tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM users")
 
