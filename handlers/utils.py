@@ -242,29 +242,14 @@ async def is_full_remnawave_cluster(cluster_id: str, session) -> bool:
     return server and server["panel_type"].lower() == "remnawave"
 
 
-def format_months(months: int) -> str:
-    """Форматирует количество месяцев с правильным склонением"""
-    if months <= 0:
-        return "0 месяцев"
-    return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
+def sanitize_key_name(key_name: str) -> str:
+    """
+    Очищает название ключа, оставляя только допустимые символы.
 
+    Args:
+        key_name (str): Исходное название ключа.
 
-def format_days(days: int) -> str:
-    """Форматирует количество дней с правильным склонением"""
-    if days <= 0:
-        return "0 дней"
-    return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
-
-
-def format_hours(hours: int) -> str:
-    """Форматирует количество часов с правильным склонением"""
-    if hours <= 0:
-        return "0 часов"
-    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
-
-
-def format_minutes(minutes: int) -> str:
-    """Форматирует количество минут с правильным склонением"""
-    if minutes <= 0:
-        return "0 минут"
-    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
+    Returns:
+        str: Очищенное название ключа в нижнем регистре.
+    """
+    return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())

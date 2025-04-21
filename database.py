@@ -232,6 +232,7 @@ async def add_user(
     language_code: str = None,
     is_bot: bool = False,
     session: Any = None,
+    source_code: str = None,
 ):
     """
     Добавляет нового пользователя в таблицу users.
@@ -239,13 +240,13 @@ async def add_user(
     try:
         await session.execute(
             """
-            INSERT INTO users (tg_id, username, first_name, last_name, language_code, is_bot)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO users (tg_id, username, first_name, last_name, language_code, is_bot, source_code)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (tg_id) DO NOTHING
             """,
-            tg_id, username, first_name, last_name, language_code, is_bot,
+            tg_id, username, first_name, last_name, language_code, is_bot, source_code
         )
-        logger.info(f"[DB] Новый пользователь добавлен: {tg_id}")
+        logger.info(f"[DB] Новый пользователь добавлен: {tg_id} (source: {source_code})")
     except Exception as e:
         logger.error(f"[DB] Ошибка при добавлении пользователя {tg_id}: {e}")
         raise
@@ -1401,3 +1402,53 @@ async def check_notifications_bulk(notification_type: str, hours: int, session: 
     except Exception as e:
         logger.error(f"Ошибка при массовой проверке уведомлений типа {notification_type}: {e}")
         raise
+
+
+async def create_tracking_source(name: str, code: str, type_: str, created_by: int, session):
+    await session.execute(
+        """
+        INSERT INTO tracking_sources (name, code, type, created_by)
+        VALUES ($1, $2, $3, $4)
+        """,
+        name, code, type_, created_by
+    )
+
+
+async def get_all_tracking_sources(session) -> list[dict]:
+    records = await session.fetch("""
+        SELECT
+            ts.code,
+            ts.name,
+            ts.created_at,
+            COUNT(DISTINCT u.tg_id) AS registrations,
+            COUNT(DISTINCT CASE WHEN u.trial = 1 THEN u.tg_id END) AS trials,
+            COUNT(DISTINCT CASE WHEN p.status = 'success' THEN p.tg_id END) AS payments
+        FROM tracking_sources ts
+        LEFT JOIN users u ON u.source_code = ts.code
+        LEFT JOIN payments p ON p.tg_id = u.tg_id
+        GROUP BY ts.code, ts.name, ts.created_at
+        ORDER BY ts.created_at DESC
+    """)
+    return [dict(r) for r in records]
+
+
+async def get_tracking_source_stats(code: str, session) -> dict:
+    result = await session.fetchrow("""
+        SELECT
+            ts.name,
+            ts.code,
+            ts.created_at,
+            COUNT(DISTINCT u.tg_id) AS registrations,
+            COUNT(DISTINCT CASE WHEN u.trial = 1 THEN u.tg_id END) AS trials,
+            COUNT(DISTINCT CASE
+                WHEN p.status = 'success' AND NOT EXISTS (
+                    SELECT 1 FROM keys k WHERE k.tg_id = u.tg_id
+                ) THEN u.tg_id
+            END) AS payments
+        FROM tracking_sources ts
+        LEFT JOIN users u ON u.source_code = ts.code
+        LEFT JOIN payments p ON p.tg_id = u.tg_id
+        WHERE ts.code = $1
+        GROUP BY ts.code, ts.name, ts.created_at
+    """, code)
+    return dict(result) if result else {}

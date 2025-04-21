@@ -30,14 +30,6 @@ BEGIN
     END IF;
 END$$;
 
-UPDATE users
-SET balance = c.balance,
-    trial = c.trial
-FROM connections c
-WHERE users.tg_id = c.tg_id;
-
-DROP TABLE IF EXISTS connections;
-
 
 CREATE TABLE IF NOT EXISTS payments
 (
@@ -186,3 +178,36 @@ CREATE TABLE IF NOT EXISTS blocked_users (
     tg_id       BIGINT PRIMARY KEY,
     blocked_at  TIMESTAMP DEFAULT NOW()
 );
+
+
+CREATE TABLE IF NOT EXISTS tracking_sources (
+    id            SERIAL PRIMARY KEY,
+    code          TEXT UNIQUE NOT NULL,                
+    type          TEXT NOT NULL,                       
+    name          TEXT NOT NULL,                       
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by    BIGINT,                              
+    is_active     BOOLEAN DEFAULT TRUE
+);
+
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS source_code TEXT REFERENCES tracking_sources (code);
+
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'connections'
+    ) THEN
+        EXECUTE $upd$
+            UPDATE users
+            SET balance = c.balance,
+                trial = c.trial
+            FROM connections c
+            WHERE users.tg_id = c.tg_id;
+        $upd$;
+
+        EXECUTE 'DROP TABLE connections';
+    END IF;
+END$$;
