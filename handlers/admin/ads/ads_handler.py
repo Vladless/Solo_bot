@@ -123,13 +123,17 @@ async def handle_ads_delete_confirm(callback_query: CallbackQuery, callback_data
 async def handle_ads_delete(callback_query: CallbackQuery, callback_data: AdminAdsCallback, session):
     code = callback_data.code
     try:
+        await session.execute(
+            "UPDATE users SET source_code = NULL WHERE source_code = $1",
+            code
+        )
         await session.execute("DELETE FROM tracking_sources WHERE code = $1", code)
         await callback_query.message.edit_text(
             f"🗑️ Ссылка <code>{code}</code> удалена.",
             reply_markup=build_ads_kb()
         )
     except Exception as e:
-        logger.error(f"Ошибка при удалении ссылки {code}: {e}")
+        logger.error(f"Ошибка при удалении метки {code}: {e}", exc_info=True)
         await callback_query.message.edit_text("❌ Не удалось удалить ссылку.")
 
 
