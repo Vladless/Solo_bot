@@ -2,16 +2,12 @@ import os
 import re
 import subprocess
 import sys
-
 import requests
-
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
-
 from config import BOT_SERVICE
-
 
 try:
     sys.stdin.reconfigure(encoding="utf-8")
@@ -31,6 +27,9 @@ SERVICE_NAME = BOT_SERVICE
 
 console = Console()
 
+def is_service_exists(service_name):
+    result = subprocess.run(["systemctl", "list-unit-files", service_name], capture_output=True, text=True)
+    return service_name in result.stdout
 
 def print_logo():
     logo = Text(
@@ -46,7 +45,6 @@ def print_logo():
     )
     console.print(logo)
 
-
 def backup_project():
     console.print("[yellow]📦 Создаётся резервная копия проекта...[/yellow]")
     with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
@@ -54,18 +52,45 @@ def backup_project():
         subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
     console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
 
-
 def install_rsync_if_needed():
     if subprocess.run(["which", "rsync"], capture_output=True).returncode != 0:
         console.print("[blue]📦 Установка rsync...[/blue]")
         os.system("sudo apt update && sudo apt install -y rsync")
+
+def clean_project_dir_safe():
+    console.print("[yellow]🧹 Очистка проекта перед обновлением (кроме config и кнопок)...[/yellow]")
+    preserved_paths = {
+        os.path.join(PROJECT_DIR, "config.py"),
+        os.path.join(PROJECT_DIR, "handlers", "buttons.py"),
+        os.path.join(PROJECT_DIR, "handlers", "texts.py"),
+    }
+
+    for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
+        for file in files:
+            path = os.path.join(root, file)
+            if path in preserved_paths:
+                continue
+            try:
+                os.remove(path)
+            except PermissionError:
+                subprocess.run(["sudo", "rm", "-f", path])
+            except Exception as e:
+                console.print(f"[red]Не удалось удалить файл: {path}: {e}[/red]")
+
+        for dir in dirs:
+            dir_path = os.path.join(root, dir)
+            if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "handlers"):
+                continue
+            try:
+                os.rmdir(dir_path)
+            except Exception:
+                subprocess.run(["sudo", "rm", "-rf", dir_path])
 
 
 def install_git_if_needed():
     if subprocess.run(["which", "git"], capture_output=True).returncode != 0:
         console.print("[blue]Установка Git...[/blue]")
         os.system("sudo apt update && sudo apt install -y git")
-
 
 def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
@@ -81,12 +106,13 @@ def install_dependencies():
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
 
-
 def restart_service():
-    console.print("[blue]🚀 Перезапуск службы...[/blue]")
-    with console.status("[bold yellow]Перезапуск...[/bold yellow]"):
-        subprocess.run(f"sudo systemctl restart {SERVICE_NAME}", shell=True)
-
+    if is_service_exists(SERVICE_NAME):
+        console.print("[blue]🚀 Перезапуск службы...[/blue]")
+        with console.status("[bold yellow]Перезапуск...[/bold yellow]"):
+            subprocess.run(f"sudo systemctl restart {SERVICE_NAME}", shell=True)
+    else:
+        console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
 
 def get_local_version():
     path = os.path.join(PROJECT_DIR, "bot.py")
@@ -98,7 +124,6 @@ def get_local_version():
             if match:
                 return match.group(1)
     return None
-
 
 def get_remote_version(branch="main"):
     try:
@@ -112,7 +137,6 @@ def get_remote_version(branch="main"):
     except Exception:
         return None
     return None
-
 
 def update_from_beta():
     local_version = get_local_version()
@@ -134,20 +158,20 @@ def update_from_beta():
     install_rsync_if_needed()
 
     os.chdir(PROJECT_DIR)
-
-    console.print("[cyan]📥 Клонируем репозиторий dev во временную папку...[/cyan]")
+    console.print("[cyan]📅 Клонируем временный репозиторий...[/cyan]")
     subprocess.run(["rm", "-rf", TEMP_DIR])
     if os.system(f"git clone -b dev {GITHUB_REPO} {TEMP_DIR}") != 0:
         console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
         return
 
+    subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
+    clean_project_dir_safe()
     subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
     install_dependencies()
     restart_service()
     console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
-
 
 def update_from_release():
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
@@ -170,13 +194,20 @@ def update_from_release():
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
         selected = Prompt.ask(
-            "[bold blue]Выберите номер релиза[/bold blue]", choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+            "[bold blue]Выберите номер релиза[/bold blue]",
+            choices=[str(i) for i in range(1, len(tag_choices) + 1)]
         )
         tag_name = tag_choices[int(selected) - 1]
+
+        if not Confirm.ask(f"[yellow]🔁 Подтвердите установку релиза {tag_name}[/yellow]"):
+            return
 
         console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}", shell=True, check=True)
+
+        subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
+        clean_project_dir_safe()
 
         subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
@@ -205,13 +236,10 @@ def show_update_menu():
     elif choice == "2":
         update_from_release()
 
-
 def show_menu():
-    table = Table(title="Solobot CLI", title_style="bold magenta", header_style="bold blue")
-
+    table = Table(title=f"Solobot CLI v0.1.4", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
-
     table.add_row("1", "Запустить бота (systemd)")
     table.add_row("2", "Запустить напрямую: venv/bin/python main.py")
     table.add_row("3", "Перезапустить бота (systemd)")
@@ -220,46 +248,52 @@ def show_menu():
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
     table.add_row("8", "Выход")
-
     console.print(table)
 
-
 def main():
-    if os.geteuid() != 0:
-        console.print("[bold red]⛔ Требуется запуск от имени root или через sudo.[/bold red]")
-        sys.exit(1)
-
     os.chdir(PROJECT_DIR)
     print_logo()
-
     try:
         while True:
             show_menu()
             choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 9)])
-
             if choice == "1":
-                os.system(f"sudo systemctl start {SERVICE_NAME}")
+                if is_service_exists(SERVICE_NAME):
+                    subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
+                else:
+                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "2":
                 if Confirm.ask("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
-                    os.system("sudo venv/bin/python main.py")
+                    subprocess.run(["venv/bin/python", "main.py"])
             elif choice == "3":
-                if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
-                    os.system(f"sudo systemctl restart {SERVICE_NAME}")
+                if is_service_exists(SERVICE_NAME):
+                    if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
+                        subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
+                else:
+                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "4":
-                if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
-                    os.system(f"sudo systemctl stop {SERVICE_NAME}")
+                if is_service_exists(SERVICE_NAME):
+                    if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
+                        subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
+                else:
+                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "5":
-                os.system(f"sudo journalctl -u {SERVICE_NAME} -n 80 --no-pager")
+                if is_service_exists(SERVICE_NAME):
+                    subprocess.run(["sudo", "journalctl", "-u", SERVICE_NAME, "-n", "80", "--no-pager"])
+                else:
+                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "6":
-                os.system(f"sudo systemctl status {SERVICE_NAME}")
+                if is_service_exists(SERVICE_NAME):
+                    subprocess.run(["sudo", "systemctl", "status", SERVICE_NAME])
+                else:
+                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
-                console.print("[bold cyan] Выход из CLI. Удачного дня![/bold cyan]")
+                console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
                 break
     except KeyboardInterrupt:
         console.print("\n[bold red]⏹ Прерывание. Выход из CLI.[/bold red]")
-
 
 if __name__ == "__main__":
     main()
