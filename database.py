@@ -821,7 +821,8 @@ async def upsert_user(
     language_code: str = None,
     is_bot: bool = False,
     session: Any = None,
-) -> dict:
+    only_if_exists: bool = False,
+) -> dict | None:
     """
     Обновляет или вставляет информацию о пользователе в базу данных.
     """
@@ -835,7 +836,15 @@ async def upsert_user(
         else:
             conn = await asyncpg.connect(DATABASE_URL)
             close_conn = True
-            logger.info(f"Установлено новое подключение к базе данных для обновления пользователя {tg_id}")
+            logger.info(f"Установлено новое подключение к БД для пользователя {tg_id}")
+
+        if only_if_exists:
+            logger.debug(f"[upsert_user] Режим only_if_exists: проверяю наличие пользователя {tg_id}")
+            user_data = await conn.fetchrow(
+                "SELECT tg_id, username, first_name, last_name, language_code, is_bot, created_at, updated_at FROM users WHERE tg_id = $1",
+                tg_id,
+            )
+            return dict(user_data) if user_data else None
 
         user_data = await conn.fetchrow(
             """
@@ -1048,11 +1057,15 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
 
 
 async def delete_user_data(session: Any, tg_id: int):
+    await session.execute("DELETE FROM notifications WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1 OR referred_tg_id = $1", tg_id)
+    await session.execute("DELETE FROM coupon_usages WHERE user_id = $1", tg_id)
     await delete_key(tg_id, session)
-    await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    await session.execute("DELETE FROM temporary_data WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM blocked_users WHERE tg_id = $1", tg_id)
+    await session.execute("DELETE FROM users WHERE tg_id = $1", tg_id)
 
 
 async def store_gift_link(
