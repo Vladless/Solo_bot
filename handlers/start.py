@@ -163,11 +163,15 @@ async def process_start_logic(
                 continue
 
             if "gift" in part:
-                parts = part.split("gift")[1].split("_")
+                gift_raw = part.split("gift")[1].strip("_")
+                parts = gift_raw.split("_")
                 if len(parts) < 2:
                     await message.answer("❌ Неверный формат ссылки на подарок.")
                     return await process_callback_view_profile(message, state, admin)
+
                 gift_id = parts[0]
+                sender_id = parts[1]
+                logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
                 await handle_gift_link(gift_id, message, state, session)
                 gift_detected = True
                 break
