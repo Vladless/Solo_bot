@@ -551,14 +551,7 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
 async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, Any]:
     """
     Получает трафик пользователя на всех серверах, где у него есть ключ (3x-ui и Remnawave).
-
-    Args:
-        session (Any): Сессия базы данных.
-        tg_id (int): ID пользователя Telegram.
-        email (str): Email пользователя.
-
-    Returns:
-        dict[str, Any]: Структура с данными о трафике.
+    Для Remnawave трафик считается один раз и отображается как "Remnawave (общий):".
     """
     query = "SELECT client_id, server_id FROM keys WHERE tg_id = $1 AND email = $2"
     rows = await session.fetch(query, tg_id, email)
@@ -582,6 +575,10 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
     servers_map = {row["server_name"]: row for row in server_rows}
 
     user_traffic_data = {}
+    tasks = []
+
+    remnawave_client_id = None
+    remnawave_checked = False
 
     async def fetch_traffic(server_info: dict, client_id: str) -> tuple[str, Any]:
         server_name = server_info["server_name"]
@@ -598,28 +595,11 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
                     return server_name, round(used_gb, 2)
                 else:
                     return server_name, "Ошибка получения трафика"
-
-            elif panel_type == "remnawave":
-                remna = RemnawaveAPI(api_url)
-                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-                if not logged_in:
-                    return server_name, "Не удалось авторизоваться"
-
-                user_data = await remna.get_user_by_uuid(client_id)
-                if not user_data:
-                    return server_name, "Клиент не найден"
-
-                used_bytes = user_data.get("usedTrafficBytes", 0)
-                used_gb = used_bytes / 1073741824
-                return server_name, round(used_gb, 2)
-
             else:
                 return server_name, f"Неизвестная панель: {panel_type}"
-
         except Exception as e:
             return server_name, f"Ошибка: {e}"
 
-    tasks = []
     for row in rows:
         client_id = row["client_id"]
         server_id = row["server_id"]
@@ -628,11 +608,35 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
             s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id
         ]
         for server_info in matched_servers:
-            tasks.append(fetch_traffic(server_info, client_id))
+            panel_type = server_info.get("panel_type", "3x-ui").lower()
+
+            if panel_type == "remnawave" and not remnawave_checked:
+                remnawave_client_id = client_id
+                remnawave_api_url = server_info["api_url"]
+                remnawave_checked = True
+            elif panel_type == "3x-ui":
+                tasks.append(fetch_traffic(server_info, client_id))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
+
     for server, result in results:
         user_traffic_data[server] = result
+
+    if remnawave_client_id:
+        try:
+            remna = RemnawaveAPI(remnawave_api_url)
+            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                user_traffic_data["Remnawave (общий)"] = "Не удалось авторизоваться"
+            else:
+                user_data = await remna.get_user_by_uuid(remnawave_client_id)
+                if not user_data:
+                    user_traffic_data["Remnawave (общий)"] = "Клиент не найден"
+                else:
+                    used_bytes = user_data.get("usedTrafficBytes", 0)
+                    used_gb = round(used_bytes / 1073741824, 2)
+                    user_traffic_data["Remnawave (общий)"] = used_gb
+        except Exception as e:
+            user_traffic_data["Remnawave (общий)"] = f"Ошибка: {e}"
 
     return {"status": "success", "traffic": user_traffic_data}
 

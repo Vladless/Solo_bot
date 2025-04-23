@@ -450,12 +450,26 @@ async def finalize_key_creation(
         await state.clear()
 
 
-async def check_server_availability(server_info: dict) -> bool:
+async def check_server_availability(server_info: dict, session: Any) -> bool:
     """
-    Проверяет доступность сервера (3x-ui или Remnawave).
+    Проверяет доступность сервера (3x-ui или Remnawave),
+    а также включён ли он и не превышен ли лимит ключей (max_keys).
     """
-    panel_type = server_info.get("panel_type", "3x-ui").lower()
     server_name = server_info.get("server_name", "unknown")
+    panel_type = server_info.get("panel_type", "3x-ui").lower()
+    enabled = server_info.get("enabled", True)
+    max_keys = server_info.get("max_keys")
+    
+    if not enabled:
+        logger.info(f"[Ping] Сервер {server_name} выключен (enabled = FALSE).")
+        return False
+
+    if max_keys is not None:
+        count_query = "SELECT COUNT(*) FROM keys WHERE server_id = $1"
+        key_count = await session.fetchval(count_query, server_name)
+        if key_count >= max_keys:
+            logger.info(f"[Ping] Сервер {server_name} достиг лимита ключей: {key_count}/{max_keys}.")
+            return False
 
     try:
         if panel_type == "remnawave":

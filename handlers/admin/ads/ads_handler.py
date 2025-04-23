@@ -20,6 +20,7 @@ from .keyboard import (
     build_ads_list_kb,
     build_ads_stats_kb,
     build_ads_delete_confirm_kb,
+    build_cancel_input_kb
 )
 
 router = Router()
@@ -40,7 +41,11 @@ async def handle_ads_menu(callback_query: CallbackQuery):
 @router.callback_query(AdminAdsCallback.filter(F.action == "create"), IsAdminFilter())
 async def handle_ads_create(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(AdminAdsState.waiting_for_new_name)
-    await callback_query.message.edit_text("📝 Введите <b>название</b> новой ссылки:")
+    await callback_query.message.edit_text(
+        "📝 Введите <b>название</b> новой ссылки:",
+        reply_markup=build_cancel_input_kb()
+    )
+
 
 
 @router.message(AdminAdsState.waiting_for_new_name, IsAdminFilter())
@@ -48,7 +53,11 @@ async def handle_ads_name_input(message: Message, state: FSMContext):
     name = message.text.strip()
     await state.update_data(name=name)
     await state.set_state(AdminAdsState.waiting_for_new_code)
-    await message.answer(f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.")
+    await message.answer(
+        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.",
+        reply_markup=build_cancel_input_kb()
+    )
+
 
 
 @router.message(AdminAdsState.waiting_for_new_code, IsAdminFilter())
@@ -152,4 +161,13 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
         f"└ 💳 <b>Покупок:</b> <b>{stats.get('payments', 0)}</b>\n\n"
 
         f"<i>Просмотр статистики и управление рекламными ссылками</i>."
+    )
+
+
+@router.callback_query(AdminAdsCallback.filter(F.action == "cancel_input"), IsAdminFilter())
+async def handle_ads_cancel_input(callback_query: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback_query.message.edit_text(
+        text="📊 <b>Аналитика рекламы:</b>",
+        reply_markup=build_ads_kb()
     )

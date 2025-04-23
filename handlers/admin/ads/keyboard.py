@@ -14,6 +14,7 @@ def build_ads_kb() -> InlineKeyboardMarkup:
     builder.button(text="➕ Новая ссылка", callback_data=AdminAdsCallback(action="create").pack())
     builder.button(text="📊 Список", callback_data=AdminAdsCallback(action="list").pack())
     builder.row(build_admin_back_btn())
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -66,4 +67,13 @@ def build_ads_delete_confirm_kb(code: str) -> InlineKeyboardMarkup:
         callback_data=AdminAdsCallback(action="view", code=code).pack()
     )
     builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_cancel_input_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="❌ Отмена",
+        callback_data=AdminAdsCallback(action="cancel_input", code="none").pack()
+    )
     return builder.as_markup()
