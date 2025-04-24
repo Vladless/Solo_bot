@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+import time
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -667,6 +668,8 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
         return ValueError(f"User with client_id {server_id} was not found")
 
     clusters = await get_servers()
+    added_days = max((expiry_time - int(time.time() * 1000)) / (1000 * 86400), 1)
+    total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
 
     async def update_key_on_all_servers():
         tasks = [
@@ -676,7 +679,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
                     email,
                     client_id,
                     expiry_time,
-                    total_gb=TOTAL_GB,
+                    total_gb=total_gb,
                 )
             )
             for cluster_name in clusters

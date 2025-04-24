@@ -310,9 +310,6 @@ async def handle_cluster_availability(
     total_online_users = 0
     result_text = f"<b>🖥️ Проверка доступности серверов</b>\n\n⚙️ Кластер: <b>{cluster_name}</b>\n\n"
 
-    now = datetime.utcnow()
-    start_time = now - timedelta(minutes=5)
-
     for server in cluster_servers:
         server_name = server["server_name"]
         panel_type = server.get("panel_type", "3x-ui").lower()
@@ -569,6 +566,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
 
         now = int(time.time() * 1000)
         add_ms = days * 86400 * 1000
+        total_gb = int((days / 30) * TOTAL_GB * 1024**3)
 
         keys = await session.fetch(
             "SELECT tg_id, client_id, email, expiry_time FROM keys WHERE server_id = $1",
@@ -587,7 +585,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
                 email=key["email"],
                 client_id=key["client_id"],
                 new_expiry_time=new_expiry,
-                total_gb=TOTAL_GB,
+                total_gb=total_gb,
             )
             await update_key_expiry(key["client_id"], new_expiry, session)
 

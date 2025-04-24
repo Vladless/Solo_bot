@@ -404,13 +404,14 @@ async def process_auto_renew_or_notify(
         new_expiry_time = current_expiry + renewal_period_months * 30 * 24 * 3600 * 1000
 
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, moscow_tz).strftime("%d %B %Y, %H:%M")
+        total_gb = int(renewal_period_months * TOTAL_GB * 1024**3)
 
         logger.info(
             f"[Автопродление] Продление подписки {email} на {renewal_period_months} мес. для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
         try:
-            await renew_key_in_cluster(server_id, email, client_id, new_expiry_time, TOTAL_GB)
+            await renew_key_in_cluster(server_id, email, client_id, new_expiry_time, total_gb)
             await update_balance(tg_id, -renewal_cost, session=conn)
             await update_key_expiry(client_id, new_expiry_time, conn)
 
