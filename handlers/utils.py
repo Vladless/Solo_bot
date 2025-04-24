@@ -11,7 +11,7 @@ import asyncpg
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 from bot import bot
-from config import DATABASE_URL, ADMIN_ID
+from config import ADMIN_ID, DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 
@@ -85,8 +85,7 @@ async def check_server_key_limit(server_info: dict, conn) -> bool:
     if usage_percent >= 0.9:
         notif_key = f"server_warn_{server_name}"
         already_sent = await conn.fetchval(
-            "SELECT EXISTS (SELECT 1 FROM notifications WHERE tg_id = 0 AND notification_type = $1)",
-            notif_key
+            "SELECT EXISTS (SELECT 1 FROM notifications WHERE tg_id = 0 AND notification_type = $1)", notif_key
         )
         if not already_sent:
             for admin_id in ADMIN_ID:
@@ -130,11 +129,13 @@ def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
         return form3
     return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
 
+
 def format_months(months: int) -> str:
     """Форматирует количество месяцев с правильным склонением"""
     if months <= 0:
         return "0 месяцев"
     return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
+
 
 def format_days(days: int) -> str:
     """
@@ -144,11 +145,13 @@ def format_days(days: int) -> str:
         return "0 дней"
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
 
+
 def format_hours(hours: int) -> str:
     """Форматирует количество часов с правильным склонением"""
     if hours <= 0:
         return "0 часов"
     return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
 
 def format_minutes(minutes: int) -> str:
     """Форматирует количество минут с правильным склонением"""

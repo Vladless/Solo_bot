@@ -5,6 +5,7 @@ from typing import Any
 
 import asyncpg
 
+from bot import bot
 from config import (
     DATABASE_URL,
     LIMIT_IP,
@@ -15,7 +16,7 @@ from config import (
     TOTAL_GB,
 )
 from database import delete_notification, get_servers, store_key
-from handlers.utils import get_least_loaded_cluster, check_server_key_limit
+from handlers.utils import check_server_key_limit, get_least_loaded_cluster
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import (
@@ -24,11 +25,9 @@ from panels.three_xui import (
     delete_client,
     extend_client_key,
     get_client_traffic,
+    get_xui_instance,
     toggle_client,
-    get_xui_instance
 )
-
-from bot import bot
 
 
 async def create_key_on_cluster(
@@ -66,14 +65,14 @@ async def create_key_on_cluster(
         async with asyncpg.create_pool(DATABASE_URL) as pool:
             async with pool.acquire() as conn:
                 remnawave_servers = [
-                    s for s in enabled_servers
-                    if s.get("panel_type", "3x-ui").lower() == "remnawave"
-                    and await check_server_key_limit(s, conn)
+                    s
+                    for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, conn)
                 ]
                 xui_servers = [
-                    s for s in enabled_servers
-                    if s.get("panel_type", "3x-ui").lower() == "3x-ui"
-                    and await check_server_key_limit(s, conn)
+                    s
+                    for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, conn)
                 ]
 
         if not remnawave_servers and not xui_servers:

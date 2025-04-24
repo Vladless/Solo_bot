@@ -16,16 +16,10 @@ async def send_messages_with_limit(bot: Bot, messages: list[dict], messages_per_
     """
     batch_size = messages_per_second
     for i in range(0, len(messages), batch_size):
-        batch = messages[i:i + batch_size]
+        batch = messages[i : i + batch_size]
         tasks = []
         for msg in batch:
-            tasks.append(send_notification(
-                bot,
-                msg["tg_id"],
-                msg.get("photo"),
-                msg["text"],
-                msg.get("keyboard")
-            ))
+            tasks.append(send_notification(bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")))
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
@@ -50,6 +44,7 @@ def rate_limited_send(func):
                 tg_id = kwargs.get("tg_id") or args[1]
                 logger.error(f"❌ Ошибка отправки сообщения пользователю {tg_id}: {e}")
                 return False
+
     return wrapper
 
 
@@ -65,7 +60,7 @@ async def send_notification(
     """
     if image_filename is None:
         return await _send_text_notification(bot, tg_id, caption, keyboard)
-    
+
     photo_path = os.path.join("img", image_filename)
     if os.path.isfile(photo_path):
         return await _send_photo_notification(bot, tg_id, photo_path, image_filename, caption, keyboard)

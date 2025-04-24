@@ -14,8 +14,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_ID
 from database import (
     add_user,
-    check_user_exists,
     check_coupon_usage,
+    check_user_exists,
     create_coupon_usage,
     get_coupon_by_code,
     get_keys,

@@ -180,11 +180,7 @@ async def create_key(
     Также отвечает за первичное подключение пользователя.
     """
     if not await check_user_exists(tg_id):
-        from_user = (
-            message_or_query.from_user
-            if isinstance(message_or_query, (CallbackQuery, Message))
-            else None
-        )
+        from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
         if from_user:
             await add_user(
                 tg_id=from_user.id,

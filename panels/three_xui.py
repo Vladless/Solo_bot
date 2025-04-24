@@ -1,18 +1,20 @@
+import time
+
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 import py3xui
+
 from py3xui import AsyncApi
-import time
 
 from config import (
-    LIMIT_IP,
-    SUPERNODE,
-    XUI_TOKEN,
-    USE_XUI_TOKEN,
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
+    LIMIT_IP,
+    SUPERNODE,
+    USE_XUI_TOKEN,
+    XUI_TOKEN,
 )
 from logger import logger
 
@@ -36,6 +38,7 @@ class ClientConfig:
 _xui_instance_cache: dict[str, tuple[AsyncApi, float]] = {}
 SESSION_TTL = 1800
 
+
 async def get_xui_instance(api_url: str) -> AsyncApi:
     key = f"{api_url}|{ADMIN_USERNAME}"
     current_time = time.time()
@@ -46,7 +49,7 @@ async def get_xui_instance(api_url: str) -> AsyncApi:
         if current_time - last_login < SESSION_TTL:
             return xui
         else:
-            logger.info(f"[XUI Cache] Сессия устарела (>30 минут), переподключение...")
+            logger.info("[XUI Cache] Сессия устарела (>30 минут), переподключение...")
             await xui.login()
             _xui_instance_cache[key] = (xui, current_time)
             return xui
@@ -65,7 +68,6 @@ async def get_xui_instance(api_url: str) -> AsyncApi:
 
 async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, Any]:
     try:
-
         client = py3xui.Client(
             id=config.client_id,
             email=config.email.lower(),
@@ -107,7 +109,6 @@ async def extend_client_key(
     tg_id: int,
 ) -> bool | None:
     try:
-
         client = await xui.client.get_by_email(email)
         if not client or not client.id:
             logger.warning(f"Клиент с email {email} не найден или не имеет ID.")
@@ -158,7 +159,6 @@ async def delete_client(
         bool: True если удаление успешно, False в противном случае
     """
     try:
-
         if SUPERNODE:
             await xui.client.delete(inbound_id, client_id)
             logger.info(f"Клиент с ID {client_id} был удален успешно (SUPERNODE)")
@@ -185,7 +185,6 @@ async def delete_client(
 
 async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, Any]:
     try:
-
         traffic_data = await xui.client.get_traffic_by_id(client_id)
         if not traffic_data:
             logger.warning(f"Трафик для клиента {client_id} не найден.")
@@ -205,7 +204,6 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, 
 
 async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, client_id: str, enable: bool = True) -> bool:
     try:
-
         client = await xui.client.get_by_email(email)
         if not client:
             logger.warning(f"Клиент с email {email} и ID {client_id} не найден.")

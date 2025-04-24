@@ -22,8 +22,8 @@ from config import (
 )
 from database import (
     add_notification,
-    check_notifications_bulk,
     check_notification_time,
+    check_notifications_bulk,
     delete_key,
     delete_notification,
     get_all_keys,
@@ -48,7 +48,7 @@ from handlers.texts import (
 from handlers.utils import format_hours, format_minutes
 from logger import logger
 
-from .notify_utils import send_notification, send_messages_with_limit
+from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
 
 
@@ -331,19 +331,15 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 if hours > 0:
                     if minutes > 0:
                         delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
-                            email=email,
-                            hours_formatted=format_hours(hours),
-                            minutes_formatted=format_minutes(minutes)
+                            email=email, hours_formatted=format_hours(hours), minutes_formatted=format_minutes(minutes)
                         )
                     else:
                         delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(
-                            email=email,
-                            hours_formatted=format_hours(hours)
+                            email=email, hours_formatted=format_hours(hours)
                         )
                 else:
                     delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(
-                        email=email,
-                        minutes_formatted=format_minutes(minutes)
+                        email=email, minutes_formatted=format_minutes(minutes)
                     )
             else:
                 delay_message = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
@@ -431,7 +427,9 @@ async def process_auto_renew_or_notify(
             if result:
                 logger.info(f"✅ Уведомление о продлении подписки {email} отправлено пользователю {tg_id}.")
             else:
-                logger.warning(f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}.")
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}."
+                )
         except KeyError as e:
             logger.error(f"❌ Ошибка форматирования сообщения KEY_RENEWED: отсутствует ключ {e}")
         except Exception as e:

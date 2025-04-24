@@ -2,12 +2,16 @@ import os
 import re
 import subprocess
 import sys
+
 import requests
+
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
+
 from config import BOT_SERVICE
+
 
 try:
     sys.stdin.reconfigure(encoding="utf-8")
@@ -27,9 +31,11 @@ SERVICE_NAME = BOT_SERVICE
 
 console = Console()
 
+
 def is_service_exists(service_name):
     result = subprocess.run(["systemctl", "list-unit-files", service_name], capture_output=True, text=True)
     return service_name in result.stdout
+
 
 def print_logo():
     logo = Text(
@@ -45,6 +51,7 @@ def print_logo():
     )
     console.print(logo)
 
+
 def backup_project():
     console.print("[yellow]📦 Создаётся резервная копия проекта...[/yellow]")
     with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
@@ -52,10 +59,12 @@ def backup_project():
         subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
     console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
 
+
 def install_rsync_if_needed():
     if subprocess.run(["which", "rsync"], capture_output=True).returncode != 0:
         console.print("[blue]📦 Установка rsync...[/blue]")
         os.system("sudo apt update && sudo apt install -y rsync")
+
 
 def clean_project_dir_safe():
     console.print("[yellow]🧹 Очистка проекта перед обновлением (кроме config и кнопок)...[/yellow]")
@@ -92,6 +101,7 @@ def install_git_if_needed():
         console.print("[blue]Установка Git...[/blue]")
         os.system("sudo apt update && sudo apt install -y git")
 
+
 def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
     with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
@@ -106,6 +116,7 @@ def install_dependencies():
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
 
+
 def restart_service():
     if is_service_exists(SERVICE_NAME):
         console.print("[blue]🚀 Перезапуск службы...[/blue]")
@@ -113,6 +124,7 @@ def restart_service():
             subprocess.run(f"sudo systemctl restart {SERVICE_NAME}", shell=True)
     else:
         console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
+
 
 def get_local_version():
     path = os.path.join(PROJECT_DIR, "bot.py")
@@ -124,6 +136,7 @@ def get_local_version():
             if match:
                 return match.group(1)
     return None
+
 
 def get_remote_version(branch="main"):
     try:
@@ -137,6 +150,7 @@ def get_remote_version(branch="main"):
     except Exception:
         return None
     return None
+
 
 def update_from_beta():
     local_version = get_local_version()
@@ -173,6 +187,7 @@ def update_from_beta():
     restart_service()
     console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
 
+
 def update_from_release():
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
@@ -194,8 +209,7 @@ def update_from_release():
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
         selected = Prompt.ask(
-            "[bold blue]Выберите номер релиза[/bold blue]",
-            choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+            "[bold blue]Выберите номер релиза[/bold blue]", choices=[str(i) for i in range(1, len(tag_choices) + 1)]
         )
         tag_name = tag_choices[int(selected) - 1]
 
@@ -236,8 +250,9 @@ def show_update_menu():
     elif choice == "2":
         update_from_release()
 
+
 def show_menu():
-    table = Table(title=f"Solobot CLI v0.1.4", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.1.4", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -249,6 +264,7 @@ def show_menu():
     table.add_row("7", "Обновить Solobot")
     table.add_row("8", "Выход")
     console.print(table)
+
 
 def main():
     os.chdir(PROJECT_DIR)
@@ -294,6 +310,7 @@ def main():
                 break
     except KeyboardInterrupt:
         console.print("\n[bold red]⏹ Прерывание. Выход из CLI.[/bold red]")
+
 
 if __name__ == "__main__":
     main()

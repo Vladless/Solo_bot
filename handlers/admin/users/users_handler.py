@@ -1,6 +1,6 @@
 import asyncio
-import uuid
 import time
+import uuid
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -20,12 +20,12 @@ from database import (
     delete_user_data,
     get_balance,
     get_client_id_by_email,
+    get_key_details,
     get_servers,
+    set_user_balance,
     update_balance,
     update_key_expiry,
     update_trial,
-    get_key_details,
-    set_user_balance
 )
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
@@ -628,12 +628,8 @@ async def process_user_search(
     created_at = user_data["created_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
     updated_at = user_data["updated_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
 
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
-    key_records = await session.fetch(
-        "SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id
-    )
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
 
     text = (
         f"<b>📊 Информация о пользователе</b>"

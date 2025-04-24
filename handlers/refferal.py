@@ -1,15 +1,14 @@
 import os
 
 from io import BytesIO
-
 from typing import Any
 
 import asyncpg
 import qrcode
 
 from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -20,6 +19,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from bot import bot
 from config import (
     ADMIN_ID,
     DATABASE_URL,
@@ -28,7 +28,7 @@ from config import (
     TRIAL_TIME,
     USERNAME_BOT,
 )
-from database import get_referral_stats, get_referral_by_referred_id, add_referral, add_user, check_user_exists
+from database import add_referral, add_user, check_user_exists, get_referral_by_referred_id, get_referral_stats
 from handlers.buttons import (
     BACK,
     INVITE,
@@ -36,16 +36,21 @@ from handlers.buttons import (
     QR,
     TOP_FIVE,
 )
-from handlers.texts import INVITE_TEXT_NON_INLINE, TOP_REFERRALS_TEXT, REFERRAL_OFFERS, REFERRAL_SUCCESS_MSG, NEW_REFERRAL_NOTIFICATION
+from handlers.texts import (
+    INVITE_TEXT_NON_INLINE,
+    NEW_REFERRAL_NOTIFICATION,
+    REFERRAL_OFFERS,
+    REFERRAL_SUCCESS_MSG,
+    TOP_REFERRALS_TEXT,
+)
 from logger import logger
 
 from .texts import get_referral_link, invite_message_send
 from .utils import edit_or_send_message, format_days
 
-from bot import bot
-
 
 router = Router()
+
 
 @router.callback_query(F.data == "invite")
 @router.message(F.text == "/invite")

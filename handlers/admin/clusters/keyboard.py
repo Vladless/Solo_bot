@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK
 
-from ..panel.keyboard import build_admin_back_btn, AdminPanelCallback
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from ..servers.keyboard import AdminServerCallback
 
 
@@ -96,12 +96,7 @@ def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
             callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад",
-            callback_data=AdminPanelCallback(action="clusters").pack()
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="clusters").pack()))
 
     return builder.as_markup()
 

@@ -1,8 +1,10 @@
+import os
+
+from typing import Any
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from typing import Any
-import os
 
 from config import (
     CRYPTO_BOT_ENABLE,
@@ -12,9 +14,19 @@ from config import (
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
 )
-from handlers.buttons import CRYPTOBOT, MAIN_MENU, ROBOKASSA, STARS, YOOKASSA, YOOMONEY, PAYMENT, BALANCE_HISTORY, COUPON
-from handlers.texts import PAYMENT_METHODS_MSG, BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT
 from database import get_last_payments
+from handlers.buttons import (
+    BALANCE_HISTORY,
+    COUPON,
+    CRYPTOBOT,
+    MAIN_MENU,
+    PAYMENT,
+    ROBOKASSA,
+    STARS,
+    YOOKASSA,
+    YOOMONEY,
+)
+from handlers.texts import BALANCE_HISTORY_HEADER, BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
 
 from .utils import edit_or_send_message
 

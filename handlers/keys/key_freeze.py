@@ -98,7 +98,6 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
             added_days = max(leftover / (1000 * 86400), 0.01)
             total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
 
-
             await renew_key_in_cluster(
                 cluster_id=cluster_id,
                 email=email,

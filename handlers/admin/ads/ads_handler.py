@@ -16,12 +16,13 @@ from logger import logger
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     AdminAdsCallback,
+    build_ads_delete_confirm_kb,
     build_ads_kb,
     build_ads_list_kb,
     build_ads_stats_kb,
-    build_ads_delete_confirm_kb,
-    build_cancel_input_kb
+    build_cancel_input_kb,
 )
+
 
 router = Router()
 
@@ -33,19 +34,15 @@ class AdminAdsState(StatesGroup):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "ads"), IsAdminFilter())
 async def handle_ads_menu(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb()
-    )
+    await callback_query.message.edit_text(text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb())
 
 
 @router.callback_query(AdminAdsCallback.filter(F.action == "create"), IsAdminFilter())
 async def handle_ads_create(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(AdminAdsState.waiting_for_new_name)
     await callback_query.message.edit_text(
-        "📝 Введите <b>название</b> новой ссылки:",
-        reply_markup=build_cancel_input_kb()
+        "📝 Введите <b>название</b> новой ссылки:", reply_markup=build_cancel_input_kb()
     )
-
 
 
 @router.message(AdminAdsState.waiting_for_new_name, IsAdminFilter())
@@ -54,10 +51,8 @@ async def handle_ads_name_input(message: Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(AdminAdsState.waiting_for_new_code)
     await message.answer(
-        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.",
-        reply_markup=build_cancel_input_kb()
+        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.", reply_markup=build_cancel_input_kb()
     )
-
 
 
 @router.message(AdminAdsState.waiting_for_new_code, IsAdminFilter())
@@ -69,11 +64,7 @@ async def handle_ads_code_input(message: Message, state: FSMContext, session):
 
     try:
         await create_tracking_source(
-            name=name,
-            code=code_with_prefix,
-            type_="utm",
-            created_by=message.from_user.id,
-            session=session
+            name=name, code=code_with_prefix, type_="utm", created_by=message.from_user.id, session=session
         )
         stats = await get_tracking_source_stats(code_with_prefix, session)
         if not stats:
@@ -81,7 +72,7 @@ async def handle_ads_code_input(message: Message, state: FSMContext, session):
             return
         msg = format_ads_stats(stats, USERNAME_BOT)
         await message.answer(
-            text=msg, 
+            text=msg,
             reply_markup=build_ads_stats_kb(code_with_prefix),
         )
 
@@ -92,13 +83,14 @@ async def handle_ads_code_input(message: Message, state: FSMContext, session):
         await state.clear()
 
 
-
 @router.callback_query(AdminAdsCallback.filter(F.action == "list"), IsAdminFilter())
 async def handle_ads_list(callback_query: CallbackQuery, session):
     try:
         ads = await get_all_tracking_sources(session)
         reply_markup = build_ads_list_kb(ads, current_page=1, total_pages=1)
-        await callback_query.message.edit_text("📋 Выберите ссылку для просмотра статистики:", reply_markup=reply_markup)
+        await callback_query.message.edit_text(
+            "📋 Выберите ссылку для просмотра статистики:", reply_markup=reply_markup
+        )
     except Exception as e:
         logger.error(f"Ошибка при получении списка UTM: {e}")
         await callback_query.message.edit_text("Произошла ошибка при получении списка.")
@@ -113,7 +105,9 @@ async def handle_ads_view(callback_query: CallbackQuery, callback_data: AdminAds
             await callback_query.message.edit_text("❌ Источник не найден или не содержит данных.")
             return
         msg = format_ads_stats(stats, USERNAME_BOT)
-        await callback_query.message.edit_text(text=msg, reply_markup=build_ads_stats_kb(code), parse_mode=ParseMode.HTML)
+        await callback_query.message.edit_text(
+            text=msg, reply_markup=build_ads_stats_kb(code), parse_mode=ParseMode.HTML
+        )
     except Exception as e:
         logger.error(f"Ошибка при просмотре статистики: {e}")
         await callback_query.message.edit_text("❌ Ошибка при получении статистики.")
@@ -132,15 +126,9 @@ async def handle_ads_delete_confirm(callback_query: CallbackQuery, callback_data
 async def handle_ads_delete(callback_query: CallbackQuery, callback_data: AdminAdsCallback, session):
     code = callback_data.code
     try:
-        await session.execute(
-            "UPDATE users SET source_code = NULL WHERE source_code = $1",
-            code
-        )
+        await session.execute("UPDATE users SET source_code = NULL WHERE source_code = $1", code)
         await session.execute("DELETE FROM tracking_sources WHERE code = $1", code)
-        await callback_query.message.edit_text(
-            f"🗑️ Ссылка <code>{code}</code> удалена.",
-            reply_markup=build_ads_kb()
-        )
+        await callback_query.message.edit_text(f"🗑️ Ссылка <code>{code}</code> удалена.", reply_markup=build_ads_kb())
     except Exception as e:
         logger.error(f"Ошибка при удалении метки {code}: {e}", exc_info=True)
         await callback_query.message.edit_text("❌ Не удалось удалить ссылку.")
@@ -152,14 +140,11 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
         f"📌 <b>Название:</b> {stats['name']}\n"
         f"🔗 <b>Ссылка:</b> <code>https://t.me/{username_bot}?start={stats['code']}</code>\n"
         f"🕓 <b>Создана:</b> {stats['created_at'].strftime('%d.%m.%Y %H:%M')}\n\n"
-        
         f"💡 <b>Активность:</b>\n"
         f"└ 🆕 <b>Регистраций:</b> <b>{stats.get('registrations', 0)}</b>\n"
         f"└ 🧪 <b>Триалов:</b> <b>{stats.get('trials', 0)}</b>\n"
-        
         f"\n💰 <b>Финансовая информация:</b>\n"
         f"└ 💳 <b>Покупок:</b> <b>{stats.get('payments', 0)}</b>\n\n"
-
         f"<i>Просмотр статистики и управление рекламными ссылками</i>."
     )
 
@@ -167,7 +152,4 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
 @router.callback_query(AdminAdsCallback.filter(F.action == "cancel_input"), IsAdminFilter())
 async def handle_ads_cancel_input(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback_query.message.edit_text(
-        text="📊 <b>Аналитика рекламы:</b>",
-        reply_markup=build_ads_kb()
-    )
+    await callback_query.message.edit_text(text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb())

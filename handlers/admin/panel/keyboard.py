@@ -26,7 +26,6 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🤖 Управление", callback_data=AdminPanelCallback(action="management").pack()),
     )
     builder.row(
-
         InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
         InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )

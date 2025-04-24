@@ -135,7 +135,9 @@ def format_time_left(expiry_time_ms: int | None) -> str:
     return f"{days}D,{hours}H ⏳" if days else f"{hours}H ⏳"
 
 
-def prepare_headers(user_agent: str, project_name: str, subscription_info: str, subscription_userinfo: str) -> dict[str, str]:
+def prepare_headers(
+    user_agent: str, project_name: str, subscription_info: str, subscription_userinfo: str
+) -> dict[str, str]:
     if "Happ" in user_agent:
         encoded_project_name = f"{project_name}"
         announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
@@ -160,7 +162,7 @@ def prepare_headers(user_agent: str, project_name: str, subscription_info: str, 
         }
     elif "v2raytun" in user_agent:
         encoded_project_name = f"{project_name}\n{subscription_info}"
-        announce_str = f"🔑 Выберите сервер ⬇️ | 💬 Поддержка ➡️"
+        announce_str = "🔑 Выберите сервер ⬇️ | 💬 Поддержка ➡️"
         return {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",

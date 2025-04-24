@@ -9,11 +9,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import get_servers
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
+
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminServerCallback,
     build_manage_server_kb,
 )
+
 
 router = Router()
 
@@ -178,20 +180,14 @@ async def process_callback_delete_server(
         )
 
 
-@router.callback_query(
-    AdminServerCallback.filter(F.action.in_(["enable", "disable"])), IsAdminFilter()
-)
+@router.callback_query(AdminServerCallback.filter(F.action.in_(["enable", "disable"])), IsAdminFilter())
 async def toggle_server_enabled(callback_query: CallbackQuery, callback_data: AdminServerCallback, session: Any):
     server_name = callback_data.data
     action = callback_data.action
 
     new_status = action == "enable"
 
-    await session.execute(
-        "UPDATE servers SET enabled = $1 WHERE server_name = $2",
-        new_status,
-        server_name
-    )
+    await session.execute("UPDATE servers SET enabled = $1 WHERE server_name = $2", new_status, server_name)
 
     servers = await get_servers(include_enabled=True)
 
@@ -241,10 +237,7 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
         server_name = data["server_name"]
 
         new_value = limit if limit > 0 else None
-        await session.execute(
-            "UPDATE servers SET max_keys = $1 WHERE server_name = $2",
-            new_value, server_name
-        )
+        await session.execute("UPDATE servers SET max_keys = $1 WHERE server_name = $2", new_value, server_name)
 
         servers = await get_servers(include_enabled=True)
         cluster_name, server = next(
@@ -268,8 +261,7 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
         )
 
         await message.answer(
-            text,
-            reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True))
+            text, reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True))
         )
         await state.clear()
 

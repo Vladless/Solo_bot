@@ -20,7 +20,8 @@ from handlers.keys.key_utils import get_user_traffic
 from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
 from handlers.utils import format_days
 from logger import logger
-from .notify_utils import send_notification, send_messages_with_limit
+
+from .notify_utils import send_messages_with_limit, send_notification
 
 
 router = Router()
@@ -70,8 +71,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
             await conn.execute("UPDATE users SET trial = -1 WHERE tg_id = $1", tg_id)
         else:
             message = TRIAL_INACTIVE_FIRST_MSG.format(
-                display_name=display_name,
-                trial_time_formatted=format_days(TRIAL_TIME)
+                display_name=display_name, trial_time_formatted=format_days(TRIAL_TIME)
             )
 
         messages.append({

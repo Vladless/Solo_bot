@@ -244,7 +244,13 @@ async def add_user(
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             ON CONFLICT (tg_id) DO NOTHING
             """,
-            tg_id, username, first_name, last_name, language_code, is_bot, source_code
+            tg_id,
+            username,
+            first_name,
+            last_name,
+            language_code,
+            is_bot,
+            source_code,
         )
         logger.info(f"[DB] Новый пользователь добавлен: {tg_id} (source: {source_code})")
     except Exception as e:
@@ -1361,7 +1367,9 @@ async def get_all_keys(session: Any = None):
             await conn.close()
 
 
-async def check_notifications_bulk(notification_type: str, hours: int, session: Any, tg_ids: list[int] = None, emails: list[str] = None) -> list[dict]:
+async def check_notifications_bulk(
+    notification_type: str, hours: int, session: Any, tg_ids: list[int] = None, emails: list[str] = None
+) -> list[dict]:
     """
     Проверяет, какие пользователи могут получить уведомление указанного типа, и возвращает их данные.
     """
@@ -1380,25 +1388,25 @@ async def check_notifications_bulk(notification_type: str, hours: int, session: 
             WHERE (n.last_notification_time IS NULL OR NOW() - n.last_notification_time > ($2 * INTERVAL '1 hour'))
         """
         params = [notification_type, hours]
-        
+
         if tg_ids is not None:
             query += " AND u.tg_id = ANY($3)"
             params.append(tg_ids)
         if emails is not None:
             query += " AND k.email = ANY($" + str(len(params) + 1) + ")"
             params.append(emails)
-        
-        if notification_type == 'inactive_trial':
+
+        if notification_type == "inactive_trial":
             query += """
                 AND u.trial IN (0, -1)
                 AND u.tg_id NOT IN (SELECT tg_id FROM blocked_users)
                 AND u.tg_id NOT IN (SELECT DISTINCT tg_id FROM keys)
             """
-        
+
         query += """
             GROUP BY u.tg_id, k.email, u.username, u.first_name, u.last_name
         """
-        
+
         users = await session.fetch(query, *params)
         logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")
         return [
@@ -1408,7 +1416,9 @@ async def check_notifications_bulk(notification_type: str, hours: int, session: 
                 "username": user["username"],
                 "first_name": user["first_name"],
                 "last_name": user["last_name"],
-                "last_notification_time": int(user["last_notification_time"]) if user["last_notification_time"] else None,
+                "last_notification_time": int(user["last_notification_time"])
+                if user["last_notification_time"]
+                else None,
             }
             for user in users
         ]
@@ -1423,7 +1433,10 @@ async def create_tracking_source(name: str, code: str, type_: str, created_by: i
         INSERT INTO tracking_sources (name, code, type, created_by)
         VALUES ($1, $2, $3, $4)
         """,
-        name, code, type_, created_by
+        name,
+        code,
+        type_,
+        created_by,
     )
 
 
@@ -1446,7 +1459,8 @@ async def get_all_tracking_sources(session) -> list[dict]:
 
 
 async def get_tracking_source_stats(code: str, session) -> dict:
-    result = await session.fetchrow("""
+    result = await session.fetchrow(
+        """
         SELECT
             ts.name,
             ts.code,
@@ -1463,5 +1477,7 @@ async def get_tracking_source_stats(code: str, session) -> dict:
         LEFT JOIN payments p ON p.tg_id = u.tg_id
         WHERE ts.code = $1
         GROUP BY ts.code, ts.name, ts.created_at
-    """, code)
+    """,
+        code,
+    )
     return dict(result) if result else {}

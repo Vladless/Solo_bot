@@ -17,7 +17,6 @@ from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
-    PUBLIC_LINK,
     QRCODE,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
@@ -48,7 +47,14 @@ from handlers.texts import (
     NO_SUBSCRIPTIONS_MSG,
     key_message,
 )
-from handlers.utils import edit_or_send_message, handle_error, is_full_remnawave_cluster, format_days, format_hours, format_minutes
+from handlers.utils import (
+    edit_or_send_message,
+    format_days,
+    format_hours,
+    format_minutes,
+    handle_error,
+    is_full_remnawave_cluster,
+)
 from logger import logger
 
 
@@ -221,7 +227,9 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             days = total_seconds // 86400
             hours = (total_seconds % 86400) // 3600
             minutes = (total_seconds % 3600) // 60
-            days_left_message = f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
+            days_left_message = (
+                f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
+            )
 
         formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
         response_message = key_message(

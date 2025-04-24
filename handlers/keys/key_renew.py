@@ -76,7 +76,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
                     )
                 )
 
-            builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}"))
 
             balance = await get_balance(tg_id)
 

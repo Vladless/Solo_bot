@@ -24,8 +24,8 @@ from config import (
 )
 from database import (
     add_user,
-    check_user_exists,
     check_server_name_by_cluster,
+    check_user_exists,
     get_key_details,
     get_trial,
     update_balance,
@@ -247,7 +247,6 @@ async def finalize_key_creation(
         )
         logger.info(f"[User] Новый пользователь {tg_id} добавлен")
 
-
     expiry_time = expiry_time.astimezone(moscow_tz)
 
     if old_key_name:
@@ -459,7 +458,7 @@ async def check_server_availability(server_info: dict, session: Any) -> bool:
     panel_type = server_info.get("panel_type", "3x-ui").lower()
     enabled = server_info.get("enabled", True)
     max_keys = server_info.get("max_keys")
-    
+
     if not enabled:
         logger.info(f"[Ping] Сервер {server_name} выключен (enabled = FALSE).")
         return False

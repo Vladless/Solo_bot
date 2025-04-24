@@ -2,6 +2,7 @@ __all__ = ("router",)
 
 from aiogram import Router
 
+from .ads import router as ads_router
 from .backups import router as backups_router
 from .bans import router as bans_router
 from .clusters import router as clusters_router
@@ -13,7 +14,6 @@ from .sender import router as sender_router
 from .servers import router as servers_router
 from .stats import router as stats_router
 from .users import router as users_router
-from .ads import router as ads_router
 
 
 router = Router(name="admins_main_router")
@@ -30,5 +30,5 @@ router.include_routers(
     coupons_router,
     restart_router,
     bans_router,
-    ads_router
+    ads_router,
 )

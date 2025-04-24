@@ -24,14 +24,14 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from database import (
-    get_trial,
     add_user,
     check_user_exists,
+    get_trial,
 )
-from handlers.payments.gift import handle_gift_link
 from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
+from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
@@ -44,8 +44,8 @@ from handlers.texts import (
 from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
-from .utils import edit_or_send_message
 from .refferal import handle_referral_link
+from .utils import edit_or_send_message
 
 
 router = Router()
@@ -219,14 +219,9 @@ async def process_start_logic(
 
 
 async def handle_utm_link(utm_code, message, state, session):
-
-    exists = await session.fetchval(
-        "SELECT 1 FROM tracking_sources WHERE code = $1", utm_code
-    )
+    exists = await session.fetchval("SELECT 1 FROM tracking_sources WHERE code = $1", utm_code)
     if exists:
-        current_code = await session.fetchval(
-            "SELECT source_code FROM users WHERE tg_id = $1", message.chat.id
-        )
+        current_code = await session.fetchval("SELECT source_code FROM users WHERE tg_id = $1", message.chat.id)
         if current_code is None:
             user_exists = await check_user_exists(message.chat.id)
             from_user = message.from_user
@@ -242,10 +237,7 @@ async def handle_utm_link(utm_code, message, state, session):
                     source_code=utm_code,
                 )
             else:
-                await session.execute(
-                    "UPDATE users SET source_code = $1 WHERE tg_id = $2",
-                    utm_code, message.chat.id
-                )
+                await session.execute("UPDATE users SET source_code = $1 WHERE tg_id = $2", utm_code, message.chat.id)
         logger.info(f"[UTM] Привязана {utm_code} к пользователю {message.chat.id}")
     else:
         await message.answer("❌ UTM ссылка не найдена.")
