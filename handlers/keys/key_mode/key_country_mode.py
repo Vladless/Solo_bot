@@ -3,6 +3,7 @@ import uuid
 
 from datetime import datetime
 from typing import Any
+import asyncpg
 
 import pytz
 
@@ -13,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
 from config import (
+    DATABASE_URL,
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
@@ -141,7 +143,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         cluster_name = cluster_info["cluster_name"]
 
         servers = await session.fetch(
-            "SELECT server_name, api_url, panel_type FROM servers WHERE cluster_name = $1 AND server_name != $2",
+            "SELECT server_name, api_url, panel_type, enabled, max_keys FROM servers WHERE cluster_name = $1 AND server_name != $2",
             cluster_name,
             current_server,
         )
@@ -157,6 +159,8 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
                 "server_name": server["server_name"],
                 "api_url": server["api_url"],
                 "panel_type": server["panel_type"],
+                "enabled": server.get("enabled", True),
+                "max_keys": server.get("max_keys"),
             }
             task = asyncio.create_task(check_server_availability(server_info))
             tasks.append(task)
@@ -449,11 +453,7 @@ async def finalize_key_creation(
         await state.clear()
 
 
-async def check_server_availability(server_info: dict, session: Any) -> bool:
-    """
-    Проверяет доступность сервера (3x-ui или Remnawave),
-    а также включён ли он и не превышен ли лимит ключей (max_keys).
-    """
+async def check_server_availability(server_info: dict, session: Any = None) -> bool:
     server_name = server_info.get("server_name", "unknown")
     panel_type = server_info.get("panel_type", "3x-ui").lower()
     enabled = server_info.get("enabled", True)
@@ -463,12 +463,27 @@ async def check_server_availability(server_info: dict, session: Any) -> bool:
         logger.info(f"[Ping] Сервер {server_name} выключен (enabled = FALSE).")
         return False
 
-    if max_keys is not None:
-        count_query = "SELECT COUNT(*) FROM keys WHERE server_id = $1"
-        key_count = await session.fetchval(count_query, server_name)
-        if key_count >= max_keys:
-            logger.info(f"[Ping] Сервер {server_name} достиг лимита ключей: {key_count}/{max_keys}.")
-            return False
+    connection = None
+    external_session = session is not None
+
+    try:
+        if not external_session:
+            connection = await asyncpg.connect(DATABASE_URL)
+            session = connection
+
+        if max_keys is not None:
+            count_query = "SELECT COUNT(*) FROM keys WHERE server_id = $1"
+            key_count = await session.fetchval(count_query, server_name)
+            if key_count >= max_keys:
+                logger.info(f"[Ping] Сервер {server_name} достиг лимита ключей: {key_count}/{max_keys}.")
+                return False
+
+    except Exception as e:
+        logger.warning(f"[Ping] Ошибка при проверке лимита ключей на сервере {server_name}: {e}")
+        return False
+    finally:
+        if connection:
+            await connection.close()
 
     try:
         if panel_type == "remnawave":
