@@ -23,13 +23,22 @@ if not os.environ.get("LC_ALL", "").endswith("UTF-8"):
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
 
+console = Console()
+
 BACK_DIR = os.path.expanduser("~/.solobot_backup")
 TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
+IS_ROOT_DIR = PROJECT_DIR == '/root'
+
+if IS_ROOT_DIR:
+    console.print("[bold red]⛔ КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
+    console.print("[red]Обнаружена установка бота прямо в корневой папке (/root).[/red]")
+    console.print("[red]Это крайне опасно и может привести к потере данных![/red]")
+    console.print("[yellow]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/yellow]")
+    console.print("[red]Обновление заблокировано в целях безопасности.[/red]")
+    sys.exit(1)
 GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
 SERVICE_NAME = BOT_SERVICE
-
-console = Console()
 
 
 def is_service_exists(service_name):
@@ -60,19 +69,38 @@ def backup_project():
     console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
 
 
+def fix_permissions():
+    """Устанавливает корректные права на файлы проекта"""
+    console.print("[yellow]🔧 Устанавливаю права на файлы...[/yellow]")
+    try:
+        user = os.getenv('SUDO_USER') or os.getenv('USER')
+        if user:
+            subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
+        
+        subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
+        
+        console.print("[green]✅ Права успешно установлены[/green]")
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]❌ Ошибка при установке прав: {e}[/red]")
+
+
 def install_rsync_if_needed():
     if subprocess.run(["which", "rsync"], capture_output=True).returncode != 0:
         console.print("[blue]📦 Установка rsync...[/blue]")
         os.system("sudo apt update && sudo apt install -y rsync")
 
 
-def clean_project_dir_safe():
-    console.print("[yellow]🧹 Очистка проекта перед обновлением (кроме config и кнопок)...[/yellow]")
+def clean_project_dir_safe(update_buttons=False):
+    console.print("[yellow]🧹 Очистка проекта перед обновлением...[/yellow]")
     preserved_paths = {
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "buttons.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
+        os.path.join(PROJECT_DIR, "img"),
     }
+
+    if not update_buttons:
+        preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
 
     for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
         for file in files:
@@ -166,6 +194,12 @@ def update_from_beta():
 
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
         return
+        
+    console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
+    if not Confirm.ask("[red]❓ Продолжить обновление?[/red]"):
+        return
+
+    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -179,10 +213,16 @@ def update_from_beta():
         return
 
     subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
-    clean_project_dir_safe()
-    subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+    clean_project_dir_safe(update_buttons=update_buttons)
+    
+    exclude_options = "--exclude=img"
+    if not update_buttons:
+        exclude_options += " --exclude=handlers/buttons.py"
+    
+    subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
+    fix_permissions()
     install_dependencies()
     restart_service()
     console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
@@ -191,6 +231,13 @@ def update_from_beta():
 def update_from_release():
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
+
+    console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
+    console.print("[red]  Исключения: папка img и файл handlers/buttons.py[/red]")
+    if not Confirm.ask("[red]❓ Вы точно хотите продолжить?[/red]"):
+        return
+
+    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -209,7 +256,8 @@ def update_from_release():
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
         selected = Prompt.ask(
-            "[bold blue]Выберите номер релиза[/bold blue]", choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+            "[bold blue]Выберите номер релиза[/bold blue]", 
+            choices=[str(i) for i in range(1, len(tag_choices) + 1)]
         )
         tag_name = tag_choices[int(selected) - 1]
 
@@ -220,12 +268,18 @@ def update_from_release():
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}", shell=True, check=True)
 
+        console.print("[red]⚠️ Начинается перезапись файлов бота![/red]")
         subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
-        clean_project_dir_safe()
+        clean_project_dir_safe(update_buttons=update_buttons)
 
-        subprocess.run(f"rsync -a --exclude=img --exclude=handlers/buttons.py {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+        exclude_options = "--exclude=img"
+        if not update_buttons:
+            exclude_options += " --exclude=handlers/buttons.py"
+        
+        subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
+        fix_permissions()
         install_dependencies()
         restart_service()
         console.print(f"[green]✅ Обновление до релиза {tag_name} завершено.[/green]")
@@ -235,6 +289,12 @@ def update_from_release():
 
 
 def show_update_menu():
+
+    if IS_ROOT_DIR:
+        console.print("[red]⛔ Обновление невозможно: бот находится в /root[/red]")
+        console.print("[yellow]Перенесите бота в отдельную папку и повторите попытку[/yellow]")
+        return
+
     table = Table(title="Выберите способ обновления", title_style="bold green")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Источник", style="white")
@@ -252,7 +312,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.1.4", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.1.7", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -262,8 +322,27 @@ def show_menu():
     table.add_row("5", "Показать логи (80 строк)")
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
-    table.add_row("8", "Выход")
+    table.add_row("8", "Обновить CLI лаунчер")
+    table.add_row("9", "Выход")
     console.print(table)
+
+
+def update_cli_launcher():
+    """Обновляет CLI лаунчер с dev ветки"""
+    console.print("[yellow]🔄 Обновление CLI лаунчера...[/yellow]")
+    try:
+        url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            with open(os.path.join(PROJECT_DIR, "cli_launcher.py"), 'w', encoding='utf-8') as f:
+                f.write(response.text)
+            console.print("[green]✅ CLI лаунчер успешно обновлён[/green]")
+            os.chmod(os.path.join(PROJECT_DIR, "cli_launcher.py"), 0o755)
+        else:
+            console.print("[red]❌ Не удалось загрузить новый CLI[/red]")
+    except Exception as e:
+        console.print(f"[red]❌ Ошибка при обновлении CLI: {e}[/red]")
 
 
 def main():
@@ -272,7 +351,7 @@ def main():
     try:
         while True:
             show_menu()
-            choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 9)])
+            choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 10)])
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
@@ -306,6 +385,11 @@ def main():
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
+                if Confirm.ask("[yellow]Обновить CLI лаунчер с dev ветки?[/yellow]"):
+                    update_cli_launcher()
+            elif choice == "9":
+                if Confirm.ask("[yellow]Хотите обновить CLI перед выходом?[/yellow]"):
+                    update_cli_launcher()
                 console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
                 break
     except KeyboardInterrupt:
