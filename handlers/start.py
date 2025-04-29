@@ -208,8 +208,12 @@ async def process_start_logic(
             )
 
         trial_status = await get_trial(message.chat.id, session)
-        if trial_status > 0:
-            await process_callback_view_profile(message, state, admin)
+
+        if SHOW_START_MENU_ONCE:
+            if trial_status > 0:
+                await process_callback_view_profile(message, state, admin)
+            else:
+                await show_start_menu(message, admin, session)
         else:
             await show_start_menu(message, admin, session)
 
@@ -256,6 +260,8 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
         if trial_status == 0:
             builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
+        else:
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 
