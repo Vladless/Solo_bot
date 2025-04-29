@@ -181,6 +181,7 @@ def get_remote_version(branch="main"):
 
 
 def update_from_beta():
+    update_cli_launcher()
     local_version = get_local_version()
     remote_version = get_remote_version(branch="dev")
 
@@ -229,6 +230,7 @@ def update_from_beta():
 
 
 def update_from_release():
+    update_cli_launcher()
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
 
