@@ -295,6 +295,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
+                        await remna.reset_user_traffic(client_id)
                     else:
                         logger.warning(f"Не удалось продлить подписку Remnawave {client_id}")
                 else:
