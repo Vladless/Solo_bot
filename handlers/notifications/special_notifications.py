@@ -75,16 +75,19 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 display_name=display_name, trial_time_formatted=format_days(TRIAL_TIME)
             )
 
-        messages.append({
-            "tg_id": tg_id,
-            "text": message,
-            "keyboard": keyboard,
-        })
-        await add_notification(tg_id, "inactive_trial", session=conn)
+        try:
+            await bot.send_message(tg_id, message, reply_markup=keyboard)
+            logger.info(f"📩 Отправлено уведомление неактивному пользователю {tg_id}.")
+            await add_notification(tg_id, "inactive_trial", session=conn)
 
-    if messages:
-        await send_messages_with_limit(bot, messages)
-        logger.info(f"Отправлено {len(messages)} уведомлений неактивным пользователям.")
+        except TelegramForbiddenError:
+            logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
+            await create_blocked_user(tg_id, conn)
+
+        except Exception as e:
+            logger.error(f"⚠ Ошибка при отправке уведомления пользователю {tg_id}: {e}")
+
+        await asyncio.sleep(1)
 
     logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
 
