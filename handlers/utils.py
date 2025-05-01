@@ -10,6 +10,7 @@ import asyncpg
 
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
+from datetime import datetime
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
 from database import get_all_keys, get_servers
@@ -256,3 +257,33 @@ def sanitize_key_name(key_name: str) -> str:
         str: Очищенное название ключа в нижнем регистре.
     """
     return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
+
+
+RUSSIAN_MONTHS = {
+    'January': 'Января',
+    'February': 'Февраля',
+    'March': 'Марта',
+    'April': 'Апреля',
+    'May': 'Мая',
+    'June': 'Июня',
+    'July': 'Июля',
+    'August': 'Августа',
+    'September': 'Сентября',
+    'October': 'Октября',
+    'November': 'Ноября',
+    'December': 'Декабря'
+}
+
+
+def get_russian_month(date: datetime) -> str:
+    """
+    Преобразует английское название месяца в русское.
+    
+    Args:
+        date: Объект datetime, из которого извлекается месяц.
+    
+    Returns:
+        Название месяца на русском языке.
+    """
+    english_month = date.strftime("%B")
+    return RUSSIAN_MONTHS.get(english_month, english_month)
