@@ -47,7 +47,6 @@ from handlers.texts import (
 )
 from handlers.utils import format_hours, format_minutes
 from logger import logger
-from handlers.utils import format_hours, format_months, format_minutes
 
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
@@ -420,9 +419,7 @@ async def process_auto_renew_or_notify(
             )
 
             renewed_message = KEY_RENEWED.format(
-                email=email,
-                months_formatted=months_formatted,
-                expiry_date=formatted_expiry_date
+                email=email, months=renewal_period_months, expiry_date=formatted_expiry_date
             )
 
             keyboard = build_notification_expired_kb()
