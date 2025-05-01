@@ -20,6 +20,7 @@ from handlers.keys.key_utils import get_user_traffic
 from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
 from handlers.utils import format_days
 from logger import logger
+from handlers.utils import format_days
 
 from .notify_utils import send_messages_with_limit, send_notification
 
