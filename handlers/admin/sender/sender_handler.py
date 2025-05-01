@@ -77,43 +77,56 @@ async def handle_message_input(message: Message, state: FSMContext, session: Any
     state_data = await state.get_data()
     send_to = state_data.get("type", "all")
 
+    now = int(datetime.utcnow().timestamp() * 1000)
+
     if send_to == "subscribed":
         tg_ids = await session.fetch(
             """
-            SELECT DISTINCT c.tg_id 
-            FROM connections c
-            JOIN keys k ON c.tg_id = k.tg_id
+            SELECT DISTINCT u.tg_id
+            FROM users u
+            JOIN keys k ON u.tg_id = k.tg_id
             WHERE k.expiry_time > $1
             """,
-            int(datetime.utcnow().timestamp() * 1000),
+            now,
         )
     elif send_to == "unsubscribed":
         tg_ids = await session.fetch(
             """
-            SELECT c.tg_id 
-            FROM connections c
-            LEFT JOIN keys k ON c.tg_id = k.tg_id
-            GROUP BY c.tg_id
+            SELECT u.tg_id
+            FROM users u
+            LEFT JOIN keys k ON u.tg_id = k.tg_id
+            GROUP BY u.tg_id
             HAVING COUNT(k.tg_id) = 0 OR MAX(k.expiry_time) <= $1
             """,
-            int(datetime.utcnow().timestamp() * 1000),
+            now,
         )
     elif send_to == "untrial":
-        tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections WHERE trial = 0")
+        tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM users WHERE tg_id NOT IN (SELECT tg_id FROM keys)")
     elif send_to == "cluster":
         cluster_name = state_data.get("cluster_name")
         tg_ids = await session.fetch(
             """
-            SELECT DISTINCT c.tg_id
-            FROM connections c
-            JOIN keys k ON c.tg_id = k.tg_id
+            SELECT DISTINCT u.tg_id
+            FROM users u
+            JOIN keys k ON u.tg_id = k.tg_id
             JOIN servers s ON k.server_id = s.cluster_name
             WHERE s.cluster_name = $1
             """,
             cluster_name,
         )
+    elif send_to == "hotleads":
+        tg_ids = await session.fetch(
+            """
+            SELECT DISTINCT u.tg_id
+            FROM users u
+            JOIN payments p ON u.tg_id = p.tg_id
+            LEFT JOIN keys k ON u.tg_id = k.tg_id
+            WHERE p.status = 'success'
+            AND k.tg_id IS NULL
+            """
+        )
     else:
-        tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM connections")
+        tg_ids = await session.fetch("SELECT DISTINCT tg_id FROM users")
 
     total_users = len(tg_ids)
     success_count = 0

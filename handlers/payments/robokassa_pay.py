@@ -19,9 +19,9 @@ from config import (
 from robokassa import HashAlgorithm, Robokassa
 
 from database import (
-    add_connection,
+    add_user,
+    check_user_exists,
     add_payment,
-    check_connection_exists,
     get_key_count,
     get_temporary_data,
     update_balance,
@@ -96,10 +96,20 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
     key_count = await get_key_count(tg_id)
 
     if key_count == 0:
-        exists = await check_connection_exists(tg_id)
+        exists = await check_user_exists(tg_id)
         if not exists:
-            await add_connection(tg_id, balance=0.0, trial=0, session=session)
-            logger.info(f"Created new connection for user {tg_id} with balance 0.0.")
+            from_user = callback_query.from_user
+            await add_user(
+                tg_id=from_user.id,
+                username=from_user.username,
+                first_name=from_user.first_name,
+                last_name=from_user.last_name,
+                language_code=from_user.language_code,
+                is_bot=from_user.is_bot,
+                session=session,
+            )
+            logger.info(f"[DB] Новый пользователь {tg_id} создан через Robokassa.")
+
 
     await callback_query.message.delete()
     

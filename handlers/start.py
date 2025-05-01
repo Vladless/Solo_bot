@@ -24,22 +24,17 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from database import (
-    add_connection,
-    add_referral,
-    check_connection_exists,
-    get_referral_by_referred_id,
+    add_user,
+    check_user_exists,
     get_trial,
-    update_balance,
 )
-from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT
+from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB
 from handlers.captcha import generate_captcha
-from handlers.keys.key_mode.key_create import create_key
+from handlers.coupons import activate_coupon
+from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
-    GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG,
-    NEW_REFERRAL_NOTIFICATION,
     NOT_SUBSCRIBED_YET_MSG,
-    REFERRAL_SUCCESS_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
     SUBSCRIPTION_CONFIRMED_MSG,
     SUBSCRIPTION_REQUIRED_MSG,
@@ -47,9 +42,9 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
-from handlers.coupons import activate_coupon
 
 from .admin.panel.keyboard import AdminPanelCallback
+from .refferal import handle_referral_link
 from .utils import edit_or_send_message
 
 
@@ -65,17 +60,18 @@ async def handle_start_callback_query(
 
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True):
-    """Обрабатывает команду /start, включая логику проверки подписки, рефералов и подарков."""
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     if CAPTCHA_ENABLE and captcha:
-        captcha_data = await generate_captcha(message, state)
-        await edit_or_send_message(
-            target_message=message,
-            text=captcha_data["text"],
-            reply_markup=captcha_data["markup"],
-        )
-        return
+        user_exists = await check_user_exists(message.chat.id)
+        if not user_exists:
+            captcha_data = await generate_captcha(message, state)
+            await edit_or_send_message(
+                target_message=message,
+                text=captcha_data["text"],
+                reply_markup=captcha_data["markup"],
+            )
+            return
 
     state_data = await state.get_data()
     text_to_process = state_data.get("original_text", message.text)
@@ -111,123 +107,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
     await process_start_logic(message, state, session, admin, text_to_process)
 
 
-async def process_start_logic(
-    message: Message, state: FSMContext, session: Any, admin: bool, text_to_process: str = None
-):
-    text = text_to_process if text_to_process is not None else message.text
-    if text:
-        try:
-            if "coupons_" in text:
-                logger.info(f"Обнаружена ссылка на купон: {text}")
-                coupon_code = text.split("coupons_")[1]
-                await activate_coupon(message, state, session, coupon_code=coupon_code, admin=admin)
-                return
-
-            if "gift_" in text:
-                parts = text.split("gift_")[1].split("_")
-                if len(parts) < 2:
-                    await message.answer("❌ Неверный формат ссылки на подарок.")
-                    return await process_callback_view_profile(message, state, admin)
-                gift_id = parts[0]
-                async with session.transaction():
-                    gift_info = await session.fetchrow(
-                        """
-                        SELECT sender_tg_id, selected_months, expiry_time, is_used, recipient_tg_id 
-                        FROM gifts 
-                        WHERE gift_id = $1
-                        FOR UPDATE
-                        """,
-                        gift_id,
-                    )
-                if not gift_info:
-                    await message.answer(GIFT_ALREADY_USED_OR_NOT_EXISTS_MSG)
-                    return await process_callback_view_profile(message, state, admin)
-
-                if gift_info["is_used"]:
-                    await message.answer("Этот подарок уже был использован.")
-                    return await process_callback_view_profile(message, state, admin)
-
-                if gift_info["sender_tg_id"] == message.chat.id:
-                    await message.answer("❌ Вы не можете получить подарок от самого себя.")
-                    return await process_callback_view_profile(message, state, admin)
-
-                if gift_info["recipient_tg_id"]:
-                    await message.answer("❌ Этот подарок уже был активирован другим пользователем.")
-                    return await process_callback_view_profile(message, state, admin)
-
-                existing_referral = await get_referral_by_referred_id(message.chat.id, session)
-                if not existing_referral:
-                    await add_referral(message.chat.id, gift_info["sender_tg_id"], session)
-
-                connection_exists = await check_connection_exists(message.chat.id)
-                if not connection_exists:
-                    await add_connection(tg_id=message.chat.id, session=session)
-
-                await session.execute("UPDATE connections SET trial = 1 WHERE tg_id = $1", message.chat.id)
-
-                await create_key(
-                    message.chat.id,
-                    gift_info["expiry_time"].replace(tzinfo=None),
-                    state,
-                    session,
-                    message,
-                )
-                await session.execute(
-                    "UPDATE gifts SET is_used = TRUE, recipient_tg_id = $1 WHERE gift_id = $2",
-                    message.chat.id,
-                    gift_id,
-                )
-                await message.answer(
-                    f"🎉 Ваш подарок на {gift_info['selected_months']} "
-                    f"{'месяц' if gift_info['selected_months'] == 1 else 'месяца' if gift_info['selected_months'] in [2, 3, 4] else 'месяцев'} активирован!"
-                )
-                return
-
-            if "referral_" in text:
-                try:
-                    referrer_tg_id = int(text.split("referral_")[1])
-                    connection_exists_now = await check_connection_exists(message.chat.id)
-                    if connection_exists_now:
-                        await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
-                        return await process_callback_view_profile(message, state, admin)
-                    if referrer_tg_id == message.chat.id:
-                        await message.answer("❌ Вы не можете быть рефералом самого себя.")
-                        return await process_callback_view_profile(message, state, admin)
-                    existing_referral = await get_referral_by_referred_id(message.chat.id, session)
-                    if existing_referral:
-                        return await process_callback_view_profile(message, state, admin)
-
-                    await add_referral(message.chat.id, referrer_tg_id, session)
-                    await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
-                    try:
-                        await bot.send_message(
-                            referrer_tg_id,
-                            NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id),
-                        )
-                    except Exception as e:
-                        logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
-                    return await process_callback_view_profile(message, state, admin)
-                except (ValueError, IndexError):
-                    pass
-
-            logger.info("Пользователь зашел без реферальной ссылки, подарка или купона.")
-
-        except Exception as e:
-            logger.error(f"Ошибка при обработке текста {message.text} — {e}", exc_info=True)
-            await message.answer("❌ Произошла ошибка. Попробуйте позже.")
-            return
-
-    final_exists = await check_connection_exists(message.chat.id)
-    if final_exists:
-        if SHOW_START_MENU_ONCE:
-            return await process_callback_view_profile(message, state, admin)
-        else:
-            return await show_start_menu(message, admin, session)
-    else:
-        await add_connection(tg_id=message.chat.id, session=session)
-        return await show_start_menu(message, admin, session)
-
-
 @router.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback_query.from_user.id
@@ -257,6 +136,117 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         await callback_query.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
+async def process_start_logic(
+    message: Message, state: FSMContext, session: Any, admin: bool, text_to_process: str = None
+):
+    text = text_to_process or message.text or message.caption
+
+    if not text:
+        logger.info(f"[StartLogic] Текста нет — вызываю стартовое меню для {message.chat.id}")
+        await show_start_menu(message, admin, session)
+        return
+
+    if text.startswith("/start "):
+        parts = text.split(maxsplit=1)
+        if len(parts) > 1:
+            text = parts[1]
+
+    try:
+        gift_detected = False
+        text_parts = text.split("-")
+
+        for part in text_parts:
+            if "coupons" in part:
+                logger.info(f"Обнаружена ссылка на купон: {part}")
+                coupon_code = part.split("coupons")[1].strip("_")
+                await activate_coupon(message, state, session, coupon_code=coupon_code, admin=admin)
+                continue
+
+            if "gift" in part:
+                gift_raw = part.split("gift")[1].strip("_")
+                parts = gift_raw.split("_")
+                if len(parts) < 2:
+                    await message.answer("❌ Неверный формат ссылки на подарок.")
+                    return await process_callback_view_profile(message, state, admin)
+
+                gift_id = parts[0]
+                sender_id = parts[1]
+                logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
+                await handle_gift_link(gift_id, message, state, session)
+                gift_detected = True
+                break
+
+            if "referral" in part:
+                referrer_tg_id = part.split("referral")[1].strip("_")
+                try:
+                    referrer_tg_id = int(referrer_tg_id)
+                    await handle_referral_link(referrer_tg_id, message, state, session)
+                except (ValueError, IndexError):
+                    pass
+                continue
+
+            if "utm" in part:
+                utm_code = part
+                logger.info(f"Обнаружена ссылка на UTM: {utm_code}")
+                await handle_utm_link(utm_code, message, state, session)
+                continue
+
+        if gift_detected:
+            return
+
+        user_exists = await check_user_exists(message.chat.id)
+        if not user_exists:
+            from_user = message.from_user
+            await add_user(
+                tg_id=from_user.id,
+                username=from_user.username,
+                first_name=from_user.first_name,
+                last_name=from_user.last_name,
+                language_code=from_user.language_code,
+                is_bot=from_user.is_bot,
+                session=session,
+            )
+
+        trial_status = await get_trial(message.chat.id, session)
+
+        if SHOW_START_MENU_ONCE:
+            if trial_status > 0:
+                await process_callback_view_profile(message, state, admin)
+            else:
+                await show_start_menu(message, admin, session)
+        else:
+            await show_start_menu(message, admin, session)
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке текста {message.text} — {e}", exc_info=True)
+        await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+
+async def handle_utm_link(utm_code, message, state, session):
+    exists = await session.fetchval("SELECT 1 FROM tracking_sources WHERE code = $1", utm_code)
+    if exists:
+        current_code = await session.fetchval("SELECT source_code FROM users WHERE tg_id = $1", message.chat.id)
+        if current_code is None:
+            user_exists = await check_user_exists(message.chat.id)
+            from_user = message.from_user
+            if not user_exists:
+                await add_user(
+                    tg_id=from_user.id,
+                    username=from_user.username,
+                    first_name=from_user.first_name,
+                    last_name=from_user.last_name,
+                    language_code=from_user.language_code,
+                    is_bot=from_user.is_bot,
+                    session=session,
+                    source_code=utm_code,
+                )
+            else:
+                await session.execute("UPDATE users SET source_code = $1 WHERE tg_id = $2", utm_code, message.chat.id)
+        logger.info(f"[UTM] Привязана {utm_code} к пользователю {message.chat.id}")
+    else:
+        await message.answer("❌ UTM ссылка не найдена.")
+
+
 async def show_start_menu(message: Message, admin: bool, session: Any):
     """Функция для отображения стандартного меню через редактирование сообщения.
     Если редактирование не удалось, отправляем новое сообщение."""
@@ -269,7 +259,9 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
         trial_status = await get_trial(message.chat.id, session)
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
         if trial_status == 0:
-            builder.row(InlineKeyboardButton(text="🎁 Пробная подписка", callback_data="create_key"))
+            builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
+        else:
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 

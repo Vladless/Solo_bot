@@ -1,21 +1,22 @@
-from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, WebAppInfo
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-import pytz
 import html
 import os
 import re
+
 from datetime import datetime
-from aiogram.fsm.state import State, StatesGroup
 from typing import Any
 
+import pytz
+
+from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
-    PUBLIC_LINK,
     QRCODE,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
@@ -46,11 +47,20 @@ from handlers.texts import (
     NO_SUBSCRIPTIONS_MSG,
     key_message,
 )
-from handlers.utils import edit_or_send_message, handle_error, is_full_remnawave_cluster
+from handlers.utils import (
+    edit_or_send_message,
+    format_days,
+    format_hours,
+    format_minutes,
+    get_russian_month,
+    handle_error,
+    is_full_remnawave_cluster,
+)
 from logger import logger
 
 
 router = Router()
+
 
 class RenameKeyState(StatesGroup):
     waiting_for_new_alias = State()
@@ -129,7 +139,7 @@ async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
     await edit_or_send_message(
         target_message=callback.message,
         text="✏️ Введите новое имя подписки (до 10 символов):",
-        reply_markup=builder.as_markup()
+        reply_markup=builder.as_markup(),
     )
 
 
@@ -142,7 +152,9 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
         return
 
     if not alias or not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
-        await message.answer("❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод.")
+        await message.answer(
+            "❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод."
+        )
         return
 
     data = await state.get_data()
@@ -210,15 +222,17 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
         time_left = expiry_date - datetime.utcnow()
 
         if time_left.total_seconds() <= 0:
-            days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла\nОсталось часов: 0\nОсталось минут: 0"
+            days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла"
         else:
             total_seconds = int(time_left.total_seconds())
             days = total_seconds // 86400
             hours = (total_seconds % 86400) // 3600
             minutes = (total_seconds % 3600) // 60
-            days_left_message = f"Осталось: <b>{days}</b> дней, <b>{hours}</b> часов, <b>{minutes}</b> минут"
+            days_left_message = (
+                f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
+            )
 
-        formatted_expiry_date = expiry_date.strftime("%d %B %Y года")
+        formatted_expiry_date = f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
         response_message = key_message(
             final_link,
             formatted_expiry_date,
@@ -227,7 +241,7 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
             server_name if USE_COUNTRY_SELECTION else None,
         )
 
-        if (not key or not key.startswith(PUBLIC_LINK)) or ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
+        if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
             builder.row(
                 InlineKeyboardButton(
                     text="🔄 Обновить подписку",

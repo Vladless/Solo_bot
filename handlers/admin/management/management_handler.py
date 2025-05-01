@@ -9,6 +9,7 @@ from logger import logger
 
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import AdminPanelCallback, build_management_kb
+from middlewares import maintenance
 
 
 router = Router()
@@ -73,3 +74,14 @@ async def process_new_domain(message: Message, state: FSMContext, session: Conne
 
     await message.answer(f"✅ Домен успешно изменен на {new_domain}!", reply_markup=build_admin_back_kb("admin"))
     await state.clear()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "toggle_maintenance"))
+async def toggle_maintenance_mode(callback: CallbackQuery):
+
+    maintenance.maintenance_mode = not maintenance.maintenance_mode
+
+    new_status = "включён" if maintenance.maintenance_mode else "выключен"
+    await callback.answer(f"🛠️ Режим обслуживания {new_status}.", show_alert=True)
+    
+    await callback.message.edit_reply_markup(reply_markup=build_management_kb())

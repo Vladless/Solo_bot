@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,9 @@ from database import (
     delete_user_data,
     get_balance,
     get_client_id_by_email,
+    get_key_details,
     get_servers,
+    set_user_balance,
     update_balance,
     update_key_expiry,
     update_trial,
@@ -60,10 +63,8 @@ router = Router()
 
 
 class UserEditorState(StatesGroup):
-    # search
     waiting_for_user_data = State()
     waiting_for_key_name = State()
-    # updating data
     waiting_for_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
@@ -98,41 +99,6 @@ async def handle_search_key(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(text="🔑 Введите имя ключа для поиска:", reply_markup=build_admin_back_kb())
 
 
-@router.message(UserEditorState.waiting_for_user_data, IsAdminFilter())
-async def handle_user_data_input(message: Message, state: FSMContext, session: Any):
-    kb = build_admin_back_kb()
-
-    if message.forward_from:
-        tg_id = message.forward_from.id
-        await process_user_search(message, state, session, tg_id)
-        return
-
-    if not message.text:
-        await message.answer(text="🚫 Пожалуйста, отправьте текстовое сообщение.", reply_markup=kb)
-        return
-
-    if message.text.isdigit():
-        tg_id = int(message.text)
-    else:
-        # Удаление '@' символа в начале сообщения
-        username = message.text.strip().lstrip("@")
-        # Удаление начала ссылки на профиль
-        username = username.replace("https://t.me/", "")
-
-        user = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
-
-        if not user:
-            await message.answer(
-                text="🚫 Пользователь с указанным Username не найден!",
-                reply_markup=kb,
-            )
-            return
-
-        tg_id = user["tg_id"]
-
-    await process_user_search(message, state, session, tg_id)
-
-
 @router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
 async def handle_key_name_input(message: Message, state: FSMContext, session: Any):
     kb = build_admin_back_kb()
@@ -149,6 +115,39 @@ async def handle_key_name_input(message: Message, state: FSMContext, session: An
         return
 
     await process_user_search(message, state, session, key_details["tg_id"])
+
+
+@router.message(UserEditorState.waiting_for_user_data, IsAdminFilter())
+async def handle_user_data_input(message: Message, state: FSMContext, session: Any):
+    kb = build_admin_back_kb()
+
+    if message.forward_from:
+        tg_id = message.forward_from.id
+        await process_user_search(message, state, session, tg_id)
+        return
+
+    if not message.text:
+        await message.answer(text="🚫 Пожалуйста, отправьте текстовое сообщение.", reply_markup=kb)
+        return
+
+    if message.text.isdigit():
+        tg_id = int(message.text)
+    else:
+        username = message.text.strip().lstrip("@")
+        username = username.replace("https://t.me/", "")
+
+        user = await session.fetchrow("SELECT tg_id FROM users WHERE username = $1", username)
+
+        if not user:
+            await message.answer(
+                text="🚫 Пользователь с указанным Username не найден!",
+                reply_markup=kb,
+            )
+            return
+
+        tg_id = user["tg_id"]
+
+    await process_user_search(message, state, session, tg_id)
 
 
 @router.callback_query(
@@ -614,23 +613,23 @@ async def process_user_search(
 ) -> None:
     await state.clear()
 
-    balance = await session.fetchval("SELECT balance FROM connections WHERE tg_id = $1", tg_id)
-
-    if balance is None:
+    user_data = await session.fetchrow(
+        "SELECT username, balance, created_at, updated_at FROM users WHERE tg_id = $1", tg_id
+    )
+    if not user_data:
         await message.answer(
             text="🚫 Пользователь с указанным ID не найден!",
             reply_markup=build_admin_back_kb(),
         )
         return
 
-    balance = int(balance)
-
-    user_data = await session.fetchrow("SELECT username, created_at, updated_at FROM users WHERE tg_id = $1", tg_id)
-    username = await session.fetchval("SELECT username FROM users WHERE tg_id = $1", tg_id)
-    key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    balance = int(user_data["balance"] or 0)
+    username = user_data["username"]
     created_at = user_data["created_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
     updated_at = user_data["updated_at"].astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+
+    referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
+    key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
 
     text = (
         f"<b>📊 Информация о пользователе</b>"
@@ -653,35 +652,6 @@ async def process_user_search(
         await message.answer(text=text, reply_markup=kb)
 
 
-async def get_key_details(email, session):
-    record = await session.fetchrow(
-        """
-        SELECT k.client_id, k.key, k.remnawave_link, k.expiry_time, k.server_id, c.tg_id, c.balance
-        FROM keys k
-        JOIN connections c ON k.tg_id = c.tg_id
-        WHERE k.email = $1
-        """,
-        email,
-    )
-
-    if not record:
-        return None
-
-    cluster_name = record["server_id"]
-    expiry_date = datetime.fromtimestamp(record["expiry_time"] / 1000, tz=timezone.utc)
-
-    return {
-        "client_id": record["client_id"],
-        "balance": record["balance"],
-        "tg_id": record["tg_id"],
-        "key": record["key"],
-        "remnawave_link": record["remnawave_link"],
-        "cluster_name": cluster_name,
-        "expiry_time": record["expiry_time"],
-        "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
-    }
-
-
 async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exception | None:
     client_id = await get_client_id_by_email(email)
 
@@ -694,6 +664,8 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
         return ValueError(f"User with client_id {server_id} was not found")
 
     clusters = await get_servers()
+    added_days = max((expiry_time - int(time.time() * 1000)) / (1000 * 86400), 1)
+    total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
 
     async def update_key_on_all_servers():
         tasks = [
@@ -703,7 +675,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
                     email,
                     client_id,
                     expiry_time,
-                    total_gb=TOTAL_GB,
+                    total_gb=total_gb,
                 )
             )
             for cluster_name in clusters
@@ -713,17 +685,6 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
 
     await update_key_on_all_servers()
     await update_key_expiry(client_id, expiry_time, session)
-
-
-async def set_user_balance(tg_id: int, balance: int, session: Any) -> None:
-    try:
-        await session.execute(
-            "UPDATE connections SET balance = $1 WHERE tg_id = $2",
-            balance,
-            tg_id,
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_traffic"), IsAdminFilter())
@@ -783,13 +744,17 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
     Восстанавливает пробники для пользователей, у которых нет активной подписки.
     """
     query = """
-        UPDATE connections
+        UPDATE users
         SET trial = 0
         WHERE tg_id IN (
-            SELECT DISTINCT c.tg_id
-            FROM connections c
-            LEFT JOIN keys k ON c.tg_id = k.tg_id
-            WHERE k.tg_id IS NULL AND c.trial != 0
+            SELECT u.tg_id
+            FROM users u
+            LEFT JOIN (
+                SELECT tg_id
+                FROM keys
+                WHERE expiry_time > EXTRACT(EPOCH FROM NOW()) * 1000
+            ) k ON u.tg_id = k.tg_id
+            WHERE k.tg_id IS NULL AND u.trial != 0
         )
     """
     await session.execute(query)
@@ -798,7 +763,7 @@ async def restore_trials(callback_query: types.CallbackQuery, session: Any):
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text="✅ Пробники успешно восстановлены для пользователей, у которых нет активных подписок.",
+        text="✅ Пробники успешно восстановлены для пользователей без активных подписок.",
         reply_markup=builder.as_markup(),
     )
 
@@ -826,7 +791,9 @@ async def handle_users_export_referrals(
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_create_key"), IsAdminFilter())
-async def handle_create_key_start(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any):
+async def handle_create_key_start(
+    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
+):
     tg_id = callback_data.tg_id
     await state.update_data(tg_id=tg_id)
 
@@ -838,8 +805,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
 
         if not countries:
             await callback_query.message.edit_text(
-                "❌ Нет доступных стран для создания ключа.",
-                reply_markup=build_editor_kb(tg_id)
+                "❌ Нет доступных стран для создания ключа.", reply_markup=build_editor_kb(tg_id)
             )
             return
 
@@ -850,8 +816,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
         builder.row(build_admin_back_btn())
 
         await callback_query.message.edit_text(
-            "🌍 <b>Выберите страну для создания ключа:</b>",
-            reply_markup=builder.as_markup()
+            "🌍 <b>Выберите страну для создания ключа:</b>", reply_markup=builder.as_markup()
         )
         return
 
@@ -862,8 +827,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
 
     if not cluster_names:
         await callback_query.message.edit_text(
-            "❌ Нет доступных кластеров для создания ключа.",
-            reply_markup=build_editor_kb(tg_id)
+            "❌ Нет доступных кластеров для создания ключа.", reply_markup=build_editor_kb(tg_id)
         )
         return
 
@@ -873,8 +837,7 @@ async def handle_create_key_start(callback_query: CallbackQuery, callback_data: 
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        "🌐 <b>Выберите кластер для создания ключа:</b>",
-        reply_markup=builder.as_markup()
+        "🌐 <b>Выберите кластер для создания ключа:</b>", reply_markup=builder.as_markup()
     )
 
 
@@ -891,8 +854,7 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"🕒 <b>Выберите срок действия ключа для страны {country}:</b>",
-        reply_markup=builder.as_markup()
+        text=f"🕒 <b>Выберите срок действия ключа для страны {country}:</b>", reply_markup=builder.as_markup()
     )
 
 
@@ -928,15 +890,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         if USE_COUNTRY_SELECTION and "country" in data:
             country = data["country"]
-            await create_key_on_cluster(
-                country, 
-                tg_id,
-                client_id,
-                email,
-                expiry_ms,
-                plan=months,
-                session=session
-            )
+            await create_key_on_cluster(country, tg_id, client_id, email, expiry_ms, plan=months, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
@@ -946,15 +900,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         elif "cluster_name" in data:
             cluster_name = data["cluster_name"]
-            await create_key_on_cluster(
-                cluster_name,
-                tg_id,
-                client_id,
-                email,
-                expiry_ms,
-                plan=months,
-                session=session
-            )
+            await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms, plan=months, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
@@ -968,8 +914,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
     except Exception as e:
         logger.error(f"Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.",
-            reply_markup=build_editor_kb(data.get("tg_id", 0))
+            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(data.get("tg_id", 0))
         )
 
 

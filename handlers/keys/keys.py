@@ -4,7 +4,6 @@ from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
-
 from aiogram.types import CallbackQuery
 
 from database import (
@@ -17,11 +16,11 @@ from handlers.buttons import (
     BACK,
     CANCEL,
 )
-from handlers.keys.key_view import process_callback_view_key
 from handlers.keys.key_utils import (
     delete_key_from_cluster,
     update_subscription,
 )
+from handlers.keys.key_view import process_callback_view_key
 from handlers.texts import (
     DELETE_KEY_CONFIRM_MSG,
     KEY_DELETED_MSG_SIMPLE,

@@ -5,7 +5,7 @@ from datetime import datetime
 import pytz
 
 from aiogram import Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, FSInputFile, WebAppInfo
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
@@ -20,19 +20,17 @@ from database import (
     update_balance,
     update_trial,
 )
-from handlers.buttons import (
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    MAIN_MENU,
-    PC_BUTTON,
-    TV_BUTTON,
-    SUPPORT
-)
+from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import (
     key_message_success,
 )
-from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster, is_full_remnawave_cluster
+from handlers.utils import (
+    edit_or_send_message,
+    generate_random_email,
+    get_least_loaded_cluster,
+    is_full_remnawave_cluster,
+)
 from logger import logger
 
 
@@ -63,9 +61,7 @@ async def key_cluster_mode(
 
     try:
         least_loaded_cluster = await get_least_loaded_cluster()
-        await create_key_on_cluster(
-            least_loaded_cluster, tg_id, client_id, email, expiry_timestamp, plan, session
-        )
+        await create_key_on_cluster(least_loaded_cluster, tg_id, client_id, email, expiry_timestamp, plan, session)
         logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
 
         key_record = await get_key_details(email, session)

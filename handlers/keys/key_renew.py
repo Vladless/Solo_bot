@@ -4,14 +4,13 @@ from typing import Any
 import asyncpg
 
 from aiogram import F, Router
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from config import (
     DATABASE_URL,
-    RENEWAL_PLANS,
+    RENEWAL_PRICES,
     TOTAL_GB,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
@@ -42,7 +41,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
 )
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, format_months
 from logger import logger
 
 
@@ -61,13 +60,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
 
             builder = InlineKeyboardBuilder()
 
-            for plan_id, plan_details in RENEWAL_PLANS.items():
-                months = plan_details["months"]
-                price = plan_details["price"]
+            for plan_id, price in RENEWAL_PRICES.items():
+                months = int(plan_id)
 
                 discount = DISCOUNTS.get(plan_id, 0) if isinstance(DISCOUNTS, dict) else 0
 
-                button_text = f"📅 {months} месяц{'а' if months > 1 else ''} ({price} руб.)"
+                button_text = f"📅 {format_months(months)} ({price} руб.)"
                 if discount > 0:
                     button_text += f" {discount}% скидка"
 
@@ -78,7 +76,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
                     )
                 )
 
-            builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}"))
 
             balance = await get_balance(tg_id)
 
@@ -121,7 +119,11 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
             else:
                 new_expiry_time = int(expiry_time + timedelta(days=days_to_extend).total_seconds() * 1000)
 
-            cost = RENEWAL_PLANS[plan]["price"]
+            cost = RENEWAL_PRICES.get(plan)
+            if cost is None:
+                await callback_query.message.answer("❌ Неверный тарифный план.")
+                return
+
             balance = await get_balance(tg_id)
 
             if balance < cost:
@@ -181,7 +183,7 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-    response_message = SUCCESS_RENEWAL_MSG.format(months=plan)
+    response_message = SUCCESS_RENEWAL_MSG.format(months_formatted=format_months(int(plan)))
 
     if callback_query:
         try:

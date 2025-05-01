@@ -12,14 +12,17 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
 from database import (
     add_notification,
-    check_notification_time,
+    check_notifications_bulk,
     create_blocked_user,
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import get_user_traffic
 from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
+from handlers.utils import format_days
 from logger import logger
 from handlers.utils import format_days
+
+from .notify_utils import send_messages_with_limit, send_notification
 
 
 router = Router()
@@ -35,87 +38,53 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
     """
     logger.info("Проверка пользователей, не активировавших пробный период...")
 
-    inactive_trial_users = await conn.fetch(
-        """
-        SELECT tg_id, username, first_name, last_name FROM users 
-        WHERE tg_id IN (
-            SELECT tg_id FROM connections 
-            WHERE trial IN (0, -1)
-        )
-        AND tg_id NOT IN (
-            SELECT tg_id FROM blocked_users
-        )
-        AND tg_id NOT IN (
-            SELECT DISTINCT tg_id FROM keys
-        )
-        """
-    )
-    logger.info(f"Найдено {len(inactive_trial_users)} неактивных пользователей.")
+    users = await check_notifications_bulk("inactive_trial", NOTIFY_INACTIVE, conn)
+    logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
 
-    for user in inactive_trial_users:
+    messages = []
+
+    for user in users:
         tg_id = user["tg_id"]
         username = user["username"]
         first_name = user["first_name"]
         last_name = user["last_name"]
         display_name = username or first_name or last_name or "Пользователь"
 
-        try:
-            can_notify = await check_notification_time(tg_id, "inactive_trial", hours=NOTIFY_INACTIVE, session=conn)
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            types.InlineKeyboardButton(
+                text="🚀 Активировать пробный период",
+                callback_data="create_key",
+            )
+        )
+        builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        keyboard = builder.as_markup()
 
-            if can_notify:
-                builder = InlineKeyboardBuilder()
-                builder.row(
-                    types.InlineKeyboardButton(
-                        text="🚀 Активировать пробный период",
-                        callback_data="create_key",
-                    )
-                )
-                builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-                keyboard = builder.as_markup()
+        trial_extended = user["last_notification_time"] is not None
 
-                trial_extended = await conn.fetchval(
-                    """
-                    SELECT EXISTS (
-                        SELECT 1 FROM notifications 
-                        WHERE tg_id = $1 AND notification_type = 'inactive_trial'
-                    )
-                    """,
-                    tg_id,
-                )
+        if trial_extended:
+            total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
+            message = TRIAL_INACTIVE_BONUS_MSG.format(
+                display_name=display_name,
+                extra_days_formatted=format_days(NOTIFY_EXTRA_DAYS),
+                total_days_formatted=format_days(total_days),
+            )
+            await conn.execute("UPDATE users SET trial = -1 WHERE tg_id = $1", tg_id)
+        else:
+            message = TRIAL_INACTIVE_FIRST_MSG.format(
+                display_name=display_name, trial_time_formatted=format_days(TRIAL_TIME)
+            )
 
-                if trial_extended:
-                    total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
-                    trial_time_formatted = format_days(TRIAL_TIME)
-                    extra_days_formatted = format_days(NOTIFY_EXTRA_DAYS)
-                    total_days_formatted = format_days(total_days)
-                    message = TRIAL_INACTIVE_BONUS_MSG.format(
-                        display_name=display_name,
-                        extra_days_formatted=extra_days_formatted,
-                        total_days_formatted=total_days_formatted,
-                    )
-                    await conn.execute("UPDATE connections SET trial = -1 WHERE tg_id = $1", tg_id)
-                else:
-                    trial_time_formatted = format_days(TRIAL_TIME)
-                    message = TRIAL_INACTIVE_FIRST_MSG.format(
-                        display_name=display_name,
-                        trial_time_formatted=trial_time_formatted,
-                    )
+        messages.append({
+            "tg_id": tg_id,
+            "text": message,
+            "keyboard": keyboard,
+        })
+        await add_notification(tg_id, "inactive_trial", session=conn)
 
-                try:
-                    await bot.send_message(tg_id, message, reply_markup=keyboard)
-                    logger.info(f"📩 Отправлено уведомление неактивному пользователю {tg_id}.")
-                    await add_notification(tg_id, "inactive_trial", session=conn)
-
-                except TelegramForbiddenError:
-                    logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
-                    await create_blocked_user(tg_id, conn)
-                except Exception as e:
-                    logger.error(f"⚠ Ошибка при отправке уведомления пользователю {tg_id}: {e}")
-
-        except Exception as e:
-            logger.error(f"⚠ Ошибка при обработке пользователя {tg_id}: {e}")
-
-        await asyncio.sleep(1)
+    if messages:
+        await send_messages_with_limit(bot, messages)
+        logger.info(f"Отправлено {len(messages)} уведомлений неактивным пользователям.")
 
     logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
 
@@ -185,11 +154,14 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
             message = ZERO_TRAFFIC_MSG.format(email=email)
 
             try:
-                await bot.send_message(tg_id, message, reply_markup=keyboard)
-                logger.info(f"📩 Отправлено уведомление пользователю {tg_id} о нулевом трафике.")
+                result = await send_notification(bot, tg_id, None, message, keyboard)
                 await conn.execute(
                     "UPDATE keys SET notified = TRUE WHERE tg_id = $1 AND client_id = $2", tg_id, client_id
                 )
+                if result:
+                    logger.info(f"📩 Отправлено уведомление пользователю {tg_id} о нулевом трафике.")
+                else:
+                    logger.warning(f"📩 Не удалось отправить уведомление пользователю {tg_id} о нулевом трафике.")
             except TelegramForbiddenError:
                 logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
                 await create_blocked_user(tg_id, conn)

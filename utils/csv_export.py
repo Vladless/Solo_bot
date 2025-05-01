@@ -1,4 +1,5 @@
 import csv
+from datetime import datetime
 
 from io import StringIO
 from typing import Any
@@ -12,18 +13,17 @@ async def export_users_csv(session: Any) -> BufferedInputFile:
     """
     query = """
         SELECT 
-            u.tg_id, 
-            u.username, 
-            u.first_name, 
-            u.last_name, 
-            u.language_code, 
-            u.is_bot, 
-            c.balance, 
-            c.trial,
-            u.created_at  -- Добавляем дату регистрации
-        FROM users u
-        LEFT JOIN connections c ON u.tg_id = c.tg_id
-        ORDER BY u.created_at ASC  -- Сортировка от старых к новым
+            tg_id, 
+            username, 
+            first_name, 
+            last_name, 
+            language_code, 
+            is_bot, 
+            balance, 
+            trial,
+            created_at  
+        FROM users
+        ORDER BY created_at ASC
     """
 
     users = await session.fetch(query)
@@ -173,7 +173,7 @@ async def export_hot_leads_csv(session: Any) -> BufferedInputFile:
 
 async def export_keys_csv(session) -> BufferedInputFile:
     """
-    Экспорт подписок в CSV.
+    Экспорт подписок в CSV с нормальными датами.
     """
     keys = await session.fetch("""
         SELECT tg_id, client_id, email, created_at, expiry_time, key, server_id, is_frozen, alias
@@ -185,9 +185,12 @@ async def export_keys_csv(session) -> BufferedInputFile:
     buffer.write("tg_id,client_id,email,created_at,expiry_time,key,server_id,is_frozen,alias\n")
 
     for row in keys:
+        created_at = datetime.utcfromtimestamp(row['created_at'] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        expiry_time = datetime.utcfromtimestamp(row['expiry_time'] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        
         buffer.write(
             f"{row['tg_id']},{row['client_id']},{row['email']},"
-            f"{row['created_at']},{row['expiry_time']},{row['key']},"
+            f"{created_at},{expiry_time},{row['key']},"
             f"{row['server_id']},{row['is_frozen']},{row['alias'] or ''}\n"
         )
 

@@ -1,12 +1,10 @@
-from typing import Optional
-
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK
 
-from ..panel.keyboard import build_admin_back_btn
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from ..servers.keyboard import AdminServerCallback
 
 
@@ -55,13 +53,6 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
         )
     )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="🛠 Управление",
-            callback_data=AdminClusterCallback(action="manage_cluster", data=cluster_name).pack(),
-        )
-    )
-
     builder.row(build_admin_back_btn("clusters"))
     return builder.as_markup()
 
@@ -69,6 +60,12 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
 def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
+    builder.row(
+        InlineKeyboardButton(
+            text="📡 Серверы",
+            callback_data=f"cluster_servers|{cluster_name}",
+        )
+    )
     builder.row(
         InlineKeyboardButton(
             text="🌐 Доступность",
@@ -99,12 +96,7 @@ def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
             callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔙 Назад",
-            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="clusters").pack()))
 
     return builder.as_markup()
 
@@ -134,13 +126,7 @@ def build_sync_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineKey
 
 def build_panel_type_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🌐 3X-UI",
-        callback_data=AdminClusterCallback(action="panel_3xui").pack()
-    )
-    builder.button(
-        text="🌀 Remnawave",
-        callback_data=AdminClusterCallback(action="panel_remnawave").pack()
-    )
+    builder.button(text="🌐 3X-UI", callback_data=AdminClusterCallback(action="panel_3xui").pack())
+    builder.button(text="🌀 Remnawave", callback_data=AdminClusterCallback(action="panel_remnawave").pack())
     builder.row(build_admin_back_btn("clusters"))
     return builder.as_markup()

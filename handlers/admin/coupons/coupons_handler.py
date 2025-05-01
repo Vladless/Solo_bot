@@ -1,7 +1,9 @@
-from datetime import datetime
 import html
-import pytz
+
+from datetime import datetime
 from typing import Any
+
+import pytz
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -217,18 +219,15 @@ async def handle_coupon_delete(callback_query: CallbackQuery, callback_data: Adm
     coupon_code = callback_data.coupon_code
     kb = InlineKeyboardBuilder()
     kb.button(
-        text="✅ Да, удалить",
-        callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=True).pack()
+        text="✅ Да, удалить", callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=True).pack()
     )
     kb.button(
-        text="❌ Нет, отменить",
-        callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=False).pack()
+        text="❌ Нет, отменить", callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=False).pack()
     )
     kb.adjust(1)
 
     await callback_query.message.edit_text(
-        f"Вы уверены, что хотите удалить купон <b>{coupon_code}</b>?",
-        reply_markup=kb.as_markup()
+        f"Вы уверены, что хотите удалить купон <b>{coupon_code}</b>?", reply_markup=kb.as_markup()
     )
 
 
@@ -242,15 +241,13 @@ async def confirm_coupon_delete(callback_query: CallbackQuery, callback_data: Ad
             result = await delete_coupon(coupon_code, session)
             if not result:
                 await callback_query.message.edit_text(
-                    f"❌ Купон с кодом {coupon_code} не найден.",
-                    reply_markup=build_admin_back_kb("coupons")
+                    f"❌ Купон с кодом {coupon_code} не найден.", reply_markup=build_admin_back_kb("coupons")
                 )
                 return
         except Exception as e:
             logger.error(f"Ошибка при удалении купона: {e}")
             await callback_query.message.edit_text(
-                "Произошла ошибка при удалении купона.",
-                reply_markup=build_admin_back_kb("coupons")
+                "Произошла ошибка при удалении купона.", reply_markup=build_admin_back_kb("coupons")
             )
             return
 
@@ -295,7 +292,11 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         return
 
     title = f"Купон {coupon['code']}"
-    description = f"Получи {coupon['amount']} рублей!" if coupon["amount"] > 0 else f"Продли подписку на {format_days(coupon['days'])}!"
+    description = (
+        f"Получи {coupon['amount']} рублей!"
+        if coupon["amount"] > 0
+        else f"Продли подписку на {format_days(coupon['days'])}!"
+    )
     message_text = (
         f"🎫 <b>Купон:</b> {coupon['code']}\n"
         f"{'💰 <b>Бонус:</b> ' + str(coupon['amount']) + ' рублей' if coupon['amount'] > 0 else '⏳ <b>Продление:</b> ' + format_days(coupon['days'])}\n"
@@ -309,15 +310,8 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         id=coupon_code,
         title=title,
         description=description,
-        input_message_content=InputTextMessageContent(
-            message_text=message_text,
-            parse_mode=ParseMode.HTML
-        ),
+        input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
         reply_markup=builder.as_markup(),
     )
 
-    await inline_query.answer(
-        results=[result],
-        cache_time=86400,
-        is_personal=True
-    )
+    await inline_query.answer(results=[result], cache_time=86400, is_personal=True)

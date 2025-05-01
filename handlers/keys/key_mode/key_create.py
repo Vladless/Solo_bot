@@ -7,8 +7,6 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from .key_cluster_mode import key_cluster_mode
-from .key_country_mode import key_country_mode
 
 from config import (
     NOTIFY_EXTRA_DAYS,
@@ -19,8 +17,8 @@ from config import (
     USE_NEW_PAYMENT_FLOW,
 )
 from database import (
-    add_connection,
-    check_connection_exists,
+    add_user,
+    check_user_exists,
     create_temporary_data,
     get_balance,
     get_trial,
@@ -39,6 +37,9 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+
+from .key_cluster_mode import key_cluster_mode
+from .key_country_mode import key_country_mode
 
 
 router = Router()
@@ -178,9 +179,19 @@ async def create_key(
     Делегирует выполнение в зависимости от выбранного режима (страна или кластер).
     Также отвечает за первичное подключение пользователя.
     """
-    if not await check_connection_exists(tg_id):
-        await add_connection(tg_id, balance=0.0, trial=0, session=session)
-        logger.info(f"[Connection] Подключение создано для пользователя {tg_id}")
+    if not await check_user_exists(tg_id):
+        from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
+        if from_user:
+            await add_user(
+                tg_id=from_user.id,
+                username=from_user.username,
+                first_name=from_user.first_name,
+                last_name=from_user.last_name,
+                language_code=from_user.language_code,
+                is_bot=from_user.is_bot,
+                session=session,
+            )
+            logger.info(f"[User] Новый пользователь {tg_id} добавлен")
 
     if USE_COUNTRY_SELECTION:
         await key_country_mode(

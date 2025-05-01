@@ -10,6 +10,23 @@ from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 from logger import logger
 
 
+async def send_messages_with_limit(bot: Bot, messages: list[dict], messages_per_second: int = 25):
+    """
+    Отправляет сообщения с ограничением по количеству сообщений в секунду.
+    """
+    batch_size = messages_per_second
+    for i in range(0, len(messages), batch_size):
+        batch = messages[i : i + batch_size]
+        tasks = []
+        for msg in batch:
+            tasks.append(send_notification(bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")))
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception as e:
+            logger.error(f"⚠ Ошибка при отправке сообщений в батче: {e}")
+        await asyncio.sleep(1.0)
+
+
 def rate_limited_send(func):
     async def wrapper(*args, **kwargs):
         while True:
@@ -34,25 +51,17 @@ def rate_limited_send(func):
 async def send_notification(
     bot: Bot,
     tg_id: int,
-    image_filename: str,
+    image_filename: str | None,
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
 ) -> bool:
     """
     Отправляет уведомление пользователю.
-
-    Args:
-        bot: Экземпляр бота для отправки сообщений
-        tg_id: Telegram ID пользователя
-        image_filename: Имя файла изображения в директории img
-        caption: Текст сообщения
-        keyboard: Клавиатура для сообщения (опционально)
-
-    Returns:
-        bool: True если сообщение успешно отправлено, False в случае ошибки
     """
-    photo_path = os.path.join("img", image_filename)
+    if image_filename is None:
+        return await _send_text_notification(bot, tg_id, caption, keyboard)
 
+    photo_path = os.path.join("img", image_filename)
     if os.path.isfile(photo_path):
         return await _send_photo_notification(bot, tg_id, photo_path, image_filename, caption, keyboard)
     else:

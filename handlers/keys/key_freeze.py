@@ -3,7 +3,6 @@ import time
 from typing import Any
 
 from aiogram import F, Router
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -96,13 +95,15 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 record["tg_id"],
                 client_id,
             )
+            added_days = max(leftover / (1000 * 86400), 0.01)
+            total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
 
             await renew_key_in_cluster(
                 cluster_id=cluster_id,
                 email=email,
                 client_id=client_id,
                 new_expiry_time=new_expiry_time,
-                total_gb=TOTAL_GB,
+                total_gb=total_gb,
             )
             text_ok = SUBSCRIPTION_UNFROZEN_MSG
             builder = InlineKeyboardBuilder()

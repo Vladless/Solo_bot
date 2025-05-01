@@ -1,14 +1,22 @@
 import asyncio
 
+from datetime import datetime, timezone
 from typing import Any
 
 import asyncpg
 
-from py3xui import AsyncApi
-
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL, LIMIT_IP, PUBLIC_LINK, SUPERNODE, TOTAL_GB, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-from database import get_servers, store_key, delete_notification
-from handlers.utils import get_least_loaded_cluster
+from bot import bot
+from config import (
+    DATABASE_URL,
+    LIMIT_IP,
+    PUBLIC_LINK,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    SUPERNODE,
+    TOTAL_GB,
+)
+from database import delete_notification, get_servers, store_key
+from handlers.utils import check_server_key_limit, get_least_loaded_cluster
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import (
@@ -17,10 +25,9 @@ from panels.three_xui import (
     delete_client,
     extend_client_key,
     get_client_traffic,
+    get_xui_instance,
     toggle_client,
 )
-
-from datetime import datetime, timezone
 
 
 async def create_key_on_cluster(
@@ -31,9 +38,10 @@ async def create_key_on_cluster(
     expiry_timestamp: int,
     plan: int = None,
     session=None,
+    remnawave_link: str = None,
 ):
     try:
-        servers = await get_servers()
+        servers = await get_servers(include_enabled=True)
         cluster = servers.get(cluster_id)
         server_id_to_store = cluster_id
 
@@ -49,10 +57,29 @@ async def create_key_on_cluster(
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
-        semaphore = asyncio.Semaphore(2)
+        enabled_servers = [s for s in cluster if s.get("enabled", True)]
+        if not enabled_servers:
+            logger.warning(f"[Key Creation] Нет доступных серверов в кластере {cluster_id}")
+            return
 
-        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
-        xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
+        async with asyncpg.create_pool(DATABASE_URL) as pool:
+            async with pool.acquire() as conn:
+                remnawave_servers = [
+                    s
+                    for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, conn)
+                ]
+                xui_servers = [
+                    s
+                    for s in enabled_servers
+                    if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, conn)
+                ]
+
+        if not remnawave_servers and not xui_servers:
+            logger.warning(f"[Key Creation] Нет серверов с доступным лимитом в кластере {cluster_id}")
+            return
+
+        semaphore = asyncio.Semaphore(2)
 
         remnawave_created = False
         remnawave_key = None
@@ -71,6 +98,9 @@ async def create_key_on_cluster(
                     logger.warning("Нет inbound_id у серверов Remnawave")
                 else:
                     traffic_limit_bytes = int((plan or 1) * TOTAL_GB * 1024**3)
+                    short_uuid = None
+                    if remnawave_link and "/" in remnawave_link:
+                        short_uuid = remnawave_link.rstrip("/").split("/")[-1]
 
                     user_data = {
                         "username": email,
@@ -80,6 +110,9 @@ async def create_key_on_cluster(
                         "telegramId": tg_id,
                         "activeUserInbounds": inbound_ids,
                     }
+
+                    if short_uuid:
+                        user_data["shortUuid"] = short_uuid
 
                     result = await remna.create_user(user_data)
                     if not result:
@@ -152,12 +185,7 @@ async def create_client_on_server(
     Создает клиента на указанном сервере.
     """
     async with semaphore:
-        xui = AsyncApi(
-            server_info["api_url"],
-            username=ADMIN_USERNAME,
-            password=ADMIN_PASSWORD,
-            logger=logger,
-        )
+        xui = await get_xui_instance(server_info["api_url"])
 
         inbound_id = server_info.get("inbound_id")
         server_name = server_info.get("server_name", "unknown")
@@ -243,8 +271,13 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
 
         if remnawave_inbound_ids:
             remnawave_server = next(
-                (srv for srv in cluster if srv.get("panel_type", "").lower() == "remnawave" and srv.get("inbound_id") in remnawave_inbound_ids),
-                None
+                (
+                    srv
+                    for srv in cluster
+                    if srv.get("panel_type", "").lower() == "remnawave"
+                    and srv.get("inbound_id") in remnawave_inbound_ids
+                ),
+                None,
             )
 
             if not remnawave_server:
@@ -258,10 +291,11 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                         uuid=client_id,
                         expire_at=expire_iso,
                         active_user_inbounds=remnawave_inbound_ids,
-                        traffic_limit_bytes=total_gb
+                        traffic_limit_bytes=total_gb,
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
+                        await remna.reset_user_traffic(client_id)
                     else:
                         logger.warning(f"Не удалось продлить подписку Remnawave {client_id}")
                 else:
@@ -272,12 +306,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
             server_name = server_info.get("server_name", "unknown")
 
             if panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server_info["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=logger,
-                )
+                xui = await get_xui_instance(server_info["api_url"])
 
                 inbound_id = server_info.get("inbound_id")
 
@@ -344,12 +373,7 @@ async def delete_key_from_cluster(cluster_id, email, client_id):
                 continue
 
             elif panel_type == "3x-ui":
-                xui = AsyncApi(
-                    server_info["api_url"],
-                    username=ADMIN_USERNAME,
-                    password=ADMIN_PASSWORD,
-                    logger=logger,
-                )
+                xui = await get_xui_instance(server_info["api_url"])
 
                 inbound_id = server_info.get("inbound_id")
                 if not inbound_id:
@@ -426,9 +450,9 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     remnawave_key = result.get("subscriptionUrl")
                     logger.info(f"[Update] Remnawave: клиент заново создан, новый UUID: {remnawave_client_id}")
                 else:
-                    logger.error(f"[Update] Ошибка создания Remnawave клиента")
+                    logger.error("[Update] Ошибка создания Remnawave клиента")
             else:
-                logger.error(f"[Update] Не удалось авторизоваться в Remnawave")
+                logger.error("[Update] Не удалось авторизоваться в Remnawave")
 
         if not remnawave_client_id:
             logger.warning(f"[Update] Remnawave client_id не получен. Используется исходный: {client_id}")
@@ -441,12 +465,7 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 logger.warning(f"[Update] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
+            xui = await get_xui_instance(server_info["api_url"])
 
             if SUPERNODE:
                 sub_id = email
@@ -509,9 +528,7 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
     )
     new_cluster_id = cluster_override or await get_least_loaded_cluster()
 
-    new_client_id, remnawave_key = await update_key_on_cluster(
-        tg_id, client_id, email, expiry_time, new_cluster_id
-    )
+    new_client_id, remnawave_key = await update_key_on_cluster(tg_id, client_id, email, expiry_time, new_cluster_id)
 
     servers = await get_servers()
     cluster_servers = servers.get(new_cluster_id, [])
@@ -534,14 +551,7 @@ async def update_subscription(tg_id: int, email: str, session: Any, cluster_over
 async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, Any]:
     """
     Получает трафик пользователя на всех серверах, где у него есть ключ (3x-ui и Remnawave).
-
-    Args:
-        session (Any): Сессия базы данных.
-        tg_id (int): ID пользователя Telegram.
-        email (str): Email пользователя.
-
-    Returns:
-        dict[str, Any]: Структура с данными о трафике.
+    Для Remnawave трафик считается один раз и отображается как "Remnawave (общий):".
     """
     query = "SELECT client_id, server_id FROM keys WHERE tg_id = $1 AND email = $2"
     rows = await session.fetch(query, tg_id, email)
@@ -565,6 +575,10 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
     servers_map = {row["server_name"]: row for row in server_rows}
 
     user_traffic_data = {}
+    tasks = []
+
+    remnawave_client_id = None
+    remnawave_checked = False
 
     async def fetch_traffic(server_info: dict, client_id: str) -> tuple[str, Any]:
         server_name = server_info["server_name"]
@@ -573,8 +587,7 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
 
         try:
             if panel_type == "3x-ui":
-                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
-                await xui.login()
+                xui = await get_xui_instance(api_url)
                 traffic_info = await get_client_traffic(xui, client_id)
                 if traffic_info["status"] == "success" and traffic_info["traffic"]:
                     client_data = traffic_info["traffic"][0]
@@ -582,39 +595,48 @@ async def get_user_traffic(session: Any, tg_id: int, email: str) -> dict[str, An
                     return server_name, round(used_gb, 2)
                 else:
                     return server_name, "Ошибка получения трафика"
-
-            elif panel_type == "remnawave":
-                remna = RemnawaveAPI(api_url)
-                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-                if not logged_in:
-                    return server_name, "Не удалось авторизоваться"
-
-                user_data = await remna.get_user_by_uuid(client_id)
-                if not user_data:
-                    return server_name, "Клиент не найден"
-
-                used_bytes = user_data.get("usedTrafficBytes", 0)
-                used_gb = used_bytes / 1073741824
-                return server_name, round(used_gb, 2)
-
             else:
                 return server_name, f"Неизвестная панель: {panel_type}"
-
         except Exception as e:
             return server_name, f"Ошибка: {e}"
 
-    tasks = []
     for row in rows:
         client_id = row["client_id"]
         server_id = row["server_id"]
 
-        matched_servers = [s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id]
+        matched_servers = [
+            s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id
+        ]
         for server_info in matched_servers:
-            tasks.append(fetch_traffic(server_info, client_id))
+            panel_type = server_info.get("panel_type", "3x-ui").lower()
+
+            if panel_type == "remnawave" and not remnawave_checked:
+                remnawave_client_id = client_id
+                remnawave_api_url = server_info["api_url"]
+                remnawave_checked = True
+            elif panel_type == "3x-ui":
+                tasks.append(fetch_traffic(server_info, client_id))
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
+
     for server, result in results:
         user_traffic_data[server] = result
+
+    if remnawave_client_id:
+        try:
+            remna = RemnawaveAPI(remnawave_api_url)
+            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                user_traffic_data["Remnawave (общий)"] = "Не удалось авторизоваться"
+            else:
+                user_data = await remna.get_user_by_uuid(remnawave_client_id)
+                if not user_data:
+                    user_traffic_data["Remnawave (общий)"] = "Клиент не найден"
+                else:
+                    used_bytes = user_data.get("usedTrafficBytes", 0)
+                    used_gb = round(used_bytes / 1073741824, 2)
+                    user_traffic_data["Remnawave (общий)"] = used_gb
+        except Exception as e:
+            user_traffic_data["Remnawave (общий)"] = f"Ошибка: {e}"
 
     return {"status": "success", "traffic": user_traffic_data}
 
@@ -652,12 +674,7 @@ async def toggle_client_on_cluster(cluster_id: str, email: str, client_id: str, 
         tasks = []
 
         for server_info in cluster:
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
+            xui = await get_xui_instance(server_info["api_url"])
 
             inbound_id = server_info.get("inbound_id")
             server_name = server_info.get("server_name", "unknown")
@@ -760,8 +777,7 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str) -> None:
                     logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                     continue
 
-                xui = AsyncApi(api_url, username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=logger)
-                await xui.login()
+                xui = await get_xui_instance(api_url)
 
                 unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
                 tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))

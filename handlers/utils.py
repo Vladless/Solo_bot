@@ -10,97 +10,105 @@ import asyncpg
 
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
+from datetime import datetime
 from bot import bot
-from config import DATABASE_URL
+from config import ADMIN_ID, DATABASE_URL
 from database import get_all_keys, get_servers
 from logger import logger
 
 
-async def get_usd_rate():
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.cbr-xml-daily.ru/daily_json.js") as response:
-                if response.status == 200:
-                    data = await response.text()
-                    usd = float(json.loads(data)["Valute"]["USD"]["Value"])
-                else:
-                    usd = float(100)
-    except Exception as e:
-        logger.exception(f"Error fetching USD rate: {e}")
-        usd = float(100)
-    return usd
-
-
-def sanitize_key_name(key_name: str) -> str:
-    """
-    Очищает название ключа, оставляя только допустимые символы.
-
-    Args:
-        key_name (str): Исходное название ключа.
-
-    Returns:
-        str: Очищенное название ключа в нижнем регистре.
-    """
-    return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
-
-
-def generate_random_email(length: int = 6) -> str:
+def generate_random_email(length: int = 8) -> str:
     """
     Генерирует случайный email с заданной длиной.
-
-    Args:
-        length (int, optional): Длина случайной строки. По умолчанию 6.
-
-    Returns:
-        str: Сгенерированная случайная строка.
     """
     return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)) if length > 0 else ""
 
 
 async def get_least_loaded_cluster() -> str:
     """
-    Определяет кластер с наименьшей загрузкой.
-
-    Returns:
-        str: Идентификатор наименее загруженного кластера.
+    Возвращает кластер с наименьшей загрузкой, где есть хотя бы один сервер с доступным лимитом.
     """
     servers = await get_servers()
     server_to_cluster = {}
-    cluster_loads = dict.fromkeys(servers.keys(), 0)
+    cluster_loads = {}
+
     for cluster_name, cluster_servers in servers.items():
+        cluster_loads[cluster_name] = 0
         for server in cluster_servers:
             server_to_cluster[server["server_name"]] = cluster_name
-    logger.info(f"Сопоставление серверов и кластеров: {server_to_cluster}")
+
     async with asyncpg.create_pool(DATABASE_URL) as pool:
         async with pool.acquire() as conn:
             keys = await get_all_keys(conn)
             for key in keys:
                 server_id = key["server_id"]
-
                 cluster_id = server_to_cluster.get(server_id, server_id)
-
                 if cluster_id in cluster_loads:
                     cluster_loads[cluster_id] += 1
-                else:
-                    logger.warning(f"⚠️ Сервер {server_id} не найден в известных кластерах!")
-    logger.info(f"Загруженность кластеров после запроса к БД: {cluster_loads}")
-    if not cluster_loads:
-        logger.warning("⚠️ В базе данных или конфигурации нет кластеров!")
+
+            available_clusters = {}
+            for cluster_name, cluster_servers in servers.items():
+                for server in cluster_servers:
+                    if server.get("enabled", True) and await check_server_key_limit(server, conn):
+                        available_clusters[cluster_name] = cluster_loads[cluster_name]
+                        break
+
+    if not available_clusters:
+        logger.warning("❌ Нет доступных кластеров с лимитом ключей!")
         return "cluster1"
-    least_loaded_cluster = min(cluster_loads, key=lambda k: (cluster_loads[k], k))
-    logger.info(f"✅ Выбран наименее загруженный кластер: {least_loaded_cluster}")
+
+    least_loaded_cluster = min(available_clusters, key=lambda k: (available_clusters[k], k))
+    logger.info(f"✅ Выбран наименее загруженный кластер с лимитом: {least_loaded_cluster}")
 
     return least_loaded_cluster
+
+
+async def check_server_key_limit(server_info: dict, conn) -> bool:
+    """
+    Универсальная проверка лимита ключей для сервера в режимах кластеров и стран.
+    """
+    server_name = server_info.get("server_name")
+    cluster_name = server_info.get("cluster_name")
+    max_keys = server_info.get("max_keys")
+
+    if not max_keys:
+        return True
+
+    identifier = cluster_name if cluster_name else server_name
+    total_keys = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", identifier)
+
+    if total_keys >= max_keys:
+        logger.warning(f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}")
+        return False
+
+    usage_percent = total_keys / max_keys
+
+    if usage_percent >= 0.9:
+        notif_key = f"server_warn_{server_name}"
+        already_sent = await conn.fetchval(
+            "SELECT EXISTS (SELECT 1 FROM notifications WHERE tg_id = 0 AND notification_type = $1)", notif_key
+        )
+        if not already_sent:
+            for admin_id in ADMIN_ID:
+                try:
+                    await bot.send_message(
+                        admin_id,
+                        f"⚠️ Сервер <b>{server_name}</b> почти заполнен ({int(usage_percent * 100)}%)."
+                        f"\nРекомендуется создать новый для балансировки.",
+                    )
+                except Exception:
+                    pass
+            await conn.execute(
+                "INSERT INTO notifications (tg_id, notification_type) VALUES (0, $1) ON CONFLICT DO NOTHING",
+                notif_key,
+            )
+
+    return True
 
 
 async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
-
-    Args:
-        tg_id (int): Идентификатор пользователя в Telegram.
-        callback_query (Optional[object], optional): Объект запроса обратного вызова. По умолчанию None.
-        message (str, optional): Текст сообщения об ошибке. По умолчанию пустая строка.
     """
     try:
         if callback_query and hasattr(callback_query, "message"):
@@ -122,14 +130,18 @@ def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
         return form3
     return {1: form1, 2: form2, 3: form2, 4: form2}.get(n % 10, form3)
 
+
 def format_months(months: int) -> str:
     """Форматирует количество месяцев с правильным склонением"""
     if months <= 0:
         return "0 месяцев"
     return f"{months} {get_plural_form(months, 'месяц', 'месяца', 'месяцев')}"
 
+
 def format_days(days: int) -> str:
-    """Форматирует количество дней с правильным склонением"""
+    """
+    Форматирует количество дней с правильным склонением.
+    """
     if days <= 0:
         return "0 дней"
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
@@ -139,6 +151,20 @@ def format_hours(hours: int) -> str:
     if hours <= 0:
         return "0 часов"
     return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
+def format_minutes(minutes: int) -> str:
+    """Форматирует количество минут с правильным склонением"""
+    if minutes <= 0:
+        return "0 минут"
+    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
+
+
+def format_hours(hours: int) -> str:
+    """Форматирует количество часов с правильным склонением"""
+    if hours <= 0:
+        return "0 часов"
+    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
 
 def format_minutes(minutes: int) -> str:
     """Форматирует количество минут с правильным склонением"""
@@ -157,15 +183,6 @@ async def edit_or_send_message(
 ):
     """
     Универсальная функция для редактирования исходного сообщения target_message.
-
-    - Если media_path указан и существует, считается, что сообщение содержит фото, и используется редактирование медиа
-      (замена фото и подписи) через edit_media. Если редактирование не удаётся, отправляется новое сообщение с фото.
-
-    - Если media_path не указан:
-        - Если force_text=False и target_message уже имеет caption, пытаемся отредактировать подпись (edit_caption).
-        - Иначе (или если редактирование caption не удалось) — редактируем текст (edit_text).
-
-    В случае неудачи fallback – отправка нового сообщения.
     """
     if media_path and os.path.isfile(media_path):
         async with aiofiles.open(media_path, "rb") as f:
@@ -210,11 +227,6 @@ async def edit_or_send_message(
 def convert_to_bytes(value: float, unit: str) -> int:
     """
     Конвертирует значение с указанной единицей измерения в байты.
-    Args:
-        value (float): Числовое значение.
-        unit (str): Единица измерения ('KB', 'MB', 'GB', 'TB').
-    Returns:
-        int: Количество байт.
     """
     KB = 1024
     MB = KB * 1024
@@ -244,3 +256,46 @@ async def is_full_remnawave_cluster(cluster_id: str, session) -> bool:
         cluster_id,
     )
     return server and server["panel_type"].lower() == "remnawave"
+
+
+def sanitize_key_name(key_name: str) -> str:
+    """
+    Очищает название ключа, оставляя только допустимые символы.
+
+    Args:
+        key_name (str): Исходное название ключа.
+
+    Returns:
+        str: Очищенное название ключа в нижнем регистре.
+    """
+    return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
+
+
+RUSSIAN_MONTHS = {
+    'January': 'Января',
+    'February': 'Февраля',
+    'March': 'Марта',
+    'April': 'Апреля',
+    'May': 'Мая',
+    'June': 'Июня',
+    'July': 'Июля',
+    'August': 'Августа',
+    'September': 'Сентября',
+    'October': 'Октября',
+    'November': 'Ноября',
+    'December': 'Декабря'
+}
+
+
+def get_russian_month(date: datetime) -> str:
+    """
+    Преобразует английское название месяца в русское.
+    
+    Args:
+        date: Объект datetime, из которого извлекается месяц.
+    
+    Returns:
+        Название месяца на русском языке.
+    """
+    english_month = date.strftime("%B")
+    return RUSSIAN_MONTHS.get(english_month, english_month)

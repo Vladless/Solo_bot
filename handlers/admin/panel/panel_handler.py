@@ -1,15 +1,14 @@
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from aiogram.exceptions import TelegramBadRequest
 
 from bot import version
 from filters.admin import IsAdminFilter
+from logger import logger
 
 from .keyboard import AdminPanelCallback, build_panel_kb
-
-from logger import logger
 
 
 router = Router()

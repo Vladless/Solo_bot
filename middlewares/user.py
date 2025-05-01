@@ -51,6 +51,7 @@ class UserMiddleware(BaseMiddleware):
             language_code=user.language_code,
             is_bot=user.is_bot,
             session=session,
+            only_if_exists=True,
         )
 
         logger.debug(f"Получены данные пользователя из БД: {user.id}")
