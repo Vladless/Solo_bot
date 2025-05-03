@@ -1,15 +1,20 @@
 import asyncio
-
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
-
 from aiogram import Bot, Router, types
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from html import escape
 
-from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE, NOTIFY_INACTIVE_TRAFFIC, SUPPORT_CHAT_URL, TRIAL_TIME
+from config import (
+    NOTIFY_EXTRA_DAYS,
+    NOTIFY_INACTIVE,
+    NOTIFY_INACTIVE_TRAFFIC,
+    SUPPORT_CHAT_URL,
+    TRIAL_TIME
+)
 from database import (
     add_notification,
     check_notifications_bulk,
@@ -17,16 +22,17 @@ from database import (
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import get_user_traffic
-from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG, ZERO_TRAFFIC_MSG
+from handlers.texts import (
+    TRIAL_INACTIVE_BONUS_MSG,
+    TRIAL_INACTIVE_FIRST_MSG,
+    ZERO_TRAFFIC_MSG
+)
 from handlers.utils import format_days
 from logger import logger
-from handlers.utils import format_days
-
 from .notify_utils import send_messages_with_limit, send_notification
 
 
 router = Router()
-
 moscow_tz = pytz.timezone("Europe/Moscow")
 
 
@@ -48,7 +54,7 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         username = user["username"]
         first_name = user["first_name"]
         last_name = user["last_name"]
-        display_name = username or first_name or last_name or "Пользователь"
+        display_name = escape(username or first_name or last_name or "Пользователь")
 
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -75,19 +81,21 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
                 display_name=display_name, trial_time_formatted=format_days(TRIAL_TIME)
             )
 
-        try:
-            await bot.send_message(tg_id, message, reply_markup=keyboard)
-            logger.info(f"📩 Отправлено уведомление неактивному пользователю {tg_id}.")
-            await add_notification(tg_id, "inactive_trial", session=conn)
+        messages.append({
+            "tg_id": tg_id,
+            "text": message,
+            "keyboard": keyboard,
+        })
+        await add_notification(tg_id, "inactive_trial", session=conn)
 
-        except TelegramForbiddenError:
-            logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}. Добавляем в blocked_users.")
-            await create_blocked_user(tg_id, conn)
-
-        except Exception as e:
-            logger.error(f"⚠ Ошибка при отправке уведомления пользователю {tg_id}: {e}")
-
-        await asyncio.sleep(1)
+    if messages:
+        await send_messages_with_limit(
+            bot,
+            messages,
+            conn=conn,
+            source_file="special_notifications"
+        )
+        logger.info(f"Отправлено {len(messages)} уведомлений неактивным пользователям.")
 
     logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
 
