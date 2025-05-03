@@ -18,6 +18,7 @@ from config import (
     TOTAL_GB,
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
+    RANDOM_SUBSCRIPTIONS,
 )
 from database import get_key_details, get_servers
 from handlers.utils import convert_to_bytes
@@ -212,8 +213,9 @@ async def handle_subscription(request: web.Request) -> web.Response:
 
         query_string = request.query_string
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
-        random.shuffle(combined_subscriptions)
-
+        
+        if RANDOM_SUBSCRIPTIONS:
+            random.shuffle(combined_subscriptions)
         cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
         base64_encoded = base64.b64encode("\n".join(cleaned_subscriptions).encode("utf-8")).decode("utf-8")
