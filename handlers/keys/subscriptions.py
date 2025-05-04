@@ -12,6 +12,7 @@ from aiohttp import web
 
 from config import (
     DATABASE_URL,
+    RANDOM_SUBSCRIPTIONS,
     PROJECT_NAME,
     SUPERNODE,
     SUPPORT_CHAT_URL,
@@ -212,7 +213,8 @@ async def handle_subscription(request: web.Request) -> web.Response:
 
         query_string = request.query_string
         combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
-        random.shuffle(combined_subscriptions)
+        if RANDOM_SUBSCRIPTIONS:
+            random.shuffle(combined_subscriptions)
 
         cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
