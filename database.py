@@ -1490,16 +1490,14 @@ async def get_tracking_source_stats(code: str, session) -> dict:
             COUNT(DISTINCT u.tg_id) AS registrations,
             COUNT(DISTINCT CASE WHEN u.trial = 1 THEN u.tg_id END) AS trials,
             COUNT(DISTINCT CASE
-                WHEN p.status = 'success' AND NOT EXISTS (
-                    SELECT 1 FROM keys k WHERE k.tg_id = u.tg_id
-                ) THEN u.tg_id
+                WHEN p.status = 'success' THEN u.tg_id
             END) AS payments
         FROM tracking_sources ts
         LEFT JOIN users u ON u.source_code = ts.code
         LEFT JOIN payments p ON p.tg_id = u.tg_id
         WHERE ts.code = $1
         GROUP BY ts.code, ts.name, ts.created_at
-    """,
+        """,
         code,
     )
     return dict(result) if result else {}
