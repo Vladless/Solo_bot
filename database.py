@@ -846,9 +846,31 @@ async def upsert_user(
 
         if only_if_exists:
             logger.debug(f"[upsert_user] Режим only_if_exists: проверяю наличие пользователя {tg_id}")
+            exists = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM users WHERE tg_id = $1)", tg_id)
+            if not exists:
+                return None
+
             user_data = await conn.fetchrow(
-                "SELECT tg_id, username, first_name, last_name, language_code, is_bot, created_at, updated_at FROM users WHERE tg_id = $1",
+                """
+                UPDATE users 
+                SET 
+                    username = COALESCE($2, username),
+                    first_name = COALESCE($3, first_name),
+                    last_name = COALESCE($4, last_name),
+                    language_code = COALESCE($5, language_code),
+                    is_bot = $6,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE tg_id = $1
+                RETURNING 
+                    tg_id, username, first_name, last_name, language_code, 
+                    is_bot, created_at, updated_at
+                """,
                 tg_id,
+                username,
+                first_name,
+                last_name,
+                language_code,
+                is_bot,
             )
             return dict(user_data) if user_data else None
 
