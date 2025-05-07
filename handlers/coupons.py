@@ -69,7 +69,14 @@ async def process_coupon_code(message: Message, state: FSMContext, session: Any)
     await activate_coupon(message, state, session, coupon_code=coupon_code)
 
 
-async def activate_coupon(message: Message, state: FSMContext, session: Any, coupon_code: str, admin: bool = False):
+async def activate_coupon(
+    message: Message,
+    state: FSMContext,
+    session: Any,
+    coupon_code: str,
+    admin: bool = False,
+    user_data: dict | None = None,
+):
     logger.info(f"Активация купона: {coupon_code}")
     coupon_record = await get_coupon_by_code(coupon_code, session)
 
@@ -84,7 +91,8 @@ async def activate_coupon(message: Message, state: FSMContext, session: Any, cou
         await state.clear()
         return
 
-    user_id = message.chat.id
+    user = user_data or message.from_user or message.chat
+    user_id = user["tg_id"] if isinstance(user, dict) else user.id
 
     usage = await check_coupon_usage(coupon_record["id"], user_id, session)
     if usage:
@@ -94,16 +102,18 @@ async def activate_coupon(message: Message, state: FSMContext, session: Any, cou
 
     user_exists = await check_user_exists(user_id)
     if not user_exists:
-        from_user = message.from_user
-        await add_user(
-            tg_id=from_user.id,
-            username=from_user.username,
-            first_name=from_user.first_name,
-            last_name=from_user.last_name,
-            language_code=from_user.language_code,
-            is_bot=from_user.is_bot,
-            session=session,
-        )
+        if isinstance(user, dict):
+            await add_user(session=session, **user)
+        else:
+            await add_user(
+                tg_id=user.id,
+                username=getattr(user, "username", None),
+                first_name=getattr(user, "first_name", None),
+                last_name=getattr(user, "last_name", None),
+                language_code=getattr(user, "language_code", None),
+                is_bot=getattr(user, "is_bot", False),
+                session=session,
+            )
 
     if coupon_record["amount"] > 0:
         try:
