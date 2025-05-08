@@ -1086,7 +1086,8 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
 
 async def delete_user_data(session: Any, tg_id: int):
     await session.execute("DELETE FROM notifications WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
+    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1", tg_id)
+    await session.execute("UPDATE gifts SET recipient_tg_id = NULL WHERE recipient_tg_id = $1", tg_id)
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1 OR referred_tg_id = $1", tg_id)
     await session.execute("DELETE FROM coupon_usages WHERE user_id = $1", tg_id)
