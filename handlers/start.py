@@ -142,7 +142,7 @@ async def process_start_logic(
     session: Any,
     admin: bool,
     text_to_process: str = None,
-    user_data: dict | None = None
+    user_data: dict | None = None,
 ):
     text = text_to_process or message.text or message.caption
     user_data = user_data or {

@@ -1,6 +1,6 @@
 import csv
-from datetime import datetime
 
+from datetime import datetime
 from io import StringIO
 from typing import Any
 
@@ -185,9 +185,9 @@ async def export_keys_csv(session) -> BufferedInputFile:
     buffer.write("tg_id,client_id,email,created_at,expiry_time,key,server_id,is_frozen,alias\n")
 
     for row in keys:
-        created_at = datetime.utcfromtimestamp(row['created_at'] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        expiry_time = datetime.utcfromtimestamp(row['expiry_time'] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        
+        created_at = datetime.utcfromtimestamp(row["created_at"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        expiry_time = datetime.utcfromtimestamp(row["expiry_time"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+
         buffer.write(
             f"{row['tg_id']},{row['client_id']},{row['email']},"
             f"{created_at},{expiry_time},{row['key']},"

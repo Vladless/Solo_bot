@@ -1,8 +1,11 @@
 import asyncio
+
 from datetime import datetime, timedelta
+
 import asyncpg
-from aiogram import Bot, Router
 import pytz
+
+from aiogram import Bot, Router
 
 from config import (
     DATABASE_URL,
@@ -176,7 +179,9 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
         if NOTIFY_RENEW:
             try:
-                await process_auto_renew_or_notify(bot, conn, key, notification_id, 1, "notify_24h.jpg", notification_text)
+                await process_auto_renew_or_notify(
+                    bot, conn, key, notification_id, 1, "notify_24h.jpg", notification_text
+                )
             except Exception as e:
                 logger.error(f"Ошибка авто-продления/уведомления для пользователя {tg_id}: {e}")
                 continue
@@ -193,14 +198,16 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
     if messages:
         results = await send_messages_with_limit(bot, messages, conn=conn)
         sent_count = 0
-        for msg, result in zip(messages, results):
+        for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
             if result:
                 await add_notification(tg_id, msg["notification_id"], session=conn)
                 sent_count += 1
                 logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
-                logger.warning(f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                )
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 24 часа.")
 
     logger.info("Обработка всех уведомлений за 24 часа завершена.")
@@ -273,14 +280,16 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
     if messages:
         results = await send_messages_with_limit(bot, messages, conn=conn)
         sent_count = 0
-        for msg, result in zip(messages, results):
+        for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
             if result:
                 await add_notification(tg_id, msg["notification_id"], session=conn)
                 sent_count += 1
                 logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
-                logger.warning(f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                )
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 10 часов.")
 
     logger.info("Обработка всех уведомлений за 10 часов завершена.")
@@ -395,7 +404,7 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
     if messages:
         results = await send_messages_with_limit(bot, messages, conn=conn)
         sent_count = 0
-        for msg, result in zip(messages, results):
+        for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
             email = msg["email"]
             if result:
@@ -403,7 +412,9 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 sent_count += 1
                 logger.info(f"📢 Отправлено уведомление об истекшем ключе для подписки {email} пользователю {tg_id}.")
             else:
-                logger.warning(f"📢 Не удалось отправить уведомление об истекшем ключе для подписки {email} пользователю {tg_id}.")
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекшем ключе для подписки {email} пользователю {tg_id}."
+                )
         logger.info(f"Отправлено {sent_count} уведомлений об истекших ключах.")
 
     logger.info("Обработка истекших ключей завершена.")

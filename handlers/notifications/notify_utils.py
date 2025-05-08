@@ -3,6 +3,7 @@ import os
 
 import aiofiles
 import asyncpg
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
@@ -16,7 +17,7 @@ async def send_messages_with_limit(
     messages: list[dict],
     conn: asyncpg.Connection = None,
     source_file: str = None,
-    messages_per_second: int = 25
+    messages_per_second: int = 25,
 ):
     """
     Отправляет сообщения с ограничением по количеству сообщений в секунду.
@@ -28,16 +29,10 @@ async def send_messages_with_limit(
         batch = messages[i : i + batch_size]
         tasks = []
         for msg in batch:
-            tasks.append(send_notification(
-                bot,
-                msg["tg_id"],
-                msg.get("photo"),
-                msg["text"],
-                msg.get("keyboard")
-            ))
+            tasks.append(send_notification(bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")))
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
         processed_results = []
-        for msg, result in zip(batch, batch_results):
+        for msg, result in zip(batch, batch_results, strict=False):
             tg_id = msg["tg_id"]
             if isinstance(result, bool) and result:
                 processed_results.append(True)
@@ -94,6 +89,7 @@ def rate_limited_send(func):
                 tg_id = kwargs.get("tg_id") or args[1]
                 logger.error(f"❌ Ошибка отправки сообщения пользователю {tg_id}: {e}")
                 return False
+
     return wrapper
 
 

@@ -3,8 +3,8 @@ import uuid
 
 from datetime import datetime
 from typing import Any
-import asyncpg
 
+import asyncpg
 import pytz
 
 from aiogram import F, Router
@@ -14,10 +14,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
 from config import (
-    DATABASE_URL,
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
+    DATABASE_URL,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
@@ -39,7 +39,12 @@ from handlers.texts import (
     SELECT_COUNTRY_MSG,
     key_message_success,
 )
-from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster, is_full_remnawave_cluster
+from handlers.utils import (
+    edit_or_send_message,
+    generate_random_email,
+    get_least_loaded_cluster,
+    is_full_remnawave_cluster,
+)
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance

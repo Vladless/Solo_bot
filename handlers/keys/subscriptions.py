@@ -12,8 +12,8 @@ from aiohttp import web
 
 from config import (
     DATABASE_URL,
-    RANDOM_SUBSCRIPTIONS,
     PROJECT_NAME,
+    RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
     SUPPORT_CHAT_URL,
     USERNAME_BOT,
@@ -41,7 +41,9 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
         return [], {}
 
 
-async def combine_unique_lines(urls: list[str], identifier: str, query_string: str) -> tuple[list[str], list[dict[str, str]]]:
+async def combine_unique_lines(
+    urls: list[str], identifier: str, query_string: str
+) -> tuple[list[str], list[dict[str, str]]]:
     if SUPERNODE:
         logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}")
         if not urls:
@@ -82,7 +84,9 @@ async def get_subscription_urls(server_id: str, email: str, conn, include_remnaw
     return urls
 
 
-def calculate_traffic(cleaned_subscriptions: list[str], expiry_time_ms: int | None, headers_list: list[dict[str, str]]) -> str:
+def calculate_traffic(
+    cleaned_subscriptions: list[str], expiry_time_ms: int | None, headers_list: list[dict[str, str]]
+) -> str:
     logger.debug(f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}")
     expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
 

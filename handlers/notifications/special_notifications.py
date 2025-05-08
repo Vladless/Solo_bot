@@ -1,8 +1,10 @@
 import asyncio
+
 from datetime import datetime, timedelta
 
 import asyncpg
 import pytz
+
 from aiogram import Bot, Router, types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -23,6 +25,7 @@ from handlers.texts import (
 )
 from handlers.utils import format_days
 from logger import logger
+
 from .notify_utils import send_messages_with_limit, send_notification
 
 
@@ -76,14 +79,10 @@ async def notify_inactive_trial_users(bot: Bot, conn: asyncpg.Connection):
         })
     if messages:
         results = await send_messages_with_limit(
-            bot,
-            messages,
-            conn=conn,
-            source_file="special_notifications",
-            messages_per_second=25
+            bot, messages, conn=conn, source_file="special_notifications", messages_per_second=25
         )
         sent_count = 0
-        for msg, result in zip(messages, results):
+        for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
             if result:
                 await add_notification(tg_id, msg["notification_id"], session=conn)
@@ -148,9 +147,7 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
         )
 
         try:
-            await conn.execute(
-                "UPDATE keys SET notified = TRUE WHERE tg_id = $1 AND client_id = $2", tg_id, client_id
-            )
+            await conn.execute("UPDATE keys SET notified = TRUE WHERE tg_id = $1 AND client_id = $2", tg_id, client_id)
         except Exception as e:
             logger.error(f"Ошибка обновления notified для пользователя {tg_id} (client_id: {client_id}): {e}")
             continue
@@ -171,14 +168,10 @@ async def notify_users_no_traffic(bot: Bot, conn: asyncpg.Connection, current_ti
 
     if messages:
         results = await send_messages_with_limit(
-            bot,
-            messages,
-            conn=conn,
-            source_file="special_notifications",
-            messages_per_second=25
+            bot, messages, conn=conn, source_file="special_notifications", messages_per_second=25
         )
         sent_count = 0
-        for msg, result in zip(messages, results):
+        for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
             if result:
                 sent_count += 1

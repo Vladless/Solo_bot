@@ -5,11 +5,10 @@ from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
 from .admin import AdminMiddleware
 from .loggings import LoggingMiddleware
+from .maintenance import MaintenanceModeMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
-from .maintenance import MaintenanceModeMiddleware
-
 
 
 def register_middleware(
@@ -17,13 +16,12 @@ def register_middleware(
     middlewares: Iterable[BaseMiddleware | type[BaseMiddleware]] | None = None,
     exclude: Iterable[str] | None = None,
 ) -> None:
-    """Регистрирует middleware в диспетчере.
-    """
+    """Регистрирует middleware в диспетчере."""
     if middlewares is None:
         available_middlewares = {
             "admin": AdminMiddleware(),
             "session": SessionMiddleware(),
-            "maintenance": MaintenanceModeMiddleware(), 
+            "maintenance": MaintenanceModeMiddleware(),
             "logging": LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
