@@ -246,6 +246,8 @@ async def process_start_logic(
                 await show_start_menu(message, admin, session)
         else:
             await show_start_menu(message, admin, session)
+        
+        await state.clear()
 
     except Exception as e:
         logger.error(f"Ошибка при обработке текста {text} — {e}", exc_info=True)
