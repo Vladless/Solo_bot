@@ -75,35 +75,6 @@ async def start_command(message: Message, state: FSMContext, session: Any, admin
 
     state_data = await state.get_data()
     text_to_process = state_data.get("original_text", message.text)
-
-    if CHANNEL_EXISTS and CHANNEL_REQUIRED:
-        try:
-            member = await bot.get_chat_member(CHANNEL_ID, message.chat.id)
-            if member.status not in ["member", "administrator", "creator"]:
-                await state.update_data(original_text=text_to_process)
-                builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
-                await edit_or_send_message(
-                    target_message=message,
-                    text=SUBSCRIPTION_REQUIRED_MSG,
-                    reply_markup=builder.as_markup(),
-                )
-                return
-            else:
-                logger.info(
-                    f"Пользователь {message.chat.id} подписан на канал (статус: {member.status}). Продолжаем работу."
-                )
-        except Exception as e:
-            logger.error(f"Ошибка проверки подписки пользователя {message.chat.id}: {e}")
-            await state.update_data(start_text=text_to_process)
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
-            await edit_or_send_message(
-                target_message=message,
-                text=SUBSCRIPTION_REQUIRED_MSG,
-                reply_markup=builder.as_markup(),
-            )
-            return
     await process_start_logic(message, state, session, admin, text_to_process)
 
 
@@ -126,10 +97,16 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         else:
             await callback_query.answer(SUBSCRIPTION_CONFIRMED_MSG)
             data = await state.get_data()
-            original_text = data.get("original_text")
-            if not original_text:
-                original_text = callback_query.message.text
-            await process_start_logic(callback_query.message, state, session, admin, text_to_process=original_text)
+            original_text = data.get("original_text") or callback_query.message.text
+            user_data = data.get("user_data")
+            await process_start_logic(
+                message=callback_query.message,
+                state=state,
+                session=session,
+                admin=admin,
+                text_to_process=original_text,
+                user_data=user_data
+            )
             logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
     except Exception as e:
         logger.error(f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}", exc_info=True)
@@ -153,6 +130,55 @@ async def process_start_logic(
         "language_code": getattr(message.from_user, "language_code", None),
         "is_bot": getattr(message.from_user, "is_bot", False),
     }
+
+async def process_start_logic(
+    message: Message,
+    state: FSMContext,
+    session: Any,
+    admin: bool,
+    text_to_process: str = None,
+    user_data: dict | None = None,
+):
+    from config import CHANNEL_EXISTS, CHANNEL_REQUIRED, CHANNEL_ID, CHANNEL_URL
+    from handlers.texts import SUBSCRIPTION_REQUIRED_MSG
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from aiogram.types import InlineKeyboardButton
+
+    user_data = user_data or {
+        "tg_id": (message.from_user or message.chat).id,
+        "username": getattr(message.from_user, "username", None),
+        "first_name": getattr(message.from_user, "first_name", None),
+        "last_name": getattr(message.from_user, "last_name", None),
+        "language_code": getattr(message.from_user, "language_code", None),
+        "is_bot": getattr(message.from_user, "is_bot", False),
+    }
+
+    text = text_to_process or message.text or message.caption
+
+    if CHANNEL_EXISTS and CHANNEL_REQUIRED:
+        try:
+            member = await bot.get_chat_member(CHANNEL_ID, user_data["tg_id"])
+            if member.status not in ["member", "administrator", "creator"]:
+                await state.update_data(original_text=text, user_data=user_data)
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+                await edit_or_send_message(
+                    target_message=message,
+                    text=SUBSCRIPTION_REQUIRED_MSG,
+                    reply_markup=builder.as_markup(),
+                )
+                return
+        except Exception as e:
+            logger.error(f"Ошибка проверки подписки для {user_data['tg_id']}: {e}")
+            await state.update_data(original_text=text, user_data=user_data)
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+            await edit_or_send_message(
+                target_message=message,
+                text=SUBSCRIPTION_REQUIRED_MSG,
+                reply_markup=builder.as_markup(),
+            )
+            return
 
     if not text:
         logger.info(f"[StartLogic] Текста нет — вызываю стартовое меню для {user_data['tg_id']}")
