@@ -3,21 +3,21 @@ import uuid
 
 from datetime import datetime
 from typing import Any
-import asyncpg
 
+import asyncpg
 import pytz
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from py3xui import AsyncApi
 
 from config import (
-    DATABASE_URL,
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
+    DATABASE_URL,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
@@ -39,7 +39,12 @@ from handlers.texts import (
     SELECT_COUNTRY_MSG,
     key_message_success,
 )
-from handlers.utils import edit_or_send_message, generate_random_email, get_least_loaded_cluster
+from handlers.utils import (
+    edit_or_send_message,
+    generate_random_email,
+    get_least_loaded_cluster,
+    is_full_remnawave_cluster,
+)
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance
@@ -289,6 +294,12 @@ async def finalize_key_creation(
         remnawave_link = None
         created_at = int(datetime.now(moscow_tz).timestamp() * 1000)
 
+        cluster_info = await check_server_name_by_cluster(selected_country, session)
+        if not cluster_info:
+            raise ValueError(f"Кластер для сервера {selected_country} не найден")
+
+        is_full_remnawave = await is_full_remnawave_cluster(cluster_info["cluster_name"], session)
+
         if old_key_name:
             old_server_id = old_key_details.get("server_id")
             if old_server_id:
@@ -329,7 +340,7 @@ async def finalize_key_creation(
                     except Exception as e:
                         logger.warning(f"[Delete] Ошибка при удалении клиента с сервера {old_server_id}: {e}")
 
-        if panel_type == "remnawave":
+        if panel_type == "remnawave" or is_full_remnawave:
             remna = RemnawaveAPI(server_info["api_url"])
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({selected_country})")
@@ -424,8 +435,16 @@ async def finalize_key_creation(
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    if CONNECT_PHONE_BUTTON:
+
+    is_full_remnawave = await is_full_remnawave_cluster(cluster_info["cluster_name"], session)
+    if is_full_remnawave and (public_link or remnawave_link):
+        builder.row(
+            InlineKeyboardButton(
+                text=CONNECT_DEVICE,
+                web_app=WebAppInfo(url=public_link or remnawave_link),
+            )
+        )
+    elif CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(
             InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
@@ -433,6 +452,7 @@ async def finalize_key_creation(
         )
     else:
         builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

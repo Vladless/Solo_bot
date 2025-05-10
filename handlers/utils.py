@@ -4,13 +4,14 @@ import re
 import secrets
 import string
 
+from datetime import datetime
+
 import aiofiles
 import aiohttp
 import asyncpg
 
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InputMediaPhoto, Message
 
-from datetime import datetime
 from bot import bot
 from config import ADMIN_ID, DATABASE_URL
 from database import get_all_keys, get_servers
@@ -146,11 +147,13 @@ def format_days(days: int) -> str:
         return "0 дней"
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
 
+
 def format_hours(hours: int) -> str:
     """Форматирует количество часов с правильным склонением"""
     if hours <= 0:
         return "0 часов"
     return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
+
 
 def format_minutes(minutes: int) -> str:
     """Форматирует количество минут с правильным склонением"""
@@ -272,28 +275,28 @@ def sanitize_key_name(key_name: str) -> str:
 
 
 RUSSIAN_MONTHS = {
-    'January': 'Января',
-    'February': 'Февраля',
-    'March': 'Марта',
-    'April': 'Апреля',
-    'May': 'Мая',
-    'June': 'Июня',
-    'July': 'Июля',
-    'August': 'Августа',
-    'September': 'Сентября',
-    'October': 'Октября',
-    'November': 'Ноября',
-    'December': 'Декабря'
+    "January": "Января",
+    "February": "Февраля",
+    "March": "Марта",
+    "April": "Апреля",
+    "May": "Мая",
+    "June": "Июня",
+    "July": "Июля",
+    "August": "Августа",
+    "September": "Сентября",
+    "October": "Октября",
+    "November": "Ноября",
+    "December": "Декабря",
 }
 
 
 def get_russian_month(date: datetime) -> str:
     """
     Преобразует английское название месяца в русское.
-    
+
     Args:
         date: Объект datetime, из которого извлекается месяц.
-    
+
     Returns:
         Название месяца на русском языке.
     """

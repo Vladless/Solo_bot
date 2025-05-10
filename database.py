@@ -846,9 +846,31 @@ async def upsert_user(
 
         if only_if_exists:
             logger.debug(f"[upsert_user] Режим only_if_exists: проверяю наличие пользователя {tg_id}")
+            exists = await conn.fetchval("SELECT EXISTS(SELECT 1 FROM users WHERE tg_id = $1)", tg_id)
+            if not exists:
+                return None
+
             user_data = await conn.fetchrow(
-                "SELECT tg_id, username, first_name, last_name, language_code, is_bot, created_at, updated_at FROM users WHERE tg_id = $1",
+                """
+                UPDATE users 
+                SET 
+                    username = COALESCE($2, username),
+                    first_name = COALESCE($3, first_name),
+                    last_name = COALESCE($4, last_name),
+                    language_code = COALESCE($5, language_code),
+                    is_bot = $6,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE tg_id = $1
+                RETURNING 
+                    tg_id, username, first_name, last_name, language_code, 
+                    is_bot, created_at, updated_at
+                """,
                 tg_id,
+                username,
+                first_name,
+                last_name,
+                language_code,
+                is_bot,
             )
             return dict(user_data) if user_data else None
 
@@ -1064,7 +1086,8 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
 
 async def delete_user_data(session: Any, tg_id: int):
     await session.execute("DELETE FROM notifications WHERE tg_id = $1", tg_id)
-    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1 OR recipient_tg_id = $1", tg_id)
+    await session.execute("DELETE FROM gifts WHERE sender_tg_id = $1", tg_id)
+    await session.execute("UPDATE gifts SET recipient_tg_id = NULL WHERE recipient_tg_id = $1", tg_id)
     await session.execute("DELETE FROM payments WHERE tg_id = $1", tg_id)
     await session.execute("DELETE FROM referrals WHERE referrer_tg_id = $1 OR referred_tg_id = $1", tg_id)
     await session.execute("DELETE FROM coupon_usages WHERE user_id = $1", tg_id)
@@ -1468,16 +1491,14 @@ async def get_tracking_source_stats(code: str, session) -> dict:
             COUNT(DISTINCT u.tg_id) AS registrations,
             COUNT(DISTINCT CASE WHEN u.trial = 1 THEN u.tg_id END) AS trials,
             COUNT(DISTINCT CASE
-                WHEN p.status = 'success' AND NOT EXISTS (
-                    SELECT 1 FROM keys k WHERE k.tg_id = u.tg_id
-                ) THEN u.tg_id
+                WHEN p.status = 'success' THEN u.tg_id
             END) AS payments
         FROM tracking_sources ts
         LEFT JOIN users u ON u.source_code = ts.code
         LEFT JOIN payments p ON p.tg_id = u.tg_id
         WHERE ts.code = $1
         GROUP BY ts.code, ts.name, ts.created_at
-    """,
+        """,
         code,
     )
     return dict(result) if result else {}

@@ -24,12 +24,36 @@ async def generate_captcha(message: Message, state: FSMContext):
     all_emojis = [correct_emoji] + wrong_emojis
     random.shuffle(all_emojis)
 
-    await state.update_data(
-        correct_emoji=correct_emoji,
-        message_id=message.message_id,
-        chat_id=message.chat.id,
-        original_text=message.text,
-    )
+    state_data = await state.get_data()
+
+    if "user_data" not in state_data:
+        from_user = message.from_user
+        if not from_user:
+            logger.warning("[CAPTCHA] ❗ from_user отсутствует — невозможно сохранить user_data")
+            return None
+
+        await state.update_data(
+            user_data={
+                "tg_id": from_user.id,
+                "username": getattr(from_user, "username", None),
+                "first_name": getattr(from_user, "first_name", None),
+                "last_name": getattr(from_user, "last_name", None),
+                "language_code": getattr(from_user, "language_code", None),
+                "is_bot": getattr(from_user, "is_bot", False),
+            }
+        )
+
+    update_data = {
+        "correct_emoji": correct_emoji,
+        "message_id": message.message_id,
+        "chat_id": message.chat.id,
+    }
+
+    state_data = await state.get_data()
+    if "original_text" not in state_data:
+        update_data["original_text"] = message.text
+
+    await state.update_data(**update_data)
 
     builder = InlineKeyboardBuilder()
     for emoji in all_emojis:
@@ -44,34 +68,33 @@ async def generate_captcha(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("captcha_"))
 async def check_captcha(callback: CallbackQuery, state: FSMContext, session: Any, admin: bool):
-    from handlers.start import start_command
+    from handlers.start import process_start_logic
 
     selected_emoji = callback.data.split("captcha_")[1]
     state_data = await state.get_data()
     correct_emoji = state_data.get("correct_emoji")
-    message_id = state_data.get("message_id")
-    chat_id = state_data.get("chat_id")
+    original_text = state_data.get("original_text")
+    user_data = state_data.get("user_data")
 
-    if not message_id or not chat_id:
-        target_message = callback.message
-    else:
-        try:
-            target_message = await callback.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=callback.message.text,
-            )
-        except Exception:
-            target_message = callback.message
+    target_message = callback.message
 
     if selected_emoji == correct_emoji:
-        logger.info(f"Пользователь {callback.message.chat.id} успешно прошел капчу")
-        await start_command(target_message, state, session, admin, captcha=False)
-    else:
-        logger.warning(f"Пользователь {callback.message.chat.id} неверно ответил на капчу")
-        captcha = await generate_captcha(target_message, state)
-        await edit_or_send_message(
-            target_message=target_message,
-            text=captcha["text"],
-            reply_markup=captcha["markup"],
+        logger.info(f"Пользователь {callback.from_user.id} успешно прошел капчу")
+        logger.debug(f"[CAPTCHA] user_data передано в process_start_logic: {user_data}")
+        await process_start_logic(
+            message=target_message,
+            state=state,
+            session=session,
+            admin=admin,
+            text_to_process=original_text,
+            user_data=user_data,
         )
+    else:
+        logger.warning(f"Пользователь {callback.from_user.id} неверно ответил на капчу")
+        captcha = await generate_captcha(target_message, state)
+        if captcha:
+            await edit_or_send_message(
+                target_message=target_message,
+                text=captcha["text"],
+                reply_markup=captcha["markup"],
+            )

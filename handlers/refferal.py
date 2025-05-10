@@ -213,49 +213,55 @@ async def top_referrals_handler(callback_query: CallbackQuery):
         await conn.close()
 
 
-async def handle_referral_link(referral_code: str, message: Message, state: FSMContext, session: Any):
+async def handle_referral_link(
+    referral_code: str,
+    message: Message,
+    state: FSMContext,
+    session: Any,
+    user_data: dict | None = None,
+):
     try:
         referrer_tg_id = int(referral_code)
-        user_exists_now = await check_user_exists(message.chat.id)
 
-        if referrer_tg_id == message.chat.id:
+        user = user_data or message.from_user or message.chat
+        user_id = user["tg_id"] if isinstance(user, dict) else user.id
+
+        if referrer_tg_id == user_id:
             await message.answer("❌ Вы не можете быть реферальной ссылкой самого себя.")
             return
 
-        if user_exists_now:
-            await message.answer("❌ Вы уже зарегистрированы и не можете использовать реферальную ссылку.")
-            return
-
-        existing_referral = await get_referral_by_referred_id(message.chat.id, session)
+        existing_referral = await get_referral_by_referred_id(user_id, session)
         if existing_referral:
             await message.answer("❌ Вы уже использовали реферальную ссылку.")
             return
 
-        await add_referral(message.chat.id, referrer_tg_id, session)
+        user_exists = await check_user_exists(user_id)
+        if not user_exists:
+            if isinstance(user, dict):
+                await add_user(session=session, **user)
+            else:
+                await add_user(
+                    tg_id=user.id,
+                    username=getattr(user, "username", None),
+                    first_name=getattr(user, "first_name", None),
+                    last_name=getattr(user, "last_name", None),
+                    language_code=getattr(user, "language_code", None),
+                    is_bot=getattr(user, "is_bot", False),
+                    session=session,
+                )
 
-        from_user = message.from_user
-        await add_user(
-            tg_id=from_user.id,
-            username=from_user.username,
-            first_name=from_user.first_name,
-            last_name=from_user.last_name,
-            language_code=from_user.language_code,
-            is_bot=from_user.is_bot,
-            session=session,
-        )
+        await add_referral(user_id, referrer_tg_id, session)
 
         try:
             await bot.send_message(
                 referrer_tg_id,
-                NEW_REFERRAL_NOTIFICATION.format(referred_id=message.chat.id),
+                NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
             )
         except Exception as e:
             logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
 
         await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
-        return
 
     except Exception as e:
         logger.error(f"Ошибка при обработке реферальной ссылки {referral_code}: {e}")
         await message.answer("❌ Произошла ошибка при обработке реферальной ссылки.")
-        return

@@ -2,29 +2,70 @@ import asyncio
 import os
 
 import aiofiles
+import asyncpg
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
+from database import create_blocked_user
 from logger import logger
 
 
-async def send_messages_with_limit(bot: Bot, messages: list[dict], messages_per_second: int = 25):
+async def send_messages_with_limit(
+    bot: Bot,
+    messages: list[dict],
+    conn: asyncpg.Connection = None,
+    source_file: str = None,
+    messages_per_second: int = 25,
+):
     """
     Отправляет сообщения с ограничением по количеству сообщений в секунду.
+    Возвращает список результатов отправки (True для успеха, False для ошибки).
     """
     batch_size = messages_per_second
+    results = []
     for i in range(0, len(messages), batch_size):
         batch = messages[i : i + batch_size]
         tasks = []
         for msg in batch:
             tasks.append(send_notification(bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")))
-        try:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        except Exception as e:
-            logger.error(f"⚠ Ошибка при отправке сообщений в батче: {e}")
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        processed_results = []
+        for msg, result in zip(batch, batch_results, strict=False):
+            tg_id = msg["tg_id"]
+            if isinstance(result, bool) and result:
+                processed_results.append(True)
+            elif isinstance(result, TelegramForbiddenError):
+                logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
+                if source_file == "special_notifications" and conn:
+                    try:
+                        await create_blocked_user(tg_id, conn)
+                        logger.info(f"Пользователь {tg_id} добавлен в blocked_users.")
+                    except Exception:
+                        pass
+                processed_results.append(False)
+            elif isinstance(result, TelegramBadRequest) and "chat not found" in str(result).lower():
+                logger.warning(f"🚫 Чат не найден для пользователя {tg_id}.")
+                if source_file == "special_notifications" and conn:
+                    try:
+                        await create_blocked_user(tg_id, conn)
+                        logger.info(f"Пользователь {tg_id} добавлен в blocked_users.")
+                    except Exception:
+                        pass
+                processed_results.append(False)
+            else:
+                logger.warning(f"📩 Не удалось отправить уведомление пользователю {tg_id}.")
+                if source_file == "special_notifications" and conn:
+                    try:
+                        await create_blocked_user(tg_id, conn)
+                        logger.info(f"Пользователь {tg_id} добавлен в blocked_users.")
+                    except Exception:
+                        pass
+                processed_results.append(False)
+        results.extend(processed_results)
         await asyncio.sleep(1.0)
+    return results
 
 
 def rate_limited_send(func):
@@ -38,7 +79,11 @@ def rate_limited_send(func):
                 await asyncio.sleep(retry_in)
             except TelegramForbiddenError:
                 tg_id = kwargs.get("tg_id") or args[1]
-                logger.warning(f"Пользователь {tg_id} заблокировал бота.")
+                logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
+                return False
+            except TelegramBadRequest:
+                tg_id = kwargs.get("tg_id") or args[1]
+                logger.warning(f"🚫 Чат не найден для пользователя {tg_id}.")
                 return False
             except Exception as e:
                 tg_id = kwargs.get("tg_id") or args[1]
@@ -85,8 +130,7 @@ async def _send_photo_notification(
         buffered_photo = BufferedInputFile(image_data, filename=image_filename)
         await bot.send_photo(tg_id, buffered_photo, caption=caption, reply_markup=keyboard)
         return True
-    except TelegramForbiddenError:
-        logger.error(f"Пользователь {tg_id} заблокировал бота")
+    except (TelegramForbiddenError, TelegramBadRequest):
         return False
     except Exception as e:
         logger.error(f"Ошибка отправки фото для пользователя {tg_id}: {e}")
@@ -104,8 +148,7 @@ async def _send_text_notification(
     try:
         await bot.send_message(tg_id, caption, reply_markup=keyboard)
         return True
-    except TelegramForbiddenError:
-        logger.error(f"Пользователь {tg_id} заблокировал бота")
+    except (TelegramForbiddenError, TelegramBadRequest):
         return False
     except Exception as e:
         logger.error(f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}")

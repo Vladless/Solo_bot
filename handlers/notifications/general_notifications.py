@@ -33,7 +33,10 @@ from database import (
     update_key_expiry,
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
-from handlers.notifications.notify_kb import build_notification_expired_kb, build_notification_kb
+from handlers.notifications.notify_kb import (
+    build_notification_expired_kb,
+    build_notification_kb,
+)
 from handlers.texts import (
     KEY_DELETED_MSG,
     KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG,
@@ -53,10 +56,7 @@ from .special_notifications import notify_inactive_trial_users, notify_users_no_
 
 
 router = Router()
-
 moscow_tz = pytz.timezone("Europe/Moscow")
-
-
 notification_lock = asyncio.Lock()
 
 
@@ -76,7 +76,6 @@ async def periodic_notifications(bot: Bot):
             try:
                 conn = await asyncpg.connect(DATABASE_URL)
                 current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
-
                 threshold_time_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
                 threshold_time_24h = int((datetime.now(moscow_tz) + timedelta(days=1)).timestamp() * 1000)
 
@@ -90,17 +89,35 @@ async def periodic_notifications(bot: Bot):
                     keys = []
 
                 if not TRIAL_TIME_DISABLE:
-                    await notify_inactive_trial_users(bot, conn)
+                    try:
+                        await notify_inactive_trial_users(bot, conn)
+                    except Exception as e:
+                        logger.error(f"Ошибка в notify_inactive_trial_users: {e}")
                     await asyncio.sleep(0.5)
 
-                await notify_24h_keys(bot, conn, current_time, threshold_time_24h, keys)
+                try:
+                    await notify_24h_keys(bot, conn, current_time, threshold_time_24h, keys)
+                except Exception as e:
+                    logger.error(f"Ошибка в notify_24h_keys: {e}")
                 await asyncio.sleep(1)
-                await notify_10h_keys(bot, conn, current_time, threshold_time_10h, keys)
+
+                try:
+                    await notify_10h_keys(bot, conn, current_time, threshold_time_10h, keys)
+                except Exception as e:
+                    logger.error(f"Ошибка в notify_10h_keys: {e}")
                 await asyncio.sleep(1)
-                await handle_expired_keys(bot, conn, current_time, keys)
+
+                try:
+                    await handle_expired_keys(bot, conn, current_time, keys)
+                except Exception as e:
+                    logger.error(f"Ошибка в handle_expired_keys: {e}")
                 await asyncio.sleep(0.5)
+
                 if NOTIFY_INACTIVE_TRAFFIC:
-                    await notify_users_no_traffic(bot, conn, current_time, keys)
+                    try:
+                        await notify_users_no_traffic(bot, conn, current_time, keys)
+                    except Exception as e:
+                        logger.error(f"Ошибка в notify_users_no_traffic: {e}")
                     await asyncio.sleep(0.5)
 
                 logger.info("Завершена обработка уведомлений")
@@ -161,7 +178,13 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
         )
 
         if NOTIFY_RENEW:
-            await process_auto_renew_or_notify(bot, conn, key, notification_id, 1, "notify_24h.jpg", notification_text)
+            try:
+                await process_auto_renew_or_notify(
+                    bot, conn, key, notification_id, 1, "notify_24h.jpg", notification_text
+                )
+            except Exception as e:
+                logger.error(f"Ошибка авто-продления/уведомления для пользователя {tg_id}: {e}")
+                continue
         else:
             keyboard = build_notification_kb(email)
             messages.append({
@@ -169,12 +192,23 @@ async def notify_24h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
                 "text": notification_text,
                 "photo": "notify_24h.jpg",
                 "keyboard": keyboard,
+                "notification_id": notification_id,
             })
-            await add_notification(tg_id, notification_id, session=conn)
 
     if messages:
-        await send_messages_with_limit(bot, messages)
-        logger.info(f"Отправлено {len(messages)} уведомлений об истечении подписки через 24 часа.")
+        results = await send_messages_with_limit(bot, messages, conn=conn)
+        sent_count = 0
+        for msg, result in zip(messages, results, strict=False):
+            tg_id = msg["tg_id"]
+            if result:
+                await add_notification(tg_id, msg["notification_id"], session=conn)
+                sent_count += 1
+                logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+            else:
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                )
+        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 24 часа.")
 
     logger.info("Обработка всех уведомлений за 24 часа завершена.")
     await asyncio.sleep(1)
@@ -232,6 +266,7 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
                 )
             except Exception as e:
                 logger.error(f"Ошибка авто-продления/уведомления для пользователя {tg_id}: {e}")
+                continue
         else:
             keyboard = build_notification_kb(email)
             messages.append({
@@ -239,12 +274,23 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
                 "text": notification_text,
                 "photo": "notify_10h.jpg",
                 "keyboard": keyboard,
+                "notification_id": notification_id,
             })
-            await add_notification(tg_id, notification_id, session=conn)
 
     if messages:
-        await send_messages_with_limit(bot, messages)
-        logger.info(f"Отправлено {len(messages)} уведомлений об истечении подписки через 10 часов.")
+        results = await send_messages_with_limit(bot, messages, conn=conn)
+        sent_count = 0
+        for msg, result in zip(messages, results, strict=False):
+            tg_id = msg["tg_id"]
+            if result:
+                await add_notification(tg_id, msg["notification_id"], session=conn)
+                sent_count += 1
+                logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+            else:
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                )
+        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 10 часов.")
 
     logger.info("Обработка всех уведомлений за 10 часов завершена.")
     await asyncio.sleep(1)
@@ -316,6 +362,8 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                         "text": KEY_DELETED_MSG.format(email=email),
                         "photo": "notify_expired.jpg",
                         "keyboard": keyboard,
+                        "notification_id": notification_id,
+                        "email": email,
                     })
                 except Exception as e:
                     logger.error(f"Ошибка удаления ключа {client_id} для пользователя {tg_id}: {e}")
@@ -349,12 +397,25 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
                 "text": delay_message,
                 "photo": "notify_expired.jpg",
                 "keyboard": keyboard,
+                "notification_id": notification_id,
+                "email": email,
             })
-            await add_notification(tg_id, notification_id, session=conn)
 
     if messages:
-        await send_messages_with_limit(bot, messages)
-        logger.info(f"Отправлено {len(messages)} уведомлений об истекших ключах.")
+        results = await send_messages_with_limit(bot, messages, conn=conn)
+        sent_count = 0
+        for msg, result in zip(messages, results, strict=False):
+            tg_id = msg["tg_id"]
+            email = msg["email"]
+            if result:
+                await add_notification(tg_id, msg["notification_id"], session=conn)
+                sent_count += 1
+                logger.info(f"📢 Отправлено уведомление об истекшем ключе для подписки {email} пользователю {tg_id}.")
+            else:
+                logger.warning(
+                    f"📢 Не удалось отправить уведомление об истекшем ключе для подписки {email} пользователю {tg_id}."
+                )
+        logger.info(f"Отправлено {sent_count} уведомлений об истекших ключах.")
 
     logger.info("Обработка истекших ключей завершена.")
     await asyncio.sleep(1)
@@ -403,7 +464,7 @@ async def process_auto_renew_or_notify(
         total_gb = int(renewal_period_months * TOTAL_GB * 1024**3)
 
         logger.info(
-            f"[Автопродление] Продление подписки {email} на {renewal_period_months} мес. для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
+            f"Продление подписки {email} на {renewal_period_months} мес. для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
         try:
@@ -436,9 +497,9 @@ async def process_auto_renew_or_notify(
             logger.error(f"❌ Ошибка при продлении ключа {client_id} для пользователя {tg_id}: {e}")
     else:
         keyboard = build_notification_kb(email)
+        await add_notification(tg_id, notification_id, session=conn)
         result = await send_notification(bot, tg_id, standard_photo, standard_caption, keyboard)
         if result:
             logger.info(f"📢 Отправлено уведомление об истекающей подписке {email} пользователю {tg_id}.")
-            await add_notification(tg_id, notification_id, session=conn)
         else:
             logger.warning(f"📢 Не удалось отправить уведомление об истекающей подписке {email} пользователю {tg_id}.")

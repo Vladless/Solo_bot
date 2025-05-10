@@ -13,9 +13,9 @@ from aiohttp import web
 from config import (
     DATABASE_URL,
     PROJECT_NAME,
+    RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
     SUPPORT_CHAT_URL,
-    TOTAL_GB,
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
 )
@@ -24,33 +24,45 @@ from handlers.utils import convert_to_bytes
 from logger import logger
 
 
-async def fetch_url_content(url: str, identifier: str) -> list[str]:
+async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[str, str]]:
     try:
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, ssl=False) as response:
                 if response.status == 200:
                     content = await response.text()
-                    return base64.b64decode(content).decode("utf-8").split("\n")
-                return []
-    except Exception:
-        return []
+                    lines = base64.b64decode(content).decode("utf-8").split("\n")
+                    headers = {k.lower(): v for k, v in response.headers.items()}
+                    logger.debug(f"Fetched {url}: {len(lines)} lines, headers: {headers}")
+                    return lines, headers
+                return [], {}
+    except Exception as e:
+        logger.error(f"Error fetching URL {url}: {e}")
+        return [], {}
 
 
-async def combine_unique_lines(urls: list[str], identifier: str, query_string: str) -> list[str]:
+async def combine_unique_lines(
+    urls: list[str], identifier: str, query_string: str
+) -> tuple[list[str], list[dict[str, str]]]:
     if SUPERNODE:
+        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}")
         if not urls:
-            return []
+            return [], []
         url_with_query = f"{urls[0]}?{query_string}" if query_string else urls[0]
-        return await fetch_url_content(url_with_query, identifier)
+        lines, headers = await fetch_url_content(url_with_query, identifier)
+        return lines, [headers]
 
     urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     tasks = [fetch_url_content(url, identifier) for url in urls_with_query]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_lines = set()
-    for lines in results:
-        all_lines.update(filter(None, lines))
-    return list(all_lines)
+    all_headers = []
+    for result in results:
+        if isinstance(result, tuple):
+            lines, headers = result
+            all_lines.update(filter(None, lines))
+            all_headers.append(headers)
+    return list(all_lines), all_headers
 
 
 async def get_subscription_urls(server_id: str, email: str, conn, include_remnawave_key: str = None) -> list[str]:
@@ -72,38 +84,61 @@ async def get_subscription_urls(server_id: str, email: str, conn, include_remnaw
     return urls
 
 
-def calculate_traffic(cleaned_subscriptions: list[str], expiry_time_ms: int | None) -> str:
+def calculate_traffic(
+    cleaned_subscriptions: list[str], expiry_time_ms: int | None, headers_list: list[dict[str, str]]
+) -> str:
+    logger.debug(f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}")
     expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
-    if TOTAL_GB != 0:
-        country_remaining = {}
-        for line in cleaned_subscriptions:
-            if "#" not in line:
-                continue
-            try:
-                _, meta = line.split("#", 1)
-            except ValueError:
-                continue
-            parts = meta.split("-")
-            country = parts[0].strip()
-            remaining_str = parts[1].strip() if len(parts) == 2 else ""
-            if remaining_str:
-                remaining_str = remaining_str.replace(",", ".")
-                m_total = re.search(r"([\d\.]+)\s*([GMKTB]B)", remaining_str, re.IGNORECASE)
-                if m_total:
-                    value = float(m_total.group(1))
-                    unit = m_total.group(2).upper()
-                    remaining_bytes = convert_to_bytes(value, unit)
-                    country_remaining[country] = remaining_bytes
-        num_countries = len(country_remaining)
-        issued_per_country = TOTAL_GB
-        total_traffic_bytes = issued_per_country * num_countries
-        consumed_traffic_bytes = total_traffic_bytes - sum(country_remaining.values())
-        if consumed_traffic_bytes < 0:
-            consumed_traffic_bytes = 0
-    else:
-        consumed_traffic_bytes = 1
-        total_traffic_bytes = 0
-    return f"upload=0; download={consumed_traffic_bytes}; total={total_traffic_bytes}; expire={expire_timestamp}"
+
+    upload = 0
+    download = 0
+    total = 0
+    for headers in headers_list:
+        userinfo = headers.get("subscription-userinfo", "")
+        if userinfo:
+            parts = userinfo.split(";")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("upload="):
+                    upload += int(part.split("=")[1])
+                elif part.startswith("download="):
+                    download += int(part.split("=")[1])
+                elif part.startswith("total="):
+                    total += int(part.split("=")[1])
+            logger.debug(f"Processed Subscription-Userinfo: {userinfo}")
+
+    country_remaining = {}
+    for line in cleaned_subscriptions:
+        if "#" not in line:
+            continue
+        try:
+            _, meta = line.split("#", 1)
+        except ValueError:
+            continue
+        parts = meta.split("-")
+        country = parts[0].strip()
+        remaining_str = parts[1].strip() if len(parts) == 2 else ""
+        if remaining_str:
+            remaining_str = remaining_str.replace(",", ".")
+            m_total = re.search(r"([\d\.]+)\s*([GMKTB]B)", remaining_str, re.IGNORECASE)
+            if m_total:
+                value = float(m_total.group(1))
+                unit = m_total.group(2).upper()
+                remaining_bytes = convert_to_bytes(value, unit)
+                country_remaining[country] = remaining_bytes
+                logger.debug(f"Found traffic: {value}{unit} for {country}")
+
+    consumed_traffic_bytes = total - sum(country_remaining.values()) if country_remaining else download
+    if consumed_traffic_bytes < 0:
+        consumed_traffic_bytes = 0
+    download = max(download, consumed_traffic_bytes)
+
+    if download == 0 and total == 0 and not country_remaining:
+        download = 1
+
+    result = f"upload={upload}; download={download}; total={total}; expire={expire_timestamp}"
+    logger.debug(f"Calculated subscription-userinfo: {result}")
+    return result
 
 
 def clean_subscription_line(line: str) -> str:
@@ -204,15 +239,16 @@ async def handle_subscription(request: web.Request) -> web.Response:
         time_left = format_time_left(expiry_time_ms)
 
         urls = await get_subscription_urls(
-            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
+            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_key")
         )
 
         if not urls:
             return web.Response(text="❌ Сервер не найден.", status=404)
 
         query_string = request.query_string
-        combined_subscriptions = await combine_unique_lines(urls, tg_id or email, query_string)
-        random.shuffle(combined_subscriptions)
+        combined_subscriptions, headers_list = await combine_unique_lines(urls, tg_id or email, query_string)
+        if RANDOM_SUBSCRIPTIONS:
+            random.shuffle(combined_subscriptions)
 
         cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
@@ -220,7 +256,7 @@ async def handle_subscription(request: web.Request) -> web.Response:
         subscription_info = f"📄 Подписка: {email} - {time_left}"
 
         user_agent = request.headers.get("User-Agent", "")
-        subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms)
+        subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms, headers_list)
         headers = prepare_headers(user_agent, PROJECT_NAME, subscription_info, subscription_userinfo)
 
         return web.Response(text=base64_encoded, headers=headers)

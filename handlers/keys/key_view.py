@@ -232,7 +232,9 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
                 f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
             )
 
-        formatted_expiry_date = f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
+        formatted_expiry_date = (
+            f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
+        )
         response_message = key_message(
             final_link,
             formatted_expiry_date,
