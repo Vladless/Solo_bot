@@ -229,7 +229,8 @@ async def process_start_logic(
                 logger.info(f"[UTM] Обнаружена ссылка на UTM: {utm_code}")
                 await handle_utm_link(utm_code, message, state, session, user_data=user_data)
                 continue
-
+                
+        await state.clear()
         if gift_detected:
             return
 
