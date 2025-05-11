@@ -1,7 +1,7 @@
 import asyncio
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import asyncpg
 
@@ -14,6 +14,7 @@ from config import (
     REMNAWAVE_PASSWORD,
     SUPERNODE,
     TOTAL_GB,
+    DEFAULT_HWID_LIMIT
 )
 from database import delete_notification, get_servers, store_key
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
@@ -39,6 +40,7 @@ async def create_key_on_cluster(
     plan: int = None,
     session=None,
     remnawave_link: str = None,
+    hwid_limit: Optional[int] = DEFAULT_HWID_LIMIT,
 ):
     try:
         servers = await get_servers(include_enabled=True)
@@ -65,13 +67,11 @@ async def create_key_on_cluster(
         async with asyncpg.create_pool(DATABASE_URL) as pool:
             async with pool.acquire() as conn:
                 remnawave_servers = [
-                    s
-                    for s in enabled_servers
+                    s for s in enabled_servers
                     if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, conn)
                 ]
                 xui_servers = [
-                    s
-                    for s in enabled_servers
+                    s for s in enabled_servers
                     if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, conn)
                 ]
 
@@ -80,7 +80,6 @@ async def create_key_on_cluster(
             return
 
         semaphore = asyncio.Semaphore(2)
-
         remnawave_created = False
         remnawave_key = None
         remnawave_client_id = None
@@ -113,6 +112,8 @@ async def create_key_on_cluster(
 
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
+                    if hwid_limit is not None:
+                        user_data["hwidDeviceLimit"] = hwid_limit
 
                     result = await remna.create_user(user_data)
                     if not result:
@@ -130,25 +131,13 @@ async def create_key_on_cluster(
             if SUPERNODE:
                 for server_info in xui_servers:
                     await create_client_on_server(
-                        server_info,
-                        tg_id,
-                        final_client_id,
-                        email,
-                        expiry_timestamp,
-                        semaphore,
-                        plan=plan,
+                        server_info, tg_id, final_client_id, email, expiry_timestamp, semaphore, plan=plan
                     )
             else:
                 await asyncio.gather(
                     *(
                         create_client_on_server(
-                            server,
-                            tg_id,
-                            final_client_id,
-                            email,
-                            expiry_timestamp,
-                            semaphore,
-                            plan=plan,
+                            server, tg_id, final_client_id, email, expiry_timestamp, semaphore, plan=plan
                         )
                         for server in xui_servers
                     ),
@@ -223,7 +212,7 @@ async def create_client_on_server(
             await asyncio.sleep(0.7)
 
 
-async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb):
+async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb, hwid_device_limit=DEFAULT_HWID_LIMIT):
     try:
         servers = await get_servers()
         cluster = servers.get(cluster_id)
@@ -292,6 +281,7 @@ async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, to
                         expire_at=expire_iso,
                         active_user_inbounds=remnawave_inbound_ids,
                         traffic_limit_bytes=total_gb,
+                        hwid_device_limit=DEFAULT_HWID_LIMIT,
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")

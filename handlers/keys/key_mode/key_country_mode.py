@@ -23,6 +23,7 @@ from config import (
     REMNAWAVE_PASSWORD,
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
+    DEFAULT_HWID_LIMIT
 )
 from database import (
     add_user,
@@ -352,6 +353,7 @@ async def finalize_key_creation(
                 "expireAt": expire_at,
                 "telegramId": tg_id,
                 "activeUserInbounds": [server_info["inbound_id"]],
+                "hwidDeviceLimit": DEFAULT_HWID_LIMIT,
             }
             result = await remna.create_user(user_data)
             if not result:

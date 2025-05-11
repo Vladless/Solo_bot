@@ -13,6 +13,7 @@ from config import (
     CONNECT_PHONE_BUTTON,
     RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
+    DEFAULT_HWID_LIMIT
 )
 from database import (
     get_key_details,
@@ -61,7 +62,17 @@ async def key_cluster_mode(
 
     try:
         least_loaded_cluster = await get_least_loaded_cluster()
-        await create_key_on_cluster(least_loaded_cluster, tg_id, client_id, email, expiry_timestamp, plan, session)
+        await create_key_on_cluster(
+            least_loaded_cluster,
+            tg_id,
+            client_id,
+            email,
+            expiry_timestamp,
+            plan,
+            session,
+            hwid_limit=DEFAULT_HWID_LIMIT,
+        )
+
         logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
 
         key_record = await get_key_details(email, session)
