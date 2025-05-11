@@ -239,7 +239,7 @@ async def handle_subscription(request: web.Request) -> web.Response:
         time_left = format_time_left(expiry_time_ms)
 
         urls = await get_subscription_urls(
-            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_key")
+            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
         )
 
         if not urls:
