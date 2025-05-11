@@ -205,6 +205,7 @@ def prepare_headers(
             "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "announce-url": f"{SUPPORT_CHAT_URL}",
             "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "subscription-userinfo": subscription_userinfo,
         }
     else:
         encoded_project_name = f"{project_name}\n{subscription_info}"
