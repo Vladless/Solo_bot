@@ -315,7 +315,12 @@ async def show_start_menu(message: Message, admin: bool, session: Any):
 
 
 @router.callback_query(F.data == "about_vpn")
-async def handle_about_vpn(callback_query: CallbackQuery):
+async def handle_about_vpn(callback_query: CallbackQuery, session: Any):
+    user_id = callback_query.from_user.id
+    trial = await get_trial(user_id, session)
+
+    back_target = "profile" if SHOW_START_MENU_ONCE and trial > 0 else "start"
+
     builder = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
@@ -326,7 +331,8 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     else:
         builder.row(support_btn)
 
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=back_target))
+
     text = get_about_vpn("3.2.3-minor")
     image_path = os.path.join("img", "pic.jpg")
 
