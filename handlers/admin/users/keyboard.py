@@ -4,7 +4,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES, TOTAL_GB
+from config import RENEWAL_PRICES, TOTAL_GB, HWID_RESET_BUTTON
 from database import get_clusters
 from handlers.buttons import BACK
 
@@ -189,7 +189,32 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
                 action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
             ).pack(),
         )
+    if HWID_RESET_BUTTON:
+        builder.button(
+            text="💻 HWID",
+            callback_data=AdminUserEditorCallback(
+                action="users_hwid_menu", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
     builder.row(build_editor_back_btn(key_details["tg_id"], True))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="♻️ Сбросить HWID",
+        callback_data=AdminUserEditorCallback(
+            action="users_hwid_reset", data=email, tg_id=tg_id
+        ).pack(),
+    )
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminUserEditorCallback(
+            action="users_key_edit", data=email, tg_id=tg_id
+        ).pack(),
+    )
     builder.adjust(1)
     return builder.as_markup()
 

@@ -14,7 +14,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES, TOTAL_GB, USE_COUNTRY_SELECTION
+from config import RENEWAL_PRICES, TOTAL_GB, USE_COUNTRY_SELECTION, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database import (
     delete_key,
     delete_user_data,
@@ -39,6 +39,7 @@ from handlers.keys.key_utils import (
 from handlers.utils import generate_random_email, sanitize_key_name
 from logger import logger
 from utils.csv_export import export_referrals_csv
+from panels.remnawave import RemnawaveAPI
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -54,6 +55,7 @@ from .keyboard import (
     build_users_balance_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
+    build_hwid_menu_kb
 )
 
 
@@ -71,6 +73,87 @@ class UserEditorState(StatesGroup):
     selecting_cluster = State()
     selecting_duration = State()
     selecting_country = State()
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_hwid_menu"), IsAdminFilter())
+async def handle_hwid_menu(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
+    email = callback_data.data
+    tg_id = callback_data.tg_id
+
+    client_id = await get_client_id_by_email(email)
+    if not client_id:
+        await callback_query.message.edit_text("🚫 Не удалось найти client_id по email.")
+        return
+
+    servers = await get_servers()
+    remna_server = None
+    for cluster_servers in servers.values():
+        for server in cluster_servers:
+            if server.get("panel_type", "") == "remnawave":
+                remna_server = server
+                break
+        if remna_server:
+            break
+
+    if not remna_server:
+        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        return
+
+    api = RemnawaveAPI(remna_server["api_url"])
+    if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+        await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
+        return
+
+    devices = await api.get_user_hwid_devices(client_id)
+    count = len(devices) if devices else 0
+
+    text = f"💻 <b>HWID устройства</b>\n\nПривязано: <b>{count}</b>"
+    await callback_query.message.edit_text(text, reply_markup=build_hwid_menu_kb(email, tg_id))
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_hwid_reset"), IsAdminFilter())
+async def handle_hwid_reset(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
+    email = callback_data.data
+    tg_id = callback_data.tg_id
+
+    client_id = await get_client_id_by_email(email)
+    if not client_id:
+        await callback_query.message.edit_text("🚫 Не удалось найти client_id по email.")
+        return
+
+    servers = await get_servers()
+    remna_server = None
+    for cluster_servers in servers.values():
+        for server in cluster_servers:
+            if server.get("panel_type", "") == "remnawave":
+                remna_server = server
+                break
+        if remna_server:
+            break
+
+    if not remna_server:
+        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        return
+
+    api = RemnawaveAPI(remna_server["api_url"])
+    if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+        await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
+        return
+
+    devices = await api.get_user_hwid_devices(client_id)
+    if not devices:
+        await callback_query.message.edit_text("ℹ️ У пользователя нет привязанных устройств.", reply_markup=build_editor_kb(tg_id, True))
+        return
+
+    deleted = 0
+    for d in devices:
+        if await api.delete_user_hwid_device(client_id, d["hwid"]):
+            deleted += 1
+
+    await callback_query.message.edit_text(
+        f"✅ Удалено HWID-устройств: <b>{deleted}</b> из <b>{len(devices)}</b>.",
+        reply_markup=build_editor_kb(tg_id, True),
+    )
 
 
 @router.callback_query(
