@@ -436,6 +436,7 @@ async def handle_key_edit(
         return
 
     key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
+    alias = key_details.get("alias")
 
     text = (
         f"<b>🔑 Информация о ключе</b>"
@@ -445,11 +446,18 @@ async def handle_key_edit(
         f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
     )
 
+    if alias:
+        text += f"\n🏷️ Имя ключа: <b>{alias}</b>"
+
     if not update or not callback_data.edit:
-        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_details, email))
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=build_key_edit_kb(key_details, email)
+        )
     else:
         await callback_query.message.edit_text(
-            text=text, reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
+            text=text,
+            reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
         )
 
 

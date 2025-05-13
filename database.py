@@ -1155,7 +1155,8 @@ async def get_key_details(email, session):
     record = await session.fetchrow(
         """
         SELECT k.server_id, k.key, k.remnawave_link, k.email, k.is_frozen,
-               k.expiry_time, k.client_id, k.created_at, u.tg_id, u.balance
+               k.expiry_time, k.client_id, k.created_at, k.alias,
+               u.tg_id, u.balance
         FROM keys k
         JOIN users u ON k.tg_id = u.tg_id
         WHERE k.email = $1
@@ -1193,6 +1194,7 @@ async def get_key_details(email, session):
         "email": record["email"],
         "is_frozen": record["is_frozen"],
         "balance": record["balance"],
+        "alias": record["alias"],
         "expiry_date": expiry_date.strftime("%d %B %Y года %H:%M"),
         "days_left_message": days_left_message,
         "link": public_link or remna_link,
