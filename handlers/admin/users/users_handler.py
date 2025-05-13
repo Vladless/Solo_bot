@@ -105,9 +105,23 @@ async def handle_hwid_menu(callback_query: CallbackQuery, callback_data: AdminUs
         return
 
     devices = await api.get_user_hwid_devices(client_id)
-    count = len(devices) if devices else 0
 
-    text = f"💻 <b>HWID устройства</b>\n\nПривязано: <b>{count}</b>"
+    if not devices:
+        text = "💻 <b>HWID устройства</b>\n\n🔌 Нет привязанных устройств."
+    else:
+        text = f"💻 <b>HWID устройства</b>\n\nПривязано: <b>{len(devices)}</b>\n\n"
+        for idx, device in enumerate(devices, 1):
+            created = device.get("createdAt", "")[:19].replace("T", " ")
+            updated = device.get("updatedAt", "")[:19].replace("T", " ")
+            text += (
+                f"<b>{idx}.</b> <code>{device.get('hwid')}</code>\n"
+                f"└ 📱 <b>Модель:</b> {device.get('deviceModel') or '—'}\n"
+                f"└ 🧠 <b>Платформа:</b> {device.get('platform') or '—'} / {device.get('osVersion') or '—'}\n"
+                f"└ 🌐 <b>User-Agent:</b> {device.get('userAgent') or '—'}\n"
+                f"└ 🕓 <b>Создано:</b> {created}\n"
+                f"└ 🔄 <b>Обновлено:</b> {updated}\n\n"
+            )
+
     await callback_query.message.edit_text(text, reply_markup=build_hwid_menu_kb(email, tg_id))
 
 
