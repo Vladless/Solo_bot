@@ -31,6 +31,14 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
         total_payments_today = int(
             await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE")
         )
+        total_payments_yesterday = int(
+            await session.fetchval("""
+                SELECT COALESCE(SUM(amount), 0)
+                FROM payments
+                WHERE created_at >= CURRENT_DATE - interval '1 day'
+                AND created_at < CURRENT_DATE
+            """)
+        )
         total_payments_week = int(
             await session.fetchval(
                 "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
@@ -42,16 +50,32 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             )
         )
         total_payments_last_month = int(
-            await session.fetchval(
-                """
+            await session.fetchval("""
                 SELECT COALESCE(SUM(amount), 0)
                 FROM payments
                 WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month')
                 AND created_at < date_trunc('month', CURRENT_DATE)
-                """
-            )
+            """)
         )
         total_payments_all_time = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments"))
+
+        registrations_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
+        registrations_yesterday = await session.fetchval("""
+            SELECT COUNT(*) FROM users
+            WHERE created_at >= CURRENT_DATE - interval '1 day'
+            AND created_at < CURRENT_DATE
+        """)
+        registrations_week = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
+        )
+        registrations_month = await session.fetchval(
+            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
+        )
+        registrations_last_month = await session.fetchval("""
+            SELECT COUNT(*) FROM users
+            WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month')
+            AND created_at < date_trunc('month', CURRENT_DATE)
+        """)
 
         all_keys = await session.fetch("SELECT created_at, expiry_time FROM keys")
 
@@ -78,14 +102,6 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
 
         subs_all_time = count_subscriptions_by_duration(all_keys)
 
-        registrations_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
-        registrations_week = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
-        )
-        registrations_month = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
-        )
-
         users_updated_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE")
 
         active_keys = await session.fetchval(
@@ -93,8 +109,6 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             int(datetime.utcnow().timestamp() * 1000),
         )
         expired_keys = total_keys - active_keys
-        moscow_tz = pytz.timezone("Europe/Moscow")
-        update_time = datetime.now(moscow_tz).strftime("%d.%m.%y %H:%M:%S")
 
         hot_leads_count = await session.fetchval("""
             SELECT COUNT(DISTINCT u.tg_id)
@@ -105,12 +119,17 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             AND k.tg_id IS NULL
         """)
 
+        moscow_tz = pytz.timezone("Europe/Moscow")
+        update_time = datetime.now(moscow_tz).strftime("%d.%m.%y %H:%M:%S")
+
         stats_message = (
             "📊 <b>Статистика проекта</b>\n\n"
             "👤 <b>Пользователи:</b>\n"
             f"├ 🗓️ За день: <b>{registrations_today}</b>\n"
+            f"├ 🗓️ Вчера: <b>{registrations_yesterday}</b>\n"
             f"├ 📆 За неделю: <b>{registrations_week}</b>\n"
             f"├ 🗓️ За месяц: <b>{registrations_month}</b>\n"
+            f"├ 📅 За прошлый месяц: <b>{registrations_last_month}</b>\n"
             f"└ 🌐 Всего: <b>{total_users}</b>\n\n"
             "💡 <b>Активность:</b>\n"
             f"└ 👥 Сегодня были активны: <b>{users_updated_today}</b>\n\n"
@@ -128,6 +147,7 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             f"     • 🗓️ 12 мес: <b>{subs_all_time['12']}</b>\n\n"
             "💰 <b>Финансы:</b>\n"
             f"├ 📅 За день: <b>{total_payments_today} ₽</b>\n"
+            f"├ 📆 Вчера: <b>{total_payments_yesterday} ₽</b>\n"
             f"├ 📆 За неделю: <b>{total_payments_week} ₽</b>\n"
             f"├ 📆 За месяц: <b>{total_payments_month} ₽</b>\n"
             f"├ 📆 За прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
