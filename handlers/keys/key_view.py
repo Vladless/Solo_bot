@@ -17,16 +17,12 @@ from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
+    HWID_RESET_BUTTON,
     QRCODE,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
-    HWID_RESET_BUTTON
 )
-from database import (
-    get_key_details,
-    get_keys,
-    get_servers
-)
+from database import get_key_details, get_keys, get_servers
 from handlers.buttons import (
     ADD_SUB,
     ALIAS,
@@ -36,6 +32,7 @@ from handlers.buttons import (
     CONNECT_PHONE,
     DELETE,
     FREEZE,
+    HWID_BUTTON,
     MAIN_MENU,
     PC_BUTTON,
     QR,
@@ -43,7 +40,6 @@ from handlers.buttons import (
     RENEW_FULL,
     TV_BUTTON,
     UNFREEZE,
-    HWID_BUTTON
 )
 from handlers.texts import (
     FROZEN_SUBSCRIPTION_MSG,
@@ -196,7 +192,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         return
 
     is_frozen = record["is_frozen"]
-    email = record["email"]
+    record["email"]
     client_id = record.get("client_id")
     remnawave_link = record.get("remnawave_link")
     key = record.get("key")
@@ -326,9 +322,7 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
         return
 
     servers = await get_servers()
-    remna_server = next(
-        (srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None
-    )
+    remna_server = next((srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None)
     if not remna_server:
         await callback_query.answer("❌ Remnawave-сервер не найден.", show_alert=True)
         return

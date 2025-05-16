@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import asyncpg
 import pytz
 
 from aiogram import F, Router, types
@@ -14,7 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES, TOTAL_GB, USE_COUNTRY_SELECTION, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from config import DATABASE_URL, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, USE_COUNTRY_SELECTION
 from database import (
     delete_key,
     delete_user_data,
@@ -22,6 +23,7 @@ from database import (
     get_client_id_by_email,
     get_key_details,
     get_servers,
+    get_tariffs_for_cluster,
     set_user_balance,
     update_balance,
     update_key_expiry,
@@ -38,8 +40,8 @@ from handlers.keys.key_utils import (
 )
 from handlers.utils import generate_random_email, sanitize_key_name
 from logger import logger
-from utils.csv_export import export_referrals_csv
 from panels.remnawave import RemnawaveAPI
+from utils.csv_export import export_referrals_csv
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -47,6 +49,7 @@ from .keyboard import (
     AdminUserKeyEditorCallback,
     build_cluster_selection_kb,
     build_editor_kb,
+    build_hwid_menu_kb,
     build_key_delete_kb,
     build_key_edit_kb,
     build_user_delete_kb,
@@ -55,7 +58,6 @@ from .keyboard import (
     build_users_balance_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
-    build_hwid_menu_kb
 )
 
 
@@ -156,7 +158,9 @@ async def handle_hwid_reset(callback_query: CallbackQuery, callback_data: AdminU
 
     devices = await api.get_user_hwid_devices(client_id)
     if not devices:
-        await callback_query.message.edit_text("ℹ️ У пользователя нет привязанных устройств.", reply_markup=build_editor_kb(tg_id, True))
+        await callback_query.message.edit_text(
+            "ℹ️ У пользователя нет привязанных устройств.", reply_markup=build_editor_kb(tg_id, True)
+        )
         return
 
     deleted = 0
@@ -331,7 +335,7 @@ async def handle_balance_change(callback_query: CallbackQuery, callback_data: Ad
     else:
         text += "\n <i>🚫 Отсутствуют</i>"
 
-    await callback_query.message.edit_text(text=text, reply_markup=build_users_balance_kb(tg_id))
+    await callback_query.message.edit_text(text=text, reply_markup=await build_users_balance_kb(tg_id))
 
 
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_balance_add"), IsAdminFilter())
@@ -450,14 +454,10 @@ async def handle_key_edit(
         text += f"\n🏷️ Имя ключа: <b>{alias}</b>"
 
     if not update or not callback_data.edit:
-        await callback_query.message.edit_text(
-            text=text,
-            reply_markup=build_key_edit_kb(key_details, email)
-        )
+        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_details, email))
     else:
         await callback_query.message.edit_text(
-            text=text,
-            reply_markup=build_users_key_expiry_kb(callback_data.tg_id, email)
+            text=text, reply_markup=await build_users_key_expiry_kb(callback_data.tg_id, email)
         )
 
 
@@ -466,7 +466,7 @@ async def handle_change_expiry(callback_query: CallbackQuery, callback_data: Adm
     tg_id = callback_data.tg_id
     email = callback_data.data
 
-    await callback_query.message.edit_reply_markup(reply_markup=build_users_key_expiry_kb(tg_id, email))
+    await callback_query.message.edit_reply_markup(reply_markup=await build_users_key_expiry_kb(tg_id, email))
 
 
 @router.callback_query(AdminUserKeyEditorCallback.filter(F.action == "add"), IsAdminFilter())
@@ -763,14 +763,30 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
     if client_id is None:
         return ValueError(f"User with email {email} was not found")
 
-    server_id = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
+    record = await session.fetchrow("SELECT server_id FROM keys WHERE client_id = $1", client_id)
+    if not record:
+        return ValueError(f"Key with client_id {client_id} was not found")
 
-    if not server_id:
-        return ValueError(f"User with client_id {server_id} was not found")
+    server_id = record["server_id"]
+    servers = await session.fetch(
+        "SELECT tariff_group FROM servers WHERE server_name = $1 OR cluster_name = $1 LIMIT 1", server_id
+    )
+    if not servers or not servers[0]["tariff_group"]:
+        return ValueError(f"Tariff group not found for server_id={server_id}")
+
+    tariff_group = servers[0]["tariff_group"]
+    tariffs = await session.fetch(
+        "SELECT duration_days, traffic_limit FROM tariffs WHERE group_code = $1 AND is_active = TRUE ORDER BY duration_days",
+        tariff_group,
+    )
+    if not tariffs:
+        return ValueError(f"No tariffs found for group {tariff_group}")
+
+    added_days = max((expiry_time - int(time.time() * 1000)) / (1000 * 86400), 1)
+    closest_tariff = min(tariffs, key=lambda t: abs(t["duration_days"] - added_days))
+    total_gb = closest_tariff["traffic_limit"] or 0
 
     clusters = await get_servers()
-    added_days = max((expiry_time - int(time.time() * 1000)) / (1000 * 86400), 1)
-    total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
 
     async def update_key_on_all_servers():
         tasks = [
@@ -785,7 +801,6 @@ async def change_expiry_time(expiry_time: int, email: str, session: Any) -> Exce
             )
             for cluster_name in clusters
         ]
-
         await asyncio.gather(*tasks, return_exceptions=True)
 
     await update_key_on_all_servers()
@@ -953,8 +968,28 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
     await state.set_state(UserEditorState.selecting_duration)
 
     builder = InlineKeyboardBuilder()
-    for months, _ in RENEWAL_PRICES.items():
-        builder.button(text=f"{months} мес.", callback_data=str(months))
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        row = await conn.fetchrow("SELECT cluster_name FROM servers WHERE server_name = $1", country)
+
+        if not row:
+            await callback_query.message.edit_text("❌ Сервер не найден.")
+            return
+
+        cluster_name = row["cluster_name"]
+        await state.update_data(cluster_name=cluster_name)
+
+        tariffs = await get_tariffs_for_cluster(conn, cluster_name)
+
+        for tariff in tariffs:
+            months = tariff["duration_days"] // 30
+            if months < 1:
+                continue
+            builder.button(text=f"{months} мес.", callback_data=str(months))
+    finally:
+        await conn.close()
+
     builder.adjust(1)
     builder.row(build_admin_back_btn())
 
@@ -971,8 +1006,18 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
     await state.set_state(UserEditorState.selecting_duration)
 
     builder = InlineKeyboardBuilder()
-    for months, _ in RENEWAL_PRICES.items():
-        builder.button(text=f"{months} мес.", callback_data=str(months))
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        tariffs = await get_tariffs_for_cluster(conn, cluster_name)
+        for tariff in tariffs:
+            months = tariff["duration_days"] // 30
+            if months < 1:
+                continue
+            builder.button(text=f"{months} мес.", callback_data=str(months))
+    finally:
+        await conn.close()
+
     builder.adjust(1)
     builder.row(build_admin_back_btn())
 

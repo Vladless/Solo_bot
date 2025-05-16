@@ -2,8 +2,6 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.buttons import BACK
-
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from ..servers.keyboard import AdminServerCallback
 
@@ -96,6 +94,12 @@ def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
             callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
         )
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="💸 Тариф: [установить/изменить]",
+            callback_data=AdminClusterCallback(action="set_tariff", data=cluster_name).pack(),
+        )
+    )
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="clusters").pack()))
 
     return builder.as_markup()
@@ -129,4 +133,20 @@ def build_panel_type_kb() -> InlineKeyboardMarkup:
     builder.button(text="🌐 3X-UI", callback_data=AdminClusterCallback(action="panel_3xui").pack())
     builder.button(text="🌀 Remnawave", callback_data=AdminClusterCallback(action="panel_remnawave").pack())
     builder.row(build_admin_back_btn("clusters"))
+    return builder.as_markup()
+
+
+def build_tariff_group_selection_kb(cluster_name: str, groups: list[str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for group in groups:
+        builder.button(
+            text=group,
+            callback_data=AdminClusterCallback(action="apply_tariff_group", data=f"{cluster_name}|{group}").pack(),
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад", callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack()
+        )
+    )
+    builder.adjust(2, 1)
     return builder.as_markup()

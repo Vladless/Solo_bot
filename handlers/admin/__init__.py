@@ -13,6 +13,7 @@ from .restart import router as restart_router
 from .sender import router as sender_router
 from .servers import router as servers_router
 from .stats import router as stats_router
+from .tariffs import router as tariffs_router
 from .users import router as users_router
 
 
@@ -31,4 +32,5 @@ router.include_routers(
     restart_router,
     bans_router,
     ads_router,
+    tariffs_router,
 )

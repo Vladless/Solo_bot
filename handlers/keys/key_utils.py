@@ -1,20 +1,18 @@
 import asyncio
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 
-from bot import bot
 from config import (
     DATABASE_URL,
+    DEFAULT_HWID_LIMIT,
     LIMIT_IP,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     SUPERNODE,
-    TOTAL_GB,
-    DEFAULT_HWID_LIMIT
 )
 from database import delete_notification, get_servers, store_key
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
@@ -40,7 +38,7 @@ async def create_key_on_cluster(
     plan: int = None,
     session=None,
     remnawave_link: str = None,
-    hwid_limit: Optional[int] = DEFAULT_HWID_LIMIT,
+    hwid_limit: int | None = DEFAULT_HWID_LIMIT,
 ):
     try:
         servers = await get_servers(include_enabled=True)
@@ -66,12 +64,21 @@ async def create_key_on_cluster(
 
         async with asyncpg.create_pool(DATABASE_URL) as pool:
             async with pool.acquire() as conn:
+                traffic_limit_bytes = None
+                if plan is not None:
+                    tariff = await conn.fetchrow("SELECT traffic_limit FROM tariffs WHERE id = $1", plan)
+                    if not tariff:
+                        raise ValueError(f"Тариф с id={plan} не найден.")
+                    traffic_limit_bytes = int(tariff["traffic_limit"])
+
                 remnawave_servers = [
-                    s for s in enabled_servers
+                    s
+                    for s in enabled_servers
                     if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, conn)
                 ]
                 xui_servers = [
-                    s for s in enabled_servers
+                    s
+                    for s in enabled_servers
                     if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, conn)
                 ]
 
@@ -96,7 +103,6 @@ async def create_key_on_cluster(
                 if not inbound_ids:
                     logger.warning("Нет inbound_id у серверов Remnawave")
                 else:
-                    traffic_limit_bytes = int((plan or 1) * TOTAL_GB * 1024**3)
                     short_uuid = None
                     if remnawave_link and "/" in remnawave_link:
                         short_uuid = remnawave_link.rstrip("/").split("/")[-1]
@@ -104,11 +110,13 @@ async def create_key_on_cluster(
                     user_data = {
                         "username": email,
                         "trafficLimitStrategy": "NO_RESET",
-                        "trafficLimitBytes": traffic_limit_bytes,
                         "expireAt": expire_at,
                         "telegramId": tg_id,
                         "activeUserInbounds": inbound_ids,
                     }
+
+                    if traffic_limit_bytes and traffic_limit_bytes > 0:
+                        user_data["trafficLimitBytes"] = traffic_limit_bytes
 
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
@@ -171,7 +179,7 @@ async def create_client_on_server(
     plan: int = None,
 ):
     """
-    Создает клиента на указанном сервере.
+    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу.
     """
     async with semaphore:
         xui = await get_xui_instance(server_info["api_url"])
@@ -190,7 +198,14 @@ async def create_client_on_server(
             unique_email = email
             sub_id = unique_email
 
-        total_gb_value = int((plan or 1) * TOTAL_GB * 1024**3)
+        total_gb_value = 0
+        if plan is not None:
+            async with asyncpg.create_pool(DATABASE_URL) as pool:
+                async with pool.acquire() as conn:
+                    tariff = await conn.fetchrow("SELECT traffic_limit FROM tariffs WHERE id = $1", plan)
+                    if not tariff:
+                        raise ValueError(f"Тариф с id={plan} не найден.")
+                    total_gb_value = int(tariff["traffic_limit"])
 
         await add_client(
             xui,
@@ -212,7 +227,9 @@ async def create_client_on_server(
             await asyncio.sleep(0.7)
 
 
-async def renew_key_in_cluster(cluster_id, email, client_id, new_expiry_time, total_gb, hwid_device_limit=DEFAULT_HWID_LIMIT):
+async def renew_key_in_cluster(
+    cluster_id, email, client_id, new_expiry_time, total_gb, hwid_device_limit=DEFAULT_HWID_LIMIT
+):
     try:
         servers = await get_servers()
         cluster = servers.get(cluster_id)
@@ -434,6 +451,18 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                     "activeUserInbounds": inbound_ids,
                 }
 
+                async with asyncpg.create_pool(DATABASE_URL) as pool:
+                    async with pool.acquire() as conn:
+                        group_id = remnawave_servers[0].get("tariff_group")
+                        if group_id is None:
+                            raise ValueError("У Remnawave-сервера отсутствует tariff_group")
+                        tariff = await conn.fetchrow(
+                            "SELECT traffic_limit FROM tariffs WHERE tariff_group = $1 ORDER BY traffic_limit_gb DESC LIMIT 1",
+                            group_id,
+                        )
+                        if tariff:
+                            user_data["trafficLimitBytes"] = int(tariff["traffic_limit"] * 1024**3)
+
                 result = await remna.create_user(user_data)
                 if result:
                     remnawave_client_id = result.get("uuid")
@@ -464,12 +493,25 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 sub_id = email
                 unique_email = email
 
+            total_gb_bytes = 0
+            async with asyncpg.create_pool(DATABASE_URL) as pool:
+                async with pool.acquire() as conn:
+                    group_id = server_info.get("tariff_group")
+                    if group_id is None:
+                        raise ValueError(f"У сервера {server_name} отсутствует tariff_group")
+                    tariff = await conn.fetchrow(
+                        "SELECT traffic_limit FROM tariffs WHERE tariff_group = $1 ORDER BY traffic_limit_gb DESC LIMIT 1",
+                        group_id,
+                    )
+                    if tariff:
+                        total_gb_bytes = int(tariff["traffic_limit_gb"] * 1024**3)
+
             config = ClientConfig(
                 client_id=remnawave_client_id,
                 email=unique_email,
                 tg_id=tg_id,
                 limit_ip=LIMIT_IP,
-                total_gb=TOTAL_GB,
+                total_gb=total_gb_bytes,
                 expiry_time=expiry_time,
                 enable=True,
                 flow="xtls-rprx-vision",

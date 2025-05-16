@@ -105,7 +105,7 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
                 session=session,
                 admin=admin,
                 text_to_process=original_text,
-                user_data=user_data
+                user_data=user_data,
             )
             logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
     except Exception as e:
@@ -113,23 +113,6 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         await callback_query.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
-async def process_start_logic(
-    message: Message,
-    state: FSMContext,
-    session: Any,
-    admin: bool,
-    text_to_process: str = None,
-    user_data: dict | None = None,
-):
-    text = text_to_process or message.text or message.caption
-    user_data = user_data or {
-        "tg_id": (message.from_user or message.chat).id,
-        "username": getattr(message.from_user, "username", None),
-        "first_name": getattr(message.from_user, "first_name", None),
-        "last_name": getattr(message.from_user, "last_name", None),
-        "language_code": getattr(message.from_user, "language_code", None),
-        "is_bot": getattr(message.from_user, "is_bot", False),
-    }
 
 async def process_start_logic(
     message: Message,
@@ -139,10 +122,6 @@ async def process_start_logic(
     text_to_process: str = None,
     user_data: dict | None = None,
 ):
-    from config import CHANNEL_EXISTS, CHANNEL_REQUIRED, CHANNEL_ID, CHANNEL_URL
-    from handlers.texts import SUBSCRIPTION_REQUIRED_MSG
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
 
     user_data = user_data or {
         "tg_id": (message.from_user or message.chat).id,
@@ -229,7 +208,7 @@ async def process_start_logic(
                 logger.info(f"[UTM] Обнаружена ссылка на UTM: {utm_code}")
                 await handle_utm_link(utm_code, message, state, session, user_data=user_data)
                 continue
-                
+
         await state.clear()
         if gift_detected:
             return
@@ -247,7 +226,7 @@ async def process_start_logic(
                 await show_start_menu(message, admin, session)
         else:
             await show_start_menu(message, admin, session)
-        
+
         await state.clear()
 
     except Exception as e:

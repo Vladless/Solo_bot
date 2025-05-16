@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
 
+import asyncpg
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES, TOTAL_GB, HWID_RESET_BUTTON
-from database import get_clusters
+from config import DATABASE_URL, HWID_RESET_BUTTON
+from database import get_clusters, get_tariffs, get_tariffs_for_cluster
 from handlers.buttons import BACK
 
 from ..panel.keyboard import build_admin_back_btn
@@ -77,29 +79,50 @@ def build_users_balance_change_kb(tg_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_users_balance_kb(tg_id: int) -> InlineKeyboardMarkup:
+async def build_users_balance_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for month, amount in RENEWAL_PRICES.items():
-        builder.button(
-            text=f"+ {amount}Р ({month} мес.)",
-            callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id, data=amount).pack(),
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        tariffs = await get_tariffs(conn)
+        for tariff in tariffs:
+            months = tariff["duration_days"] // 30
+            if months < 1:
+                continue
+            price = tariff["price_rub"]
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"+ {price}₽ ({months} мес.)",
+                    callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id, data=price).pack(),
+                ),
+                InlineKeyboardButton(
+                    text=f"- {price}₽ ({months} мес.)",
+                    callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id, data=-price).pack(),
+                ),
+            )
+    finally:
+        await conn.close()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💵 Добавить",
+            callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id).pack(),
+        ),
+        InlineKeyboardButton(
+            text="💵 Вычесть",
+            callback_data=AdminUserEditorCallback(action="users_balance_take", tg_id=tg_id).pack(),
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="💵 Установить баланс",
+            callback_data=AdminUserEditorCallback(action="users_balance_set", tg_id=tg_id).pack(),
         )
-        builder.button(
-            text=f"- {amount}Р ({month} мес.)",
-            callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id, data=-amount).pack(),
-        )
-    builder.button(
-        text="💵 Добавить", callback_data=AdminUserEditorCallback(action="users_balance_add", tg_id=tg_id).pack()
     )
-    builder.button(
-        text="💵 Вычесть", callback_data=AdminUserEditorCallback(action="users_balance_take", tg_id=tg_id).pack()
-    )
-    builder.button(
-        text="💵 Установить баланс",
-        callback_data=AdminUserEditorCallback(action="users_balance_set", tg_id=tg_id).pack(),
-    )
+
     builder.row(build_editor_back_btn(tg_id, True))
-    builder.adjust(2, 2, 2, 2, 2, 1)
+
     return builder.as_markup()
 
 
@@ -112,33 +135,69 @@ def build_users_key_show_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_users_key_expiry_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+async def build_users_key_expiry_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for month in RENEWAL_PRICES.keys():
-        month = int(month)
-        builder.button(
-            text=f"+ {month} мес.",
-            callback_data=AdminUserKeyEditorCallback(action="add", tg_id=tg_id, data=email, month=month).pack(),
+
+    conn = await asyncpg.connect(DATABASE_URL)
+    try:
+        record = await conn.fetchrow("SELECT server_id FROM keys WHERE email = $1", email)
+        if not record:
+            builder.row(
+                InlineKeyboardButton(
+                    text="⚠️ Сервер не найден",
+                    callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
+                )
+            )
+            return builder.as_markup()
+
+        server_id = record["server_id"]
+
+        tariffs = await get_tariffs_for_cluster(conn, server_id)
+        for tariff in tariffs:
+            months = tariff["duration_days"] // 30
+            if months < 1:
+                continue
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"+ {months} мес.",
+                    callback_data=AdminUserKeyEditorCallback(
+                        action="add", tg_id=tg_id, data=email, month=months
+                    ).pack(),
+                ),
+                InlineKeyboardButton(
+                    text=f"- {months} мес.",
+                    callback_data=AdminUserKeyEditorCallback(
+                        action="add", tg_id=tg_id, data=email, month=-months
+                    ).pack(),
+                ),
+            )
+    finally:
+        await conn.close()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⏳ Добавить дни",
+            callback_data=AdminUserKeyEditorCallback(action="add", tg_id=tg_id, data=email).pack(),
+        ),
+        InlineKeyboardButton(
+            text="⏳ Вычесть дни",
+            callback_data=AdminUserKeyEditorCallback(action="take", tg_id=tg_id, data=email).pack(),
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⏳ Установить дату истечения",
+            callback_data=AdminUserKeyEditorCallback(action="set", tg_id=tg_id, data=email).pack(),
         )
-        builder.button(
-            text=f"- {month} мес.",
-            callback_data=AdminUserKeyEditorCallback(action="add", tg_id=tg_id, data=email, month=-month).pack(),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK,
+            callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
         )
-    builder.button(
-        text="⏳ Добавить дни", callback_data=AdminUserKeyEditorCallback(action="add", tg_id=tg_id, data=email).pack()
     )
-    builder.button(
-        text="⏳ Вычесть дни", callback_data=AdminUserKeyEditorCallback(action="take", tg_id=tg_id, data=email).pack()
-    )
-    builder.button(
-        text="⏳ Установить дату истечения",
-        callback_data=AdminUserKeyEditorCallback(action="set", tg_id=tg_id, data=email).pack(),
-    )
-    builder.button(
-        text=BACK,  # todo: fix magic text was set
-        callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
-    )
-    builder.adjust(2, 2, 2, 2, 2, 1)
+
     return builder.as_markup()
 
 
@@ -182,13 +241,12 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
         text="📊 Трафик",
         callback_data=AdminUserEditorCallback(action="users_traffic", data=email, tg_id=key_details["tg_id"]).pack(),
     )
-    if TOTAL_GB > 0:
-        builder.button(
-            text="♻️ Сбросить трафик",
-            callback_data=AdminUserEditorCallback(
-                action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
+    builder.button(
+        text="♻️ Сбросить трафик",
+        callback_data=AdminUserEditorCallback(
+            action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
+        ).pack(),
+    )
     if HWID_RESET_BUTTON:
         builder.button(
             text="💻 HWID",
@@ -205,15 +263,11 @@ def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text="♻️ Сбросить HWID",
-        callback_data=AdminUserEditorCallback(
-            action="users_hwid_reset", data=email, tg_id=tg_id
-        ).pack(),
+        callback_data=AdminUserEditorCallback(action="users_hwid_reset", data=email, tg_id=tg_id).pack(),
     )
     builder.button(
         text="🔙 Назад",
-        callback_data=AdminUserEditorCallback(
-            action="users_key_edit", data=email, tg_id=tg_id
-        ).pack(),
+        callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
     )
     builder.adjust(1)
     return builder.as_markup()

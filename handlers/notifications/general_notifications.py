@@ -16,8 +16,6 @@ from config import (
     NOTIFY_MAXPRICE,
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
-    RENEWAL_PRICES,
-    TOTAL_GB,
     TRIAL_TIME_DISABLE,
 )
 from database import (
@@ -29,6 +27,7 @@ from database import (
     get_all_keys,
     get_balance,
     get_last_notification_time,
+    get_tariffs_for_cluster,
     update_balance,
     update_key_expiry,
 )
@@ -297,25 +296,22 @@ async def notify_10h_keys(bot: Bot, conn: asyncpg.Connection, current_time: int,
 
 
 async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: int, keys: list):
-    """
-    Обрабатывает истекшие ключи, проверяя продление или удаление.
-    """
     logger.info("Начало обработки истекших ключей.")
 
-    expired_keys = [key for key in keys if key.get("expiry_time") and key.get("expiry_time") < current_time]
+    expired_keys = [key for key in keys if key.get("expiry_time") and key["expiry_time"] < current_time]
     logger.info(f"Найдено {len(expired_keys)} истекших ключей.")
 
     tg_ids = [key["tg_id"] for key in expired_keys]
     emails = [key.get("email", "") for key in expired_keys]
-
     users = await check_notifications_bulk("key_expired", 0, conn, tg_ids=tg_ids, emails=emails)
+
     messages = []
 
     for key in expired_keys:
         tg_id = key["tg_id"]
-        email = key.get("email", "")
-        client_id = key.get("client_id")
-        server_id = key.get("server_id")
+        email = key["email"]
+        client_id = key["client_id"]
+        server_id = key["server_id"]
         notification_id = f"{email}_key_expired"
 
         last_notification_time = await get_last_notification_time(tg_id, notification_id, session=conn)
@@ -323,20 +319,17 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         if NOTIFY_RENEW_EXPIRED:
             try:
                 balance = await get_balance(tg_id)
-            except Exception as e:
-                logger.error(f"Ошибка получения баланса для пользователя {tg_id}: {e}")
-                continue
 
-            renewal_period_months = 1
-            renewal_cost = RENEWAL_PRICES[str(renewal_period_months)]
+                tariffs = await get_tariffs_for_cluster(conn, server_id)
+                tariff = tariffs[0] if tariffs else None
 
-            if balance >= renewal_cost:
-                try:
+                if tariff and balance >= tariff["price_rub"]:
                     await process_auto_renew_or_notify(
                         bot, conn, key, notification_id, 1, "notify_expired.jpg", KEY_RENEWED_TEMP_MSG
                     )
-                except Exception as e:
-                    logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {e}")
+                    continue
+            except Exception as e:
+                logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {e}")
                 continue
 
         if NOTIFY_DELETE_KEY:
@@ -375,16 +368,12 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
             if NOTIFY_DELETE_DELAY > 0:
                 hours = NOTIFY_DELETE_DELAY // 60
                 minutes = NOTIFY_DELETE_DELAY % 60
-
-                if hours > 0:
-                    if minutes > 0:
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
-                            email=email, hours_formatted=format_hours(hours), minutes_formatted=format_minutes(minutes)
-                        )
-                    else:
-                        delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(
-                            email=email, hours_formatted=format_hours(hours)
-                        )
+                if hours > 0 and minutes > 0:
+                    delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
+                        email=email, hours_formatted=format_hours(hours), minutes_formatted=format_minutes(minutes)
+                    )
+                elif hours > 0:
+                    delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(email=email, hours_formatted=format_hours(hours))
                 else:
                     delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(
                         email=email, minutes_formatted=format_minutes(minutes)
@@ -405,16 +394,15 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         results = await send_messages_with_limit(bot, messages, conn=conn)
         sent_count = 0
         for msg, result in zip(messages, results, strict=False):
-            tg_id = msg["tg_id"]
-            email = msg["email"]
             if result:
-                await add_notification(tg_id, msg["notification_id"], session=conn)
+                await add_notification(msg["tg_id"], msg["notification_id"], session=conn)
                 sent_count += 1
-                logger.info(f"📢 Отправлено уведомление об истекшем ключе для подписки {email} пользователю {tg_id}.")
+                logger.info(f"📢 Уведомление об истекшем ключе {msg['email']} отправлено пользователю {msg['tg_id']}.")
             else:
                 logger.warning(
-                    f"📢 Не удалось отправить уведомление об истекшем ключе для подписки {email} пользователю {tg_id}."
+                    f"📢 Не удалось отправить уведомление об истекшем ключе {msg['email']} пользователю {msg['tg_id']}."
                 )
+
         logger.info(f"Отправлено {sent_count} уведомлений об истекших ключах.")
 
     logger.info("Обработка истекших ключей завершена.")
@@ -424,10 +412,6 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
 async def process_auto_renew_or_notify(
     bot, conn, key: dict, notification_id: str, renewal_period_months: int, standard_photo: str, standard_caption: str
 ):
-    """
-    Если баланс пользователя позволяет, продлевает ключ на максимальный возможный срок и списывает средства;
-    иначе отправляет стандартное уведомление.
-    """
     tg_id = key.get("tg_id")
     email = key.get("email", "")
     renew_notification_id = f"{email}_renew"
@@ -441,65 +425,58 @@ async def process_auto_renew_or_notify(
             return
 
         balance = await get_balance(tg_id)
-    except Exception as e:
-        logger.error(f"Ошибка получения данных для пользователя {tg_id}: {e}")
-        return
-
-    if NOTIFY_MAXPRICE:
-        renewal_period_months = max(
-            (int(months) for months, price in RENEWAL_PRICES.items() if balance >= price), default=None
-        )
-    else:
-        renewal_period_months = 1 if balance >= RENEWAL_PRICES["1"] else None
-
-    if renewal_period_months:
-        renewal_period_months = int(renewal_period_months)
-        renewal_cost = RENEWAL_PRICES[str(renewal_period_months)]
-        client_id = key.get("client_id")
         server_id = key.get("server_id")
-        current_expiry = key.get("expiry_time")
-        new_expiry_time = current_expiry + renewal_period_months * 30 * 24 * 3600 * 1000
 
-        formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, moscow_tz).strftime("%d %B %Y, %H:%M")
-        total_gb = int(renewal_period_months * TOTAL_GB * 1024**3)
+        tariffs = await get_tariffs_for_cluster(conn, server_id)
+        if not tariffs:
+            logger.warning(f"⛔ Нет доступных тарифов для продления подписки {email} (сервер: {server_id})")
+            return
+
+        if NOTIFY_MAXPRICE:
+            suitable_tariffs = [t for t in tariffs if balance >= t["price_rub"]]
+            selected_tariff = suitable_tariffs[-1] if suitable_tariffs else None
+        else:
+            selected_tariff = tariffs[0] if balance >= tariffs[0]["price_rub"] else None
+
+        if not selected_tariff:
+            keyboard = build_notification_kb(email)
+            await add_notification(tg_id, notification_id, session=conn)
+            await send_notification(bot, tg_id, standard_photo, standard_caption, keyboard)
+            return
+
+        client_id = key.get("client_id")
+        current_expiry = key.get("expiry_time")
+        duration_days = selected_tariff["duration_days"]
+        renewal_cost = selected_tariff["price_rub"]
+        traffic_limit = selected_tariff["traffic_limit"]
+        total_gb = traffic_limit if traffic_limit else 0
+
+        new_expiry_time = (
+            current_expiry
+            if current_expiry > datetime.utcnow().timestamp() * 1000
+            else datetime.utcnow().timestamp() * 1000
+        ) + duration_days * 24 * 60 * 60 * 1000
+
+        formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
 
         logger.info(
             f"Продление подписки {email} на {renewal_period_months} мес. для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
-        try:
-            await renew_key_in_cluster(server_id, email, client_id, new_expiry_time, total_gb)
-            await update_balance(tg_id, -renewal_cost, session=conn)
-            await update_key_expiry(client_id, new_expiry_time, conn)
+        await renew_key_in_cluster(server_id, email, client_id, int(new_expiry_time), total_gb)
+        await update_balance(tg_id, -renewal_cost, session=conn)
+        await update_key_expiry(client_id, int(new_expiry_time), conn)
+        await add_notification(tg_id, renew_notification_id, session=conn)
+        await delete_notification(tg_id, notification_id, session=conn)
 
-            await add_notification(tg_id, renew_notification_id, session=conn)
-            await delete_notification(tg_id, notification_id, session=conn)
+        renewed_message = KEY_RENEWED.format(email=email, months=duration_days // 30, expiry_date=formatted_expiry_date)
 
-            logger.info(
-                f"✅ Ключ {client_id} продлён на {renewal_period_months} мес. для пользователя {tg_id}. Списано {renewal_cost}."
-            )
-
-            renewed_message = KEY_RENEWED.format(
-                email=email, months=renewal_period_months, expiry_date=formatted_expiry_date
-            )
-
-            keyboard = build_notification_expired_kb()
-            result = await send_notification(bot, tg_id, "notify_expired.jpg", renewed_message, keyboard)
-            if result:
-                logger.info(f"✅ Уведомление о продлении подписки {email} отправлено пользователю {tg_id}.")
-            else:
-                logger.warning(
-                    f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}."
-                )
-        except KeyError as e:
-            logger.error(f"❌ Ошибка форматирования сообщения KEY_RENEWED: отсутствует ключ {e}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка при продлении ключа {client_id} для пользователя {tg_id}: {e}")
-    else:
-        keyboard = build_notification_kb(email)
-        await add_notification(tg_id, notification_id, session=conn)
-        result = await send_notification(bot, tg_id, standard_photo, standard_caption, keyboard)
+        keyboard = build_notification_expired_kb()
+        result = await send_notification(bot, tg_id, "notify_expired.jpg", renewed_message, keyboard)
         if result:
-            logger.info(f"📢 Отправлено уведомление об истекающей подписке {email} пользователю {tg_id}.")
+            logger.info(f"✅ Уведомление о продлении подписки {email} отправлено пользователю {tg_id}.")
         else:
-            logger.warning(f"📢 Не удалось отправить уведомление об истекающей подписке {email} пользователю {tg_id}.")
+            logger.warning(f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}.")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в process_auto_renew_or_notify: {e}")

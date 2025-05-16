@@ -1504,3 +1504,88 @@ async def get_tracking_source_stats(code: str, session) -> dict:
         code,
     )
     return dict(result) if result else {}
+
+
+async def get_tariffs(session, tariff_id: int = None, group_code: str = None):
+    """
+    Возвращает список всех тарифов или конкретный тариф по ID или группе.
+    """
+    query = "SELECT * FROM tariffs"
+    params = []
+
+    if tariff_id is not None:
+        query += " WHERE id = $1"
+        params = [tariff_id]
+    elif group_code is not None:
+        query += " WHERE group_code = $1"
+        params = [group_code]
+
+    result = await session.fetch(query, *params) if params else await session.fetch(query)
+    return [dict(record) for record in result]
+
+
+async def update_tariff(session, tariff_id: int, updates: dict):
+    """
+    Обновляет указанные поля в тарифе по его ID.
+    Пример updates: {"price_rub": 199, "is_active": False}
+    """
+    if not updates:
+        return False
+
+    set_clause = ", ".join(f"{key} = ${i + 2}" for i, key in enumerate(updates))
+    values = list(updates.values())
+
+    query = f"""
+        UPDATE tariffs
+        SET {set_clause}, updated_at = NOW()
+        WHERE id = $1
+    """
+    await session.execute(query, tariff_id, *values)
+    return True
+
+
+async def create_tariff(session, data: dict):
+    """
+    Создаёт новый тариф. Ожидает словарь с полями таблицы (без id, created_at).
+    """
+    keys = ", ".join(data.keys())
+    values_placeholders = ", ".join(f"${i + 1}" for i in range(len(data)))
+    values = list(data.values())
+
+    query = f"""
+        INSERT INTO tariffs ({keys}, created_at, updated_at)
+        VALUES ({values_placeholders}, NOW(), NOW())
+        RETURNING *
+    """
+    result = await session.fetchrow(query, *values)
+    return dict(result) if result else None
+
+
+async def delete_tariff(session, tariff_id: int):
+    """
+    Удаляет тариф по ID.
+    """
+    query = "DELETE FROM tariffs WHERE id = $1"
+    await session.execute(query, tariff_id)
+    return True
+
+
+async def get_tariffs_for_cluster(session, cluster_name: str) -> list[dict]:
+    row = await session.fetchrow(
+        "SELECT tariff_group FROM servers WHERE cluster_name = $1 LIMIT 1",
+        cluster_name,
+    )
+    if not row or not row["tariff_group"]:
+        return []
+
+    group_code = row["tariff_group"]
+    rows = await session.fetch(
+        "SELECT * FROM tariffs WHERE group_code = $1 AND is_active = TRUE ORDER BY duration_days",
+        group_code,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_tariff_by_id(session, tariff_id: int) -> dict | None:
+    row = await session.fetchrow("SELECT * FROM tariffs WHERE id = $1", tariff_id)
+    return dict(row) if row else None

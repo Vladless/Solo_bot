@@ -29,12 +29,13 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
         InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )
+    builder.row(InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()))
     builder.row(
         InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
         InlineKeyboardButton(text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()),
     )
     builder.button(text=MAIN_MENU, callback_data="profile")
-    builder.adjust(1, 1, 2, 2, 2, 1)
+    builder.adjust(1, 1, 2, 2, 1, 2, 1)
     return builder.as_markup()
 
 

@@ -1,6 +1,6 @@
 import asyncio
-import time
 
+from datetime import datetime
 from typing import Any
 
 import asyncpg
@@ -18,7 +18,6 @@ from config import (
     DATABASE_URL,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    TOTAL_GB,
     USE_COUNTRY_SELECTION,
 )
 from database import check_unique_server_name, get_servers, update_key_expiry
@@ -41,6 +40,7 @@ from .keyboard import (
     build_manage_cluster_kb,
     build_panel_type_kb,
     build_sync_cluster_kb,
+    build_tariff_group_selection_kb,
 )
 
 
@@ -563,9 +563,32 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
         user_data = await state.get_data()
         cluster_name = user_data.get("cluster_name")
 
-        now = int(time.time() * 1000)
         add_ms = days * 86400 * 1000
-        total_gb = int((days / 30) * TOTAL_GB * 1024**3)
+
+        row = await session.fetchrow("SELECT tariff_group FROM servers WHERE cluster_name = $1 LIMIT 1", cluster_name)
+        if not row or not row["tariff_group"]:
+            await message.answer("❌ Не удалось определить тарифную группу для этого кластера.")
+            await state.clear()
+            return
+
+        group_code = row["tariff_group"]
+
+        tariff = await session.fetchrow(
+            """
+            SELECT * FROM tariffs 
+            WHERE group_code = $1 AND is_active = TRUE AND duration_days >= $2
+            ORDER BY duration_days ASC 
+            LIMIT 1
+            """,
+            group_code,
+            days,
+        )
+        if not tariff:
+            await message.answer("❌ Нет активных тарифов, подходящих по сроку.")
+            await state.clear()
+            return
+
+        total_gb = tariff["traffic_limit"] or 0
 
         keys = await session.fetch(
             "SELECT tg_id, client_id, email, expiry_time FROM keys WHERE server_id = $1",
@@ -578,7 +601,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
             return
 
         for key in keys:
-            new_expiry = (key["expiry_time"] or now) + add_ms
+            new_expiry = key["expiry_time"] + add_ms
             await renew_key_in_cluster(
                 cluster_name,
                 email=key["email"],
@@ -588,14 +611,15 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
             )
             await update_key_expiry(key["client_id"], new_expiry, session)
 
+            logger.info(f"[Cluster Extend] {key['email']} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}")
+
         await message.answer(
             f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
         )
     except ValueError:
         await message.answer("❌ Введите корректное число дней.")
-        return
     except Exception as e:
-        logger.error(f"Ошибка при добавлении дней: {e}")
+        logger.error(f"[Cluster Extend] Ошибка при добавлении дней: {e}")
         await message.answer("❌ Произошла ошибка при продлении времени.")
     finally:
         await state.clear()
@@ -855,3 +879,37 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
     finally:
         await conn.close()
         await state.clear()
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "set_tariff"), IsAdminFilter())
+async def show_tariff_group_selection(callback: CallbackQuery, callback_data: AdminClusterCallback, session):
+    cluster_name = callback_data.data
+    rows = await session.fetch(
+        "SELECT DISTINCT group_code FROM tariffs WHERE group_code IS NOT NULL ORDER BY group_code"
+    )
+    groups = [r["group_code"] for r in rows]
+
+    if not groups:
+        await callback.message.edit_text("❌ Нет доступных тарифных групп.")
+        return
+
+    await callback.message.edit_text(
+        f"<b>💸 Выберите тарифную группу для кластера <code>{cluster_name}</code>:</b>",
+        reply_markup=build_tariff_group_selection_kb(cluster_name, groups),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariff_group"), IsAdminFilter())
+async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminClusterCallback, session):
+    try:
+        cluster_name, group_code = callback_data.data.split("|", 1)
+    except ValueError:
+        await callback.message.edit_text("❌ Неверные данные.")
+        return
+
+    await session.execute("UPDATE servers SET tariff_group = $1 WHERE cluster_name = $2", group_code, cluster_name)
+
+    await callback.message.edit_text(
+        f"✅ Для кластера <code>{cluster_name}</code> установлена тарифная группа: <b>{group_code}</b>",
+        reply_markup=build_cluster_management_kb(cluster_name),
+    )

@@ -18,12 +18,11 @@ from config import (
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
     DATABASE_URL,
+    DEFAULT_HWID_LIMIT,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    RENEWAL_PRICES,
     SUPPORT_CHAT_URL,
-    DEFAULT_HWID_LIMIT
 )
 from database import (
     add_user,
@@ -427,9 +426,10 @@ async def finalize_key_creation(
                 trial_status = await get_trial(tg_id, session)
                 if trial_status in [0, -1]:
                     await update_trial(tg_id, 1, session)
-            if data.get("plan_id"):
-                plan_price = RENEWAL_PRICES.get(data["plan_id"])
-                await update_balance(tg_id, -plan_price, session)
+            if data.get("tariff_id"):
+                row = await session.fetchrow("SELECT price_rub FROM tariffs WHERE id = $1", data["tariff_id"])
+                if row:
+                    await update_balance(tg_id, -row["price_rub"], session)
 
     except Exception as e:
         logger.error(f"[Key Finalize] Ошибка при создании ключа для пользователя {tg_id}: {e}")

@@ -6,9 +6,6 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    TOTAL_GB,
-)
 from database import (
     get_key_details,
 )
@@ -83,6 +80,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 leftover = 0
 
             new_expiry_time = now_ms + leftover
+
             await session.execute(
                 """
                 UPDATE keys
@@ -95,8 +93,24 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 record["tg_id"],
                 client_id,
             )
+            tariff = await session.fetchrow(
+                """
+                SELECT t.traffic_limit
+                FROM tariffs t
+                JOIN servers s ON s.tariff_group = t.tariff_group
+                WHERE s.server_name = $1
+                ORDER BY t.duration_days DESC
+                LIMIT 1
+            """,
+                cluster_id,
+            )
+
+            if not tariff or not tariff["traffic_limit"]:
+                raise ValueError("Не удалось определить тариф для сервера")
+
+            base_bytes = int(tariff["traffic_limit"])
             added_days = max(leftover / (1000 * 86400), 0.01)
-            total_gb = int((added_days / 30) * TOTAL_GB * 1024**3)
+            total_gb = int((added_days / 30) * base_bytes)
 
             await renew_key_in_cluster(
                 cluster_id=cluster_id,

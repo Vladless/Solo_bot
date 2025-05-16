@@ -193,6 +193,20 @@ CREATE TABLE IF NOT EXISTS tracking_sources (
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS source_code TEXT REFERENCES tracking_sources (code);
 
+CREATE TABLE IF NOT EXISTS tariffs (
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,                      
+    group_code      TEXT NOT NULL,                          
+    duration_days   INTEGER NOT NULL CHECK (duration_days > 0),
+    price_rub       INTEGER NOT NULL CHECK (price_rub >= 0),
+    traffic_limit   BIGINT,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE servers ADD COLUMN IF NOT EXISTS tariff_group TEXT;
+
 
 DO $$
 BEGIN

@@ -10,19 +10,12 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     NOTIFY_EXTRA_DAYS,
-    RENEWAL_PRICES,
     TRIAL_TIME,
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
-from database import (
-    add_user,
-    check_user_exists,
-    create_temporary_data,
-    get_balance,
-    get_trial,
-)
+from database import add_user, check_user_exists, create_temporary_data, get_balance, get_tariffs_for_cluster, get_trial
 from handlers.buttons import (
     MAIN_MENU,
     PAYMENT,
@@ -31,11 +24,10 @@ from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
-    DISCOUNTS,
     INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
 )
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, get_least_loaded_cluster
 from logger import logger
 
 from .key_cluster_mode import key_cluster_mode
@@ -81,61 +73,66 @@ async def handle_key_creation(
             await create_key(tg_id, expiry_time, state, session, message_or_query)
             return
 
+    cluster_name = await get_least_loaded_cluster()
+    tariffs = await get_tariffs_for_cluster(session, cluster_name)
+
+    if not tariffs:
+        await edit_or_send_message(
+            target_message=message_or_query if isinstance(message_or_query, Message) else message_or_query.message,
+            text="❌ Нет доступных тарифов для выбранного кластера.",
+            reply_markup=None,
+        )
+        return
+
     builder = InlineKeyboardBuilder()
-    for index, (plan_id, price) in enumerate(RENEWAL_PRICES.items()):
-        discount_text = ""
-        if DISCOUNTS and plan_id in DISCOUNTS:
-            discount_percentage = DISCOUNTS[plan_id]
-            discount_text = f" ({discount_percentage}% скидка)"
-            if index == len(RENEWAL_PRICES) - 1:
-                discount_text = f" ({discount_percentage}% 🔥)"
+    for t in tariffs:
         builder.row(
             InlineKeyboardButton(
-                text=f"📅 {plan_id} мес. - {price}₽{discount_text}",
-                callback_data=f"select_plan_{plan_id}",
+                text=f"{t['name']} — {t['price_rub']}₽",
+                callback_data=f"select_tariff_plan|{t['id']}",
             )
         )
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if isinstance(message_or_query, CallbackQuery):
-        target_message = message_or_query.message
-    else:
-        target_message = message_or_query
-
+    target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
     await edit_or_send_message(
         target_message=target_message,
         text=SELECT_TARIFF_PLAN_MSG,
         reply_markup=builder.as_markup(),
-        media_path=None,
     )
 
     await state.update_data(tg_id=tg_id)
     await state.set_state(Form.waiting_for_server_selection)
 
 
-@router.callback_query(F.data.startswith("select_plan_"))
+@router.callback_query(F.data.startswith("select_tariff_plan|"))
 async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state: FSMContext):
     tg_id = callback_query.message.chat.id
-    plan_id = callback_query.data.split("_")[-1]
-    plan_price = RENEWAL_PRICES.get(plan_id)
-    if plan_price is None:
-        await callback_query.message.answer("🚫 Неверный тарифный план.")
+    tariff_id = int(callback_query.data.split("|")[1])
+
+    row = await session.fetchrow("SELECT * FROM tariffs WHERE id = $1", tariff_id)
+    if not row:
+        await callback_query.message.edit_text("❌ Указанный тариф не найден.")
         return
-    duration_days = int(plan_id) * 30
+
+    tariff = dict(row)
+    duration_days = tariff["duration_days"]
+    price_rub = tariff["price_rub"]
+
     balance = await get_balance(tg_id)
-    if balance < plan_price:
-        required_amount = plan_price - balance
+    if balance < price_rub:
+        required_amount = price_rub - balance
         await create_temporary_data(
             session,
             tg_id,
             "waiting_for_payment",
             {
-                "plan_id": plan_id,
-                "plan_price": plan_price,
+                "tariff_id": tariff_id,
                 "duration_days": duration_days,
                 "required_amount": required_amount,
             },
         )
+
         if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
             await process_custom_amount_input(callback_query, session)
         elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
@@ -148,12 +145,11 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
                 target_message=callback_query.message,
                 text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
                 reply_markup=builder.as_markup(),
-                media_path=None,
             )
         return
+
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="⏳ Подождите...", callback_data="creating_key"))
-
     await edit_or_send_message(
         target_message=callback_query.message,
         text=CREATING_CONNECTION_MSG,
@@ -161,8 +157,8 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
     )
 
     expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
-    await state.update_data(plan_id=plan_id)
-    await create_key(tg_id, expiry_time, state, session, callback_query, plan=int(plan_id))
+    await state.update_data(tariff_id=tariff_id)
+    await create_key(tg_id, expiry_time, state, session, callback_query, plan=tariff_id)
 
 
 async def create_key(

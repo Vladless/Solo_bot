@@ -9,12 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Mess
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import (
-    CONNECT_PHONE_BUTTON,
-    RENEWAL_PRICES,
-    SUPPORT_CHAT_URL,
-    DEFAULT_HWID_LIMIT
-)
+from config import CONNECT_PHONE_BUTTON, DEFAULT_HWID_LIMIT, SUPPORT_CHAT_URL
 from database import (
     get_key_details,
     get_trial,
@@ -90,9 +85,10 @@ async def key_cluster_mode(
             if trial_status in [0, -1]:
                 await update_trial(tg_id, 1, session)
 
-        if data.get("plan_id"):
-            plan_price = RENEWAL_PRICES.get(data["plan_id"])
-            await update_balance(tg_id, -plan_price, session)
+        if data.get("tariff_id"):
+            row = await session.fetchrow("SELECT price_rub FROM tariffs WHERE id = $1", data["tariff_id"])
+            if row:
+                await update_balance(tg_id, -row["price_rub"], session)
 
         logger.info(f"[Database] Баланс обновлён для пользователя {tg_id}")
 
