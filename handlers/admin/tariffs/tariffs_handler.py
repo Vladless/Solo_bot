@@ -230,6 +230,7 @@ async def view_tariff(callback: CallbackQuery, callback_data: AdminTariffCallbac
 
     t = dict(tariff)
     traffic_text = f"{t['traffic_limit'] // 1024**3} ГБ" if t["traffic_limit"] else "Безлимит"
+    device_text = f"{t['device_limit']}" if t["device_limit"] is not None else "Безлимит"
 
     text = (
         f"<b>📄 Тариф: {t['name']}</b>\n\n"
@@ -237,6 +238,7 @@ async def view_tariff(callback: CallbackQuery, callback_data: AdminTariffCallbac
         f"📅 Длительность: <b>{t['duration_days']} дней</b>\n"
         f"💰 Стоимость: <b>{t['price_rub']}₽</b>\n"
         f"📦 Трафик: <b>{traffic_text}</b>\n"
+        f"📱 Устройств: <b>{device_text}</b>\n"
         f"{'✅ Активен' if t['is_active'] else '⛔ Отключен'}"
     )
 
