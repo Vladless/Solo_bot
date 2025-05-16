@@ -1580,7 +1580,7 @@ async def get_tariffs_for_cluster(session, cluster_name: str) -> list[dict]:
 
     group_code = row["tariff_group"]
     rows = await session.fetch(
-        "SELECT * FROM tariffs WHERE group_code = $1 AND is_active = TRUE ORDER BY duration_days",
+        "SELECT * FROM tariffs WHERE group_code = $1 AND is_active = TRUE ORDER BY id",
         group_code,
     )
     return [dict(r) for r in rows]
