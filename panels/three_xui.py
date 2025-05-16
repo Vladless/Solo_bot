@@ -70,7 +70,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
         client = py3xui.Client(
             id=config.client_id,
             email=config.email.lower(),
-            limit_ip=config.limit_ip,
+            limit_ip=config.limit_ip if config.limit_ip is not None else 0,
             total_gb=config.total_gb,
             expiry_time=config.expiry_time,
             enable=config.enable,
@@ -106,6 +106,7 @@ async def extend_client_key(
     total_gb: int,
     sub_id: str,
     tg_id: int,
+    limit_ip: int = 0,
 ) -> bool | None:
     try:
         client = await xui.client.get_by_email(email)
@@ -121,7 +122,7 @@ async def extend_client_key(
         client.sub_id = sub_id
         client.total_gb = total_gb
         client.enable = True
-        client.limit_ip
+        client.limit_ip = limit_ip
         client.inbound_id = inbound_id
         client.tg_id = tg_id
 
@@ -212,7 +213,7 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
         client.enable = enable
         client.id = client_id
         client.flow = "xtls-rprx-vision"
-        client.limit_ip
+        client.limit_ip = 0
         client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)

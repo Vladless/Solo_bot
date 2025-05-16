@@ -95,13 +95,13 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
             )
             tariff = await session.fetchrow(
                 """
-                SELECT t.traffic_limit
+                SELECT t.*
                 FROM tariffs t
                 JOIN servers s ON s.tariff_group = t.tariff_group
                 WHERE s.server_name = $1
                 ORDER BY t.duration_days DESC
                 LIMIT 1
-            """,
+                """,
                 cluster_id,
             )
 
@@ -118,6 +118,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
                 client_id=client_id,
                 new_expiry_time=new_expiry_time,
                 total_gb=total_gb,
+                hwid_device_limit=tariff["device_limit"]
             )
             text_ok = SUBSCRIPTION_UNFROZEN_MSG
             builder = InlineKeyboardBuilder()

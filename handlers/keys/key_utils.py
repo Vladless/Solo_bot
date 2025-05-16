@@ -349,7 +349,8 @@ async def renew_key_in_cluster(
 
                 tasks.append(
                     extend_client_key(
-                        xui, int(inbound_id), unique_email, new_expiry_time, client_id, total_gb, sub_id, tg_id
+                        xui, int(inbound_id), unique_email, new_expiry_time,
+                        client_id, total_gb, sub_id, tg_id, limit_ip=hwid_device_limit
                     )
                 )
 
