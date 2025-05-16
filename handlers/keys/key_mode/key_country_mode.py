@@ -18,7 +18,6 @@ from config import (
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
     DATABASE_URL,
-    DEFAULT_HWID_LIMIT,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
@@ -352,7 +351,7 @@ async def finalize_key_creation(
                 "expireAt": expire_at,
                 "telegramId": tg_id,
                 "activeUserInbounds": [server_info["inbound_id"]],
-                "hwidDeviceLimit": DEFAULT_HWID_LIMIT,
+                "hwidDeviceLimit": 0,
             }
             result = await remna.create_user(user_data)
             if not result:

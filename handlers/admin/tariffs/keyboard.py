@@ -79,6 +79,7 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📅 Длительность", callback_data=f"edit_field|{tariff_id}|duration_days")],
             [InlineKeyboardButton(text="💰 Цена", callback_data=f"edit_field|{tariff_id}|price_rub")],
             [InlineKeyboardButton(text="📦 Трафик (ГБ или 0)", callback_data=f"edit_field|{tariff_id}|traffic_limit")],
+            [InlineKeyboardButton(text="📱 Лимит устройств", callback_data=f"edit_field|{tariff_id}|device_limit")],
             [InlineKeyboardButton(text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view|{tariff_id}")],
         ]

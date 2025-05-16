@@ -28,6 +28,7 @@ class TariffCreateState(StatesGroup):
     price = State()
     traffic = State()
     confirm_more = State()
+    device_limit = State()
 
 
 class TariffEditState(StatesGroup):
@@ -115,7 +116,7 @@ async def process_tariff_price(message: Message, state: FSMContext):
 
 
 @router.message(TariffCreateState.traffic, IsAdminFilter())
-async def process_tariff_traffic(message: Message, state: FSMContext, session):
+async def process_tariff_traffic(message: Message, state: FSMContext):
     try:
         traffic = int(message.text.strip())
         if traffic < 0:
@@ -124,8 +125,25 @@ async def process_tariff_traffic(message: Message, state: FSMContext, session):
         await message.answer("❌ Введите корректный лимит трафика (целое число 0 или больше):")
         return
 
+    await state.update_data(traffic_limit=traffic * 1024**3 if traffic > 0 else None)
+    await state.set_state(TariffCreateState.device_limit)
+    await message.answer(
+        "📱 Введите <b>лимит устройств (HWID)</b> для тарифа (например: <i>3</i>, 0 — безлимит):",
+        reply_markup=build_cancel_kb(),
+    )
+
+
+@router.message(TariffCreateState.device_limit, IsAdminFilter())
+async def process_tariff_device_limit(message: Message, state: FSMContext, session):
+    try:
+        device_limit = int(message.text.strip())
+        if device_limit < 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите корректный лимит устройств (целое число 0 или больше):")
+        return
+
     data = await state.get_data()
-    data["traffic_limit"] = traffic * 1024**3 if traffic > 0 else None
 
     new_tariff = await create_tariff(
         session,
@@ -135,6 +153,7 @@ async def process_tariff_traffic(message: Message, state: FSMContext, session):
             "duration_days": data["duration_days"],
             "price_rub": data["price_rub"],
             "traffic_limit": data["traffic_limit"],
+            "device_limit": device_limit if device_limit > 0 else None,
         },
     )
 
@@ -268,6 +287,7 @@ async def ask_new_value(callback: CallbackQuery, state: FSMContext):
         "duration_days": "длительность в днях",
         "price_rub": "цену в рублях",
         "traffic_limit": "лимит трафика в ГБ (0 — безлимит)",
+        "device_limit": "лимит устройств (0 — безлимит)",
     }
 
     await callback.message.edit_text(
@@ -282,13 +302,15 @@ async def apply_edit(message: Message, state: FSMContext, session):
     field = data["field"]
     value = message.text.strip()
 
-    if field in ["duration_days", "price_rub", "traffic_limit"]:
+    if field in ["duration_days", "price_rub", "traffic_limit", "device_limit"]:
         try:
             num = int(value)
             if num < 0:
                 raise ValueError
             if field == "traffic_limit":
                 value = num * 1024**3 if num > 0 else None
+            elif field == "device_limit":
+                value = num if num > 0 else None
             else:
                 value = num
         except ValueError:

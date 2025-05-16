@@ -84,7 +84,7 @@ async def process_callback_view_profile(
         profile_message = profile_message_send(username, chat_id, int(balance), key_count)
         if key_count == 0:
             profile_message += (
-                "\n<blockquote>🔧 <i>Нажмите кнопку ➕ Подписка, чтобы настроить VPN-подключение</i></blockquote>"
+                "\n<blockquote>🔧 <i>Нажмите кнопку ➕ Добавить новую подписку, чтобы настроить VPN-подключение</i></blockquote>"
             )
         else:
             profile_message += f"\n<blockquote> <i>{NEWS_MESSAGE}</i></blockquote>"

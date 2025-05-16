@@ -7,8 +7,6 @@ import asyncpg
 
 from config import (
     DATABASE_URL,
-    DEFAULT_HWID_LIMIT,
-    LIMIT_IP,
     PUBLIC_LINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
@@ -38,7 +36,7 @@ async def create_key_on_cluster(
     plan: int = None,
     session=None,
     remnawave_link: str = None,
-    hwid_limit: int | None = DEFAULT_HWID_LIMIT,
+    hwid_limit: int = None,
 ):
     try:
         servers = await get_servers(include_enabled=True)
@@ -66,10 +64,12 @@ async def create_key_on_cluster(
             async with pool.acquire() as conn:
                 traffic_limit_bytes = None
                 if plan is not None:
-                    tariff = await conn.fetchrow("SELECT traffic_limit FROM tariffs WHERE id = $1", plan)
+                    tariff = await conn.fetchrow("SELECT traffic_limit, device_limit FROM tariffs WHERE id = $1", plan)
                     if not tariff:
                         raise ValueError(f"Тариф с id={plan} не найден.")
-                    traffic_limit_bytes = int(tariff["traffic_limit"])
+                    traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
+                    hwid_limit = int(tariff["device_limit"]) if tariff["device_limit"] is not None else None
+
 
                 remnawave_servers = [
                     s
@@ -199,13 +199,16 @@ async def create_client_on_server(
             sub_id = unique_email
 
         total_gb_value = 0
+        device_limit_value = None
+
         if plan is not None:
             async with asyncpg.create_pool(DATABASE_URL) as pool:
                 async with pool.acquire() as conn:
-                    tariff = await conn.fetchrow("SELECT traffic_limit FROM tariffs WHERE id = $1", plan)
+                    tariff = await conn.fetchrow("SELECT traffic_limit, device_limit FROM tariffs WHERE id = $1", plan)
                     if not tariff:
                         raise ValueError(f"Тариф с id={plan} не найден.")
-                    total_gb_value = int(tariff["traffic_limit"])
+                    total_gb_value = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
+                    device_limit_value = int(tariff["device_limit"]) if tariff["device_limit"] is not None else None
 
         await add_client(
             xui,
@@ -213,7 +216,7 @@ async def create_client_on_server(
                 client_id=client_id,
                 email=unique_email,
                 tg_id=tg_id,
-                limit_ip=LIMIT_IP,
+                limit_ip=device_limit_value,
                 total_gb=total_gb_value,
                 expiry_time=expiry_timestamp,
                 enable=True,
@@ -228,7 +231,7 @@ async def create_client_on_server(
 
 
 async def renew_key_in_cluster(
-    cluster_id, email, client_id, new_expiry_time, total_gb, hwid_device_limit=DEFAULT_HWID_LIMIT
+    cluster_id, email, client_id, new_expiry_time, total_gb, hwid_device_limit=None
 ):
     try:
         servers = await get_servers()
@@ -247,14 +250,31 @@ async def renew_key_in_cluster(
 
         async with asyncpg.create_pool(DATABASE_URL) as pool:
             async with pool.acquire() as conn:
-                tg_id_query = "SELECT tg_id FROM keys WHERE client_id = $1 LIMIT 1"
-                tg_id_record = await conn.fetchrow(tg_id_query, client_id)
+                tg_id_record = await conn.fetchrow(
+                    "SELECT tg_id, server_id FROM keys WHERE client_id = $1 LIMIT 1", client_id
+                )
 
                 if not tg_id_record:
                     logger.error(f"Не найден пользователь с client_id={client_id} в таблице keys.")
                     return False
 
                 tg_id = tg_id_record["tg_id"]
+                server_id = tg_id_record["server_id"]
+
+                tariff_group_row = await conn.fetchrow(
+                    "SELECT tariff_group FROM servers WHERE server_name = $1", server_id
+                )
+                if tariff_group_row and tariff_group_row["tariff_group"]:
+                    tariff_row = await conn.fetchrow(
+                        """
+                        SELECT device_limit FROM tariffs 
+                        WHERE group_code = $1 AND is_active = TRUE 
+                        ORDER BY duration_days DESC LIMIT 1
+                        """,
+                        tariff_group_row["tariff_group"],
+                    )
+                    if tariff_row and tariff_row["device_limit"] is not None:
+                        hwid_device_limit = int(tariff_row["device_limit"])
 
                 notification_prefixes = ["key_24h", "key_10h", "key_expired", "renew"]
                 for notif in notification_prefixes:
@@ -298,7 +318,7 @@ async def renew_key_in_cluster(
                         expire_at=expire_iso,
                         active_user_inbounds=remnawave_inbound_ids,
                         traffic_limit_bytes=total_gb,
-                        hwid_device_limit=DEFAULT_HWID_LIMIT,
+                        hwid_device_limit=hwid_device_limit,
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
@@ -314,7 +334,6 @@ async def renew_key_in_cluster(
 
             if panel_type == "3x-ui":
                 xui = await get_xui_instance(server_info["api_url"])
-
                 inbound_id = server_info.get("inbound_id")
 
                 if not inbound_id:
@@ -457,11 +476,14 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                         if group_id is None:
                             raise ValueError("У Remnawave-сервера отсутствует tariff_group")
                         tariff = await conn.fetchrow(
-                            "SELECT traffic_limit FROM tariffs WHERE tariff_group = $1 ORDER BY traffic_limit_gb DESC LIMIT 1",
+                            "SELECT traffic_limit, device_limit FROM tariffs WHERE group_code = $1 ORDER BY duration_days DESC LIMIT 1",
                             group_id,
                         )
                         if tariff:
-                            user_data["trafficLimitBytes"] = int(tariff["traffic_limit"] * 1024**3)
+                            if tariff["traffic_limit"] is not None:
+                                user_data["trafficLimitBytes"] = int(tariff["traffic_limit"])
+                            if tariff["device_limit"] is not None:
+                                user_data["hwidDeviceLimit"] = int(tariff["device_limit"])
 
                 result = await remna.create_user(user_data)
                 if result:
@@ -494,23 +516,25 @@ async def update_key_on_cluster(tg_id, client_id, email, expiry_time, cluster_id
                 unique_email = email
 
             total_gb_bytes = 0
+            device_limit = None
             async with asyncpg.create_pool(DATABASE_URL) as pool:
                 async with pool.acquire() as conn:
                     group_id = server_info.get("tariff_group")
                     if group_id is None:
                         raise ValueError(f"У сервера {server_name} отсутствует tariff_group")
                     tariff = await conn.fetchrow(
-                        "SELECT traffic_limit FROM tariffs WHERE tariff_group = $1 ORDER BY traffic_limit_gb DESC LIMIT 1",
+                        "SELECT traffic_limit, device_limit FROM tariffs WHERE group_code = $1 ORDER BY duration_days DESC LIMIT 1",
                         group_id,
                     )
                     if tariff:
-                        total_gb_bytes = int(tariff["traffic_limit_gb"] * 1024**3)
+                        total_gb_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
+                        device_limit = int(tariff["device_limit"]) if tariff["device_limit"] is not None else None
 
             config = ClientConfig(
                 client_id=remnawave_client_id,
                 email=unique_email,
                 tg_id=tg_id,
-                limit_ip=LIMIT_IP,
+                limit_ip=device_limit,
                 total_gb=total_gb_bytes,
                 expiry_time=expiry_time,
                 enable=True,

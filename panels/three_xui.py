@@ -11,7 +11,6 @@ from py3xui import AsyncApi
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    LIMIT_IP,
     SUPERNODE,
     USE_XUI_TOKEN,
     XUI_TOKEN,
@@ -122,7 +121,7 @@ async def extend_client_key(
         client.sub_id = sub_id
         client.total_gb = total_gb
         client.enable = True
-        client.limit_ip = LIMIT_IP
+        client.limit_ip
         client.inbound_id = inbound_id
         client.tg_id = tg_id
 
@@ -213,7 +212,7 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
         client.enable = enable
         client.id = client_id
         client.flow = "xtls-rprx-vision"
-        client.limit_ip = LIMIT_IP
+        client.limit_ip
         client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)

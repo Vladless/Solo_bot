@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Mess
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, DEFAULT_HWID_LIMIT, SUPPORT_CHAT_URL
+from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL
 from database import (
     get_key_details,
     get_trial,
@@ -56,6 +56,12 @@ async def key_cluster_mode(
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     try:
+        device_limit = 0
+        if plan:
+            row = await session.fetchrow("SELECT device_limit FROM tariffs WHERE id = $1", plan)
+            if row and row["device_limit"] is not None:
+                device_limit = int(row["device_limit"])
+
         least_loaded_cluster = await get_least_loaded_cluster()
         await create_key_on_cluster(
             least_loaded_cluster,
@@ -65,7 +71,7 @@ async def key_cluster_mode(
             expiry_timestamp,
             plan,
             session,
-            hwid_limit=DEFAULT_HWID_LIMIT,
+            hwid_limit=device_limit,
         )
 
         logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")

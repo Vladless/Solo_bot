@@ -200,12 +200,15 @@ CREATE TABLE IF NOT EXISTS tariffs (
     duration_days   INTEGER NOT NULL CHECK (duration_days > 0),
     price_rub       INTEGER NOT NULL CHECK (price_rub >= 0),
     traffic_limit   BIGINT,
+    device_limit    INTEGER,
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 ALTER TABLE servers ADD COLUMN IF NOT EXISTS tariff_group TEXT;
+ALTER TABLE tariffs
+ADD COLUMN IF NOT EXISTS device_limit INTEGER;
 
 
 DO $$
