@@ -38,7 +38,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
 )
-from handlers.utils import edit_or_send_message, format_months
+from handlers.utils import edit_or_send_message, format_months, format_days
 from logger import logger
 
 
@@ -205,7 +205,10 @@ async def complete_key_renewal(tg_id, client_id, email, new_expiry_time, total_g
             logger.error(f"[Error] Тариф с id={tariff_id} не найден.")
             return
 
-        months_formatted = format_months(tariff["duration_days"] // 30)
+        if tariff["duration_days"] % 30 == 0:
+            months_formatted = format_months(tariff["duration_days"] // 30)
+        else:
+            months_formatted = format_days(tariff["duration_days"])
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
