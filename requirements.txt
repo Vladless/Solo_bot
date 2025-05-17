@@ -46,3 +46,4 @@ httpx
 qrcode
 pillow
 rich
+apscheduler

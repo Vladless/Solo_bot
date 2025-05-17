@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+import asyncpg
 
 import pytz
 
@@ -13,7 +14,8 @@ from utils.csv_export import export_hot_leads_csv, export_keys_csv, export_payme
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_stats_kb
-
+from bot import bot
+from config import DATABASE_URL, ADMIN_ID
 
 router = Router()
 
@@ -219,3 +221,30 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: Any):
     except Exception as e:
         logger.error(f"Ошибка при экспорте подписок в CSV: {e}")
         await callback_query.message.edit_text(text=f"❗ Произошла ошибка при экспорте: {e}", reply_markup=kb)
+
+
+async def send_daily_stats_report():
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+
+        registrations_today = await conn.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
+        payments_today = int(await conn.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE"))
+        active_keys = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE expiry_time > $1", int(datetime.utcnow().timestamp() * 1000))
+
+        update_time = datetime.now(pytz.timezone("Europe/Moscow")).strftime("%d.%m.%y %H:%M")
+
+        text = (
+            "🗓️ <b>Сводка за день</b>\n\n"
+            f"👤 Новых пользователей: <b>{registrations_today}</b>\n"
+            f"💰 Оплачено: <b>{payments_today} ₽</b>\n"
+            f"🔐 Активных ключей: <b>{active_keys}</b>\n\n"
+            f"⏱️ <i>{update_time} МСК</i>"
+        )
+
+        for admin_id in ADMIN_ID:
+            await bot.send_message(admin_id, text)
+
+        await conn.close()
+
+    except Exception as e:
+        logger.error(f"[Stats] Ошибка при отправке ежедневной статистики: {e}")
