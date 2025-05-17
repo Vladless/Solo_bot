@@ -242,10 +242,15 @@ async def handle_panel_type_selection(
     inbound_id = user_data.get("inbound_id")
 
     conn = await asyncpg.connect(DATABASE_URL)
+    tariff_group = await conn.fetchval(
+        "SELECT tariff_group FROM servers WHERE cluster_name = $1 LIMIT 1",
+        cluster_name,
+    )
+
     await conn.execute(
         """
-        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type, tariff_group)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         """,
         cluster_name,
         server_name,
@@ -253,7 +258,9 @@ async def handle_panel_type_selection(
         subscription_url,
         inbound_id,
         panel_type,
+        tariff_group,
     )
+
     await conn.close()
 
     await callback_query.message.edit_text(
@@ -269,8 +276,20 @@ async def handle_clusters_manage(
 ):
     cluster_name = callback_data.data
 
+    row = await session.fetchrow(
+        "SELECT tariff_group FROM servers WHERE cluster_name = $1 AND tariff_group IS NOT NULL LIMIT 1",
+        cluster_name,
+    )
+
+    tariff_group = row["tariff_group"] if row else "—"
+
+    text = (
+        f"<b>🔧 Управление кластером <code>{cluster_name}</code></b>\n\n"
+        f"📁 <b>Тарифная группа:</b> <code>{tariff_group}</code>\n"
+    )
+
     await callback_query.message.edit_text(
-        text=f"<b>🔧 Управление кластером {cluster_name}</b>",
+        text=text,
         reply_markup=build_cluster_management_kb(cluster_name),
     )
 
