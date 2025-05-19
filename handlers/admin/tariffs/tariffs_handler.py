@@ -264,6 +264,7 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
 @router.callback_query(F.data.startswith("confirm_delete_tariff|"), IsAdminFilter())
 async def delete_tariff(callback: CallbackQuery, session):
     tariff_id = int(callback.data.split("|", 1)[1])
+    await session.execute("UPDATE keys SET tariff_id = NULL WHERE tariff_id = $1", tariff_id)
     await session.execute("DELETE FROM tariffs WHERE id = $1", tariff_id)
     await callback.message.edit_text("🗑 Тариф успешно удалён.", reply_markup=build_tariff_menu_kb())
 
