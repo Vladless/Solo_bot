@@ -28,7 +28,7 @@ from database import (
     check_user_exists,
     get_trial,
 )
-from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB
+from handlers.buttons import ABOUT_VPN, BACK, CHANNEL, MAIN_MENU, SUPPORT, TRIAL_SUB, SUB_CHANELL_DONE, SUB_CHANELL
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
@@ -89,7 +89,8 @@ async def check_subscription_callback(callback_query: CallbackQuery, state: FSMC
         if member.status not in ["member", "administrator", "creator"]:
             await callback_query.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+            builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
+            builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
             await callback_query.message.edit_text(
                 SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
@@ -140,7 +141,8 @@ async def process_start_logic(
             if member.status not in ["member", "administrator", "creator"]:
                 await state.update_data(original_text=text, user_data=user_data)
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+                builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
+                builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
                 await edit_or_send_message(
                     target_message=message,
                     text=SUBSCRIPTION_REQUIRED_MSG,
@@ -151,7 +153,8 @@ async def process_start_logic(
             logger.error(f"Ошибка проверки подписки для {user_data['tg_id']}: {e}")
             await state.update_data(original_text=text, user_data=user_data)
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="✅ Я подписался", callback_data="check_subscription"))
+            builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
+            builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
             await edit_or_send_message(
                 target_message=message,
                 text=SUBSCRIPTION_REQUIRED_MSG,

@@ -11,6 +11,8 @@ from .keyboard import build_bans_kb
 import csv
 import io
 
+from logger import logger
+
 
 router = Router()
 
@@ -121,3 +123,17 @@ async def handle_manual_bans_export(callback_query: CallbackQuery, session: Any)
             text=f"❗ Ошибка при экспорте: {e}",
             reply_markup=build_admin_back_kb("bans"),
         )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "bans_delete_manual"), IsAdminFilter())
+async def handle_delete_manual_banned(callback_query: CallbackQuery, session):
+    try:
+        await session.execute("DELETE FROM manual_bans")
+        await callback_query.message.edit_text(
+            "🗑️ Вручную забаненные пользователи удалены.",
+            reply_markup=build_bans_kb(),
+        )
+        logger.info("[BANS] Очищены записи из manual_bans")
+    except Exception as e:
+        logger.error(f"[BANS] Ошибка при очистке manual_bans: {e}")
+        await callback_query.message.edit_text("❌ Ошибка при удалении вручную забаненных пользователей.")

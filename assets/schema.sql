@@ -166,6 +166,27 @@ BEGIN
     ) THEN
         ALTER TABLE servers ADD COLUMN tariff_group TEXT;
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'servers' AND column_name = 'panel_type'
+    ) THEN
+        ALTER TABLE servers ADD COLUMN panel_type TEXT NOT NULL DEFAULT '3x-ui';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'servers' AND column_name = 'enabled'
+    ) THEN
+        ALTER TABLE servers ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'servers' AND column_name = 'max_keys'
+    ) THEN
+        ALTER TABLE servers ADD COLUMN max_keys INTEGER;
+    END IF;
 END$$;
 
 
