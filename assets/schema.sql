@@ -248,6 +248,16 @@ END$$;
 
 DO $$
 BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'tariffs' AND column_name = 'group_code'
+    ) THEN
+        ALTER TABLE tariffs ADD COLUMN group_code TEXT NOT NULL DEFAULT 'default';
+    END IF;
+END$$;
+
+DO $$
+BEGIN
     IF EXISTS (
         SELECT FROM information_schema.tables 
         WHERE table_schema = 'public' AND table_name = 'connections'
