@@ -488,7 +488,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
     try:
         query_keys = """
-            SELECT tg_id, client_id, email, expiry_time, remnawave_link
+            SELECT tg_id, client_id, email, expiry_time, remnawave_link, tariff_id
             FROM keys
             WHERE server_id = $1
         """
@@ -518,6 +518,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
                     key["client_id"],
                     key["email"],
                     key["expiry_time"],
+                    plan=key.get("tariff_id"),
                     session=session,
                     remnawave_link=key.get("remnawave_link"),
                 )

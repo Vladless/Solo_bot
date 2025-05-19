@@ -162,6 +162,7 @@ async def create_key_on_cluster(
                 server_id=server_id_to_store,
                 session=session,
                 remnawave_link=remnawave_key,
+                tariff_id=plan,
             )
 
     except Exception as e:

@@ -1,4 +1,5 @@
 import json
+import re
 
 from datetime import datetime
 from typing import Any
@@ -56,18 +57,41 @@ async def delete_blocked_user(tg_id: int | list[int], conn: asyncpg.Connection):
 
 
 async def init_db(file_path: str = "assets/schema.sql"):
-    with open(file_path) as file:
+    """
+    Инициализация базы данных: создаёт таблицы и применяет DO-блоки.
+    Поддерживает логгирование как успешных, так и неудачных операций.
+    """
+    with open(file_path, encoding="utf-8") as file:
         sql_content = file.read()
 
     conn = await asyncpg.connect(DATABASE_URL)
 
     try:
-        await conn.execute(sql_content)
-    except Exception as e:
-        logger.error(f"Error while executing SQL statement: {e}")
+        blocks = re.split(r';\s*(?=CREATE|DO|\Z)', sql_content, flags=re.IGNORECASE)
+
+        for stmt in blocks:
+            stmt_clean = stmt.strip()
+            if stmt_clean.lower().startswith("create table"):
+                try:
+                    await conn.execute(stmt_clean)
+                    table_name_match = re.search(r'create table if not exists\s+(\w+)', stmt_clean, re.IGNORECASE)
+                    table_name = table_name_match.group(1) if table_name_match else "неизвестно"
+                    logger.info(f"[DB INIT] Таблица успешно создана: {table_name}")
+                except Exception as e:
+                    logger.error(f"[DB INIT] Ошибка в CREATE TABLE:\n{stmt_clean}\nОшибка: {e}")
+
+        for stmt in blocks:
+            stmt_clean = stmt.strip()
+            if stmt_clean.lower().startswith("do"):
+                try:
+                    await conn.execute(stmt_clean)
+                    logger.info("[DB INIT] DO-блок выполнен успешно")
+                except Exception as e:
+                    logger.error(f"[DB INIT] Ошибка в DO блоке:\n{stmt_clean}\nОшибка: {e}")
+
     finally:
-        logger.info("Tables created successfully")
         await conn.close()
+        logger.info("[DB INIT] Инициализация базы данных завершена")
 
 
 async def check_unique_server_name(server_name: str, session: Any, cluster_name: str | None = None) -> bool:
@@ -284,6 +308,7 @@ async def store_key(
     server_id: str,
     session: Any,
     remnawave_link: str = None,
+    tariff_id: int | None = None,
 ):
     """
     Сохраняет информацию о ключе в базу данных, если ключ ещё не существует.
@@ -301,8 +326,12 @@ async def store_key(
 
         await session.execute(
             """
-            INSERT INTO keys (tg_id, client_id, email, created_at, expiry_time, key, server_id, remnawave_link)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO keys (
+                tg_id, client_id, email, created_at, expiry_time,
+                key, server_id, remnawave_link, tariff_id
+            )
+            VALUES ($1, $2, $3, $4, $5,
+                    $6, $7, $8, $9)
             """,
             tg_id,
             client_id,
@@ -312,6 +341,7 @@ async def store_key(
             key,
             server_id,
             remnawave_link,
+            tariff_id,
         )
         logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
 

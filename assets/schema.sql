@@ -158,6 +158,17 @@ CREATE TABLE IF NOT EXISTS servers (
     UNIQUE (cluster_name, server_name)
 );
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'servers' AND column_name = 'tariff_group'
+    ) THEN
+        ALTER TABLE servers ADD COLUMN tariff_group TEXT;
+    END IF;
+END$$;
+
+
 CREATE TABLE IF NOT EXISTS gifts (
     gift_id         TEXT PRIMARY KEY NOT NULL,
     sender_tg_id    BIGINT NOT NULL REFERENCES users (tg_id),

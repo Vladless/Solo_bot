@@ -29,96 +29,81 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
         total_users = await session.fetchval("SELECT COUNT(*) FROM users")
         total_keys = await session.fetchval("SELECT COUNT(*) FROM keys")
         total_referrals = await session.fetchval("SELECT COUNT(*) FROM referrals")
+        users_updated_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE")
 
-        total_payments_today = int(
-            await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE")
-        )
-        total_payments_yesterday = int(
-            await session.fetchval("""
-                SELECT COALESCE(SUM(amount), 0)
-                FROM payments
-                WHERE created_at >= CURRENT_DATE - interval '1 day'
-                AND created_at < CURRENT_DATE
-            """)
-        )
-        total_payments_week = int(
-            await session.fetchval(
-                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"
-            )
-        )
-        total_payments_month = int(
-            await session.fetchval(
-                "SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"
-            )
-        )
-        total_payments_last_month = int(
-            await session.fetchval("""
-                SELECT COALESCE(SUM(amount), 0)
-                FROM payments
-                WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month')
-                AND created_at < date_trunc('month', CURRENT_DATE)
-            """)
-        )
+        total_payments_today = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= CURRENT_DATE"))
+        total_payments_yesterday = int(await session.fetchval("""
+            SELECT COALESCE(SUM(amount), 0) FROM payments
+            WHERE created_at >= CURRENT_DATE - interval '1 day' AND created_at < CURRENT_DATE
+        """))
+        total_payments_week = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('week', CURRENT_DATE)"))
+        total_payments_month = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE created_at >= date_trunc('month', CURRENT_DATE)"))
+        total_payments_last_month = int(await session.fetchval("""
+            SELECT COALESCE(SUM(amount), 0) FROM payments
+            WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month') AND created_at < date_trunc('month', CURRENT_DATE)
+        """))
         total_payments_all_time = int(await session.fetchval("SELECT COALESCE(SUM(amount), 0) FROM payments"))
 
         registrations_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= CURRENT_DATE")
         registrations_yesterday = await session.fetchval("""
             SELECT COUNT(*) FROM users
-            WHERE created_at >= CURRENT_DATE - interval '1 day'
-            AND created_at < CURRENT_DATE
+            WHERE created_at >= CURRENT_DATE - interval '1 day' AND created_at < CURRENT_DATE
         """)
-        registrations_week = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)"
-        )
-        registrations_month = await session.fetchval(
-            "SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)"
-        )
+        registrations_week = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('week', CURRENT_DATE)")
+        registrations_month = await session.fetchval("SELECT COUNT(*) FROM users WHERE created_at >= date_trunc('month', CURRENT_DATE)")
         registrations_last_month = await session.fetchval("""
             SELECT COUNT(*) FROM users
-            WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month')
-            AND created_at < date_trunc('month', CURRENT_DATE)
+            WHERE created_at >= date_trunc('month', CURRENT_DATE - interval '1 month') AND created_at < date_trunc('month', CURRENT_DATE)
         """)
 
-        all_keys = await session.fetch("SELECT created_at, expiry_time FROM keys")
-
-        def count_subscriptions_by_duration(keys):
-            periods = {"trial": 0, "1": 0, "3": 0, "6": 0, "12": 0}
-            for key in keys:
-                try:
-                    duration_days = (key["expiry_time"] - key["created_at"]) / (1000 * 60 * 60 * 24)
-
-                    if duration_days <= 29:
-                        periods["trial"] += 1
-                    elif duration_days <= 89:
-                        periods["1"] += 1
-                    elif duration_days <= 179:
-                        periods["3"] += 1
-                    elif duration_days <= 359:
-                        periods["6"] += 1
-                    else:
-                        periods["12"] += 1
-                except Exception as e:
-                    logger.error(f"Error processing key duration: {e}")
-                    continue
-            return periods
-
-        subs_all_time = count_subscriptions_by_duration(all_keys)
-
-        users_updated_today = await session.fetchval("SELECT COUNT(*) FROM users WHERE updated_at >= CURRENT_DATE")
-
-        active_keys = await session.fetchval(
-            "SELECT COUNT(*) FROM keys WHERE expiry_time > $1",
-            int(datetime.utcnow().timestamp() * 1000),
-        )
+        active_keys = await session.fetchval("SELECT COUNT(*) FROM keys WHERE expiry_time > $1", int(datetime.utcnow().timestamp() * 1000))
         expired_keys = total_keys - active_keys
+
+        tariffs = await session.fetch("SELECT id, name, duration_days FROM tariffs WHERE is_active = TRUE")
+        tariff_map = {t["id"]: t["name"] for t in tariffs}
+        durations = [(t["id"], t["name"], t["duration_days"]) for t in tariffs]
+
+        tariff_counter: dict[str, int] = {}
+
+        keys_with_tariffs = await session.fetch("SELECT tariff_id FROM keys WHERE tariff_id IS NOT NULL")
+        for row in keys_with_tariffs:
+            name = tariff_map.get(row["tariff_id"], "Неизвестно")
+            tariff_counter[name] = tariff_counter.get(name, 0) + 1
+
+        keys_without_tariffs = await session.fetch("SELECT created_at, expiry_time FROM keys WHERE tariff_id IS NULL")
+        for row in keys_without_tariffs:
+            duration_days = (row["expiry_time"] - row["created_at"]) / (1000 * 60 * 60 * 24)
+            if durations:
+                closest = min(durations, key=lambda t: abs(t[2] - duration_days))
+                name = closest[1]
+            else:
+                name = "Неизвестно"
+            tariff_counter[name] = tariff_counter.get(name, 0) + 1
+
+        tariff_order = {t["name"]: t["id"] for t in sorted(tariffs, key=lambda t: t["id"])}
+        tariff_stats_text = "\n".join(
+            f"     • {name}: <b>{tariff_counter[name]}</b>"
+            for name in sorted(tariff_counter.keys(), key=lambda name: tariff_order.get(name, float('inf')))
+        )
+
+        if not tariff_stats_text:
+            tariff_stats_text = "     • Нет активных тарифов"
+
 
         hot_leads_count = await session.fetchval("""
             SELECT COUNT(DISTINCT u.tg_id)
             FROM users u
             JOIN payments p ON u.tg_id = p.tg_id
             LEFT JOIN keys k ON u.tg_id = k.tg_id
-            WHERE p.status = 'success'
-            AND k.tg_id IS NULL
+            WHERE p.status = 'success' AND k.tg_id IS NULL
+        """)
+
+        trial_only_count = await session.fetchval("""
+            SELECT COUNT(DISTINCT k.tg_id)
+            FROM keys k
+            LEFT JOIN tariffs t ON k.tariff_id = t.id
+            LEFT JOIN payments p ON k.tg_id = p.tg_id
+            WHERE p.id IS NULL
         """)
 
         moscow_tz = pytz.timezone("Europe/Moscow")
@@ -141,30 +126,27 @@ async def handle_stats(callback_query: CallbackQuery, session: Any):
             f"├ 📦 Всего сгенерировано: <b>{total_keys}</b>\n"
             f"├ ✅ Активных: <b>{active_keys}</b>\n"
             f"├ ❌ Просроченных: <b>{expired_keys}</b>\n"
-            f"└ 📋 По срокам:\n"
-            f"     • 🎁 Триал: <b>{subs_all_time['trial']}</b>\n"
-            f"     • 🗓️ 1 мес: <b>{subs_all_time['1']}</b>\n"
-            f"     • 🗓️ 3 мес: <b>{subs_all_time['3']}</b>\n"
-            f"     • 🗓️ 6 мес: <b>{subs_all_time['6']}</b>\n"
-            f"     • 🗓️ 12 мес: <b>{subs_all_time['12']}</b>\n\n"
+            f"├ 🎁 Только триал: <b>{trial_only_count}</b>\n"
+            f"└ 📋 По тарифам:\n{tariff_stats_text}\n\n"
             "💰 <b>Финансы:</b>\n"
             f"├ 📅 За день: <b>{total_payments_today} ₽</b>\n"
             f"├ 📆 Вчера: <b>{total_payments_yesterday} ₽</b>\n"
             f"├ 📆 За неделю: <b>{total_payments_week} ₽</b>\n"
             f"├ 📆 За месяц: <b>{total_payments_month} ₽</b>\n"
-            f"├ 📆 За прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
+            f"├ 📆 Прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
             f"└ 🏦 Всего: <b>{total_payments_all_time} ₽</b>\n\n"
             f"🔥 <b>Горящие лиды</b>: <b>{hot_leads_count}</b> (платили, но не продлили)\n\n"
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
 
         await callback_query.message.edit_text(text=stats_message, reply_markup=build_stats_kb())
+
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             logger.error(f"Error in user_stats_menu: {e}")
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
-        await callback_query.answer("Произошла ошибка при получении статистики", show_alert=True)
+        await callback_query.answer("\u041fроизошла ошибка при получении статистики", show_alert=True)
 
 
 @router.callback_query(

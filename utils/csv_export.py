@@ -173,25 +173,29 @@ async def export_hot_leads_csv(session: Any) -> BufferedInputFile:
 
 async def export_keys_csv(session) -> BufferedInputFile:
     """
-    Экспорт подписок в CSV с нормальными датами.
+    Экспорт подписок в CSV с нормальными датами и тарифом.
     """
     keys = await session.fetch("""
-        SELECT tg_id, client_id, email, created_at, expiry_time, key, server_id, is_frozen, alias
-        FROM keys
-        ORDER BY created_at ASC
+        SELECT k.tg_id, k.client_id, k.email, k.created_at, k.expiry_time,
+               k.key, k.server_id, k.is_frozen, k.alias,
+               t.name AS tariff_name
+        FROM keys k
+        LEFT JOIN tariffs t ON k.tariff_id = t.id
+        ORDER BY k.created_at ASC
     """)
 
     buffer = StringIO()
-    buffer.write("tg_id,client_id,email,created_at,expiry_time,key,server_id,is_frozen,alias\n")
+    buffer.write("tg_id,client_id,email,created_at,expiry_time,key,server_id,is_frozen,alias,tariff\n")
 
     for row in keys:
         created_at = datetime.utcfromtimestamp(row["created_at"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
         expiry_time = datetime.utcfromtimestamp(row["expiry_time"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+        tariff = row["tariff_name"] or "—"
 
         buffer.write(
             f"{row['tg_id']},{row['client_id']},{row['email']},"
             f"{created_at},{expiry_time},{row['key']},"
-            f"{row['server_id']},{row['is_frozen']},{row['alias'] or ''}\n"
+            f"{row['server_id']},{row['is_frozen']},{row['alias'] or ''},{tariff}\n"
         )
 
     buffer.seek(0)
