@@ -905,9 +905,9 @@ async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMConte
 async def show_tariff_group_selection(callback: CallbackQuery, callback_data: AdminClusterCallback, session):
     cluster_name = callback_data.data
     rows = await session.fetch(
-        "SELECT DISTINCT group_code FROM tariffs WHERE group_code IS NOT NULL ORDER BY group_code"
+        "SELECT DISTINCT ON (group_code) id, group_code FROM tariffs WHERE group_code IS NOT NULL ORDER BY group_code"
     )
-    groups = [r["group_code"] for r in rows]
+    groups = [(r["id"], r["group_code"]) for r in rows]
 
     if not groups:
         await callback.message.edit_text("❌ Нет доступных тарифных групп.")
@@ -922,14 +922,27 @@ async def show_tariff_group_selection(callback: CallbackQuery, callback_data: Ad
 @router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariff_group"), IsAdminFilter())
 async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminClusterCallback, session):
     try:
-        cluster_name, group_code = callback_data.data.split("|", 1)
-    except ValueError:
-        await callback.message.edit_text("❌ Неверные данные.")
-        return
+        cluster_name, group_id = callback_data.data.split("|", 1)
+        group_id = int(group_id)
 
-    await session.execute("UPDATE servers SET tariff_group = $1 WHERE cluster_name = $2", group_code, cluster_name)
+        row = await session.fetchrow("SELECT group_code FROM tariffs WHERE id = $1", group_id)
+        if not row:
+            await callback.message.edit_text("❌ Тарифная группа не найдена.")
+            return
 
-    await callback.message.edit_text(
-        f"✅ Для кластера <code>{cluster_name}</code> установлена тарифная группа: <b>{group_code}</b>",
-        reply_markup=build_cluster_management_kb(cluster_name),
-    )
+        group_code = row["group_code"]
+
+        await session.execute(
+            "UPDATE servers SET tariff_group = $1 WHERE cluster_name = $2",
+            group_code,
+            cluster_name,
+        )
+
+        await callback.message.edit_text(
+            f"✅ Для кластера <code>{cluster_name}</code> установлена тарифная группа: <b>{group_code}</b>",
+            reply_markup=build_cluster_management_kb(cluster_name),
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при применении тарифной группы: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка при установке тарифной группы.")

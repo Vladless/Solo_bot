@@ -136,12 +136,15 @@ def build_panel_type_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_tariff_group_selection_kb(cluster_name: str, groups: list[str]) -> InlineKeyboardMarkup:
+def build_tariff_group_selection_kb(cluster_name: str, groups: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for group in groups:
+    for group_id, group_code in groups:
         builder.button(
-            text=group,
-            callback_data=AdminClusterCallback(action="apply_tariff_group", data=f"{cluster_name}|{group}").pack(),
+            text=group_code,
+            callback_data=AdminClusterCallback(
+                action="apply_tariff_group",
+                data=f"{cluster_name}|{group_id}"
+            ).pack(),
         )
     builder.row(
         InlineKeyboardButton(
