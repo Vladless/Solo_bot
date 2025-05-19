@@ -36,6 +36,14 @@ BEGIN
     END IF;
 END$$;
 
+CREATE TABLE IF NOT EXISTS manual_bans (
+    tg_id       BIGINT PRIMARY KEY,
+    banned_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    reason      TEXT,
+    banned_by   BIGINT,
+    until       TIMESTAMP WITH TIME ZONE
+);
+
 CREATE TABLE IF NOT EXISTS payments (
     id             SERIAL PRIMARY KEY,
     tg_id          BIGINT NOT NULL,
@@ -85,6 +93,16 @@ BEGIN
         ALTER TABLE keys ADD COLUMN alias TEXT;
     END IF;
 END$$;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'keys' AND column_name = 'tariff_id'
+    ) THEN
+        ALTER TABLE keys ADD COLUMN tariff_id INTEGER REFERENCES tariffs(id);
+    END IF;
+END$$;
+
 
 CREATE TABLE IF NOT EXISTS referrals (
     referred_tg_id BIGINT PRIMARY KEY NOT NULL,

@@ -9,12 +9,14 @@ from .maintenance import MaintenanceModeMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
+from middlewares.ban_checker import BanCheckerMiddleware
 
 
 def register_middleware(
     dispatcher: Dispatcher,
     middlewares: Iterable[BaseMiddleware | type[BaseMiddleware]] | None = None,
     exclude: Iterable[str] | None = None,
+    pool=None
 ) -> None:
     """Регистрирует middleware в диспетчере."""
     if middlewares is None:
@@ -26,6 +28,9 @@ def register_middleware(
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
         }
+
+        if pool:
+            available_middlewares["ban_checker"] = BanCheckerMiddleware(pool)
 
         exclude_set = set(exclude or [])
         middlewares = [middleware for name, middleware in available_middlewares.items() if name not in exclude_set]

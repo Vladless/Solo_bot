@@ -28,7 +28,7 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
     edit: bool = False
 
 
-def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
+def build_user_edit_kb(tg_id: int, key_records: list, is_banned: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     current_time = datetime.now(tz=timezone.utc)
 
@@ -63,6 +63,10 @@ def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     )
     builder.button(
         text="❌ Удалить клиента", callback_data=AdminUserEditorCallback(action="users_delete_user", tg_id=tg_id).pack()
+    )
+    builder.button(
+        text="✅ Разблокировать" if is_banned else "🚫 Заблокировать",
+        callback_data=AdminUserEditorCallback(action="users_unban" if is_banned else "users_ban", tg_id=tg_id).pack(),
     )
     builder.row(build_editor_btn("🔄 Обновить данные", tg_id, edit=True))
     builder.row(build_admin_back_btn())

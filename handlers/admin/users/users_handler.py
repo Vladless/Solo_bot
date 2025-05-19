@@ -77,6 +77,11 @@ class UserEditorState(StatesGroup):
     selecting_country = State()
 
 
+class BanUserStates(StatesGroup):
+    waiting_for_reason = State()
+    waiting_for_ban_duration = State()
+
+
 @router.callback_query(AdminUserEditorCallback.filter(F.action == "users_hwid_menu"), IsAdminFilter())
 async def handle_hwid_menu(callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
     email = callback_data.data
@@ -706,13 +711,6 @@ async def handle_delete_user_confirm(
         )
 
 
-@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_editor"), IsAdminFilter())
-async def handle_editor(
-    callback_query: types.CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext, session: Any
-):
-    await process_user_search(callback_query.message, state, session, callback_data.tg_id, callback_data.edit)
-
-
 async def process_user_search(
     message: types.Message, state: FSMContext, session: Any, tg_id: int, edit: bool = False
 ) -> None:
@@ -736,6 +734,10 @@ async def process_user_search(
     referral_count = await session.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id)
     key_records = await session.fetch("SELECT email, expiry_time FROM keys WHERE tg_id = $1", tg_id)
 
+    is_banned = await session.fetchval(
+        "SELECT 1 FROM manual_bans WHERE tg_id = $1 AND (until IS NULL OR until > NOW())", tg_id
+    )
+
     text = (
         f"<b>📊 Информация о пользователе</b>"
         f"\n\n🆔 ID: <b>{tg_id}</b>"
@@ -746,7 +748,7 @@ async def process_user_search(
         f"\n👥 Количество рефералов: <b>{referral_count}</b>"
     )
 
-    kb = build_user_edit_kb(tg_id, key_records)
+    kb = build_user_edit_kb(tg_id, key_records, is_banned=bool(is_banned))
 
     if edit:
         try:
@@ -1095,3 +1097,86 @@ async def handle_reset_traffic(callback_query: CallbackQuery, callback_data: Adm
         await callback_query.message.edit_text(
             "❌ Произошла ошибка при сбросе трафика. Попробуйте позже.", reply_markup=build_editor_kb(tg_id)
         )
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_ban"), IsAdminFilter())
+async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
+    await state.set_state(BanUserStates.waiting_for_reason)
+    await state.update_data(tg_id=callback_data.tg_id)
+
+    await callback.message.edit_text(
+        text="✏️ Введите причину блокировки (или <code>-</code>, чтобы пропустить):",
+        reply_markup=build_admin_back_kb(f"users_edit|{callback_data.tg_id}"),
+    )
+
+
+@router.message(BanUserStates.waiting_for_reason, IsAdminFilter())
+async def handle_ban_reason_input(message: Message, state: FSMContext):
+    await state.update_data(reason=message.text.strip())
+    await state.set_state(BanUserStates.waiting_for_ban_duration)
+
+    user_data = await state.get_data()
+    tg_id = user_data.get("tg_id")
+
+    await message.answer(
+        "⏳ Введите срок блокировки в днях (0 — навсегда):",
+        reply_markup=build_admin_back_kb(f"users_edit|{tg_id}"),
+    )
+
+
+@router.message(BanUserStates.waiting_for_ban_duration, IsAdminFilter())
+async def handle_ban_duration_input(message: Message, state: FSMContext, session: Any):
+    user_data = await state.get_data()
+    tg_id = user_data.get("tg_id")
+    reason = user_data.get("reason") if user_data.get("reason") != "-" else None
+
+    try:
+        days = int(message.text.strip())
+
+        until = None
+        if days > 0:
+            from datetime import datetime, timedelta, timezone
+            until = datetime.now(timezone.utc) + timedelta(days=days)
+
+        await session.execute(
+            """
+            INSERT INTO manual_bans (tg_id, reason, banned_by, until)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (tg_id) DO UPDATE
+            SET reason = $2, until = $4, banned_at = NOW()
+            """,
+            tg_id,
+            reason,
+            message.from_user.id,
+            until,
+        )
+
+        text = (
+            f"✅ Пользователь <code>{tg_id}</code> забанен "
+            f"{'навсегда' if not until else f'до {until:%Y-%m-%d %H:%M}'}. "
+            f"Нажмите кнопку ниже для возврата в профиль."
+        )
+
+        await message.answer(text=text, reply_markup=build_editor_kb(tg_id, edit=True))
+
+    except ValueError:
+        await message.answer("❗ Введите корректное число дней.")
+    finally:
+        await state.clear()
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_unban"), IsAdminFilter())
+async def handle_user_unban(callback: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any):
+    await session.execute("DELETE FROM manual_bans WHERE tg_id = $1", callback_data.tg_id)
+
+    text = (
+        f"✅ Пользователь <code>{callback_data.tg_id}</code> разблокирован. "
+        f"Нажмите кнопку ниже для возврата в профиль."
+    )
+
+    await callback.message.edit_text(text=text, reply_markup=build_editor_kb(callback_data.tg_id, edit=True))
+
+
+@router.callback_query(AdminUserEditorCallback.filter(F.action == "users_editor"), IsAdminFilter())
+async def handle_users_editor(callback: CallbackQuery, callback_data: AdminUserEditorCallback, session: Any, state: FSMContext):
+    await process_user_search(callback.message, state=state, session=session, tg_id=callback_data.tg_id, edit=callback_data.edit)
