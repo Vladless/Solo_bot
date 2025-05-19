@@ -17,6 +17,7 @@ from config import (
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
     TRIAL_TIME_DISABLE,
+    NOTIFY_HOT_LEADS
 )
 from database import (
     add_notification,
@@ -52,6 +53,7 @@ from logger import logger
 
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
+from .hot_leads_notifications import notify_hot_leads
 
 
 router = Router()
@@ -117,6 +119,12 @@ async def periodic_notifications(bot: Bot):
                         await notify_users_no_traffic(bot, conn, current_time, keys)
                     except Exception as e:
                         logger.error(f"Ошибка в notify_users_no_traffic: {e}")
+                    await asyncio.sleep(0.5)
+                if NOTIFY_HOT_LEADS:
+                    try:
+                        await notify_hot_leads(bot)
+                    except Exception as e:
+                        logger.error(f"Ошибка в notify_hot_leads: {e}")
                     await asyncio.sleep(0.5)
 
                 logger.info("Завершена обработка уведомлений")

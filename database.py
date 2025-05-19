@@ -1619,3 +1619,16 @@ async def get_tariffs_for_cluster(session, cluster_name: str) -> list[dict]:
 async def get_tariff_by_id(session, tariff_id: int) -> dict | None:
     row = await session.fetchrow("SELECT * FROM tariffs WHERE id = $1", tariff_id)
     return dict(row) if row else None
+
+
+async def get_hot_leads(conn):
+    """
+    Возвращает пользователей, у которых есть успешные оплаты, но нет активных ключей.
+    """
+    query = """
+        SELECT DISTINCT p.tg_id
+        FROM payments p
+        LEFT JOIN keys k ON p.tg_id = k.tg_id AND k.expiry_time > EXTRACT(EPOCH FROM now()) * 1000
+        WHERE p.amount > 0 AND k.tg_id IS NULL
+    """
+    return await conn.fetch(query)
