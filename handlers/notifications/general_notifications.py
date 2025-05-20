@@ -402,8 +402,8 @@ async def handle_expired_keys(bot: Bot, conn: asyncpg.Connection, current_time: 
         results = await send_messages_with_limit(bot, messages, conn=conn)
         sent_count = 0
         for msg, result in zip(messages, results, strict=False):
+            await add_notification(msg["tg_id"], msg["notification_id"], session=conn)
             if result:
-                await add_notification(msg["tg_id"], msg["notification_id"], session=conn)
                 sent_count += 1
                 logger.info(f"📢 Уведомление об истекшем ключе {msg['email']} отправлено пользователю {msg['tg_id']}.")
             else:
