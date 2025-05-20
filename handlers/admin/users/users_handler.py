@@ -1003,8 +1003,9 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
 @router.callback_query(UserEditorState.selecting_cluster, IsAdminFilter())
 async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMContext):
     cluster_name = callback_query.data
+    tg_id = callback_query.from_user.id
 
-    await state.update_data(cluster_name=cluster_name)
+    await state.update_data(cluster_name=cluster_name, tg_id=tg_id)
     await state.set_state(UserEditorState.selecting_duration)
 
     builder = InlineKeyboardBuilder()
@@ -1016,7 +1017,10 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
             months = tariff["duration_days"] // 30
             if months < 1:
                 continue
-            builder.button(text=f"{months} мес.", callback_data=str(months))
+            builder.button(
+                text=f"{months} мес.",
+                callback_data=f"tariff_{tariff['id']}"
+            )
     finally:
         await conn.close()
 
@@ -1024,39 +1028,53 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"🕒 <b>Выберите срок действия ключа для кластера {cluster_name}:</b>", reply_markup=builder.as_markup()
+        text=f"🕒 <b>Выберите срок действия ключа для кластера {cluster_name}:</b>", 
+        reply_markup=builder.as_markup()
     )
 
 
 @router.callback_query(UserEditorState.selecting_duration, IsAdminFilter())
 async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMContext, session: Any):
-    try:
-        months = int(callback_query.data)
-        data = await state.get_data()
-        tg_id = data["tg_id"]
+    data = await state.get_data()
+    tg_id = data.get("tg_id", callback_query.from_user.id)
 
+    try:
+        if not callback_query.data.startswith("tariff_"):
+            raise ValueError("Некорректный callback_data")
+        tariff_id = int(callback_query.data.replace("tariff_", ""))
+
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            tariff = await conn.fetchrow("SELECT duration_days FROM tariffs WHERE id = $1", tariff_id)
+        finally:
+            await conn.close()
+
+        if not tariff:
+            raise ValueError("Тариф не найден.")
+
+        duration_days = tariff["duration_days"]
         client_id = str(uuid.uuid4())
         email = generate_random_email()
-        expiry = datetime.now(tz=timezone.utc) + timedelta(days=30 * months)
+        expiry = datetime.now(tz=timezone.utc) + timedelta(days=duration_days)
         expiry_ms = int(expiry.timestamp() * 1000)
 
         if USE_COUNTRY_SELECTION and "country" in data:
             country = data["country"]
-            await create_key_on_cluster(country, tg_id, client_id, email, expiry_ms, plan=months, session=session)
+            await create_key_on_cluster(country, tg_id, client_id, email, expiry_ms, plan=tariff_id, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
-                f"✅ Ключ успешно создан для страны <b>{country}</b> на {months} мес.",
+                f"✅ Ключ успешно создан для страны <b>{country}</b> на {duration_days} дней.",
                 reply_markup=build_editor_kb(tg_id),
             )
 
         elif "cluster_name" in data:
             cluster_name = data["cluster_name"]
-            await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms, plan=months, session=session)
+            await create_key_on_cluster(cluster_name, tg_id, client_id, email, expiry_ms, plan=tariff_id, session=session)
 
             await state.clear()
             await callback_query.message.edit_text(
-                f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {months} мес.",
+                f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {duration_days} дней.",
                 reply_markup=build_editor_kb(tg_id),
             )
 
@@ -1064,9 +1082,10 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
             await callback_query.message.edit_text("❌ Не удалось определить источник — страна или кластер.")
 
     except Exception as e:
-        logger.error(f"Ошибка при создании ключа: {e}")
+        logger.error(f"[CreateKey] Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.", reply_markup=build_editor_kb(data.get("tg_id", 0))
+            "❌ Не удалось создать ключ. Попробуйте позже.",
+            reply_markup=build_editor_kb(tg_id),
         )
 
 

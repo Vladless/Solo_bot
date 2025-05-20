@@ -264,8 +264,20 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
 @router.callback_query(F.data.startswith("confirm_delete_tariff|"), IsAdminFilter())
 async def delete_tariff(callback: CallbackQuery, session):
     tariff_id = int(callback.data.split("|", 1)[1])
+    row = await session.fetchrow("SELECT group_code FROM tariffs WHERE id = $1", tariff_id)
+    if not row:
+        await callback.message.edit_text("❌ Тариф не найден.")
+        return
+
+    group_code = row["group_code"]
+
     await session.execute("UPDATE keys SET tariff_id = NULL WHERE tariff_id = $1", tariff_id)
     await session.execute("DELETE FROM tariffs WHERE id = $1", tariff_id)
+
+    remaining = await session.fetchval("SELECT COUNT(*) FROM tariffs WHERE group_code = $1", group_code)
+    if remaining == 0:
+        await session.execute("UPDATE servers SET tariff_group = NULL WHERE tariff_group = $1", group_code)
+
     await callback.message.edit_text("🗑 Тариф успешно удалён.", reply_markup=build_tariff_menu_kb())
 
 
