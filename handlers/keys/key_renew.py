@@ -82,7 +82,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Any
             """
             SELECT * FROM tariffs 
             WHERE group_code = $1 AND is_active = TRUE
-            ORDER BY duration_days
+            ORDER BY id
         """,
             tariff_group,
         )
