@@ -72,6 +72,20 @@ CREATE TABLE IF NOT EXISTS keys (
 
 DO $$
 BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'keys'
+          AND column_name = 'key'
+          AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE keys
+        ALTER COLUMN key DROP NOT NULL;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
         WHERE table_name = 'keys' AND column_name = 'remnawave_link'
@@ -93,6 +107,7 @@ BEGIN
         ALTER TABLE keys ADD COLUMN alias TEXT;
     END IF;
 END$$;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
