@@ -1081,7 +1081,7 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
 
         query = """
             SELECT cluster_name, server_name, api_url, subscription_url,
-                   inbound_id, panel_type, max_keys
+                   inbound_id, panel_type, max_keys, tariff_group
         """
         if include_enabled:
             query += ", enabled"
@@ -1104,6 +1104,7 @@ async def get_servers(session: Any = None, include_enabled: bool = False):
                 "panel_type": row["panel_type"],
                 "enabled": row.get("enabled", True),
                 "max_keys": row.get("max_keys"),
+                "tariff_group": row.get("tariff_group"),
                 "cluster_name": row["cluster_name"],
             })
 
