@@ -207,7 +207,7 @@ async def show_tariff_groups(callback: CallbackQuery, session):
 @router.callback_query(AdminTariffCallback.filter(F.action.startswith("group|")), IsAdminFilter())
 async def show_tariffs_in_group(callback: CallbackQuery, callback_data: AdminTariffCallback, session):
     group_code = callback_data.action.split("|", 1)[1]
-    rows = await session.fetch("SELECT * FROM tariffs WHERE group_code = $1 ORDER BY duration_days", group_code)
+    rows = await session.fetch("SELECT * FROM tariffs WHERE group_code = $1 ORDER BY id", group_code)
     tariffs = [dict(r) for r in rows]
 
     if not tariffs:
