@@ -258,15 +258,9 @@ END$$;
 
 DO $$
 BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'users' AND column_name = 'balance'
-          AND data_type = 'real'
-    ) THEN
-        ALTER TABLE users
-        ALTER COLUMN balance TYPE NUMERIC(10, 2)
-        USING ROUND(balance::NUMERIC, 2);
-    END IF;
+    ALTER TABLE users
+    ALTER COLUMN balance TYPE REAL
+    USING ROUND(balance::NUMERIC, 2)::REAL;
 END$$;
 
 DO $$
