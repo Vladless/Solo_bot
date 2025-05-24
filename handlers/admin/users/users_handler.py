@@ -1391,14 +1391,20 @@ async def handle_create_key_cluster(
     callback_query: CallbackQuery, state: FSMContext, session
 ):
     cluster_name = callback_query.data
-    tg_id = callback_query.from_user.id
 
-    await state.update_data(cluster_name=cluster_name, tg_id=tg_id)
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+
+    if not tg_id:
+        await callback_query.message.edit_text("❌ Ошибка: tg_id клиента не найден.")
+        return
+
+    await state.update_data(cluster_name=cluster_name)
     await state.set_state(UserEditorState.selecting_duration)
 
-    builder = InlineKeyboardBuilder()
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
+    builder = InlineKeyboardBuilder()
     for tariff in tariffs:
         months = tariff["duration_days"] // 30
         if months < 1:
