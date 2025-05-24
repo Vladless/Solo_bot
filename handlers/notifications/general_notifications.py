@@ -572,7 +572,7 @@ async def process_auto_renew_or_notify(
         )
 
         await renew_key_in_cluster(
-            server_id, email, client_id, int(new_expiry_time), total_gb
+            server_id, email, client_id, int(new_expiry_time), total_gb, session=conn
         )
         await update_balance(conn, tg_id, -renewal_cost)
         await update_key_expiry(conn, client_id, int(new_expiry_time))
