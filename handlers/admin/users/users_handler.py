@@ -555,6 +555,22 @@ async def handle_key_edit(
 
 
 @router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_back"), IsAdminFilter()
+)
+async def handle_users_back_to_key_edit(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    await handle_key_edit(
+        callback_query=callback_query,
+        callback_data=callback_data,
+        session=session,
+        update=False,
+    )
+
+
+@router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_renew"), IsAdminFilter()
 )
 async def handle_user_choose_tariff_group(
