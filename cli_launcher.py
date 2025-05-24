@@ -4,14 +4,12 @@ import subprocess
 import sys
 
 import requests
-
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
 
 from config import BOT_SERVICE
-
 
 try:
     sys.stdin.reconfigure(encoding="utf-8")
@@ -32,9 +30,13 @@ IS_ROOT_DIR = PROJECT_DIR == "/root"
 
 if IS_ROOT_DIR:
     console.print("[bold red]⛔ КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
-    console.print("[red]Обнаружена установка бота прямо в корневой папке (/root).[/red]")
+    console.print(
+        "[red]Обнаружена установка бота прямо в корневой папке (/root).[/red]"
+    )
     console.print("[red]Это крайне опасно и может привести к потере данных![/red]")
-    console.print("[yellow]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/yellow]")
+    console.print(
+        "[yellow]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/yellow]"
+    )
     console.print("[red]Обновление заблокировано в целях безопасности.[/red]")
     sys.exit(1)
 GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
@@ -42,7 +44,9 @@ SERVICE_NAME = BOT_SERVICE
 
 
 def is_service_exists(service_name):
-    result = subprocess.run(["systemctl", "list-unit-files", service_name], capture_output=True, text=True)
+    result = subprocess.run(
+        ["systemctl", "list-unit-files", service_name], capture_output=True, text=True
+    )
     return service_name in result.stdout
 
 
@@ -75,7 +79,9 @@ def fix_permissions():
     try:
         user = os.getenv("SUDO_USER") or os.getenv("USER")
         if user:
-            subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
+            subprocess.run(
+                ["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True
+            )
 
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
@@ -135,11 +141,15 @@ def install_dependencies():
     with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
         try:
             if not os.path.exists("venv"):
-                console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю...[/yellow]")
+                console.print(
+                    "[yellow]⚠️ Виртуальное окружение не найдено. Создаю...[/yellow]"
+                )
                 subprocess.run("python3 -m venv venv", shell=True, check=True)
 
             subprocess.run(
-                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'", shell=True, check=True
+                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
+                shell=True,
+                check=True,
             )
         except subprocess.CalledProcessError:
             console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
@@ -186,21 +196,29 @@ def update_from_beta():
     remote_version = get_remote_version(branch="dev")
 
     if local_version and remote_version:
-        console.print(f"[cyan]🔢 Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
+        console.print(
+            f"[cyan]🔢 Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]"
+        )
         if local_version == remote_version:
-            if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
+            if not Confirm.ask(
+                "[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"
+            ):
                 return
     else:
         console.print("[red]⚠️ Не удалось определить версии.[/red]")
 
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
+    if not Confirm.ask(
+        "[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"
+    ):
         return
 
     console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
     if not Confirm.ask("[red]❓ Продолжить обновление?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
+    update_buttons = Confirm.ask(
+        "[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False
+    )
 
     backup_project()
     install_git_if_needed()
@@ -231,7 +249,9 @@ def update_from_beta():
 
 def update_from_release():
     update_cli_launcher()
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
+    if not Confirm.ask(
+        "[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"
+    ):
         return
 
     console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
@@ -239,14 +259,18 @@ def update_from_release():
     if not Confirm.ask("[red]❓ Вы точно хотите продолжить?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
+    update_buttons = Confirm.ask(
+        "[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False
+    )
 
     backup_project()
     install_git_if_needed()
     install_rsync_if_needed()
 
     try:
-        response = requests.get("https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10)
+        response = requests.get(
+            "https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10
+        )
         releases = response.json()[:3]
         tag_choices = [r["tag_name"] for r in releases]
 
@@ -258,16 +282,25 @@ def update_from_release():
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
         selected = Prompt.ask(
-            "[bold blue]Выберите номер релиза[/bold blue]", choices=[str(i) for i in range(1, len(tag_choices) + 1)]
+            "[bold blue]Выберите номер релиза[/bold blue]",
+            choices=[str(i) for i in range(1, len(tag_choices) + 1)],
         )
         tag_name = tag_choices[int(selected) - 1]
 
-        if not Confirm.ask(f"[yellow]🔁 Подтвердите установку релиза {tag_name}[/yellow]"):
+        if not Confirm.ask(
+            f"[yellow]🔁 Подтвердите установку релиза {tag_name}[/yellow]"
+        ):
             return
 
-        console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
+        console.print(
+            f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]"
+        )
         subprocess.run(["rm", "-rf", TEMP_DIR])
-        subprocess.run(f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}", shell=True, check=True)
+        subprocess.run(
+            f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
+            shell=True,
+            check=True,
+        )
 
         console.print("[red]⚠️ Начинается перезапись файлов бота![/red]")
         subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
@@ -277,7 +310,9 @@ def update_from_release():
         if not update_buttons:
             exclude_options += " --exclude=handlers/buttons.py"
 
-        subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+        subprocess.run(
+            f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True
+        )
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
         fix_permissions()
@@ -292,7 +327,9 @@ def update_from_release():
 def show_update_menu():
     if IS_ROOT_DIR:
         console.print("[red]⛔ Обновление невозможно: бот находится в /root[/red]")
-        console.print("[yellow]Перенесите бота в отдельную папку и повторите попытку[/yellow]")
+        console.print(
+            "[yellow]Перенесите бота в отдельную папку и повторите попытку[/yellow]"
+        )
         return
 
     table = Table(title="Выберите способ обновления", title_style="bold green")
@@ -312,7 +349,9 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.1.7", title_style="bold magenta", header_style="bold blue")
+    table = Table(
+        title="Solobot CLI v0.1.7", title_style="bold magenta", header_style="bold blue"
+    )
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -335,7 +374,9 @@ def update_cli_launcher():
         response = requests.get(url, timeout=10)
 
         if response.status_code == 200:
-            with open(os.path.join(PROJECT_DIR, "cli_launcher.py"), "w", encoding="utf-8") as f:
+            with open(
+                os.path.join(PROJECT_DIR, "cli_launcher.py"), "w", encoding="utf-8"
+            ) as f:
                 f.write(response.text)
             console.print("[green]✅ CLI лаунчер успешно обновлён[/green]")
             os.chmod(os.path.join(PROJECT_DIR, "cli_launcher.py"), 0o755)
@@ -351,30 +392,49 @@ def main():
     try:
         while True:
             show_menu()
-            choice = Prompt.ask("[bold blue]Введите номер действия[/bold blue]", choices=[str(i) for i in range(1, 10)])
+            choice = Prompt.ask(
+                "[bold blue]Введите номер действия[/bold blue]",
+                choices=[str(i) for i in range(1, 10)],
+            )
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "2":
-                if Confirm.ask("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
+                if Confirm.ask(
+                    "[green]Вы действительно хотите запустить main.py вручную?[/green]"
+                ):
                     subprocess.run(["venv/bin/python", "main.py"])
             elif choice == "3":
                 if is_service_exists(SERVICE_NAME):
-                    if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
+                    if Confirm.ask(
+                        "[yellow]Вы действительно хотите перезапустить бота?[/yellow]"
+                    ):
                         subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "4":
                 if is_service_exists(SERVICE_NAME):
-                    if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
+                    if Confirm.ask(
+                        "[red]Вы уверены, что хотите остановить бота?[/red]"
+                    ):
                         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "5":
                 if is_service_exists(SERVICE_NAME):
-                    subprocess.run(["sudo", "journalctl", "-u", SERVICE_NAME, "-n", "80", "--no-pager"])
+                    subprocess.run(
+                        [
+                            "sudo",
+                            "journalctl",
+                            "-u",
+                            SERVICE_NAME,
+                            "-n",
+                            "80",
+                            "--no-pager",
+                        ]
+                    )
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "6":

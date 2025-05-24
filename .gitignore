@@ -7,6 +7,7 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+alembic/
 
 # Virtual environments
 venv/
@@ -28,6 +29,7 @@ env/
 # Sensitive configuration files
 config.py
 config.ini
+alembic.ini
 .env
 
 # Backup files
@@ -51,7 +53,6 @@ Thumbs.db
 
 nginx.conf
 scripts
-models.py
 Dockerfile
 .csv
 /logs

@@ -16,7 +16,6 @@ from .stats import router as stats_router
 from .tariffs import router as tariffs_router
 from .users import router as users_router
 
-
 router = Router(name="admins_main_router")
 
 router.include_routers(

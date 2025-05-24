@@ -1,26 +1,33 @@
+from datetime import datetime, timedelta
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_tariffs
-from handlers.notifications.notify_kb import build_tariffs_keyboard
-from .key_create import select_tariff_plan
-from logger import logger
-from datetime import datetime, timedelta
 from config import DISCOUNT_ACTIVE_HOURS
+from database import get_tariffs
+from database.models import Notification
+from handlers.notifications.notify_kb import build_tariffs_keyboard
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
+from logger import logger
+
+from .key_create import select_tariff_plan
 
 router = Router()
 
 
 @router.callback_query(F.data == "hot_lead_discount")
-async def handle_discount_entry(callback: CallbackQuery, session):
+async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id
 
-    last_time = await session.fetchval("""
-        SELECT last_notification_time
-        FROM notifications
-        WHERE tg_id = $1 AND notification_type = 'hot_lead_step_2'
-    """, tg_id)
+    result = await session.execute(
+        select(Notification.last_notification_time).where(
+            Notification.tg_id == tg_id,
+            Notification.notification_type == "hot_lead_step_2",
+        )
+    )
+    last_time = result.scalar_one_or_none()
 
     if not last_time:
         await callback.message.edit_text("❌ Скидка недоступна.")
@@ -32,14 +39,13 @@ async def handle_discount_entry(callback: CallbackQuery, session):
         return
 
     tariffs = await get_tariffs(session=session, group_code="discounts")
-
     if not tariffs:
         await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
         return
 
     await callback.message.edit_text(
         DISCOUNT_TARIFF,
-        reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff")
+        reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff"),
     )
 
 
@@ -62,14 +68,16 @@ async def handle_discount_tariff_selection(callback: CallbackQuery, session, sta
 
 
 @router.callback_query(F.data == "hot_lead_final_discount")
-async def handle_ultra_discount(callback: CallbackQuery, session):
+async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id
 
-    last_time = await session.fetchval("""
-        SELECT last_notification_time
-        FROM notifications
-        WHERE tg_id = $1 AND notification_type = 'hot_lead_step_3'
-    """, tg_id)
+    result = await session.execute(
+        select(Notification.last_notification_time).where(
+            Notification.tg_id == tg_id,
+            Notification.notification_type == "hot_lead_step_3",
+        )
+    )
+    last_time = result.scalar_one_or_none()
 
     if not last_time:
         await callback.message.edit_text("❌ Скидка недоступна.")
@@ -87,5 +95,5 @@ async def handle_ultra_discount(callback: CallbackQuery, session):
 
     await callback.message.edit_text(
         DISCOUNT_TARIFF_MAX,
-        reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff")
+        reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff"),
     )

@@ -1,59 +1,82 @@
-from typing import Callable, Any, Awaitable
+from collections.abc import Awaitable, Callable
+from datetime import datetime
+from typing import Any
+
 from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery
-from asyncpg import Pool
+from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 from pytz import timezone
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import SUPPORT_CHAT_URL
+from database.models import ManualBan
+from logger import logger
 
+TZ = timezone("Europe/Moscow")
 
-TZ = timezone("Europe/Moscow")  # или другая зона, если нужно
 
 class BanCheckerMiddleware(BaseMiddleware):
-    def __init__(self, pool: Pool):
-        self.pool = pool
+    def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
+        self.session_factory = session_factory
 
     async def __call__(
         self,
-        handler: Callable[[Any, dict[str, Any]], Awaitable[Any]],
-        event: Message | CallbackQuery,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        tg_id = (
-            event.from_user.id
-            if isinstance(event, (Message, CallbackQuery))
-            else None
-        )
+        tg_id = None
+        obj = None
+
+        if isinstance(event, Update):
+            if event.message:
+                tg_id = event.message.from_user.id
+                obj = event.message
+            elif event.callback_query:
+                tg_id = event.callback_query.from_user.id
+                obj = event.callback_query
+        elif isinstance(event, Message | CallbackQuery):
+            tg_id = event.from_user.id
+            obj = event
+
         if tg_id is None:
             return await handler(event, data)
 
-        async with self.pool.acquire() as conn:
-            record = await conn.fetchrow(
-                """
-                SELECT until FROM manual_bans
-                WHERE tg_id = $1 AND (until IS NULL OR until > NOW())
-                """,
-                tg_id,
+        async with self.session_factory() as session:
+            logger.debug(f"[BanChecker] Проверка блокировки для пользователя {tg_id}")
+            result = await session.execute(
+                select(ManualBan).where(
+                    ManualBan.tg_id == tg_id,
+                    (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow()),
+                )
             )
+            ban = result.scalar_one_or_none()
 
-        if record:
-            until = record["until"]
-            if until:
-                until_local = until.astimezone(TZ).strftime("%Y-%m-%d %H:%M")
-                text = (
-                    f"🚫 Вы заблокированы до <b>{until_local}</b> по МСК.\n"
-                    f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
-                )
-            else:
-                text = (
-                    f"🚫 Вы заблокированы <b>навсегда</b>.\n"
-                    f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
+            if ban:
+                reason = ban.reason or "не указана"
+                until = ban.until
+
+                logger.warning(
+                    f"[BanChecker] Пользователь {tg_id} заблокирован (до: {until}, причина: {reason})"
                 )
 
-            if isinstance(event, Message):
-                await event.answer(text, parse_mode="HTML")
-            elif isinstance(event, CallbackQuery):
-                await event.answer(text, show_alert=True)
-            return
+                if until:
+                    until_local = until.astimezone(TZ).strftime("%Y-%m-%d %H:%M")
+                    text = (
+                        f"🚫 Вы заблокированы до <b>{until_local}</b> по МСК.\n"
+                        f"📄 Причина: <i>{reason}</i>\n\n"
+                        f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
+                    )
+                else:
+                    text = (
+                        f"🚫 Вы заблокированы <b>навсегда</b>.\n"
+                        f"📄 Причина: <i>{reason}</i>\n\n"
+                        f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
+                    )
 
+                if isinstance(obj, Message):
+                    await obj.answer(text, parse_mode="HTML")
+                elif isinstance(obj, CallbackQuery):
+                    await obj.answer(text, show_alert=True)
+                return
         return await handler(event, data)

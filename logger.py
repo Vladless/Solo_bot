@@ -1,11 +1,11 @@
 import logging
 import os
 import sys
-
 from datetime import timedelta
 
 from loguru import logger
 
+from config import LOG_ROTATION_TIME
 
 log_folder = "logs"
 
@@ -47,7 +47,7 @@ logger.add(
     log_file_path,
     level="DEBUG",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message}",
-    rotation=timedelta(minutes=60),
+    rotation=LOG_ROTATION_TIME,
     retention=timedelta(days=3),
 )
 

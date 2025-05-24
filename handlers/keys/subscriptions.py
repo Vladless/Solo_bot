@@ -6,25 +6,27 @@ import time
 import urllib.parse
 
 import aiohttp
-import asyncpg
-
 from aiohttp import web
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    DATABASE_URL,
     PROJECT_NAME,
     RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
     SUPPORT_CHAT_URL,
-    USERNAME_BOT,
     USE_COUNTRY_SELECTION,
+    USERNAME_BOT,
 )
 from database import get_key_details, get_servers
+from database.models import Server
 from handlers.utils import convert_to_bytes
 from logger import logger
 
 
-async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[str, str]]:
+async def fetch_url_content(
+    url: str, identifier: str
+) -> tuple[list[str], dict[str, str]]:
     try:
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -33,7 +35,9 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
                     content = await response.text()
                     lines = base64.b64decode(content).decode("utf-8").split("\n")
                     headers = {k.lower(): v for k, v in response.headers.items()}
-                    logger.debug(f"Fetched {url}: {len(lines)} lines, headers: {headers}")
+                    logger.debug(
+                        f"Fetched {url}: {len(lines)} lines, headers: {headers}"
+                    )
                     return lines, headers
                 return [], {}
     except Exception as e:
@@ -45,7 +49,9 @@ async def combine_unique_lines(
     urls: list[str], identifier: str, query_string: str
 ) -> tuple[list[str], list[dict[str, str]]]:
     if SUPERNODE:
-        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}")
+        logger.info(
+            f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}"
+        )
         if not urls:
             return [], []
         url_with_query = f"{urls[0]}?{query_string}" if query_string else urls[0]
@@ -65,14 +71,19 @@ async def combine_unique_lines(
     return list(all_lines), all_headers
 
 
-async def get_subscription_urls(server_id: str, email: str, conn, include_remnawave_key: str = None) -> list[str]:
+async def get_subscription_urls(
+    server_id: str, email: str, session: AsyncSession, include_remnawave_key: str = None
+) -> list[str]:
     urls = []
     if USE_COUNTRY_SELECTION:
-        server_data = await conn.fetchrow("SELECT subscription_url FROM servers WHERE server_name = $1", server_id)
-        if server_data and server_data["subscription_url"]:
-            urls.append(f"{server_data['subscription_url']}/{email}")
+        result = await session.execute(
+            select(Server.subscription_url).where(Server.server_name == server_id)
+        )
+        server_data = result.scalar()
+        if server_data:
+            urls.append(f"{server_data}/{email}")
     else:
-        servers = await get_servers(conn)
+        servers = await get_servers(session)
         cluster_servers = servers.get(server_id, [])
         for server in cluster_servers:
             if url := server.get("subscription_url"):
@@ -85,9 +96,13 @@ async def get_subscription_urls(server_id: str, email: str, conn, include_remnaw
 
 
 def calculate_traffic(
-    cleaned_subscriptions: list[str], expiry_time_ms: int | None, headers_list: list[dict[str, str]]
+    cleaned_subscriptions: list[str],
+    expiry_time_ms: int | None,
+    headers_list: list[dict[str, str]],
 ) -> str:
-    logger.debug(f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}")
+    logger.debug(
+        f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}"
+    )
     expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
 
     upload = 0
@@ -128,7 +143,9 @@ def calculate_traffic(
                 country_remaining[country] = remaining_bytes
                 logger.debug(f"Found traffic: {value}{unit} for {country}")
 
-    consumed_traffic_bytes = total - sum(country_remaining.values()) if country_remaining else download
+    consumed_traffic_bytes = (
+        total - sum(country_remaining.values()) if country_remaining else download
+    )
     if consumed_traffic_bytes < 0:
         consumed_traffic_bytes = 0
     download = max(download, consumed_traffic_bytes)
@@ -171,7 +188,10 @@ def format_time_left(expiry_time_ms: int | None) -> str:
 
 
 def prepare_headers(
-    user_agent: str, project_name: str, subscription_info: str, subscription_userinfo: str
+    user_agent: str,
+    project_name: str,
+    subscription_info: str,
+    subscription_userinfo: str,
 ) -> dict[str, str]:
     if "Happ" in user_agent:
         encoded_project_name = f"{project_name}"
@@ -180,9 +200,11 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "3",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:"
+            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "support-url": SUPPORT_CHAT_URL,
-            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce": "base64:"
+            + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
             "subscription-userinfo": subscription_userinfo,
         }
@@ -192,7 +214,8 @@ def prepare_headers(
         encoded_project_name = f"{project_name}\n📄 Подписка: {key_info}"
         return {
             "profile-update-interval": "3",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:"
+            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
     elif "v2raytun" in user_agent:
@@ -202,9 +225,11 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "update-always": "true",
-            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce": "base64:"
+            + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "announce-url": f"{SUPPORT_CHAT_URL}",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:"
+            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
     else:
@@ -213,7 +238,8 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "3",
-            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:"
+            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
         }
 
 
@@ -224,42 +250,59 @@ async def handle_subscription(request: web.Request) -> web.Response:
     if not email or not tg_id:
         return web.Response(text="❌ Неверные параметры запроса.", status=400)
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        client_data = await get_key_details(email, conn)
-        if not client_data:
-            return web.Response(text="❌ Клиент с таким email не найден.", status=404)
+    sessionmaker = request.app["sessionmaker"]
 
-        stored_tg_id = client_data.get("tg_id")
-        server_id = client_data["server_id"]
+    async with sessionmaker() as session:
+        try:
+            key = await get_key_details(session, email)
+            if not key:
+                return web.Response(
+                    text="❌ Клиент с таким email не найден.", status=404
+                )
 
-        if int(tg_id) != int(stored_tg_id):
-            return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
+            if int(tg_id) != int(key["tg_id"]):
+                return web.Response(
+                    text="❌ Неверные данные. Получите свой ключ в боте.", status=403
+                )
 
-        expiry_time_ms = client_data.get("expiry_time")
-        time_left = format_time_left(expiry_time_ms)
+            expiry_time_ms = key["expiry_time"]
+            server_id = key["server_id"]
+            remnawave_link = key["remnawave_link"]
 
-        urls = await get_subscription_urls(
-            server_id, email, conn, include_remnawave_key=client_data.get("remnawave_link")
-        )
+            time_left = format_time_left(expiry_time_ms)
 
-        if not urls:
-            return web.Response(text="❌ Сервер не найден.", status=404)
+            urls = await get_subscription_urls(
+                server_id, email, session, include_remnawave_key=remnawave_link
+            )
+            if not urls:
+                return web.Response(text="❌ Сервер не найден.", status=404)
 
-        query_string = request.query_string
-        combined_subscriptions, headers_list = await combine_unique_lines(urls, tg_id or email, query_string)
-        if RANDOM_SUBSCRIPTIONS:
-            random.shuffle(combined_subscriptions)
+            query_string = request.query_string
+            combined_subscriptions, headers_list = await combine_unique_lines(
+                urls, tg_id or email, query_string
+            )
+            if RANDOM_SUBSCRIPTIONS:
+                random.shuffle(combined_subscriptions)
 
-        cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
+            cleaned_subscriptions = [
+                clean_subscription_line(line) for line in combined_subscriptions
+            ]
 
-        base64_encoded = base64.b64encode("\n".join(cleaned_subscriptions).encode("utf-8")).decode("utf-8")
-        subscription_info = f"📄 Подписка: {email} - {time_left}"
+            base64_encoded = base64.b64encode(
+                "\n".join(cleaned_subscriptions).encode("utf-8")
+            ).decode("utf-8")
+            subscription_info = f"📄 Подписка: {email} — {time_left}"
 
-        user_agent = request.headers.get("User-Agent", "")
-        subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms, headers_list)
-        headers = prepare_headers(user_agent, PROJECT_NAME, subscription_info, subscription_userinfo)
+            user_agent = request.headers.get("User-Agent", "")
+            subscription_userinfo = calculate_traffic(
+                cleaned_subscriptions, expiry_time_ms, headers_list
+            )
+            headers = prepare_headers(
+                user_agent, PROJECT_NAME, subscription_info, subscription_userinfo
+            )
 
-        return web.Response(text=base64_encoded, headers=headers)
-    finally:
-        await conn.close()
+            return web.Response(text=base64_encoded, headers=headers)
+
+        except Exception as e:
+            logger.error(f"Ошибка в handle_subscription: {e}", exc_info=True)
+            return web.Response(text=f"❌ Ошибка сервера: {e}", status=500)

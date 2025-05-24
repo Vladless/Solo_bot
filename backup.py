@@ -1,11 +1,9 @@
 import os
 import subprocess
-
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import aiofiles
-
 from aiogram.types import BufferedInputFile
 
 from bot import bot
@@ -149,7 +147,9 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
 
             for admin_id in ADMIN_ID:
                 try:
-                    await bot.send_document(chat_id=admin_id, document=backup_input_file)
+                    await bot.send_document(
+                        chat_id=admin_id, document=backup_input_file
+                    )
                     logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
                 except Exception as e:
                     logger.error(f"Не удалось отправить бэкап админу {admin_id}: {e}")

@@ -1,8 +1,5 @@
 import datetime
-
 from datetime import datetime
-
-import asyncpg
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton
@@ -10,11 +7,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 
 from bot import bot
-from config import BLOCK_DURATION, DATABASE_URL, SERVER_COUNTRIES, TIMESTAMP_TTL
+from config import BLOCK_DURATION, SERVER_COUNTRIES, TIMESTAMP_TTL
 from database import get_key_details
 from handlers.buttons import MAIN_MENU
+from handlers.texts import TORRENT_BLOCKED_MSG, TORRENT_UNBLOCKED_MSG
 from logger import logger
-
 
 last_unblock_data = {}
 
@@ -53,49 +50,31 @@ def handle_telegram_errors(func):
 
 
 @handle_telegram_errors
-async def send_notification(tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str):
+async def send_notification(
+    tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str
+):
     country = get_country_from_server(server)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if action == "block":
-        message = (
-            f"⚠️ <b>Замечено использование торрентов</b> ⚠️\n\n"
-            f"<b>Уважаемый пользователь, мы обнаружили использование торрент-трафика в вашей подписке.</b>\n\n"
-            f"📋 <b>Детали:</b>"
-            f"<blockquote>"
-            f"• Подписка: <code>{username}</code>\n"
-            f"• Сервер: {country}\n"
-            f"• Время блокировки страны: <b>{BLOCK_DURATION} минут</b>"
-            f"</blockquote>\n\n"
-            f"❗️ <b>Важно:</b>\n"
-            f"• Возможно, вы забыли отключить торрент-клиент и сейчас качаете или раздаете торренты через VPN\n"
-            f"• Загрузка и раздача через торренты запрещена согласно правилам использования сервиса\n"
-            f"• Пожалуйста, полностью выключите торрент-клиент\n\n"
-            f"⏳ <b>После истечения времени блокировки доступ будет автоматически восстановлен.</b>\n\n"
-            f"⚠️ <b>Внимание:</b> При повторном использовании торрентов, блокировка будет применена снова."
+        message = TORRENT_BLOCKED_MSG.format(
+            username=username, country=country, duration=BLOCK_DURATION
         )
     else:
-        message = (
-            f"✅ <b>Доступ восстановлен</b>\n\n"
-            f"<b>Уважаемый пользователь, временные ограничения для вашей подписки сняты.</b>\n\n"
-            f"📋 <b>Детали:</b>"
-            f"<blockquote>"
-            f"• Подписка: <code>{username}</code>\n"
-            f"• Сервер: {country}"
-            f"</blockquote>\n\n"
-            f"💬 <b>Напоминание:</b>\n"
-            f"• Пожалуйста, воздержитесь от использования торрентов\n"
-            f"• Убедитесь, что торрент-клиент полностью выключен"
-        )
+        message = TORRENT_UNBLOCKED_MSG.format(username=username, country=country)
 
-    await bot.send_message(chat_id=tg_id, text=message, parse_mode="HTML", reply_markup=builder.as_markup())
-    logger.info(f"Отправлено уведомление пользователю {tg_id} о {action} для подписки {username}")
+    await bot.send_message(
+        chat_id=tg_id, text=message, parse_mode="HTML", reply_markup=builder.as_markup()
+    )
+    logger.info(
+        f"Отправлено уведомление пользователю {tg_id} о {action} для подписки {username}"
+    )
     return True
 
 
-async def tblocker_webhook(request):
+async def tblocker_webhook(request: web.Request):
     try:
         data = await request.json()
         logger.info(f"Получен запрос от tblocker: {data}")
@@ -114,34 +93,48 @@ async def tblocker_webhook(request):
         current_time = datetime.now().timestamp()
 
         last_unblock_data = {
-            k: v for k, v in last_unblock_data.items() if current_time - v["received_at"] <= TIMESTAMP_TTL
+            k: v
+            for k, v in last_unblock_data.items()
+            if current_time - v["received_at"] <= TIMESTAMP_TTL
         }
 
         cache_key = f"{username}:{server}"
         if action == "unblock" and cache_key in last_unblock_data:
             if timestamp == last_unblock_data[cache_key]["timestamp"]:
-                return web.json_response({"status": "ok", "message": "duplicate unblock skipped"})
+                return web.json_response(
+                    {"status": "ok", "message": "duplicate unblock skipped"}
+                )
 
         if action == "unblock":
-            last_unblock_data[cache_key] = {"timestamp": timestamp, "received_at": current_time}
+            last_unblock_data[cache_key] = {
+                "timestamp": timestamp,
+                "received_at": current_time,
+            }
 
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            key_info = await get_key_details(username, conn)
+        sessionmaker = request.app["sessionmaker"]
+        async with sessionmaker() as session:
+            key_info = await get_key_details(session, username)
 
             if not key_info:
                 logger.error(f"Ключ не найден для email {username}")
                 return web.json_response({"error": "Key not found"}, status=404)
 
-            success = await send_notification(key_info["tg_id"], username, ip, server, action, timestamp)
+            success = await send_notification(
+                tg_id=key_info["tg_id"],
+                email=username,
+                ip=ip,
+                server=server,
+                action=action,
+                timestamp=timestamp,
+            )
 
             if not success:
-                logger.warning(f"Не удалось отправить уведомление пользователю {key_info['tg_id']}")
+                logger.warning(
+                    f"Не удалось отправить уведомление пользователю {key_info['tg_id']}"
+                )
 
-            return web.json_response({"status": "ok"})
-        finally:
-            await conn.close()
+        return web.json_response({"status": "ok"})
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке вебхука: {str(e)}")
+        logger.error(f"Ошибка при обработке вебхука: {str(e)}", exc_info=True)
         return web.json_response({"error": str(e)}, status=500)

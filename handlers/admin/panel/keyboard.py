@@ -19,20 +19,44 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
 
 def build_panel_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack())
-    builder.button(text="🔑 Поиск по названию ключа", callback_data=AdminPanelCallback(action="search_key").pack())
-    builder.row(
-        InlineKeyboardButton(text="🖥️ Серверы", callback_data=AdminPanelCallback(action="clusters").pack()),
-        InlineKeyboardButton(text="🤖 Управление", callback_data=AdminPanelCallback(action="management").pack()),
+    builder.button(
+        text="👤 Поиск пользователя",
+        callback_data=AdminPanelCallback(action="search_user").pack(),
+    )
+    builder.button(
+        text="🔑 Поиск по названию ключа",
+        callback_data=AdminPanelCallback(action="search_key").pack(),
     )
     builder.row(
-        InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
-        InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
+        InlineKeyboardButton(
+            text="🖥️ Серверы", callback_data=AdminPanelCallback(action="clusters").pack()
+        ),
+        InlineKeyboardButton(
+            text="🤖 Управление",
+            callback_data=AdminPanelCallback(action="management").pack(),
+        ),
     )
-    builder.row(InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()))
     builder.row(
-        InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
-        InlineKeyboardButton(text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()),
+        InlineKeyboardButton(
+            text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()
+        ),
+        InlineKeyboardButton(
+            text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📊 Статистика",
+            callback_data=AdminPanelCallback(action="stats").pack(),
+        ),
+        InlineKeyboardButton(
+            text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()
+        ),
     )
     builder.button(text=MAIN_MENU, callback_data="profile")
     builder.adjust(1, 1, 2, 2, 1, 2, 1)
@@ -41,7 +65,10 @@ def build_panel_kb() -> InlineKeyboardMarkup:
 
 def build_restart_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="✅ Да, перезагрузить", callback_data=AdminPanelCallback(action="restart_confirm").pack())
+    builder.button(
+        text="✅ Да, перезагрузить",
+        callback_data=AdminPanelCallback(action="restart_confirm").pack(),
+    )
     builder.row(build_admin_back_btn())
     builder.adjust(1)
     return builder.as_markup()
@@ -62,4 +89,6 @@ def build_admin_back_btn(action: str = "admin") -> InlineKeyboardButton:
 
 
 def build_admin_btn(text: str, action: str) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=AdminPanelCallback(action=action).pack())
+    return InlineKeyboardButton(
+        text=text, callback_data=AdminPanelCallback(action=action).pack()
+    )

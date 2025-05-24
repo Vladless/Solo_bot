@@ -1,123 +1,147 @@
 import csv
-
 from datetime import datetime
 from io import StringIO
-from typing import Any
 
 from aiogram.types import BufferedInputFile
+from sqlalchemy import func, join, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.models import Key, Payment, Referral, Tariff, User
 
 
-async def export_users_csv(session: Any) -> BufferedInputFile:
-    """
-    Экспорт пользователей в CSV с сортировкой от самого старого к новому.
-    """
-    query = """
-        SELECT 
-            tg_id, 
-            username, 
-            first_name, 
-            last_name, 
-            language_code, 
-            is_bot, 
-            balance, 
-            trial,
-            created_at  
-        FROM users
-        ORDER BY created_at ASC
-    """
+async def export_users_csv(session: AsyncSession) -> BufferedInputFile:
+    query = select(
+        User.tg_id,
+        User.username,
+        User.first_name,
+        User.last_name,
+        User.language_code,
+        User.is_bot,
+        User.balance,
+        User.trial,
+        User.created_at,
+    ).order_by(User.created_at.asc())
 
-    users = await session.fetch(query)
+    result = await session.execute(query)
+    users = result.all()
 
     buffer = StringIO()
-    buffer.write("tg_id,username,first_name,last_name,language_code,is_bot,balance,trial,created_at\n")
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "tg_id",
+            "username",
+            "first_name",
+            "last_name",
+            "language_code",
+            "is_bot",
+            "balance",
+            "trial",
+            "created_at",
+        ]
+    )
 
     for user in users:
-        buffer.write(
-            f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},"
-            f"{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']},"
-            f"{user['created_at']}\n"
-        )
+        writer.writerow(user)
 
     buffer.seek(0)
+    return BufferedInputFile(
+        file=buffer.getvalue().encode("utf-8-sig"), filename="users_export.csv"
+    )
 
-    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="users_export.csv")
 
+async def export_payments_csv(session: AsyncSession) -> BufferedInputFile:
+    j = join(User, Payment, User.tg_id == Payment.tg_id)
+    query = (
+        select(
+            User.tg_id,
+            User.username,
+            User.first_name,
+            User.last_name,
+            Payment.amount,
+            Payment.payment_system,
+            Payment.status,
+            Payment.created_at,
+        )
+        .select_from(j)
+        .order_by(Payment.created_at.asc())
+    )
 
-async def export_payments_csv(session: Any) -> BufferedInputFile:
-    """
-    Экспорт платежей в CSV с сортировкой от самого старого к новому.
-    """
-    query = """
-        SELECT 
-            u.tg_id, 
-            u.username, 
-            u.first_name, 
-            u.last_name, 
-            p.amount, 
-            p.payment_system,
-            p.status,
-            p.created_at 
-        FROM users u
-        JOIN payments p ON u.tg_id = p.tg_id
-        ORDER BY p.created_at ASC  -- Сортировка по дате от старых к новым
-    """
-    payments = await session.fetch(query)
+    result = await session.execute(query)
+    payments = result.all()
+
     return _export_payments_csv(payments, "payments_export.csv")
 
 
-async def export_user_payments_csv(tg_id: int, session: Any) -> BufferedInputFile:
-    query = """
-            SELECT 
-                u.tg_id, 
-                u.username, 
-                u.first_name, 
-                u.last_name, 
-                p.amount, 
-                p.payment_system,
-                p.status,
-                p.created_at 
-            FROM users u 
-            JOIN payments p ON u.tg_id = p.tg_id
-            WHERE u.tg_id = $1
-        """
-    payments = await session.fetch(query, tg_id)
+async def export_user_payments_csv(
+    tg_id: int, session: AsyncSession
+) -> BufferedInputFile:
+    j = join(User, Payment, User.tg_id == Payment.tg_id)
+    query = (
+        select(
+            User.tg_id,
+            User.username,
+            User.first_name,
+            User.last_name,
+            Payment.amount,
+            Payment.payment_system,
+            Payment.status,
+            Payment.created_at,
+        )
+        .select_from(j)
+        .where(User.tg_id == tg_id)
+        .order_by(Payment.created_at.asc())
+    )
+
+    result = await session.execute(query)
+    payments = result.all()
+
     return _export_payments_csv(payments, f"payments_export_{tg_id}.csv")
 
 
-def _export_payments_csv(payments: list, filename: str) -> BufferedInputFile:
+def _export_payments_csv(payments, filename: str) -> BufferedInputFile:
     buffer = StringIO()
-    buffer.write("tg_id,username,first_name,last_name,amount,payment_system,status,created_at\n")
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "tg_id",
+            "username",
+            "first_name",
+            "last_name",
+            "amount",
+            "payment_system",
+            "status",
+            "created_at",
+        ]
+    )
 
     for payment in payments:
-        buffer.write(
-            f"{payment['tg_id']},{payment['username']},{payment['first_name']},{payment['last_name']},"
-            f"{payment['amount']},{payment['payment_system']},{payment['status']},{payment['created_at']}\n"
-        )
+        writer.writerow(payment)
 
     buffer.seek(0)
-
-    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename=filename)
-
-
-async def export_referrals_csv(referrer_tg_id: int, session: Any) -> BufferedInputFile | None:
-    """
-    Формирует CSV-файл со списком рефералов и возвращает его как BufferedInputFile.
-    Если у пользователя нет рефералов, возвращает None.
-    """
-    rows = await session.fetch(
-        """
-        SELECT
-            r.referred_tg_id,
-            COALESCE(u.first_name, '') AS first_name,
-            COALESCE(u.last_name, '') AS last_name,
-            COALESCE(u.username, '') AS username
-        FROM referrals r
-        JOIN users u ON u.tg_id = r.referred_tg_id
-        WHERE r.referrer_tg_id = $1
-        ORDER BY r.referred_tg_id
-        """,
-        referrer_tg_id,
+    return BufferedInputFile(
+        file=buffer.getvalue().encode("utf-8-sig"), filename=filename
     )
+
+
+async def export_referrals_csv(
+    referrer_tg_id: int, session: AsyncSession
+) -> BufferedInputFile | None:
+    j = join(Referral, User, Referral.referred_tg_id == User.tg_id)
+    query = (
+        select(
+            Referral.referred_tg_id,
+            func.coalesce(User.first_name, ""),
+            func.coalesce(User.last_name, ""),
+            func.coalesce(User.username, ""),
+        )
+        .select_from(j)
+        .where(Referral.referrer_tg_id == referrer_tg_id)
+        .order_by(Referral.referred_tg_id.asc())
+    )
+
+    result = await session.execute(query)
+    rows = result.all()
 
     if not rows:
         return None
@@ -126,77 +150,130 @@ async def export_referrals_csv(referrer_tg_id: int, session: Any) -> BufferedInp
     writer = csv.writer(output, delimiter=";")
     writer.writerow(["Приглашённый (tg_id)", "Имя"])
 
-    for row in rows:
-        invited_id = row["referred_tg_id"]
-        full_name = row["first_name"].strip() or row["username"] or str(invited_id)
-        if row["last_name"]:
-            full_name = f"{full_name} {row['last_name']}"
+    for invited_id, first_name, last_name, username in rows:
+        full_name = first_name.strip() or username or str(invited_id)
+        if last_name:
+            full_name = f"{full_name} {last_name}"
         writer.writerow([invited_id, full_name.strip()])
 
     output.seek(0)
-    csv_data = output.getvalue().encode("utf-8")
-    filename = f"referrals_{referrer_tg_id}.csv"
+    return BufferedInputFile(
+        file=output.getvalue().encode("utf-8"),
+        filename=f"referrals_{referrer_tg_id}.csv",
+    )
 
-    return BufferedInputFile(file=csv_data, filename=filename)
 
+async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
+    users_alias = User.__table__.alias("u")
+    payments_alias = Payment.__table__.alias("p")
+    keys_alias = Key.__table__.alias("k")
 
-async def export_hot_leads_csv(session: Any) -> BufferedInputFile:
-    """
-    Экспорт пользователей, которые делали платежи, но сейчас не имеют ключей.
-    Возвращает: tg_id, username, first_name, last_name, updated_at
-    """
-    query = """
-        SELECT DISTINCT u.tg_id, u.username, u.first_name, u.last_name, u.updated_at
-        FROM users u
-        JOIN payments p ON u.tg_id = p.tg_id
-        LEFT JOIN keys k ON u.tg_id = k.tg_id
-        WHERE p.status = 'success'
-        AND k.tg_id IS NULL
-        ORDER BY u.updated_at DESC
-    """
+    j = users_alias.join(
+        payments_alias, users_alias.c.tg_id == payments_alias.c.tg_id
+    ).outerjoin(keys_alias, users_alias.c.tg_id == keys_alias.c.tg_id)
 
-    users = await session.fetch(query)
+    query = (
+        select(
+            users_alias.c.tg_id,
+            users_alias.c.username,
+            users_alias.c.first_name,
+            users_alias.c.last_name,
+            users_alias.c.updated_at,
+        )
+        .select_from(j)
+        .where(payments_alias.c.status == "success", keys_alias.c.tg_id is None)
+        .distinct()
+        .order_by(users_alias.c.updated_at.desc())
+    )
+
+    result = await session.execute(query)
+    users = result.all()
 
     buffer = StringIO()
-    buffer.write("tg_id,username,first_name,last_name,updated_at\n")
+    writer = csv.writer(buffer)
+    writer.writerow(["tg_id", "username", "first_name", "last_name", "updated_at"])
 
     for user in users:
-        buffer.write(
-            f"{user['tg_id']},{user['username'] or ''},"
-            f"{user['first_name'] or ''},{user['last_name'] or ''},"
-            f"{user['updated_at']}\n"
-        )
+        writer.writerow(user)
 
     buffer.seek(0)
-    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="hot_leads_export.csv")
+    return BufferedInputFile(
+        file=buffer.getvalue().encode("utf-8-sig"), filename="hot_leads_export.csv"
+    )
 
 
-async def export_keys_csv(session) -> BufferedInputFile:
-    """
-    Экспорт подписок в CSV с нормальными датами и тарифом.
-    """
-    keys = await session.fetch("""
-        SELECT k.tg_id, k.client_id, k.email, k.created_at, k.expiry_time,
-               k.key, k.server_id, k.is_frozen, k.alias,
-               t.name AS tariff_name
-        FROM keys k
-        LEFT JOIN tariffs t ON k.tariff_id = t.id
-        ORDER BY k.created_at ASC
-    """)
+async def export_keys_csv(session: AsyncSession) -> BufferedInputFile:
+    j = join(Key, Tariff, Key.tariff_id == Tariff.id, isouter=True)
+    query = (
+        select(
+            Key.tg_id,
+            Key.client_id,
+            Key.email,
+            Key.created_at,
+            Key.expiry_time,
+            Key.key,
+            Key.server_id,
+            Key.is_frozen,
+            Key.alias,
+            Tariff.name.label("tariff_name"),
+        )
+        .select_from(j)
+        .order_by(Key.created_at.asc())
+    )
+
+    result = await session.execute(query)
+    keys = result.all()
 
     buffer = StringIO()
-    buffer.write("tg_id,client_id,email,created_at,expiry_time,key,server_id,is_frozen,alias,tariff\n")
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "tg_id",
+            "client_id",
+            "email",
+            "created_at",
+            "expiry_time",
+            "key",
+            "server_id",
+            "is_frozen",
+            "alias",
+            "tariff",
+        ]
+    )
 
     for row in keys:
-        created_at = datetime.utcfromtimestamp(row["created_at"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        expiry_time = datetime.utcfromtimestamp(row["expiry_time"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-        tariff = row["tariff_name"] or "—"
+        created_at = (
+            datetime.utcfromtimestamp(row.created_at / 1000).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if row.created_at
+            else ""
+        )
+        expiry_time = (
+            datetime.utcfromtimestamp(row.expiry_time / 1000).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            if row.expiry_time
+            else ""
+        )
+        tariff = row.tariff_name or "—"
 
-        buffer.write(
-            f"{row['tg_id']},{row['client_id']},{row['email']},"
-            f"{created_at},{expiry_time},{row['key']},"
-            f"{row['server_id']},{row['is_frozen']},{row['alias'] or ''},{tariff}\n"
+        writer.writerow(
+            [
+                row.tg_id,
+                row.client_id,
+                row.email,
+                created_at,
+                expiry_time,
+                row.key,
+                row.server_id,
+                row.is_frozen,
+                row.alias or "",
+                tariff,
+            ]
         )
 
     buffer.seek(0)
-    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv")
+    return BufferedInputFile(
+        file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv"
+    )
