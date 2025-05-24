@@ -121,7 +121,7 @@ async def tblocker_webhook(request: web.Request):
 
             success = await send_notification(
                 tg_id=key_info["tg_id"],
-                email=username,
+                username=username,
                 ip=ip,
                 server=server,
                 action=action,
