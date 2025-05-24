@@ -190,7 +190,7 @@ async def process_start_logic(
                 parts = gift_raw.split("_")
                 if len(parts) < 2:
                     await message.answer("❌ Неверный формат ссылки на подарок.")
-                    return await process_callback_view_profile(message, state, admin)
+                    return await process_callback_view_profile(message, state, admin, session)
 
                 gift_id = parts[0]
                 sender_id = parts[1]
@@ -232,7 +232,7 @@ async def process_start_logic(
 
         if SHOW_START_MENU_ONCE:
             if trial_status > 0:
-                await process_callback_view_profile(message, state, admin)
+                await process_callback_view_profile(message, state, admin, session)
             else:
                 await show_start_menu(message, admin, session)
         else:
