@@ -79,7 +79,21 @@ async def check_notifications_bulk(
     tg_ids: list[int] = None,
     emails: list[str] = None,
 ) -> list[dict]:
+    from sqlalchemy import and_, func, select
+    from database.models import User, Key, Notification, BlockedUser
+
     try:
+        now = datetime.utcnow()
+        subq_last_notification = (
+            select(
+                Notification.tg_id,
+                func.max(Notification.last_notification_time).label("last_notification_time")
+            )
+            .where(Notification.notification_type == notification_type)
+            .group_by(Notification.tg_id)
+            .subquery()
+        )
+
         stmt = (
             select(
                 User.tg_id,
@@ -87,22 +101,20 @@ async def check_notifications_bulk(
                 User.username,
                 User.first_name,
                 User.last_name,
-                func.max(Notification.last_notification_time).label(
-                    "last_notification_time"
-                ),
+                subq_last_notification.c.last_notification_time,
             )
-            .outerjoin(Key, User.tg_id == Key.tg_id)
-            .outerjoin(
-                Notification,
-                and_(
-                    User.tg_id == Notification.tg_id,
-                    Notification.notification_type == notification_type,
-                ),
-            )
-            .group_by(
-                User.tg_id, Key.email, User.username, User.first_name, User.last_name
-            )
+            .outerjoin(Key, Key.tg_id == User.tg_id)
+            .outerjoin(subq_last_notification, subq_last_notification.c.tg_id == User.tg_id)
         )
+
+        if notification_type == "inactive_trial":
+            stmt = stmt.where(
+                and_(
+                    User.trial.in_([0, -1]),
+                    ~User.tg_id.in_(select(BlockedUser.tg_id)),
+                    ~User.tg_id.in_(select(Key.tg_id.distinct()))
+                )
+            )
 
         if tg_ids:
             stmt = stmt.where(User.tg_id.in_(tg_ids))
@@ -110,27 +122,27 @@ async def check_notifications_bulk(
             stmt = stmt.where(Key.email.in_(emails))
 
         result = await session.execute(stmt)
-        now = datetime.utcnow()
         users = []
 
         for row in result:
             last_time = row.last_notification_time
             can_notify = not last_time or (now - last_time > timedelta(hours=hours))
+
             if can_notify:
-                users.append(
-                    {
-                        "tg_id": row.tg_id,
-                        "email": row.email,
-                        "username": row.username,
-                        "first_name": row.first_name,
-                        "last_name": row.last_name,
-                        "last_notification_time": (
-                            int(last_time.timestamp() * 1000) if last_time else None
-                        ),
-                    }
-                )
+                users.append({
+                    "tg_id": row.tg_id,
+                    "email": row.email,
+                    "username": row.username,
+                    "first_name": row.first_name,
+                    "last_name": row.last_name,
+                    "last_notification_time": (
+                        int(last_time.timestamp() * 1000) if last_time else None
+                    )
+                })
+
+        logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")
         return users
 
-    except SQLAlchemyError as e:
-        logger.error(f"Ошибка при массовой проверке уведомлений: {e}")
+    except Exception as e:
+        logger.error(f"Ошибка при массовой проверке уведомлений типа {notification_type}: {e}")
         return []
