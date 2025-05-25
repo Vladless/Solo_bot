@@ -393,7 +393,7 @@ async def handle_expired_keys(
                 tariffs = await get_tariffs_for_cluster(session, server_id)
                 tariff = tariffs[0] if tariffs else None
 
-                if tariff and balance >= tariff.price_rub:
+                if tariff and balance >= tariff["price_rub"]:
                     await process_auto_renew_or_notify(
                         bot,
                         session,
@@ -414,10 +414,10 @@ async def handle_expired_keys(
 
             if last_notification_time is not None:
                 delete_after_delay = (
-                    current_time - last_notification_time.timestamp() * 1000
+                    current_time - last_notification_time
                 ) / (1000 * 60) >= NOTIFY_DELETE_DELAY
                 logger.info(
-                    f"Прошло минут={(current_time - last_notification_time.timestamp() * 1000) / (1000 * 60):.2f} "
+                    f"Прошло минут={(current_time - last_notification_time) / (1000 * 60):.2f} "
                     f"NOTIFY_DELETE_DELAY={NOTIFY_DELETE_DELAY}"
                 )
 
