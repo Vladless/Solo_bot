@@ -171,7 +171,8 @@ async def get_total_referral_bonus(
     result = await session.execute(
         text(bonus_query), {"tg_id": referrer_tg_id, "max_levels": max_levels}
     )
-    total_bonus = result.scalar() or 0.0
+    total_bonus_raw = result.scalar()
+    total_bonus = round(float(total_bonus_raw or 0), 2)
     logger.debug(f"Получена общая сумма бонусов от рефералов: {total_bonus}")
     return total_bonus
 

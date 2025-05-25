@@ -82,6 +82,11 @@ class UserEditorState(StatesGroup):
     selecting_country = State()
 
 
+class RenewTariffState(StatesGroup):
+    selecting_group = State()
+    selecting_tariff = State()
+
+
 class BanUserStates(StatesGroup):
     waiting_for_reason = State()
     waiting_for_ban_duration = State()
@@ -554,14 +559,20 @@ async def handle_key_edit(
         )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_back"), IsAdminFilter()
-)
-async def handle_users_back_to_key_edit(
+@router.callback_query(F.data == "back:renew", IsAdminFilter())
+async def handle_back_to_key_menu(
     callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
     session: AsyncSession,
+    state: FSMContext,
 ):
+    data = await state.get_data()
+    email = data["email"]
+    tg_id = data["tg_id"]
+    await state.clear()
+
+    callback_data = AdminUserEditorCallback(
+        action="users_key_edit", data=email, tg_id=tg_id
+    )
     await handle_key_edit(
         callback_query=callback_query,
         callback_data=callback_data,
@@ -577,27 +588,21 @@ async def handle_user_choose_tariff_group(
     callback_query: CallbackQuery,
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
+    state: FSMContext,
 ):
     email = callback_data.data
     tg_id = callback_data.tg_id
+
+    await state.set_state(RenewTariffState.selecting_group)
+    await state.update_data(email=email, tg_id=tg_id)
 
     result = await session.execute(select(Tariff.group_code).distinct())
     groups = [row[0] for row in result.fetchall()]
 
     builder = InlineKeyboardBuilder()
     for group_code in groups:
-        builder.button(
-            text=group_code,
-            callback_data=AdminUserEditorCallback(
-                action="users_renew_group", data=f"{email}|{group_code}", tg_id=tg_id
-            ).pack(),
-        )
-    builder.button(
-        text="🔙 Назад",
-        callback_data=AdminUserEditorCallback(
-            action="users_back", data=email, tg_id=tg_id
-        ).pack(),
-    )
+        builder.button(text=group_code, callback_data=f"group:{group_code}")
+    builder.button(text="🔙 Назад", callback_data="back:renew")
     builder.adjust(1)
 
     await callback_query.message.edit_text(
@@ -606,16 +611,15 @@ async def handle_user_choose_tariff_group(
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_renew_group"), IsAdminFilter()
-)
+@router.callback_query(F.data.startswith("group:"), IsAdminFilter())
 async def handle_user_choose_tariff(
     callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
     session: AsyncSession,
+    state: FSMContext,
 ):
-    email, group_code = callback_data.data.split("|")
-    tg_id = callback_data.tg_id
+    group_code = callback_query.data.split(":", 1)[1]
+    await state.update_data(group_code=group_code)
+    await state.set_state(RenewTariffState.selecting_tariff)
 
     result = await session.execute(
         select(Tariff)
@@ -631,19 +635,10 @@ async def handle_user_choose_tariff(
     builder = InlineKeyboardBuilder()
     for tariff in tariffs:
         builder.button(
-            text=f"{tariff.duration_days}д / {int(tariff.price_rub)}₽",
-            callback_data=AdminUserEditorCallback(
-                action="users_renew_confirm",
-                data=f"{email}|{tariff.id}",
-                tg_id=tg_id,
-            ).pack(),
+            text=f"{tariff.name} – {int(tariff.price_rub)}₽",
+            callback_data=f"confirm:{tariff.id}"
         )
-    builder.button(
-        text="🔙 Назад",
-        callback_data=AdminUserEditorCallback(
-            action="users_renew", data=email, tg_id=tg_id
-        ).pack(),
-    )
+    builder.button(text="🔙 Назад", callback_data="back:group")
     builder.adjust(1)
 
     await callback_query.message.edit_text(
@@ -652,17 +647,16 @@ async def handle_user_choose_tariff(
     )
 
 
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_renew_confirm"), IsAdminFilter()
-)
+@router.callback_query(F.data.startswith("confirm:"), IsAdminFilter())
 async def handle_user_renew_confirm(
     callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
     session: AsyncSession,
+    state: FSMContext,
 ):
-    email, tariff_id = callback_data.data.split("|")
-    tg_id = callback_data.tg_id
-    tariff_id = int(tariff_id)
+    tariff_id = int(callback_query.data.split(":")[1])
+    data = await state.get_data()
+    email = data["email"]
+    tg_id = data["tg_id"]
 
     stmt = (
         update(Key)
@@ -671,11 +665,42 @@ async def handle_user_renew_confirm(
     )
     await session.execute(stmt)
     await session.commit()
+    await state.clear()
+
+    callback_data = AdminUserEditorCallback(
+        action="users_key_edit", data=email, tg_id=tg_id
+    )
+
+    await handle_key_edit(
+        callback_query=callback_query,
+        callback_data=callback_data,
+        session=session,
+        update=False,
+    )
+
+
+@router.callback_query(F.data == "back:group", IsAdminFilter())
+async def handle_back_to_group(
+    callback_query: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+):
+    data = await state.get_data()
+
+    result = await session.execute(select(Tariff.group_code).distinct())
+    groups = [row[0] for row in result.fetchall()]
+
+    builder = InlineKeyboardBuilder()
+    for group_code in groups:
+        builder.button(text=group_code, callback_data=f"group:{group_code}")
+    builder.button(text="🔙 Назад", callback_data="back:renew")
+    builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text="✅ Тариф успешно обновлён.",
-        reply_markup=build_key_edit_kb({"tg_id": tg_id}, email),
+        text="📁 <b>Выберите тарифную группу:</b>",
+        reply_markup=builder.as_markup(),
     )
+    await state.set_state(RenewTariffState.selecting_group)
 
 
 @router.callback_query(

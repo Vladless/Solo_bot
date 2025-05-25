@@ -55,11 +55,26 @@ async def count_trial_keys(session: AsyncSession) -> int:
     )
 
 
-async def get_tariff_distribution(session: AsyncSession) -> list[tuple[int, int]]:
+async def get_tariff_distribution(
+    session: AsyncSession, include_unbound: bool = False
+) -> tuple[list[tuple[int, int]], list[dict]]:
     result = await session.execute(
-        select(Key.tariff_id, func.count(Key.client_id)).group_by(Key.tariff_id)
+        select(Key.tariff_id, func.count(Key.client_id))
+        .where(Key.tariff_id.isnot(None))
+        .group_by(Key.tariff_id)
     )
-    return result.all()
+    tariff_counts = result.all()
+
+    if not include_unbound:
+        return tariff_counts
+
+    result = await session.execute(
+        select(Key.expiry_time)
+        .where(Key.tariff_id.is_(None))
+    )
+    no_tariff_keys = [{"expiry_time": row[0]} for row in result.all()]
+
+    return tariff_counts, no_tariff_keys
 
 
 async def get_tariff_names(
@@ -79,20 +94,23 @@ async def count_total_referrals(session: AsyncSession) -> int:
 
 
 async def sum_payments_since(session: AsyncSession, since: date) -> float:
-    return await session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.created_at >= since
-        )
+    result = await session.scalar(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .where(Payment.created_at >= since)
     )
+    return round(float(result), 2)
 
 
 async def sum_payments_between(session: AsyncSession, start: date, end: date) -> float:
-    return await session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.created_at >= start, Payment.created_at < end
-        )
+    result = await session.scalar(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .where(Payment.created_at >= start, Payment.created_at < end)
     )
+    return round(float(result), 2)
 
 
 async def sum_total_payments(session: AsyncSession) -> float:
-    return await session.scalar(select(func.coalesce(func.sum(Payment.amount), 0)))
+    result = await session.scalar(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+    )
+    return round(float(result), 2)

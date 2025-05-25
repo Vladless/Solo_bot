@@ -5,6 +5,8 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
+from collections import Counter
+
 
 from bot import bot
 from config import ADMIN_ID
@@ -67,17 +69,36 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         expired_keys = total_keys - active_keys
         trial_keys_count = await count_trial_keys(session)
 
-        tariff_counts = await get_tariff_distribution(session)
-        tariff_names = await get_tariff_names(
-            session, [tid for tid, _ in tariff_counts]
-        )
+        tariff_counts, no_tariff_keys = await get_tariff_distribution(session, include_unbound=True)
+        tariff_names = await get_tariff_names(session, [tid for tid, _ in tariff_counts])
 
         tariff_stats_text = ""
         for tid, count in tariff_counts:
             name = tariff_names.get(tid, f"ID {tid}")
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
+
+        duration_buckets = Counter()
+        now_ts = int(datetime.utcnow().timestamp() * 1000)
+
+        for key in no_tariff_keys:
+            duration_days = round((key["expiry_time"] - now_ts) / (1000 * 60 * 60 * 24))
+            if 25 <= duration_days <= 35:
+                bucket = "Без тарифа: 1 мес"
+            elif 80 <= duration_days <= 100:
+                bucket = "Без тарифа: 3 мес"
+            elif 170 <= duration_days <= 200:
+                bucket = "Без тарифа: 6 мес"
+            elif 350 <= duration_days <= 380:
+                bucket = "Без тарифа: 12 мес"
+            else:
+                bucket = "Без тарифа: прочее"
+            duration_buckets[bucket] += 1
+
+        for name, count in duration_buckets.items():
+            tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
+
         tariff_stats_text = (
-            "└ По тарифам:\n" + tariff_stats_text
+            "└ По тарифам и срокам:\n" + tariff_stats_text
             if tariff_stats_text
             else "└ Нет данных по тарифам\n"
         )
