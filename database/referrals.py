@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import CHECK_REFERRAL_REWARD_ISSUED, REFERRAL_BONUS_PERCENTAGES
 from database.models import Referral
 from logger import logger
+from database import add_payment
 
 
 async def add_referral(session: AsyncSession, referred_tg_id: int, referrer_tg_id: int):
@@ -173,6 +174,14 @@ async def get_total_referral_bonus(
     )
     total_bonus_raw = result.scalar()
     total_bonus = round(float(total_bonus_raw or 0), 2)
+    if total_bonus > 0:
+        await add_payment(
+            session,
+            tg_id=referrer_tg_id,
+            amount=total_bonus,
+            payment_system="referral"
+        )
+
     logger.debug(f"Получена общая сумма бонусов от рефералов: {total_bonus}")
     return total_bonus
 
