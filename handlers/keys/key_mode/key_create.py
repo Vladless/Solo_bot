@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     NOTIFY_EXTRA_DAYS,
-    TRIAL_TIME,
+    TRIAL_CONFIG,
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
@@ -66,20 +66,23 @@ async def handle_key_creation(
     if not TRIAL_TIME_DISABLE:
         trial_status = await get_trial(session, tg_id)
         if trial_status in [0, -1]:
+            base_days = TRIAL_CONFIG["duration_days"]
             extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
-            expiry_time = current_time + timedelta(days=TRIAL_TIME + extra_days)
-            logger.info(
-                f"Доступен {TRIAL_TIME + extra_days}-дневный пробный период пользователю {tg_id}."
-            )
+            total_days = base_days + extra_days
+            expiry_time = current_time + timedelta(days=total_days)
+
+            logger.info(f"[Trial] Доступен {total_days}-дневный триал для пользователя {tg_id}")
+
             await edit_or_send_message(
                 target_message=(
-                    message_or_query
-                    if isinstance(message_or_query, Message)
-                    else message_or_query.message
+                    message_or_query.message
+                    if isinstance(message_or_query, CallbackQuery)
+                    else message_or_query
                 ),
                 text=CREATING_CONNECTION_MSG,
                 reply_markup=None,
             )
+
             await state.update_data(is_trial=True)
             await create_key(tg_id, expiry_time, state, session, message_or_query)
             return
@@ -90,9 +93,9 @@ async def handle_key_creation(
     if not tariffs:
         await edit_or_send_message(
             target_message=(
-                message_or_query
-                if isinstance(message_or_query, Message)
-                else message_or_query.message
+                message_or_query.message
+                if isinstance(message_or_query, CallbackQuery)
+                else message_or_query
             ),
             text="❌ Нет доступных тарифов для выбранного кластера.",
             reply_markup=None,
@@ -114,6 +117,7 @@ async def handle_key_creation(
         if isinstance(message_or_query, CallbackQuery)
         else message_or_query
     )
+
     await edit_or_send_message(
         target_message=target_message,
         text=SELECT_TARIFF_PLAN_MSG,

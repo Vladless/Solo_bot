@@ -13,7 +13,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL
+from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL, TRIAL_CONFIG
 from database import (
     get_key_details,
     get_tariff_by_id,
@@ -73,8 +73,16 @@ async def key_cluster_mode(
     expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
     try:
+        data = await state.get_data() if state else {}
+        is_trial = data.get("is_trial", False)
+
         device_limit = 0
-        if plan:
+        traffic_limit_bytes = None
+
+        if is_trial:
+            device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
+            traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100) * 1024**3)
+        elif plan:
             tariff = await get_tariff_by_id(session, plan)
             if tariff and tariff.get("device_limit") is not None:
                 device_limit = int(tariff["device_limit"])
@@ -89,6 +97,7 @@ async def key_cluster_mode(
             plan=plan,
             session=session,
             hwid_limit=device_limit,
+            traffic_limit_bytes=traffic_limit_bytes,
         )
 
         logger.info(
@@ -103,9 +112,7 @@ async def key_cluster_mode(
         remnawave_link = key_record.get("remnawave_link")
         final_link = public_link or remnawave_link or ""
 
-        data = await state.get_data() if state else {}
-
-        if data.get("is_trial"):
+        if is_trial:
             trial_status = await get_trial(session, tg_id)
             if trial_status in [0, -1]:
                 await update_trial(session, tg_id, 1)

@@ -32,6 +32,7 @@ async def create_key_on_cluster(
     session: AsyncSession = None,
     remnawave_link: str = None,
     hwid_limit: int = None,
+    traffic_limit_bytes: int = None, 
 ):
     try:
         servers = await get_servers(session, include_enabled=True)
@@ -59,19 +60,15 @@ async def create_key_on_cluster(
             )
             return
 
-        traffic_limit_bytes = None
-        if plan is not None:
+        if plan is not None and traffic_limit_bytes is None:
             tariff = await get_tariff_by_id(session, plan)
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
             traffic_limit_bytes = (
                 int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
             )
-            hwid_limit = (
-                int(tariff["device_limit"])
-                if tariff["device_limit"] is not None
-                else None
-            )
+            if hwid_limit is None and tariff.get("device_limit") is not None:
+                hwid_limit = int(tariff["device_limit"])
 
         remnawave_servers = [
             s

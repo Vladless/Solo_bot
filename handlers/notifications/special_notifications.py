@@ -10,7 +10,7 @@ from config import (
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     SUPPORT_CHAT_URL,
-    TRIAL_TIME,
+    TRIAL_CONFIG,
 )
 from database import (
     add_notification,
@@ -40,6 +40,8 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
     messages = []
 
+    trial_days = TRIAL_CONFIG["duration_days"]
+
     for user in users:
         tg_id = user["tg_id"]
         username = user["username"]
@@ -59,7 +61,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         trial_extended = user["last_notification_time"] is not None
 
         if trial_extended:
-            total_days = NOTIFY_EXTRA_DAYS + TRIAL_TIME
+            total_days = NOTIFY_EXTRA_DAYS + trial_days
             message = TRIAL_INACTIVE_BONUS_MSG.format(
                 display_name=display_name,
                 extra_days_formatted=format_days(NOTIFY_EXTRA_DAYS),
@@ -68,7 +70,8 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
             await mark_trial_extended(tg_id, session)
         else:
             message = TRIAL_INACTIVE_FIRST_MSG.format(
-                display_name=display_name, trial_time_formatted=format_days(TRIAL_TIME)
+                display_name=display_name,
+                trial_time_formatted=format_days(trial_days),
             )
 
         messages.append(

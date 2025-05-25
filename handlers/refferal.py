@@ -18,7 +18,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, TOP_REFERRAL_BUTTON, TRIAL_TIME, USERNAME_BOT
+from config import ADMIN_ID, INLINE_MODE, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT
 from database import (
     add_referral,
     add_user,
@@ -86,13 +86,16 @@ async def inline_referral_handler(inline_query: InlineQuery):
     referral_link = (
         f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
     )
-    trial_time_formatted = format_days(TRIAL_TIME)
+    trial_days = TRIAL_CONFIG["duration_days"]
+    trial_time_formatted = format_days(trial_days)
+
     results: list[InlineQueryResultArticle] = []
 
     for index, offer in enumerate(REFERRAL_OFFERS):
         description = offer["description"][:64]
         message_text = offer["message"].format(
-            trial_time=TRIAL_TIME, trial_time_formatted=trial_time_formatted
+            trial_time=trial_days,
+            trial_time_formatted=trial_time_formatted
         )[:4096]
 
         builder = InlineKeyboardBuilder()
