@@ -22,6 +22,7 @@ from database import (
     update_balance,
     update_coupon_usage_count,
     update_key_expiry,
+    add_payment,
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import renew_key_in_cluster
@@ -124,6 +125,12 @@ async def activate_coupon(
             await update_balance(session, user_id, coupon.amount)
             await update_coupon_usage_count(session, coupon.id)
             await create_coupon_usage(session, coupon.id, user_id)
+            await add_payment(
+                session,
+                tg_id=user_id,
+                amount=coupon.amount,
+                payment_system="coupon"
+            )
             await message.answer(
                 f"✅ Купон активирован, на баланс начислено {coupon.amount} рублей."
             )
