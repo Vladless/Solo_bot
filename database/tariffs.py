@@ -45,6 +45,15 @@ async def get_tariffs_for_cluster(session: AsyncSession, cluster_name: str):
             .limit(1)
         )
         row = server_row.first()
+        
+        if not row:
+            server_row = await session.execute(
+                select(Server.tariff_group)
+                .where(Server.server_name == cluster_name)
+                .limit(1)
+            )
+            row = server_row.first()
+            
         if not row or not row[0]:
             return []
 
