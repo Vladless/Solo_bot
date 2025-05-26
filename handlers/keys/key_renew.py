@@ -25,6 +25,7 @@ from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
 from handlers.payments.yookassa_pay import process_custom_amount_input
+from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
@@ -191,6 +192,8 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
                 await handle_custom_amount_input(callback_query, session)
             elif USE_NEW_PAYMENT_FLOW == "STARS":
                 await process_custom_amount_input_stars(callback_query, session)
+            elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
+                await process_custom_amount_input_yoomoney(callback_query, session)
             else:
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
