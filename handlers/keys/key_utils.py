@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
 from database import delete_notification, get_servers, get_tariff_by_id, store_key
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
@@ -32,7 +32,8 @@ async def create_key_on_cluster(
     session: AsyncSession = None,
     remnawave_link: str = None,
     hwid_limit: int = None,
-    traffic_limit_bytes: int = None, 
+    traffic_limit_bytes: int = None,
+    is_trial: bool = False,
 ):
     try:
         servers = await get_servers(session, include_enabled=True)
@@ -161,6 +162,7 @@ async def create_key_on_cluster(
                         semaphore,
                         plan=plan,
                         session=session,
+                        is_trial=is_trial,
                     )
             else:
                 await asyncio.gather(
@@ -174,6 +176,7 @@ async def create_key_on_cluster(
                             semaphore,
                             plan=plan,
                             session=session,
+                            is_trial=is_trial,
                         )
                         for server in xui_servers
                     ],
@@ -207,12 +210,13 @@ async def create_client_on_server(
     semaphore: asyncio.Semaphore,
     plan: int = None,
     session=None,
+    is_trial: bool = False,
 ):
     """
-    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу (через ORM).
+    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу или триалу.
     """
     logger.info(
-        f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}"
+        f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
     )
 
     async with semaphore:
@@ -221,9 +225,7 @@ async def create_client_on_server(
         server_name = server_info.get("server_name", "unknown")
 
         if not inbound_id:
-            logger.warning(
-                f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-            )
+            logger.warning(f"[Client] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             return
 
         if SUPERNODE:
@@ -236,20 +238,18 @@ async def create_client_on_server(
         total_gb_value = 0
         device_limit_value = None
 
-        if plan is not None:
+        if is_trial:
+            total_gb_value = int(TRIAL_CONFIG.get("traffic_limit_gb", 0)) * 1024 ** 3
+            device_limit_value = TRIAL_CONFIG.get("hwid_limit")
+            logger.info(f"[Trial] Используются параметры триала: {total_gb_value} байт, {device_limit_value} устройств")
+        elif plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             logger.info(f"[Tariff Debug] Получен тариф: {tariff}")
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
 
-            total_gb_value = (
-                int(tariff["traffic_limit"]) if tariff.get("traffic_limit") else 0
-            )
-            device_limit_value = (
-                int(tariff["device_limit"])
-                if tariff.get("device_limit") is not None
-                else None
-            )
+            total_gb_value = int(tariff["traffic_limit"]) if tariff.get("traffic_limit") else 0
+            device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else None
 
         try:
             logger.info(
@@ -273,9 +273,7 @@ async def create_client_on_server(
             )
             logger.info(f"[Client] Клиент успешно добавлен на сервер {server_name}")
         except Exception as e:
-            logger.error(
-                f"[Client Error] Не удалось создать клиента на {server_name}: {e}"
-            )
+            logger.error(f"[Client Error] Не удалось создать клиента на {server_name}: {e}")
 
         if SUPERNODE:
             await asyncio.sleep(0.7)
