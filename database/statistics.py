@@ -95,22 +95,33 @@ async def count_total_referrals(session: AsyncSession) -> int:
 
 async def sum_payments_since(session: AsyncSession, since: date) -> float:
     result = await session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0))
-        .where(Payment.created_at >= since)
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            and_(
+                Payment.created_at >= since,
+                Payment.payment_system.notin_(["referral", "coupon"])
+            )
+        )
     )
     return round(float(result), 2)
 
 
 async def sum_payments_between(session: AsyncSession, start: date, end: date) -> float:
     result = await session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0))
-        .where(Payment.created_at >= start, Payment.created_at < end)
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            and_(
+                Payment.created_at >= start,
+                Payment.created_at < end,
+                Payment.payment_system.notin_(["referral", "coupon"])
+            )
+        )
     )
     return round(float(result), 2)
 
 
 async def sum_total_payments(session: AsyncSession) -> float:
     result = await session.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0))
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.payment_system.notin_(["referral", "coupon"])
+        )
     )
     return round(float(result), 2)
