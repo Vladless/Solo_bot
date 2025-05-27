@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
 from database import delete_notification, get_servers, get_tariff_by_id, store_key
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
@@ -163,6 +164,7 @@ async def create_key_on_cluster(
                         plan=plan,
                         session=session,
                         is_trial=is_trial,
+                        is_trial=is_trial,
                     )
             else:
                 await asyncio.gather(
@@ -176,6 +178,7 @@ async def create_key_on_cluster(
                             semaphore,
                             plan=plan,
                             session=session,
+                            is_trial=is_trial,
                             is_trial=is_trial,
                         )
                         for server in xui_servers
