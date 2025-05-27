@@ -598,3 +598,4 @@ async def process_auto_renew_or_notify(
 
     except Exception as e:
         logger.error(f"❌ Ошибка в process_auto_renew_or_notify: {e}")
+        
