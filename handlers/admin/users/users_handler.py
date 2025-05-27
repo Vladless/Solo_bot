@@ -917,7 +917,12 @@ async def confirm_admin_key_reissue(
                 )
                 return
 
-        await update_subscription(tg_id, email, session, cluster_override=cluster_id)
+        result = await session.execute(
+            select(Key.remnawave_link).where(Key.email == email)
+        )
+        remnawave_link = result.scalar_one_or_none()
+
+        await update_subscription(tg_id, email, session, cluster_override=cluster_id, remnawave_link=remnawave_link)
 
         await handle_key_edit(
             callback_query,
@@ -1149,58 +1154,51 @@ async def process_user_search(
 async def change_expiry_time(
     expiry_time: int, email: str, session: AsyncSession
 ) -> Exception | None:
-    result = await session.execute(select(Key.client_id).where(Key.email == email))
-    client_id = result.scalar_one_or_none()
-    if client_id is None:
+    result = await session.execute(select(Key.client_id, Key.tariff_id, Key.server_id).where(Key.email == email))
+    row = result.first()
+    if not row:
         return ValueError(f"User with email {email} was not found")
-
-    result = await session.execute(
-        select(Key.server_id).where(Key.client_id == client_id)
-    )
-    server_id = result.scalar_one_or_none()
+    
+    client_id, tariff_id, server_id = row
     if server_id is None:
         return ValueError(f"Key with client_id {client_id} was not found")
 
-    result = await session.execute(
-        select(Server.tariff_group)
-        .where(or_(Server.server_name == server_id, Server.cluster_name == server_id))
-        .limit(1)
+    traffic_limit = 0
+    device_limit = None
+    if tariff_id:
+        result = await session.execute(
+            select(Tariff.traffic_limit, Tariff.device_limit)
+            .where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
+        )
+        tariff = result.first()
+        if tariff:
+            traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
+            device_limit = int(tariff[1]) if tariff[1] is not None else None
+
+    servers = await get_servers(session=session)
+
+    if server_id in servers:
+        target_cluster = server_id
+    else:
+        target_cluster = None
+        for cluster_name, cluster_servers in servers.items():
+            if any(s.get("server_name") == server_id for s in cluster_servers):
+                target_cluster = cluster_name
+                break
+        
+        if not target_cluster:
+            return ValueError(f"No suitable cluster found for server {server_id}")
+
+    await renew_key_in_cluster(
+        cluster_id=target_cluster,
+        email=email,
+        client_id=client_id,
+        new_expiry_time=expiry_time,
+        total_gb=traffic_limit,
+        session=session,
+        hwid_device_limit=device_limit
     )
-    tariff_group = result.scalar_one_or_none()
-    if not tariff_group:
-        return ValueError(f"Tariff group not found for server_id={server_id}")
-
-    result = await session.execute(
-        select(Tariff.duration_days, Tariff.traffic_limit)
-        .where(Tariff.group_code == tariff_group, Tariff.is_active.is_(True))
-        .order_by(Tariff.duration_days)
-    )
-    tariffs = result.all()
-    if not tariffs:
-        return ValueError(f"No tariffs found for group {tariff_group}")
-
-    added_days = max((expiry_time - int(time.time() * 1000)) / (1000 * 86400), 1)
-    closest_tariff = min(tariffs, key=lambda t: abs(t[0] - added_days))
-    traffic_limit = closest_tariff[1] or 0
-
-    clusters = await get_servers(session=session)
-
-    async def update_key_on_all_servers():
-        tasks = [
-            renew_key_in_cluster(
-                cluster_id=cluster_name,
-                email=email,
-                client_id=client_id,
-                new_expiry_time=expiry_time,
-                total_gb=traffic_limit,
-                session=session,
-            )
-            for cluster_name in clusters
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-    await update_key_on_all_servers()
-
+    
     await update_key_expiry(session, client_id, expiry_time)
     return None
 

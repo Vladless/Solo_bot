@@ -76,6 +76,7 @@ async def process_callback_confirm_delete(
         record = await get_key_details(session, email)
         if record:
             client_id = record["client_id"]
+            server_id = record["server_id"]
             response_message = KEY_DELETED_MSG_SIMPLE
             back_button = types.InlineKeyboardButton(
                 text=BACK, callback_data="view_keys"
@@ -90,21 +91,12 @@ async def process_callback_confirm_delete(
                 reply_markup=keyboard,
             )
 
-            servers = await get_servers(session)
-
-            async def delete_key_from_servers():
-                try:
-                    tasks = [
-                        delete_key_from_cluster(cluster_id, email, client_id, session)
-                        for cluster_id in servers
-                    ]
-                    await asyncio.gather(*tasks, return_exceptions=True)
-                except Exception as e:
-                    logger.error(
-                        f"Ошибка при удалении ключа {client_id} с серверов: {e}"
-                    )
-
-            asyncio.create_task(delete_key_from_servers())
+            try:
+                await delete_key_from_cluster(server_id, email, client_id, session)
+            except Exception as e:
+                logger.error(
+                    f"Ошибка при удалении ключа {client_id} с сервера {server_id}: {e}"
+                )
 
         else:
             response_message = "Ключ не найден или уже удален."

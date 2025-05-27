@@ -41,6 +41,7 @@ from handlers.buttons import (
     PC_BUTTON,
     SUPPORT,
     TV_BUTTON,
+    MY_SUB
 )
 from handlers.keys.key_utils import create_client_on_server
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
@@ -349,7 +350,6 @@ async def finalize_key_creation(
         client_id = old_key_details["client_id"]
         email = old_key_details["email"]
         expiry_timestamp = old_key_details["expiry_time"]
-
     else:
         while True:
             key_name = generate_random_email()
@@ -359,6 +359,25 @@ async def finalize_key_creation(
         client_id = str(uuid.uuid4())
         email = key_name.lower()
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
+
+    traffic_limit_bytes = None
+    device_limit = 0
+    data = await state.get_data() if state else {}
+    is_trial = data.get("is_trial", False)
+
+    if is_trial:
+        from config import TRIAL_CONFIG
+        traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100)) * 1024**3
+        device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
+    elif data.get("tariff_id") or tariff_id:
+        tariff_id = data.get("tariff_id") or tariff_id
+        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
+        tariff = result.scalar_one_or_none()
+        if tariff:
+            if tariff.traffic_limit is not None:
+                traffic_limit_bytes = int(tariff.traffic_limit)
+            if tariff.device_limit is not None:
+                device_limit = int(tariff.device_limit)
 
     public_link = None
     remnawave_link = None
@@ -373,31 +392,22 @@ async def finalize_key_creation(
             raise ValueError(f"Сервер {selected_country} не найден")
 
         panel_type = server_info.panel_type.lower()
-        cluster_info = await check_server_name_by_cluster(
-            session, server_info.server_name
-        )
+        cluster_info = await check_server_name_by_cluster(session, server_info.server_name)
         if not cluster_info:
             raise ValueError(f"Кластер для сервера {server_info.server_name} не найден")
 
-        is_full_remnawave = await is_full_remnawave_cluster(
-            cluster_info["cluster_name"], session
-        )
+        is_full_remnawave = await is_full_remnawave_cluster(cluster_info["cluster_name"], session)
 
         if old_key_name:
             old_server_id = old_key_details["server_id"]
             if old_server_id:
-                result = await session.execute(
-                    select(Server).where(Server.server_name == old_server_id)
-                )
+                result = await session.execute(select(Server).where(Server.server_name == old_server_id))
                 old_server_info = result.scalar_one_or_none()
                 if old_server_info:
                     try:
                         if old_server_info.panel_type.lower() == "3x-ui":
                             xui = await get_xui_instance(old_server_info.api_url)
-                            await delete_client(
-                                xui, old_server_info.inbound_id, email, client_id
-                            )
-
+                            await delete_client(xui, old_server_info.inbound_id, email, client_id)
                             await session.execute(
                                 update(Key)
                                 .where(Key.tg_id == tg_id, Key.email == email)
@@ -418,21 +428,21 @@ async def finalize_key_creation(
         if panel_type == "remnawave" or is_full_remnawave:
             remna = RemnawaveAPI(server_info.api_url)
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                raise ValueError(
-                    f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})"
-                )
+                raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})")
 
-            expire_at = (
-                datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
-            )
+            expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
             user_data = {
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",
                 "expireAt": expire_at,
                 "telegramId": tg_id,
                 "activeUserInbounds": [server_info.inbound_id],
-                "hwidDeviceLimit": 0,
             }
+            if traffic_limit_bytes:
+                user_data["trafficLimitBytes"] = traffic_limit_bytes
+            if device_limit:
+                user_data["hwidDeviceLimit"] = device_limit
+
             result = await remna.create_user(user_data)
             if not result:
                 raise ValueError("❌ Ошибка при создании пользователя в Remnawave")
@@ -442,9 +452,7 @@ async def finalize_key_creation(
 
             if old_key_name:
                 await session.execute(
-                    update(Key)
-                    .where(Key.tg_id == tg_id, Key.email == email)
-                    .values(client_id=client_id)
+                    update(Key).where(Key.tg_id == tg_id, Key.email == email).values(client_id=client_id)
                 )
 
         if panel_type == "3x-ui":
@@ -461,12 +469,13 @@ async def finalize_key_creation(
                 email=email,
                 expiry_timestamp=expiry_timestamp,
                 semaphore=semaphore,
+                session=session,
+                plan=tariff_id,
+                is_trial=is_trial,
             )
             public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
-        logger.info(
-            f"[Key Creation] Подписка создана для пользователя {tg_id} на сервере {selected_country}"
-        )
+        logger.info(f"[Key Creation] Подписка создана для пользователя {tg_id} на сервере {selected_country}")
 
         if old_key_name:
             update_data = {"server_id": selected_country}
@@ -474,19 +483,8 @@ async def finalize_key_creation(
                 update_data["key"] = public_link
             elif panel_type == "remnawave":
                 update_data["remnawave_link"] = remnawave_link
-
-            await session.execute(
-                update(Key)
-                .where(Key.tg_id == tg_id, Key.email == email)
-                .values(**update_data)
-            )
+            await session.execute(update(Key).where(Key.tg_id == tg_id, Key.email == email).values(**update_data))
         else:
-            data = {}
-            if state:
-                data = await state.get_data()
-
-            tariff_id = data.get("tariff_id") or tariff_id
-
             new_key = Key(
                 tg_id=tg_id,
                 client_id=client_id,
@@ -496,19 +494,17 @@ async def finalize_key_creation(
                 key=public_link,
                 remnawave_link=remnawave_link,
                 server_id=selected_country,
-                tariff_id=data.get("tariff_id"),
+                tariff_id=tariff_id,
             )
             session.add(new_key)
 
-            data = await state.get_data()
-            if data.get("is_trial"):
+            if is_trial:
                 trial_status = await get_trial(session, tg_id)
                 if trial_status in [0, -1]:
                     await update_trial(session, tg_id, 1)
-            if data.get("tariff_id"):
-                result = await session.execute(
-                    select(Tariff.price_rub).where(Tariff.id == data["tariff_id"])
-                )
+
+            if tariff_id:
+                result = await session.execute(select(Tariff.price_rub).where(Tariff.id == tariff_id))
                 row = result.scalar_one_or_none()
                 if row:
                     await update_balance(session, tg_id, -row)
@@ -516,21 +512,13 @@ async def finalize_key_creation(
         await session.commit()
 
     except Exception as e:
-        logger.error(
-            f"[Key Finalize] Ошибка при создании ключа для пользователя {tg_id}: {e}"
-        )
-        await callback_query.message.answer(
-            "❌ Произошла ошибка при создании подписки. Попробуйте снова."
-        )
+        logger.error(f"[Key Finalize] Ошибка при создании ключа для пользователя {tg_id}: {e}")
+        await callback_query.message.answer("❌ Произошла ошибка при создании подписки. Попробуйте снова.")
         return
 
     builder = InlineKeyboardBuilder()
-    is_full_remnawave = await is_full_remnawave_cluster(
-        cluster_info["cluster_name"], session
-    )
-    if (panel_type == "remnawave" or is_full_remnawave) and (
-        public_link or remnawave_link
-    ):
+    is_full_remnawave = await is_full_remnawave_cluster(cluster_info["cluster_name"], session)
+    if (panel_type == "remnawave" or is_full_remnawave) and (public_link or remnawave_link):
         builder.row(
             InlineKeyboardButton(
                 text=CONNECT_DEVICE,
@@ -539,9 +527,7 @@ async def finalize_key_creation(
         )
     elif CONNECT_PHONE_BUTTON:
         builder.row(
-            InlineKeyboardButton(
-                text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
-            )
+            InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}")
         )
         builder.row(
             InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
@@ -549,15 +535,10 @@ async def finalize_key_creation(
         )
     else:
         builder.row(
-            InlineKeyboardButton(
-                text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
-            )
+            InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}")
         )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔐 Моя подписка", callback_data=f"view_key|{key_name}"
-        )
-    )
+
+    builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

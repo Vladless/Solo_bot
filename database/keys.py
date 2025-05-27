@@ -185,3 +185,13 @@ async def mark_key_as_unfrozen(
         ),
         {"expiry": new_expiry_time, "tg_id": tg_id, "client_id": client_id},
     )
+
+
+async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: int):
+    await session.execute(
+        update(Key)
+        .where(Key.client_id == client_id)
+        .values(tariff_id=tariff_id)
+    )
+    await session.commit()
+    logger.info(f"Тариф ключа {client_id} обновлён на {tariff_id}")

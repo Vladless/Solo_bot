@@ -495,6 +495,7 @@ async def handle_sync_server(
                 Key.client_id,
                 Key.email,
                 Key.expiry_time,
+                Key.tariff_id,
             )
             .join(Key, Server.cluster_name == Key.server_id)
             .where(Server.server_name == server_name)
@@ -530,6 +531,8 @@ async def handle_sync_server(
                     key["email"],
                     key["expiry_time"],
                     semaphore,
+                    plan=key["tariff_id"],
+                    session=session,
                 )
                 await asyncio.sleep(0.6)
             except Exception as e:

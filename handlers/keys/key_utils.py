@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
 from database import delete_notification, get_servers, get_tariff_by_id, store_key
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
@@ -32,7 +32,8 @@ async def create_key_on_cluster(
     session: AsyncSession = None,
     remnawave_link: str = None,
     hwid_limit: int = None,
-    traffic_limit_bytes: int = None, 
+    traffic_limit_bytes: int = None,
+    is_trial: bool = False,
 ):
     try:
         servers = await get_servers(session, include_enabled=True)
@@ -125,7 +126,7 @@ async def create_key_on_cluster(
                     }
 
                     if traffic_limit_bytes and traffic_limit_bytes > 0:
-                        user_data["trafficLimitBytes"] = traffic_limit_bytes
+                        user_data["trafficLimitBytes"] = traffic_limit_bytes * 1024 * 1024 * 1024
 
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
@@ -161,6 +162,7 @@ async def create_key_on_cluster(
                         semaphore,
                         plan=plan,
                         session=session,
+                        is_trial=is_trial,
                     )
             else:
                 await asyncio.gather(
@@ -174,6 +176,7 @@ async def create_key_on_cluster(
                             semaphore,
                             plan=plan,
                             session=session,
+                            is_trial=is_trial,
                         )
                         for server in xui_servers
                     ],
@@ -207,12 +210,13 @@ async def create_client_on_server(
     semaphore: asyncio.Semaphore,
     plan: int = None,
     session=None,
+    is_trial: bool = False,
 ):
     """
-    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу (через ORM).
+    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу или триалу.
     """
     logger.info(
-        f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}"
+        f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
     )
 
     async with semaphore:
@@ -221,9 +225,7 @@ async def create_client_on_server(
         server_name = server_info.get("server_name", "unknown")
 
         if not inbound_id:
-            logger.warning(
-                f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-            )
+            logger.warning(f"[Client] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             return
 
         if SUPERNODE:
@@ -236,26 +238,24 @@ async def create_client_on_server(
         total_gb_value = 0
         device_limit_value = None
 
-        if plan is not None:
+        if is_trial:
+            total_gb_value = TRIAL_CONFIG.get("traffic_limit_gb", 0)
+            device_limit_value = TRIAL_CONFIG.get("hwid_limit")
+            logger.info(f"[Trial] Используются параметры триала: {total_gb_value} GB, {device_limit_value} устройств")
+        elif plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             logger.info(f"[Tariff Debug] Получен тариф: {tariff}")
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
 
-            total_gb_value = (
-                int(tariff["traffic_limit"]) if tariff.get("traffic_limit") else 0
-            )
-            device_limit_value = (
-                int(tariff["device_limit"])
-                if tariff.get("device_limit") is not None
-                else None
-            )
+            total_gb_value = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
+            device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else None
 
         try:
             logger.info(
-                f"[Client] Вызов add_client: email={unique_email}, client_id={client_id}, GB={total_gb_value}, Devices={device_limit_value}"
+                f"[Client] Вызов add_client: email={email}, client_id={client_id}, GB={total_gb_value}, Devices={device_limit_value}"
             )
-
+            traffic_limit_bytes = total_gb_value * 1024 * 1024 * 1024
             await add_client(
                 xui,
                 ClientConfig(
@@ -263,7 +263,7 @@ async def create_client_on_server(
                     email=unique_email,
                     tg_id=tg_id,
                     limit_ip=device_limit_value,
-                    total_gb=total_gb_value,
+                    total_gb=traffic_limit_bytes,
                     expiry_time=expiry_timestamp,
                     enable=True,
                     flow="xtls-rprx-vision",
@@ -273,9 +273,7 @@ async def create_client_on_server(
             )
             logger.info(f"[Client] Клиент успешно добавлен на сервер {server_name}")
         except Exception as e:
-            logger.error(
-                f"[Client Error] Не удалось создать клиента на {server_name}: {e}"
-            )
+            logger.error(f"[Client Error] Не удалось создать клиента на {server_name}: {e}")
 
         if SUPERNODE:
             await asyncio.sleep(0.7)
@@ -335,12 +333,6 @@ async def renew_key_in_cluster(
             if tariff and tariff.device_limit is not None:
                 hwid_device_limit = int(tariff.device_limit)
 
-        notification_prefixes = ["key_24h", "key_10h", "key_expired", "renew"]
-        for notif in notification_prefixes:
-            notification_id = f"{email}_{notif}"
-            await delete_notification(session, tg_id, notification_id)
-        logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
-
         remnawave_inbound_ids = []
         tasks = []
         for server_info in cluster:
@@ -366,11 +358,12 @@ async def renew_key_in_cluster(
                         datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat()
                         + "Z"
                     )
+                    traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
                     updated = await remna.update_user(
                         uuid=client_id,
                         expire_at=expire_iso,
                         active_user_inbounds=remnawave_inbound_ids,
-                        traffic_limit_bytes=total_gb,
+                        traffic_limit_bytes=traffic_limit_bytes,
                         hwid_device_limit=hwid_device_limit,
                     )
                     if updated:
@@ -404,6 +397,7 @@ async def renew_key_in_cluster(
                 unique_email = email
                 sub_id = unique_email
 
+            traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
             tasks.append(
                 extend_client_key(
                     xui=xui,
@@ -411,7 +405,7 @@ async def renew_key_in_cluster(
                     email=unique_email,
                     new_expiry_time=new_expiry_time,
                     client_id=client_id,
-                    total_gb=total_gb,
+                    total_gb=traffic_bytes,
                     sub_id=sub_id,
                     tg_id=tg_id,
                     limit_ip=hwid_device_limit,
@@ -419,6 +413,12 @@ async def renew_key_in_cluster(
             )
 
         await asyncio.gather(*tasks, return_exceptions=True)
+
+        notification_prefixes = ["key_24h", "key_10h", "key_expired", "renew"]
+        for notif in notification_prefixes:
+            notification_id = f"{email}_{notif}"
+            await delete_notification(session, tg_id, notification_id)
+        logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
 
     except Exception as e:
         logger.error(
@@ -510,6 +510,9 @@ async def update_key_on_cluster(
     expiry_time: int,
     cluster_id: str,
     session: AsyncSession,
+    traffic_limit: int = None,
+    device_limit: int = None,
+    remnawave_link: str = None,
 ):
     """
     Пересоздаёт ключ на всех серверах указанного кластера (или сервера, если передано имя).
@@ -568,6 +571,11 @@ async def update_key_on_cluster(
                 )
                 tariff = result.scalar_one_or_none()
 
+                short_uuid = None
+                if remnawave_link and "/" in remnawave_link:
+                    short_uuid = remnawave_link.rstrip("/").split("/")[-1]
+                    logger.info(f"[Update] Извлечен short_uuid из ссылки: {short_uuid}")
+
                 user_data = {
                     "username": email,
                     "trafficLimitStrategy": "NO_RESET",
@@ -575,12 +583,13 @@ async def update_key_on_cluster(
                     "telegramId": tg_id,
                     "activeUserInbounds": inbound_ids,
                 }
-
-                if tariff:
-                    if tariff.traffic_limit is not None:
-                        user_data["trafficLimitBytes"] = int(tariff.traffic_limit)
-                    if tariff.device_limit is not None:
-                        user_data["hwidDeviceLimit"] = int(tariff.device_limit)
+                if traffic_limit is not None:
+                    user_data["trafficLimitBytes"] = traffic_limit
+                if device_limit is not None:
+                    user_data["hwidDeviceLimit"] = device_limit
+                if short_uuid:
+                    user_data["shortUuid"] = short_uuid
+                    logger.info(f"[Update] Добавлен short_uuid в user_data: {short_uuid}")
 
                 result = await remna.create_user(user_data)
                 if result:
@@ -628,20 +637,14 @@ async def update_key_on_cluster(
             )
             tariff = result.scalar_one_or_none()
 
-            total_gb_bytes = (
-                int(tariff.traffic_limit) if tariff and tariff.traffic_limit else 0
-            )
-            device_limit = (
-                int(tariff.device_limit)
-                if tariff and tariff.device_limit is not None
-                else None
-            )
+            total_gb_bytes = int(traffic_limit * 1024 ** 3) if traffic_limit else 0
+            device_limit_value = device_limit if device_limit is not None else None
 
             config = ClientConfig(
                 client_id=remnawave_client_id,
                 email=unique_email,
                 tg_id=tg_id,
-                limit_ip=device_limit,
+                limit_ip=device_limit_value,
                 total_gb=total_gb_bytes,
                 expiry_time=expiry_time,
                 enable=True,
@@ -673,6 +676,7 @@ async def update_subscription(
     session: AsyncSession,
     cluster_override: str = None,
     country_override: str = None,
+    remnawave_link: str = None,
 ) -> None:
     result = await session.execute(
         select(Key).where(Key.tg_id == tg_id, Key.email == email)
@@ -685,7 +689,24 @@ async def update_subscription(
     expiry_time = record.expiry_time
     client_id = record.client_id
     old_cluster_id = record.server_id
+    tariff_id = record.tariff_id
+    remnawave_link = remnawave_link or record.remnawave_link
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
+    traffic_limit = None
+    device_limit = None
+    if tariff_id:
+        result = await session.execute(
+            select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
+        )
+        tariff = result.scalar_one_or_none()
+        if tariff:
+            traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
+            device_limit = int(tariff.device_limit) if tariff.device_limit is not None else None
+        else:
+            logger.warning(f"[LOG] update_subscription: тариф с id={tariff_id} не найден!")
+    else:
+        logger.warning(f"[LOG] update_subscription: tariff_id отсутствует!")
 
     await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
 
@@ -703,6 +724,9 @@ async def update_subscription(
         expiry_time=expiry_time,
         cluster_id=new_cluster_id,
         session=session,
+        traffic_limit=traffic_limit,
+        device_limit=device_limit,
+        remnawave_link=remnawave_link
     )
 
     servers = await get_servers(session)
@@ -720,6 +744,7 @@ async def update_subscription(
         key=final_key_link,
         remnawave_link=remnawave_key,
         server_id=new_cluster_id,
+        tariff_id=tariff_id,
     )
 
 

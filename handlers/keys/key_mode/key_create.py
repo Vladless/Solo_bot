@@ -27,6 +27,7 @@ from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
 from handlers.payments.yookassa_pay import process_custom_amount_input
+from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
@@ -165,6 +166,8 @@ async def select_tariff_plan(
             await handle_custom_amount_input(callback_query, session)
         elif USE_NEW_PAYMENT_FLOW == "STARS":
             await process_custom_amount_input_stars(callback_query, session)
+        elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
+            await process_custom_amount_input_yoomoney(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))

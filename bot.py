@@ -8,6 +8,7 @@ from aiogram.filters import ExceptionTypeFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
+import subprocess
 
 from config import ADMIN_ID, API_TOKEN
 from filters.private import IsPrivateFilter
@@ -17,7 +18,16 @@ bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
-version = "4.3-b240504 (ORM update)"
+
+def get_git_commit_number() -> str:
+    try:
+        count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"])
+        return count.decode("utf-8").strip()
+    except Exception:
+        return "unknown"
+
+
+version = f"4.3-b240504 (commit #{get_git_commit_number()})"
 
 dp.message.filter(IsPrivateFilter())
 dp.callback_query.filter(IsPrivateFilter())

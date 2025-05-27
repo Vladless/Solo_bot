@@ -156,7 +156,7 @@ async def process_tariff_traffic(message: Message, state: FSMContext):
         )
         return
 
-    await state.update_data(traffic_limit=traffic * 1024**3 if traffic > 0 else None)
+    await state.update_data(traffic_limit=traffic if traffic > 0 else None)
     await state.set_state(TariffCreateState.device_limit)
     await message.answer(
         "📱 Введите <b>лимит устройств (HWID)</b> для тарифа (например: <i>3</i>, 0 — безлимит):",
@@ -315,7 +315,7 @@ async def view_tariff(
         return
 
     traffic_text = (
-        f"{tariff.traffic_limit // 1024**3} ГБ" if tariff.traffic_limit else "Безлимит"
+        f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
     )
     device_text = (
         f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
@@ -453,7 +453,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
             if num < 0:
                 raise ValueError
             if field == "traffic_limit":
-                value = num * 1024**3 if num > 0 else None
+                value = num if num > 0 else None
             elif field == "device_limit":
                 value = num if num > 0 else None
             else:

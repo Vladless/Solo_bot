@@ -77,15 +77,18 @@ async def key_cluster_mode(
         is_trial = data.get("is_trial", False)
 
         device_limit = 0
-        traffic_limit_bytes = None
+        traffic_limit_gb = None
 
         if is_trial:
             device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
-            traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100) * 1024**3)
+            traffic_limit_gb = TRIAL_CONFIG.get("traffic_limit_gb", 100)
         elif plan:
             tariff = await get_tariff_by_id(session, plan)
-            if tariff and tariff.get("device_limit") is not None:
-                device_limit = int(tariff["device_limit"])
+            if tariff:
+                if tariff.get("device_limit") is not None:
+                    device_limit = int(tariff["device_limit"])
+                if tariff.get("traffic_limit") is not None:
+                    traffic_limit_gb = int(tariff["traffic_limit"])
 
         least_loaded_cluster = await get_least_loaded_cluster(session)
         await create_key_on_cluster(
@@ -97,7 +100,8 @@ async def key_cluster_mode(
             plan=plan,
             session=session,
             hwid_limit=device_limit,
-            traffic_limit_bytes=traffic_limit_bytes,
+            traffic_limit_bytes=traffic_limit_gb,
+            is_trial=is_trial,
         )
 
         logger.info(
