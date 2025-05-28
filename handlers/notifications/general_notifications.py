@@ -28,6 +28,9 @@ from database import (
     get_tariffs_for_cluster,
     update_balance,
     update_key_expiry,
+    update_key_tariff,
+    check_tariff_exists,
+    get_tariff_by_id,
 )
 from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import (
@@ -528,6 +531,7 @@ async def process_auto_renew_or_notify(
 
         balance = await get_balance(conn, tg_id)
         server_id = key.server_id
+        tariff_id = key.tariff_id
 
         tariffs = await get_tariffs_for_cluster(conn, server_id)
         if not tariffs:
@@ -536,11 +540,25 @@ async def process_auto_renew_or_notify(
             )
             return
 
-        if NOTIFY_MAXPRICE:
-            suitable_tariffs = [t for t in tariffs if balance >= t["price_rub"]]
-            selected_tariff = suitable_tariffs[-1] if suitable_tariffs else None
+        selected_tariff = None
+
+        if not tariff_id:
+            cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
+            if cluster_tariffs:
+                selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
         else:
-            selected_tariff = tariffs[0] if balance >= tariffs[0]["price_rub"] else None
+            if await check_tariff_exists(conn, tariff_id):
+                current_tariff = await get_tariff_by_id(conn, tariff_id)
+                if current_tariff["group_code"] in ["discounts", "discounts_max", "gifts"]:
+                    cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
+                    if cluster_tariffs:
+                        selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
+                elif balance >= current_tariff["price_rub"]:
+                    selected_tariff = current_tariff
+            else:
+                cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
+                if cluster_tariffs:
+                    selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
 
         if not selected_tariff:
             keyboard = build_notification_kb(email)
@@ -555,6 +573,7 @@ async def process_auto_renew_or_notify(
         duration_days = selected_tariff["duration_days"]
         renewal_cost = selected_tariff["price_rub"]
         traffic_limit = selected_tariff["traffic_limit"]
+        device_limit = selected_tariff["device_limit"]
         total_gb = traffic_limit if traffic_limit else 0
 
         new_expiry_time = (
@@ -568,14 +587,21 @@ async def process_auto_renew_or_notify(
         ).strftime("%d %B %Y, %H:%M")
 
         logger.info(
-            f"Продление подписки {email} на {renewal_period_months} мес. для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
+            f"Продление подписки {email} на {duration_days} дней для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
         await renew_key_in_cluster(
-            server_id, email, client_id, int(new_expiry_time), total_gb, session=conn
+            cluster_id=server_id,
+            email=email,
+            client_id=client_id,
+            new_expiry_time=int(new_expiry_time),
+            total_gb=total_gb,
+            hwid_device_limit=device_limit,
+            session=conn
         )
         await update_balance(conn, tg_id, -renewal_cost)
         await update_key_expiry(conn, client_id, int(new_expiry_time))
+        await update_key_tariff(conn, client_id, selected_tariff["id"])
         await add_notification(conn, tg_id, renew_notification_id)
         await delete_notification(conn, tg_id, notification_id)
 
