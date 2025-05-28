@@ -20,14 +20,47 @@ dp = Dispatcher(bot=bot, storage=storage)
 
 
 def get_git_commit_number() -> str:
+    repo_url = "https://github.com/Vladless/Solo_bot"
+
     try:
-        count = subprocess.check_output(["git", "rev-list", "--count", "HEAD"])
-        return count.decode("utf-8").strip()
+        local_number = subprocess.check_output(
+            ["git", "rev-list", "--count", "HEAD"]
+        ).decode().strip()
+
+        local_hash = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"]
+        ).decode().strip()
     except Exception:
-        return "unknown"
+        return "\n(Требуется обновление через CLI)"
+
+    try:
+        remote_commit = subprocess.check_output(
+            ["git", "ls-remote", "origin", "refs/heads/dev"]
+        ).decode()
+        remote_hash = remote_commit.split()[0]
+
+        remote_number = subprocess.check_output(
+            ["git", "rev-list", "--count", remote_hash]
+        ).decode().strip()
+
+        if local_hash == remote_hash:
+            return "\n(Актуальная версия)"
+
+        return (
+            f"\n(commit <a href=\"{repo_url}/commit/{local_hash}\">"
+            f"#{local_number}</a> / actual commit "
+            f"<a href=\"{repo_url}/commit/{remote_hash}\">#{remote_number}</a>)"
+        )
+
+    except Exception:
+        return (
+            f"\n(commit <a href=\"{repo_url}/commit/{local_hash}\">"
+            f"#{local_number}</a> / actual commit unknown)"
+        )
 
 
-version = f"4.3-b240504 (commit #{get_git_commit_number()})"
+version = f"v4.3-b240504{get_git_commit_number()}"
+
 
 dp.message.filter(IsPrivateFilter())
 dp.callback_query.filter(IsPrivateFilter())

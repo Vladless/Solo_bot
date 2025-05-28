@@ -22,7 +22,9 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
     if callback_query.message.text:
         try:
             await callback_query.message.edit_text(
-                text=text, reply_markup=build_panel_kb()
+                text=text,
+                reply_markup=build_panel_kb(),
+                disable_web_page_preview=True,
             )
         except TelegramBadRequest as e:
             if "message is not modified" in str(e):
@@ -37,7 +39,11 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
         except Exception as e:
             logger.error(f"Ошибка при удалении сообщения: {e}")
 
-        await callback_query.message.answer(text=text, reply_markup=build_panel_kb())
+        await callback_query.message.answer(
+            text=text,
+            reply_markup=build_panel_kb(),
+            disable_web_page_preview=True,
+        )
 
 
 @router.callback_query(F.data == "admin", IsAdminFilter())
