@@ -24,6 +24,7 @@ from database import (
     sum_payments_between,
     sum_payments_since,
     sum_total_payments,
+    count_hot_leads
 )
 from filters.admin import IsAdminFilter
 from logger import logger
@@ -117,6 +118,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             session, last_month_start, today.replace(day=1)
         )
         total_payments_all_time = await sum_total_payments(session)
+        hot_leads_count = await count_hot_leads(session)
 
         update_time = datetime.now(moscow_tz).strftime("%d.%m.%y %H:%M:%S")
 
@@ -152,6 +154,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             f"├ 📆 Прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
             f"└ 🏦 Всего: <b>{total_payments_all_time} ₽</b>\n"
             f"</blockquote>\n"
+            f"🔥 <b>Горячие лиды: {hot_leads_count}</b>\n"
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
 

@@ -3,7 +3,7 @@ from datetime import datetime
 from io import StringIO
 
 from aiogram.types import BufferedInputFile
-from sqlalchemy import func, join, select
+from sqlalchemy import func, join, select, exists, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, Payment, Referral, Tariff, User
@@ -164,41 +164,46 @@ async def export_referrals_csv(
 
 
 async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
-    users_alias = User.__table__.alias("u")
-    payments_alias = Payment.__table__.alias("p")
-    keys_alias = Key.__table__.alias("k")
+    now_ts = int(datetime.utcnow().timestamp() * 1000)
 
-    j = users_alias.join(
-        payments_alias, users_alias.c.tg_id == payments_alias.c.tg_id
-    ).outerjoin(keys_alias, users_alias.c.tg_id == keys_alias.c.tg_id)
-
-    query = (
+    stmt = (
         select(
-            users_alias.c.tg_id,
-            users_alias.c.username,
-            users_alias.c.first_name,
-            users_alias.c.last_name,
-            users_alias.c.updated_at,
+            User.tg_id,
+            User.username,
+            User.first_name,
+            User.last_name,
+            User.updated_at,
         )
-        .select_from(j)
-        .where(payments_alias.c.status == "success", keys_alias.c.tg_id is None)
-        .distinct()
-        .order_by(users_alias.c.updated_at.desc())
+        .where(
+            exists(
+                select(Payment.tg_id)
+                .where(Payment.tg_id == User.tg_id)
+                .where(Payment.status == "success")
+            ),
+            not_(
+                exists(
+                    select(Key.client_id)
+                    .where(Key.tg_id == User.tg_id)
+                    .where(Key.expiry_time > now_ts)
+                )
+            )
+        )
+        .order_by(User.updated_at.desc())
     )
 
-    result = await session.execute(query)
+    result = await session.execute(stmt)
     users = result.all()
 
     buffer = StringIO()
     writer = csv.writer(buffer)
     writer.writerow(["tg_id", "username", "first_name", "last_name", "updated_at"])
-
     for user in users:
         writer.writerow(user)
 
     buffer.seek(0)
     return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"), filename="hot_leads_export.csv"
+        file=buffer.getvalue().encode("utf-8-sig"),
+        filename="hot_leads_export.csv",
     )
 
 

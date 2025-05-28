@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import and_, func, not_, select
+from sqlalchemy import and_, func, not_, select, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, Payment, Referral, Tariff, User
@@ -125,3 +125,21 @@ async def sum_total_payments(session: AsyncSession) -> float:
         )
     )
     return round(float(result), 2)
+
+
+async def count_hot_leads(session: AsyncSession) -> int:
+    subquery_active_keys = (
+        select(Key.tg_id)
+        .where(Key.expiry_time > int(datetime.utcnow().timestamp() * 1000))
+        .distinct()
+    )
+
+    stmt = (
+        select(Payment.tg_id)
+        .where(Payment.status == "success")
+        .where(not_(exists(subquery_active_keys.where(Key.tg_id == Payment.tg_id))))
+        .distinct()
+    )
+
+    result = await session.execute(select(func.count()).select_from(stmt.subquery()))
+    return result.scalar()
