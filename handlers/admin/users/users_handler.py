@@ -1411,10 +1411,12 @@ async def handle_create_key_country(
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
     for tariff in tariffs:
-        months = tariff["duration_days"] // 30
-        if months < 1:
+        if tariff["duration_days"] < 1:
             continue
-        builder.button(text=f"{months} мес.", callback_data=f"tariff_{tariff['id']}")
+        builder.button(
+            text=f"{tariff['name']} — {tariff['price_rub']}₽",
+            callback_data=f"tariff_{tariff['id']}"
+        )
 
     builder.adjust(1)
     builder.row(build_admin_back_btn())
@@ -1445,10 +1447,12 @@ async def handle_create_key_cluster(
 
     builder = InlineKeyboardBuilder()
     for tariff in tariffs:
-        months = tariff["duration_days"] // 30
-        if months < 1:
+        if tariff["duration_days"] < 1:
             continue
-        builder.button(text=f"{months} мес.", callback_data=f"tariff_{tariff['id']}")
+        builder.button(
+            text=f"{tariff['name']} — {tariff['price_rub']}₽",
+            callback_data=f"tariff_{tariff['id']}"
+        )
 
     builder.adjust(1)
     builder.row(build_admin_back_btn())

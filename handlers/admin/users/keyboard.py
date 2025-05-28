@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK
+from handlers.utils import format_days
 
 from ..panel.keyboard import build_admin_back_btn
 
@@ -114,11 +115,16 @@ async def build_users_balance_kb(
     result = await session.execute(select(Tariff))
     tariffs = result.scalars().all()
 
+    unique_prices = set()
     for tariff in tariffs:
         months = tariff.duration_days // 30
         if months < 1:
             continue
         price = tariff.price_rub
+        if price in unique_prices:
+            continue
+        unique_prices.add(price)
+
         builder.row(
             InlineKeyboardButton(
                 text=f"+ {price}₽ ({months} мес.)",
@@ -197,25 +203,34 @@ async def build_users_key_expiry_kb(
     result = await session.execute(
         select(Tariff)
         .join(Server, Tariff.group_code == Server.tariff_group)
-        .where(Server.cluster_name == server_id)
+        .where(
+            or_(
+                Server.server_name == server_id,
+                Server.cluster_name == server_id,
+            )
+        )
+
     )
     tariffs = result.scalars().all()
 
+    unique_durations = set()
     for tariff in tariffs:
-        months = tariff.duration_days // 30
-        if months < 1:
+        days = tariff.duration_days
+        if days < 1 or days in unique_durations:
             continue
+        unique_durations.add(days)
+        label = format_days(days)
         builder.row(
             InlineKeyboardButton(
-                text=f"+ {months} мес.",
+                text=f"+ {label}",
                 callback_data=AdminUserKeyEditorCallback(
-                    action="add", tg_id=tg_id, data=email, month=months
+                    action="add", tg_id=tg_id, data=email, month=days
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=f"- {months} мес.",
+                text=f"- {label}",
                 callback_data=AdminUserKeyEditorCallback(
-                    action="add", tg_id=tg_id, data=email, month=-months
+                    action="add", tg_id=tg_id, data=email, month=-days
                 ).pack(),
             ),
         )
