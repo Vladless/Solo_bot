@@ -96,17 +96,17 @@ def install_rsync_if_needed():
         os.system("sudo apt update && sudo apt install -y rsync")
 
 
-def clean_project_dir_safe(update_buttons=False):
+def clean_project_dir_safe(update_buttons=False, update_img=False):
     console.print("[yellow]🧹 Очистка проекта перед обновлением...[/yellow]")
     preserved_paths = {
         os.path.join(PROJECT_DIR, "config.py"),
-        os.path.join(PROJECT_DIR, "handlers", "buttons.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
-        os.path.join(PROJECT_DIR, "img"),
     }
 
     if not update_buttons:
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
+    if not update_img:
+        preserved_paths.add(os.path.join(PROJECT_DIR, "img"))
 
     for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
         for file in files:
@@ -123,6 +123,8 @@ def clean_project_dir_safe(update_buttons=False):
         for dir in dirs:
             dir_path = os.path.join(root, dir)
             if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "handlers"):
+                continue
+            if not update_img and os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "img"):
                 continue
             try:
                 os.rmdir(dir_path)
@@ -207,18 +209,15 @@ def update_from_beta():
     else:
         console.print("[red]⚠️ Не удалось определить версии.[/red]")
 
-    if not Confirm.ask(
-        "[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"
-    ):
+    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
         return
 
     console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
     if not Confirm.ask("[red]❓ Продолжить обновление?[/red]"):
         return
 
-    update_buttons = Confirm.ask(
-        "[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False
-    )
+    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = Confirm.ask("[yellow]🖼 Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -232,11 +231,13 @@ def update_from_beta():
         return
 
     subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
-    clean_project_dir_safe(update_buttons=update_buttons)
+    clean_project_dir_safe(update_buttons=update_buttons, update_img=update_img)
 
-    exclude_options = "--exclude=img"
+    exclude_options = ""
+    if not update_img:
+        exclude_options += "--exclude=img "
     if not update_buttons:
-        exclude_options += " --exclude=handlers/buttons.py"
+        exclude_options += "--exclude=handlers/buttons.py "
 
     subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
     subprocess.run(["rm", "-rf", TEMP_DIR])
@@ -259,9 +260,8 @@ def update_from_release():
     if not Confirm.ask("[red]❓ Вы точно хотите продолжить?[/red]"):
         return
 
-    update_buttons = Confirm.ask(
-        "[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False
-    )
+    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = Confirm.ask("[yellow]🖼 Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -292,9 +292,7 @@ def update_from_release():
         ):
             return
 
-        console.print(
-            f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]"
-        )
+        console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(
             f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
@@ -304,15 +302,15 @@ def update_from_release():
 
         console.print("[red]⚠️ Начинается перезапись файлов бота![/red]")
         subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
-        clean_project_dir_safe(update_buttons=update_buttons)
+        clean_project_dir_safe(update_buttons=update_buttons, update_img=update_img)
 
-        exclude_options = "--exclude=img"
+        exclude_options = ""
+        if not update_img:
+            exclude_options += "--exclude=img "
         if not update_buttons:
-            exclude_options += " --exclude=handlers/buttons.py"
+            exclude_options += "--exclude=handlers/buttons.py "
 
-        subprocess.run(
-            f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True
-        )
+        subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
         fix_permissions()
@@ -350,7 +348,7 @@ def show_update_menu():
 
 def show_menu():
     table = Table(
-        title="Solobot CLI v0.1.7", title_style="bold magenta", header_style="bold blue"
+        title="Solobot CLI v0.1.8", title_style="bold magenta", header_style="bold blue"
     )
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")

@@ -314,26 +314,8 @@ async def view_tariff(
         await callback.message.edit_text("❌ Тариф не найден.")
         return
 
-    traffic_text = (
-        f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
-    )
-    device_text = (
-        f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
-    )
-
-    text = (
-        f"<b>📄 Тариф: {tariff.name}</b>\n\n"
-        f"📁 Группа: <code>{tariff.group_code}</code>\n"
-        f"📅 Длительность: <b>{tariff.duration_days} дней</b>\n"
-        f"💰 Стоимость: <b>{tariff.price_rub}₽</b>\n"
-        f"📦 Трафик: <b>{traffic_text}</b>\n"
-        f"📱 Устройств: <b>{device_text}</b>\n"
-        f"{'✅ Активен' if tariff.is_active else '⛔ Отключен'}"
-    )
-
-    await callback.message.edit_text(
-        text, reply_markup=build_single_tariff_kb(tariff_id)
-    )
+    text, markup = render_tariff_card(tariff)
+    await callback.message.edit_text(text=text, reply_markup=markup)
 
 
 @router.callback_query(
@@ -452,9 +434,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
             num = int(value)
             if num < 0:
                 raise ValueError
-            if field == "traffic_limit":
-                value = num if num > 0 else None
-            elif field == "device_limit":
+            if field in ["traffic_limit", "device_limit"]:
                 value = num if num > 0 else None
             else:
                 value = num
@@ -467,29 +447,27 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
 
     await session.commit()
     await state.clear()
-    await message.answer("✅ Тариф успешно обновлён.")
+
+    text, markup = render_tariff_card(tariff)
+    await message.answer(text=text, reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("toggle_active|"), IsAdminFilter())
-async def toggle_tariff_status(callback: CallbackQuery, session):
+async def toggle_tariff_status(callback: CallbackQuery, session: AsyncSession):
     tariff_id = int(callback.data.split("|")[1])
-    row = await session.fetchrow(
-        "SELECT is_active FROM tariffs WHERE id = $1", tariff_id
-    )
 
-    if not row:
+    result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
+    tariff = result.scalar_one_or_none()
+
+    if not tariff:
         await callback.message.edit_text("❌ Тариф не найден.")
         return
 
-    new_status = not row["is_active"]
-    await session.execute(
-        "UPDATE tariffs SET is_active = $1, updated_at = NOW() WHERE id = $2",
-        new_status,
-        tariff_id,
-    )
+    tariff.is_active = not tariff.is_active
+    await session.commit()
 
-    status_text = "✅ Тариф активирован." if new_status else "⛔ Тариф отключён."
-    await callback.message.edit_text(status_text)
+    text, markup = render_tariff_card(tariff)
+    await callback.message.edit_text(text=text, reply_markup=markup)
 
 
 @router.callback_query(
@@ -505,3 +483,24 @@ async def start_tariff_creation_existing_group(
         f"📦 Добавление нового тарифа в группу <code>{group_code}</code>\n\n📝 Введите <b>название тарифа</b>:",
         reply_markup=build_cancel_kb(),
     )
+
+
+def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
+    traffic_text = (
+        f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
+    )
+    device_text = (
+        f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
+    )
+
+    text = (
+        f"<b>📄 Тариф: {tariff.name}</b>\n\n"
+        f"📁 Группа: <code>{tariff.group_code}</code>\n"
+        f"📅 Длительность: <b>{tariff.duration_days} дней</b>\n"
+        f"💰 Стоимость: <b>{tariff.price_rub}₽</b>\n"
+        f"📦 Трафик: <b>{traffic_text}</b>\n"
+        f"📱 Устройств: <b>{device_text}</b>\n"
+        f"{'✅ Активен' if tariff.is_active else '⛔ Отключен'}"
+    )
+
+    return text, build_single_tariff_kb(tariff.id)
