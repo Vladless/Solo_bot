@@ -107,6 +107,9 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
     if not update_img:
         preserved_paths.add(os.path.join(PROJECT_DIR, "img"))
+        for root, _, files in os.walk(os.path.join(PROJECT_DIR, "img")):
+            for file in files:
+                preserved_paths.add(os.path.join(root, file))
 
     for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
         for file in files:
