@@ -18,6 +18,8 @@ from database import (
     get_tariffs,
     update_balance,
     update_key_expiry,
+    check_tariff_exists,
+    get_tariffs_for_cluster,
 )
 from database.models import Server, Key
 from handlers.buttons import BACK, MAIN_MENU, PAYMENT
@@ -54,8 +56,9 @@ async def process_callback_renew_key(
         client_id = record["client_id"]
         expiry_time = record["expiry_time"]
         server_id = record["server_id"]
+        tariff_id = record.get("tariff_id")
 
-        logger.info(f"[RENEW] Получение тарифной группы для server_id={server_id}")
+        logger.info(f"[RENEW] Получение тарифов для server_id={server_id}")
 
         try:
             server_id_int = int(server_id)
@@ -75,26 +78,35 @@ async def process_callback_renew_key(
         )
         row = row.first()
         if not row or not row[0]:
-            logger.warning(
-                f"[RENEW] Тарифная группа не найдена для server_id={server_id}"
-            )
-            await callback_query.message.answer(
-                "❌ Не удалось определить тарифную группу."
-            )
+            logger.warning(f"[RENEW] Тарифная группа не найдена для server_id={server_id}")
+            await callback_query.message.answer("❌ Не удалось определить тарифную группу.")
             return
 
-        tariff_group = row[0]
-        tariffs = await get_tariffs(session, group_code=tariff_group)
+        cluster_group = row[0]
+        selected_tariffs = []
+        target_group = cluster_group
 
+        if tariff_id:
+            if await check_tariff_exists(session, tariff_id):
+                current_tariff = await get_tariff_by_id(session, tariff_id)
+                
+                if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts"]:
+                    target_group = current_tariff["group_code"]
+
+        tariffs = await get_tariffs(session, group_code=target_group)
+        
         if not tariffs:
-            logger.warning(f"[RENEW] Нет активных тарифов для группы '{tariff_group}'")
-            await callback_query.message.answer(
-                "❌ Нет доступных тарифов для этой группы."
-            )
+            await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
+            return
+
+        selected_tariffs = [t for t in tariffs if t["is_active"]]
+
+        if not selected_tariffs:
+            await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
             return
 
         builder = InlineKeyboardBuilder()
-        for t in tariffs:
+        for t in selected_tariffs:
             button_text = f"📅 {t['name']} — {t['price_rub']}₽"
             builder.row(
                 InlineKeyboardButton(

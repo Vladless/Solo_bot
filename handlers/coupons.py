@@ -23,6 +23,7 @@ from database import (
     update_coupon_usage_count,
     update_key_expiry,
     add_payment,
+    get_tariff_by_id,
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import renew_key_in_cluster
@@ -230,12 +231,19 @@ async def handle_key_extension(
         current_expiry = key.expiry_time
         new_expiry = max(now_ms, current_expiry) + (coupon.days * 86400 * 1000)
 
+        tariff = None
+        if key.tariff_id:
+            tariff = await get_tariff_by_id(session, key.tariff_id)
+        total_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
+        device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else None
+
         await renew_key_in_cluster(
             cluster_id=key.server_id,
             email=key.email,
             client_id=client_id,
             new_expiry_time=new_expiry,
-            total_gb=0,
+            total_gb=total_gb,
+            hwid_device_limit=device_limit,
             session=session
         )
         await update_key_expiry(session, client_id, new_expiry)

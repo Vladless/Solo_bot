@@ -185,9 +185,9 @@ async def build_users_key_expiry_kb(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    result = await session.execute(select(Key.server_id).where(Key.email == email))
+    result = await session.execute(select(Key.server_id, Key.tariff_id).where(Key.email == email))
     row = result.first()
-    if not row or not row[0]:
+    if not row or not row[0] or not row[1]:
         builder.row(
             InlineKeyboardButton(
                 text="⚠️ Сервер не найден",
@@ -198,18 +198,17 @@ async def build_users_key_expiry_kb(
         )
         return builder.as_markup()
 
-    server_id = row[0]
+    server_id, tariff_id = row
+
+    result = await session.execute(select(Tariff.group_code).where(Tariff.id == tariff_id))
+    row = result.first()
+    if not row or not row[0]:
+        return builder.as_markup()
+    group_code = row[0]
 
     result = await session.execute(
         select(Tariff)
-        .join(Server, Tariff.group_code == Server.tariff_group)
-        .where(
-            or_(
-                Server.server_name == server_id,
-                Server.cluster_name == server_id,
-            )
-        )
-
+        .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
     )
     tariffs = result.scalars().all()
 

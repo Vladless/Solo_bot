@@ -22,7 +22,7 @@ from config import (
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
 )
-from database import get_key_details, get_keys, get_servers
+from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
 from handlers.buttons import (
     ADD_SUB,
@@ -256,7 +256,7 @@ async def render_key_info(
         days = total_seconds // 86400
         hours = (total_seconds % 86400) // 3600
         minutes = (total_seconds % 3600) // 60
-        days_left_message = f"Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
+        days_left_message = f"⏳ Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
 
     formatted_expiry_date = f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
 
@@ -279,6 +279,16 @@ async def render_key_info(
                 devices = await api.get_user_hwid_devices(client_id)
                 hwid_count = len(devices or [])
 
+    tariff_name = ""
+    traffic_limit = 0
+    device_limit = 0
+    if record.get("tariff_id"):
+        tariff = await get_tariff_by_id(session, record["tariff_id"])
+        if tariff:
+            tariff_name = tariff["name"]
+            traffic_limit = tariff.get("traffic_limit", 0)
+            device_limit = tariff.get("device_limit", 0)
+
     response_message = key_message(
         final_link,
         formatted_expiry_date,
@@ -286,6 +296,9 @@ async def render_key_info(
         server_name,
         server_name if USE_COUNTRY_SELECTION else None,
         hwid_count=hwid_count,
+        tariff_name=tariff_name,
+        traffic_limit=traffic_limit,
+        device_limit=device_limit
     )
 
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:

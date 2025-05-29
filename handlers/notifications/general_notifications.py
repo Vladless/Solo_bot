@@ -545,20 +545,32 @@ async def process_auto_renew_or_notify(
         if not tariff_id:
             cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
             if cluster_tariffs:
-                selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
+                cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
+                if cluster_tariffs_31:
+                    selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
+                else:
+                    selected_tariff = None
         else:
             if await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
                 if current_tariff["group_code"] in ["discounts", "discounts_max", "gifts"]:
                     cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
                     if cluster_tariffs:
-                        selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
+                        cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
+                        if cluster_tariffs_31:
+                            selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
+                        else:
+                            selected_tariff = None
                 elif balance >= current_tariff["price_rub"]:
                     selected_tariff = current_tariff
             else:
                 cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
                 if cluster_tariffs:
-                    selected_tariff = max(cluster_tariffs, key=lambda x: min(x["duration_days"], 31))
+                    cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
+                    if cluster_tariffs_31:
+                        selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
+                    else:
+                        selected_tariff = None
 
         if not selected_tariff:
             keyboard = build_notification_kb(email)

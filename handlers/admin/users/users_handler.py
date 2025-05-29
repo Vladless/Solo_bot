@@ -526,13 +526,12 @@ async def handle_key_edit(
 
     tariff_name = "—"
     if key_details.get("tariff_id"):
-
         result = await session.execute(
-            select(Tariff.name).where(Tariff.id == key_details["tariff_id"])
+            select(Tariff.name, Tariff.group_code).where(Tariff.id == key_details["tariff_id"])
         )
         row = result.first()
         if row:
-            tariff_name = row[0]
+            tariff_name = f"{row[0]} ({row[1]})"
 
     text = (
         f"<b>🔑 Информация о ключе</b>"
@@ -730,7 +729,7 @@ async def handle_expiry_add(
 ):
     tg_id = callback_data.tg_id
     email = callback_data.data
-    month = callback_data.month
+    days = callback_data.month
 
     key_details = await get_key_details(session, email)
 
@@ -741,9 +740,9 @@ async def handle_expiry_add(
         )
         return
 
-    if month:
+    if days:
         await change_expiry_time(
-            key_details["expiry_time"] + month * 30 * 24 * 3600 * 1000, email, session
+            key_details["expiry_time"] + days * 24 * 3600 * 1000, email, session
         )
         await handle_key_edit(callback_query, callback_data, session, True)
         return

@@ -19,7 +19,7 @@ from config import (
     SHOW_START_MENU_ONCE,
     SUPPORT_CHAT_URL,
 )
-from database import add_user, check_user_exists, get_trial
+from database import add_user, check_user_exists, get_trial, get_key_count
 from database.models import TrackingSource, User
 from handlers.buttons import (
     ABOUT_VPN,
@@ -229,12 +229,15 @@ async def process_start_logic(
             await add_user(session=session, **user_data)
 
         trial_status = await get_trial(session, user_data["tg_id"])
+        key_count = await get_key_count(session, user_data["tg_id"])
 
         if SHOW_START_MENU_ONCE:
-            if trial_status > 0:
+            if key_count > 0:
                 await process_callback_view_profile(message, state, admin, session)
-            else:
+            elif trial_status == 0:
                 await show_start_menu(message, admin, session)
+            else:
+                await process_callback_view_profile(message, state, admin, session)
         else:
             await show_start_menu(message, admin, session)
 
