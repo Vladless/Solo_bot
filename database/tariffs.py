@@ -111,3 +111,20 @@ async def delete_tariff(session: AsyncSession, tariff_id: int):
         logger.error(f"[TARIFF] Ошибка при удалении тарифа ID={tariff_id}: {e}")
         await session.rollback()
         return False
+
+
+async def check_tariff_exists(session: AsyncSession, tariff_id: int):
+    try:
+        result = await session.execute(
+            select(Tariff)
+            .where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
+        )
+        tariff = result.scalar_one_or_none()
+        if tariff:
+            logger.info(f"[TARIFF] Тариф {tariff_id} найден в БД: {tariff.group_code}")
+            return True
+        logger.warning(f"[TARIFF] Тариф {tariff_id} не найден в БД")
+        return False
+    except SQLAlchemyError as e:
+        logger.error(f"[TARIFF] Ошибка при проверке тарифа {tariff_id}: {e}")
+        return False
