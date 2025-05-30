@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from math import ceil
 
 from bot import bot
 from config import USE_NEW_PAYMENT_FLOW
@@ -19,7 +20,6 @@ from database import (
     update_balance,
     update_key_expiry,
     check_tariff_exists,
-    get_tariffs_for_cluster,
 )
 from database.models import Server, Key
 from handlers.buttons import BACK, MAIN_MENU, PAYMENT
@@ -34,6 +34,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     SUCCESS_RENEWAL_MSG,
 )
+from handlers.buttons import MY_SUB
 from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
 
@@ -180,7 +181,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
         balance = round(await get_balance(session, tg_id), 2)
         cost = round(cost, 2)
         if balance < cost:
-            required_amount = round(cost - balance, 2)
+            required_amount = ceil(cost - balance)
             logger.info(f"[RENEW] Недостаточно средств: {required_amount}₽")
 
             await create_temporary_data(
@@ -288,7 +289,7 @@ async def complete_key_renewal(
             months_formatted = format_days(tariff["duration_days"])
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
         response_message = SUCCESS_RENEWAL_MSG.format(months_formatted=months_formatted)
 
         if callback_query:

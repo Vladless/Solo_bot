@@ -352,6 +352,7 @@ async def finalize_key_creation(
         client_id = old_key_details["client_id"]
         email = old_key_details["email"]
         expiry_timestamp = old_key_details["expiry_time"]
+        tariff_id = old_key_details.get("tariff_id") or tariff_id 
     else:
         while True:
             key_name = generate_random_email()
@@ -376,7 +377,7 @@ async def finalize_key_creation(
         tariff = result.scalar_one_or_none()
         if tariff:
             if tariff.traffic_limit is not None:
-                traffic_limit_bytes = int(tariff.traffic_limit)
+                traffic_limit_bytes = int(tariff.traffic_limit) * 1024**3
             if tariff.device_limit is not None:
                 device_limit = int(tariff.device_limit)
 
@@ -543,8 +544,6 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    remaining_time = expiry_time - datetime.now(moscow_tz)
-    days = remaining_time.days
     link_to_show = public_link or remnawave_link or "Ссылка не найдена"
 
     tariff_info = None

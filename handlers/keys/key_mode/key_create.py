@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from math import ceil
 
 from config import (
     NOTIFY_EXTRA_DAYS,
@@ -144,11 +145,11 @@ async def select_tariff_plan(
     duration_days = tariff["duration_days"]
     price_rub = tariff["price_rub"]
 
-    balance = round(await get_balance(session, tg_id))
-    price_rub = round(tariff["price_rub"])
+    balance = await get_balance(session, tg_id)
+    price_rub = tariff["price_rub"]
 
     if balance < price_rub:
-        required_amount = max(price_rub - balance, 0)
+        required_amount = ceil(price_rub - balance)
         await create_temporary_data(
             session,
             tg_id,

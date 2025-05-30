@@ -895,26 +895,23 @@ async def confirm_admin_key_reissue(
 
         if USE_COUNTRY_SELECTION:
             unique_countries = {srv["server_name"] for srv in cluster_servers}
-
-            if len(unique_countries) > 1:
-                await state.update_data(tg_id=tg_id, email=email, cluster_id=cluster_id)
-
-                builder = InlineKeyboardBuilder()
-                for country in sorted(unique_countries):
-                    builder.button(
-                        text=country,
-                        callback_data=f"admin_reissue_country|{tg_id}|{email}|{country}",
-                    )
-                builder.row(
-                    InlineKeyboardButton(
-                        text="Назад", callback_data=f"users_key_edit|{email}"
-                    )
+            await state.update_data(tg_id=tg_id, email=email, cluster_id=cluster_id)
+            builder = InlineKeyboardBuilder()
+            for country in sorted(unique_countries):
+                builder.button(
+                    text=country,
+                    callback_data=f"admin_reissue_country|{tg_id}|{email}|{country}",
                 )
-                await callback_query.message.edit_text(
-                    "🌍 Выберите страну, на которой пересоздать подписку:",
-                    reply_markup=builder.as_markup(),
+            builder.row(
+                InlineKeyboardButton(
+                    text="Назад", callback_data=f"users_key_edit|{email}"
                 )
-                return
+            )
+            await callback_query.message.edit_text(
+                "🌍 Выберите сервер (страну) для пересоздания подписки:",
+                reply_markup=builder.as_markup(),
+            )
+            return
 
         result = await session.execute(
             select(Key.remnawave_link).where(Key.email == email)
@@ -941,7 +938,18 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
     tg_id = int(tg_id)
 
     try:
-        await update_subscription(tg_id, email, session, country_override=country)
+        result = await session.execute(
+            select(Key.remnawave_link, Key.tariff_id).where(Key.email == email)
+        )
+        remnawave_link, tariff_id = result.one_or_none() or (None, None)
+
+        await update_subscription(
+            tg_id=tg_id,
+            email=email,
+            session=session,
+            country_override=country,
+            remnawave_link=remnawave_link,
+        )
 
         await handle_key_edit(
             callback_query,

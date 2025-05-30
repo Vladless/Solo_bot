@@ -584,7 +584,7 @@ async def update_key_on_cluster(
                     "activeUserInbounds": inbound_ids,
                 }
                 if traffic_limit is not None:
-                    user_data["trafficLimitBytes"] = traffic_limit
+                    user_data["trafficLimitBytes"] = traffic_limit * 1024 ** 3
                 if device_limit is not None:
                     user_data["hwidDeviceLimit"] = device_limit
                 if short_uuid:
