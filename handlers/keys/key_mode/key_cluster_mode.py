@@ -173,7 +173,17 @@ async def key_cluster_mode(
     expiry_time_local = expiry_time.astimezone(moscow_tz)
     remaining_time = expiry_time_local - datetime.now(moscow_tz)
     days = remaining_time.days
-    key_message_text = key_message_success(final_link, f"⏳ Осталось дней: {days} 📅")
+
+    tariff_info = None
+    if plan:
+        tariff_info = await get_tariff_by_id(session, plan)
+    
+    key_message_text = key_message_success(
+        final_link,
+        tariff_name=tariff_info.get("name", ""),
+        traffic_limit=tariff_info.get("traffic_limit", 0),
+        device_limit=tariff_info.get("device_limit", 0)
+    )
 
     default_media_path = "img/pic.jpg"
     if safe_to_edit:

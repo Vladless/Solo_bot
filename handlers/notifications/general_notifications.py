@@ -11,7 +11,6 @@ from config import (
     NOTIFY_DELETE_KEY,
     NOTIFY_HOT_LEADS,
     NOTIFY_INACTIVE_TRAFFIC,
-    NOTIFY_MAXPRICE,
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
     TRIAL_TIME_DISABLE,
@@ -45,10 +44,9 @@ from handlers.texts import (
     KEY_EXPIRED_NO_DELAY_MSG,
     KEY_EXPIRY_10H,
     KEY_EXPIRY_24H,
-    KEY_RENEWED,
-    KEY_RENEWED_TEMP_MSG,
+    get_renewal_message,
 )
-from handlers.utils import format_hours, format_minutes
+from handlers.utils import format_hours, format_minutes, get_russian_month
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
@@ -404,7 +402,11 @@ async def handle_expired_keys(
                         notification_id,
                         1,
                         "notify_expired.jpg",
-                        KEY_RENEWED_TEMP_MSG,
+                        get_renewal_message(
+                            tariff_name=tariff.get("name", ""),
+                            traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
+                            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0
+                        ),
                     )
                     continue
             except Exception as e:
@@ -598,6 +600,11 @@ async def process_auto_renew_or_notify(
             new_expiry_time / 1000, tz=moscow_tz
         ).strftime("%d %B %Y, %H:%M")
 
+        formatted_expiry_date = formatted_expiry_date.replace(
+            datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
+            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
+        )
+
         logger.info(
             f"Продление подписки {email} на {duration_days} дней для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
@@ -617,8 +624,11 @@ async def process_auto_renew_or_notify(
         await add_notification(conn, tg_id, renew_notification_id)
         await delete_notification(conn, tg_id, notification_id)
 
-        renewed_message = KEY_RENEWED.format(
-            email=email, months=duration_days // 30, expiry_date=formatted_expiry_date
+        renewed_message = get_renewal_message(
+            tariff_name=selected_tariff.get("name", ""),
+            traffic_limit=selected_tariff.get("traffic_limit") if selected_tariff.get("traffic_limit") is not None else 0,
+            device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
+            expiry_date=formatted_expiry_date
         )
 
         keyboard = build_notification_expired_kb()

@@ -5,9 +5,13 @@ from pathlib import Path
 
 import aiofiles
 from aiogram.types import BufferedInputFile
+from aiogram import Bot
 
 from bot import bot
-from config import ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT
+from config import (
+    ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT,
+    BACKUP_SEND_MODE, BACKUP_CHANNEL_ID, BACKUP_CHANNEL_THREAD_ID, BACKUP_OTHER_BOT_TOKEN, BACKUP_CAPTION
+)
 from logger import logger
 
 
@@ -139,20 +143,67 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
     if not backup_file_path or not os.path.exists(backup_file_path):
         raise FileNotFoundError(f"Файл бэкапа не найден: {backup_file_path}")
 
+    async def send_default():
+        for admin_id in ADMIN_ID:
+            try:
+                await bot.send_document(
+                    chat_id=admin_id, document=backup_input_file
+                )
+                logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
+            except Exception as e:
+                logger.error(f"Не удалось отправить бэкап админу {admin_id}: {e}")
+
     try:
         async with aiofiles.open(backup_file_path, "rb") as backup_file:
             backup_data = await backup_file.read()
             filename = os.path.basename(backup_file_path)
             backup_input_file = BufferedInputFile(file=backup_data, filename=filename)
 
-            for admin_id in ADMIN_ID:
+            if BACKUP_SEND_MODE == "default":
+                await send_default()
+
+            elif BACKUP_SEND_MODE == "channel":
+                channel_id = BACKUP_CHANNEL_ID.strip()
+                thread_id = BACKUP_CHANNEL_THREAD_ID.strip()
+                if not channel_id:
+                    logger.error("BACKUP_CHANNEL_ID не задан для режима 'channel', fallback на default")
+                    await send_default()
+                    return
+                send_kwargs = dict(chat_id=channel_id, document=backup_input_file)
+                if thread_id:
+                    send_kwargs["message_thread_id"] = int(thread_id)
+                if BACKUP_CAPTION:
+                    send_kwargs["caption"] = BACKUP_CAPTION
                 try:
-                    await bot.send_document(
-                        chat_id=admin_id, document=backup_input_file
-                    )
-                    logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
+                    await bot.send_document(**send_kwargs)
+                    logger.info(f"Бэкап базы данных отправлен в канал: {channel_id} (топик: {thread_id})")
                 except Exception as e:
-                    logger.error(f"Не удалось отправить бэкап админу {admin_id}: {e}")
+                    logger.error(f"Не удалось отправить бэкап в канал {channel_id}: {e}, fallback на default")
+                    await send_default()
+
+            elif BACKUP_SEND_MODE == "bot":
+                if not BACKUP_OTHER_BOT_TOKEN:
+                    logger.error("BACKUP_OTHER_BOT_TOKEN не задан для режима 'bot', fallback на default")
+                    await send_default()
+                    return
+                other_bot = Bot(token=BACKUP_OTHER_BOT_TOKEN)
+                try:
+                    for admin_id in ADMIN_ID:
+                        try:
+                            send_kwargs = dict(chat_id=admin_id, document=backup_input_file)
+                            if BACKUP_CAPTION:
+                                send_kwargs["caption"] = BACKUP_CAPTION
+                            await other_bot.send_document(**send_kwargs)
+                            logger.info(f"Бэкап базы данных отправлен админу через другого бота: {admin_id}")
+                        except Exception as e:
+                            logger.error(f"Не удалось отправить бэкап админу {admin_id} через другого бота: {e}")
+                    await other_bot.session.close()
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке через другого бота: {e}, fallback на default")
+                    await send_default()
+            else:
+                logger.error(f"Неизвестный BACKUP_SEND_MODE: {BACKUP_SEND_MODE}, fallback на default")
+                await send_default()
     except Exception as e:
-        logger.error(f"Ошибка при отправке бэкапа в Telegram: {e}")
+        logger.error(f"Ошибка при отправке бэкапа: {e}")
         raise

@@ -99,7 +99,7 @@ def build_user_edit_kb(
 def build_users_balance_change_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text=BACK,  # todo: fix magic text was set
+        text=BACK,
         callback_data=AdminUserEditorCallback(
             action="users_balance_edit", tg_id=tg_id
         ).pack(),
@@ -112,30 +112,18 @@ async def build_users_balance_kb(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    result = await session.execute(select(Tariff))
-    tariffs = result.scalars().all()
-
-    unique_prices = set()
-    for tariff in tariffs:
-        months = tariff.duration_days // 30
-        if months < 1:
-            continue
-        price = tariff.price_rub
-        if price in unique_prices:
-            continue
-        unique_prices.add(price)
-
+    for amount in [100, 250, 500, 1000]:
         builder.row(
             InlineKeyboardButton(
-                text=f"+ {price}₽ ({months} мес.)",
+                text=f"+ {amount}₽",
                 callback_data=AdminUserEditorCallback(
-                    action="users_balance_add", tg_id=tg_id, data=price
+                    action="users_balance_add", tg_id=tg_id, data=amount
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=f"- {price}₽ ({months} мес.)",
+                text=f"- {amount}₽",
                 callback_data=AdminUserEditorCallback(
-                    action="users_balance_add", tg_id=tg_id, data=-price
+                    action="users_balance_add", tg_id=tg_id, data=-amount
                 ).pack(),
             ),
         )
@@ -172,7 +160,7 @@ async def build_users_balance_kb(
 def build_users_key_show_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text=BACK,  # todo: fix magic text was set
+        text=BACK,
         callback_data=AdminUserEditorCallback(
             action="users_key_edit", tg_id=tg_id, data=email, edit=True
         ).pack(),
@@ -187,52 +175,39 @@ async def build_users_key_expiry_kb(
 
     result = await session.execute(select(Key.server_id, Key.tariff_id).where(Key.email == email))
     row = result.first()
-    if not row or not row[0] or not row[1]:
-        builder.row(
-            InlineKeyboardButton(
-                text="⚠️ Сервер не найден",
-                callback_data=AdminUserEditorCallback(
-                    action="users_key_edit", tg_id=tg_id, data=email
-                ).pack(),
+    server_id, tariff_id = (row if row else (None, None))
+
+    if tariff_id:
+        result = await session.execute(select(Tariff.group_code).where(Tariff.id == tariff_id))
+        row = result.first()
+        if row and row[0]:
+            group_code = row[0]
+            result = await session.execute(
+                select(Tariff)
+                .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
             )
-        )
-        return builder.as_markup()
-
-    server_id, tariff_id = row
-
-    result = await session.execute(select(Tariff.group_code).where(Tariff.id == tariff_id))
-    row = result.first()
-    if not row or not row[0]:
-        return builder.as_markup()
-    group_code = row[0]
-
-    result = await session.execute(
-        select(Tariff)
-        .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
-    )
-    tariffs = result.scalars().all()
-
-    unique_durations = set()
-    for tariff in tariffs:
-        days = tariff.duration_days
-        if days < 1 or days in unique_durations:
-            continue
-        unique_durations.add(days)
-        label = format_days(days)
-        builder.row(
-            InlineKeyboardButton(
-                text=f"+ {label}",
-                callback_data=AdminUserKeyEditorCallback(
-                    action="add", tg_id=tg_id, data=email, month=days
-                ).pack(),
-            ),
-            InlineKeyboardButton(
-                text=f"- {label}",
-                callback_data=AdminUserKeyEditorCallback(
-                    action="add", tg_id=tg_id, data=email, month=-days
-                ).pack(),
-            ),
-        )
+            tariffs = result.scalars().all()
+            unique_durations = set()
+            for tariff in tariffs:
+                days = tariff.duration_days
+                if days < 1 or days in unique_durations:
+                    continue
+                unique_durations.add(days)
+                label = format_days(days)
+                builder.row(
+                    InlineKeyboardButton(
+                        text=f"+ {label}",
+                        callback_data=AdminUserKeyEditorCallback(
+                            action="add", tg_id=tg_id, data=email, month=days
+                        ).pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text=f"- {label}",
+                        callback_data=AdminUserKeyEditorCallback(
+                            action="add", tg_id=tg_id, data=email, month=-days
+                        ).pack(),
+                    ),
+                )
 
     builder.row(
         InlineKeyboardButton(

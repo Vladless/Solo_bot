@@ -545,7 +545,18 @@ async def finalize_key_creation(
     remaining_time = expiry_time - datetime.now(moscow_tz)
     days = remaining_time.days
     link_to_show = public_link or remnawave_link or "Ссылка не найдена"
-    key_message_text = key_message_success(link_to_show, f"⏳ Осталось дней: {days} 📅")
+
+    tariff_info = None
+    if tariff_id:
+        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
+        tariff_info = result.scalar_one_or_none()
+    
+    key_message_text = key_message_success(
+        link_to_show,
+        tariff_name=tariff_info.name if tariff_info else "",
+        traffic_limit=tariff_info.traffic_limit if tariff_info and tariff_info.traffic_limit is not None else 0,
+        device_limit=tariff_info.device_limit if tariff_info and tariff_info.device_limit is not None else 0
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,
