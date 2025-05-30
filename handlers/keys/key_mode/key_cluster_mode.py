@@ -37,6 +37,7 @@ from handlers.utils import (
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
+    format_days,
 )
 from logger import logger
 
@@ -178,12 +179,21 @@ async def key_cluster_mode(
     if plan:
         tariff_info = await get_tariff_by_id(session, plan)
     
-    key_message_text = key_message_success(
-        final_link,
-        tariff_name=tariff_info.get("name", ""),
-        traffic_limit=tariff_info.get("traffic_limit", 0),
-        device_limit=tariff_info.get("device_limit", 0)
-    )
+    if is_trial:
+        trial_days = TRIAL_CONFIG.get("duration_days", 1)
+        key_message_text = key_message_success(
+            final_link,
+            tariff_name=format_days(trial_days),
+            traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
+        )
+    else:
+        key_message_text = key_message_success(
+            final_link,
+            tariff_name=tariff_info.get("name", "") if tariff_info else "",
+            traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
+            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0
+        )
 
     default_media_path = "img/pic.jpg"
     if safe_to_edit:

@@ -22,6 +22,7 @@ from config import (
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     SUPPORT_CHAT_URL,
+    TRIAL_CONFIG,
 )
 from database import (
     add_user,
@@ -50,6 +51,7 @@ from handlers.utils import (
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
+    format_days,
 )
 from logger import logger
 from panels.remnawave import RemnawaveAPI
@@ -366,7 +368,6 @@ async def finalize_key_creation(
     is_trial = data.get("is_trial", False)
 
     if is_trial:
-        from config import TRIAL_CONFIG
         traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100)) * 1024**3
         device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
     elif data.get("tariff_id") or tariff_id:
@@ -551,12 +552,21 @@ async def finalize_key_creation(
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         tariff_info = result.scalar_one_or_none()
     
-    key_message_text = key_message_success(
-        link_to_show,
-        tariff_name=tariff_info.name if tariff_info else "",
-        traffic_limit=tariff_info.traffic_limit if tariff_info and tariff_info.traffic_limit is not None else 0,
-        device_limit=tariff_info.device_limit if tariff_info and tariff_info.device_limit is not None else 0
-    )
+    if is_trial:
+        trial_days = TRIAL_CONFIG.get("duration_days", 1)
+        key_message_text = key_message_success(
+            link_to_show,
+            tariff_name=format_days(trial_days),
+            traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
+        )
+    else:
+        key_message_text = key_message_success(
+            link_to_show,
+            tariff_name=tariff_info.name if tariff_info else "",
+            traffic_limit=tariff_info.traffic_limit if tariff_info and tariff_info.traffic_limit is not None else 0,
+            device_limit=tariff_info.device_limit if tariff_info and tariff_info.device_limit is not None else 0
+        )
 
     await edit_or_send_message(
         target_message=callback_query.message,
