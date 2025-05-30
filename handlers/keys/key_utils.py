@@ -709,7 +709,6 @@ async def update_subscription(
         logger.warning(f"[LOG] update_subscription: tariff_id отсутствует!")
 
     await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
-
     await session.execute(delete(Key).where(Key.tg_id == tg_id, Key.email == email))
     await session.commit()
 
@@ -730,9 +729,20 @@ async def update_subscription(
     )
 
     servers = await get_servers(session)
-    cluster_servers = servers.get(new_cluster_id, [])
-    has_xui = any(s.get("panel_type", "").lower() == "3x-ui" for s in cluster_servers)
+    cluster_servers = servers.get(new_cluster_id)
 
+    if cluster_servers is None:
+        for server_list in servers.values():
+            for server_info in server_list:
+                if server_info.get("server_name", "").lower() == new_cluster_id.lower():
+                    cluster_servers = [server_info]
+                    break
+            if cluster_servers:
+                break
+        else:
+            cluster_servers = []
+
+    has_xui = any(s.get("panel_type", "").lower() == "3x-ui" for s in cluster_servers)
     final_key_link = public_link if has_xui else None
 
     await store_key(
