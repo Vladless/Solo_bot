@@ -52,6 +52,7 @@ from handlers.utils import (
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
     format_days,
+    format_months,
 )
 from logger import logger
 from panels.remnawave import RemnawaveAPI
@@ -553,18 +554,32 @@ async def finalize_key_creation(
     
     if is_trial:
         trial_days = TRIAL_CONFIG.get("duration_days", 1)
+        if trial_days >= 30:
+            months = trial_days // 30
+            tariff_duration = format_months(months)
+        else:
+            tariff_duration = format_days(trial_days)
         key_message_text = key_message_success(
             link_to_show,
-            tariff_name=format_days(trial_days),
+            tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
             device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
         )
     else:
+        tariff_duration = ""
+        if tariff_info and tariff_info.get("duration_days", 0) > 0:
+            duration_days = tariff_info["duration_days"]
+            if duration_days >= 30:
+                months = duration_days // 30
+                tariff_duration = format_months(months)
+            else:
+                tariff_duration = format_days(duration_days)
+        
         key_message_text = key_message_success(
             link_to_show,
-            tariff_name=tariff_info.name if tariff_info else "",
-            traffic_limit=tariff_info.traffic_limit if tariff_info and tariff_info.traffic_limit is not None else 0,
-            device_limit=tariff_info.device_limit if tariff_info and tariff_info.device_limit is not None else 0
+            tariff_name=tariff_duration,
+            traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
+            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0
         )
 
     await edit_or_send_message(

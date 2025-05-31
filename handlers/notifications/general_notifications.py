@@ -38,15 +38,13 @@ from handlers.notifications.notify_kb import (
 )
 from handlers.texts import (
     KEY_DELETED_MSG,
-    KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG,
-    KEY_EXPIRED_DELAY_HOURS_MSG,
-    KEY_EXPIRED_DELAY_MINUTES_MSG,
+    KEY_EXPIRED_DELAY_MSG,
     KEY_EXPIRED_NO_DELAY_MSG,
     KEY_EXPIRY_10H,
     KEY_EXPIRY_24H,
     get_renewal_message,
 )
-from handlers.utils import format_hours, format_minutes, get_russian_month
+from handlers.utils import format_hours, format_minutes, get_russian_month, format_months, format_days
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
@@ -460,19 +458,16 @@ async def handle_expired_keys(
                 hours = NOTIFY_DELETE_DELAY // 60
                 minutes = NOTIFY_DELETE_DELAY % 60
                 if hours > 0 and minutes > 0:
-                    delay_message = KEY_EXPIRED_DELAY_HOURS_MINUTES_MSG.format(
-                        email=email,
-                        hours_formatted=format_hours(hours),
-                        minutes_formatted=format_minutes(minutes),
-                    )
+                    time_formatted = f"{format_hours(hours)} и {format_minutes(minutes)}"
                 elif hours > 0:
-                    delay_message = KEY_EXPIRED_DELAY_HOURS_MSG.format(
-                        email=email, hours_formatted=format_hours(hours)
-                    )
+                    time_formatted = format_hours(hours)
                 else:
-                    delay_message = KEY_EXPIRED_DELAY_MINUTES_MSG.format(
-                        email=email, minutes_formatted=format_minutes(minutes)
-                    )
+                    time_formatted = format_minutes(minutes)
+                
+                delay_message = KEY_EXPIRED_DELAY_MSG.format(
+                    email=email,
+                    time_formatted=time_formatted
+                )
             else:
                 delay_message = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
 
@@ -585,6 +580,13 @@ async def process_auto_renew_or_notify(
         client_id = key.client_id
         current_expiry = key.expiry_time
         duration_days = selected_tariff["duration_days"]
+        tariff_duration = ""
+        if duration_days > 0:
+            if duration_days >= 30:
+                months = duration_days // 30
+                tariff_duration = format_months(months)
+            else:
+                tariff_duration = format_days(duration_days)
         renewal_cost = selected_tariff["price_rub"]
         traffic_limit = selected_tariff["traffic_limit"]
         device_limit = selected_tariff["device_limit"]
@@ -625,7 +627,7 @@ async def process_auto_renew_or_notify(
         await delete_notification(conn, tg_id, notification_id)
 
         renewed_message = get_renewal_message(
-            tariff_name=selected_tariff.get("name", ""),
+            tariff_name=tariff_duration,
             traffic_limit=selected_tariff.get("traffic_limit") if selected_tariff.get("traffic_limit") is not None else 0,
             device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
             expiry_date=formatted_expiry_date

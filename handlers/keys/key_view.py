@@ -48,6 +48,7 @@ from handlers.utils import (
     format_days,
     format_hours,
     format_minutes,
+    format_months,
     get_russian_month,
     is_full_remnawave_cluster,
 )
@@ -289,14 +290,23 @@ async def render_key_info(
             traffic_limit = tariff.get("traffic_limit", 0)
             device_limit = tariff.get("device_limit", 0)
 
+    tariff_duration = ""
+    if tariff and tariff.get("duration_days", 0) > 0:
+        duration_days = tariff["duration_days"]
+        if duration_days >= 30:
+            months = duration_days // 30
+            tariff_duration = format_months(months)
+        else:
+            tariff_duration = format_days(duration_days)
+
     response_message = key_message(
         final_link,
         formatted_expiry_date,
         days_left_message,
         server_name,
         server_name if USE_COUNTRY_SELECTION else None,
-        hwid_count=hwid_count,
-        tariff_name=tariff_name,
+        hwid_count=hwid_count if device_limit is not None else 0,
+        tariff_name=tariff_duration,
         traffic_limit=traffic_limit,
         device_limit=device_limit
     )
