@@ -21,6 +21,8 @@ from database import (
     count_users_updated_today,
     get_tariff_distribution,
     get_tariff_names,
+    get_tariff_groups,
+    get_tariff_durations,
     sum_payments_between,
     sum_payments_since,
     sum_total_payments,
@@ -72,12 +74,17 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         tariff_counts, no_tariff_keys = await get_tariff_distribution(session, include_unbound=True)
         tariff_names = await get_tariff_names(session, [tid for tid, _ in tariff_counts])
+        tariff_groups = await get_tariff_groups(session, [tid for tid, _ in tariff_counts])
+        tariff_durations = await get_tariff_durations(session, [tid for tid, _ in tariff_counts])
+
+        grouped_tariffs = {}
+        for tid, count in tariff_counts:
+            group = tariff_groups.get(tid, "unknown")
+            if group not in grouped_tariffs:
+                grouped_tariffs[group] = []
+            grouped_tariffs[group].append((tid, count))
 
         tariff_stats_text = ""
-        for tid, count in tariff_counts:
-            name = tariff_names.get(tid, f"ID {tid}")
-            tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
-
         duration_buckets = Counter()
         now_ts = int(datetime.utcnow().timestamp() * 1000)
 
@@ -97,6 +104,16 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         for name, count in duration_buckets.items():
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
+
+        for group, tariffs in grouped_tariffs.items():
+            tariff_stats_text += f"Тариф {group}\n"
+            sorted_tariffs = sorted(
+                tariffs,
+                key=lambda x: tariff_durations.get(x[0], 0)
+            )
+            for tid, count in sorted_tariffs:
+                name = tariff_names.get(tid, f"ID {tid}")
+                tariff_stats_text += f" ├ {name}: <b>{count}</b>\n"
 
         tariff_stats_text = (
             "└ По тарифам и срокам:\n" + tariff_stats_text
