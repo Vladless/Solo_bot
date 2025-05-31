@@ -283,6 +283,7 @@ async def render_key_info(
     tariff_name = ""
     traffic_limit = 0
     device_limit = 0
+    tariff = None
     if record.get("tariff_id"):
         tariff = await get_tariff_by_id(session, record["tariff_id"])
         if tariff:
