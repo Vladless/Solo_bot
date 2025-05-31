@@ -102,7 +102,19 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
                 bucket = "Без тарифа: прочее"
             duration_buckets[bucket] += 1
 
-        for name, count in duration_buckets.items():
+        bucket_order = {
+            "Без тарифа: 1 мес": 1,
+            "Без тарифа: 3 мес": 2,
+            "Без тарифа: 6 мес": 3,
+            "Без тарифа: 12 мес": 4,
+            "Без тарифа: прочее": 5
+        }
+        sorted_buckets = sorted(
+            duration_buckets.items(),
+            key=lambda x: bucket_order.get(x[0], 999)
+        )
+
+        for name, count in sorted_buckets:
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
 
         for group, tariffs in grouped_tariffs.items():
