@@ -99,7 +99,7 @@ async def handle_key_creation(
                 if isinstance(message_or_query, CallbackQuery)
                 else message_or_query
             ),
-            text="❌ Нет доступных тарифов для выбранного кластера.",
+            text="❌ Нет доступных тарифов для выбора.",
             reply_markup=None,
         )
         return

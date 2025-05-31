@@ -89,6 +89,30 @@ async def get_tariff_names(
     return dict(result.all())
 
 
+async def get_tariff_groups(
+    session: AsyncSession, tariff_ids: list[int]
+) -> dict[int, str]:
+    if not tariff_ids:
+        return {}
+
+    result = await session.execute(
+        select(Tariff.id, Tariff.group_code).where(Tariff.id.in_(tariff_ids))
+    )
+    return dict(result.all())
+
+
+async def get_tariff_durations(
+    session: AsyncSession, tariff_ids: list[int]
+) -> dict[int, int]:
+    if not tariff_ids:
+        return {}
+
+    result = await session.execute(
+        select(Tariff.id, Tariff.duration_days).where(Tariff.id.in_(tariff_ids))
+    )
+    return dict(result.all())
+
+
 async def count_total_referrals(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Referral))
 
