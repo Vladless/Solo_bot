@@ -1,4 +1,4 @@
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, not_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,14 +89,22 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
     payments_subq = (
         select(func.count(func.distinct(Payment.tg_id)))
         .join(User, Payment.tg_id == User.tg_id)
-        .where((User.source_code == code) & (Payment.status == "success"))
+        .where(
+            (User.source_code == code)
+            & (Payment.status == "success")
+            & not_(Payment.payment_system.in_(["coupon", "referral"]))
+        )
         .scalar_subquery()
     )
 
     amount_subq = (
         select(func.coalesce(func.sum(Payment.amount), 0))
         .join(User, Payment.tg_id == User.tg_id)
-        .where((User.source_code == code) & (Payment.status == "success"))
+        .where(
+            (User.source_code == code)
+            & (Payment.status == "success")
+            & not_(Payment.payment_system.in_(["coupon", "referral"]))
+        )
         .scalar_subquery()
     )
 
