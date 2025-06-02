@@ -16,18 +16,20 @@ def build_clusters_editor_kb(servers: dict) -> InlineKeyboardMarkup:
 
     cluster_names = list(servers.keys())
     for i in range(0, len(cluster_names), 2):
-        builder.row(
-            *[
+        row_buttons = []
+        for name in cluster_names[i : i + 2]:
+            servers_in_cluster = servers[name]
+            all_disabled = all(not s["enabled"] for s in servers_in_cluster)
+            label = f"❌ {name} (отключен)" if all_disabled else f"⚙️ {name}"
+            row_buttons.append(
                 InlineKeyboardButton(
-                    text=f"⚙️ {name}",
+                    text=label,
                     callback_data=AdminClusterCallback(
                         action="manage", data=name
                     ).pack(),
                 )
-                for name in cluster_names[i : i + 2]
-            ]
-        )
-
+            )
+        builder.row(*row_buttons)
     builder.row(
         InlineKeyboardButton(
             text="➕ Добавить кластер",

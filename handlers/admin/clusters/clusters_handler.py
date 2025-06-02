@@ -63,7 +63,7 @@ class AdminClusterStates(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
-    servers = await get_servers(session)
+    servers = await get_servers(session, include_enabled=True)
 
     text = (
         "<b>🔧 Управление кластерами</b>\n\n"

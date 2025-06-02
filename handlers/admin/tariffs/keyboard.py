@@ -154,6 +154,9 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
                     text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}"
                 )
             ],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view|{tariff_id}")],
+            [InlineKeyboardButton(
+                text="⬅️ Назад", 
+                callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
+            )]
         ]
     )
