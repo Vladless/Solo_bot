@@ -110,7 +110,7 @@ async def process_callback_renew_key(
 
         builder = InlineKeyboardBuilder()
         for t in selected_tariffs:
-            button_text = f"📅 {t['name']} — {t['price_rub']}₽"
+            button_text = f"{t['name']} — {t['price_rub']}₽"
             builder.row(
                 InlineKeyboardButton(
                     text=button_text,

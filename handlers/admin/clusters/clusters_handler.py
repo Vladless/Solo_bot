@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import F, Router, types
@@ -582,38 +582,83 @@ async def handle_sync_cluster(
             )
             return
 
+        servers = await get_servers(session)
+        cluster_servers = servers.get(cluster_name, [])
+        only_remnawave = all(s.get("panel_type") == "remnawave" for s in cluster_servers)
+
         await callback_query.message.edit_text(
             text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
         )
 
         for key in keys_to_sync:
             try:
-                await delete_key_from_cluster(
-                    cluster_name, key["email"], key["client_id"], session
-                )
-
-                await session.execute(
-                    delete(Key).where(
-                        Key.tg_id == key["tg_id"], Key.client_id == key["client_id"]
+                if only_remnawave:
+                    expire_iso = (
+                        datetime.utcfromtimestamp(key["expiry_time"] / 1000)
+                        .replace(tzinfo=timezone.utc)
+                        .isoformat()
                     )
-                )
 
-                await create_key_on_cluster(
-                    cluster_name,
-                    key["tg_id"],
-                    key["client_id"],
-                    key["email"],
-                    key["expiry_time"],
-                    plan=key["tariff_id"],
-                    session=session,
-                    remnawave_link=key["remnawave_link"],
-                )
+                    remna = RemnawaveAPI(cluster_servers[0]["api_url"])
+                    if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                        raise Exception("Не удалось авторизоваться в Remnawave")
+
+                    traffic_limit_bytes = 0
+                    hwid_limit = None
+                    if key["tariff_id"]:
+                        tariff = await session.get(Tariff, key["tariff_id"])
+                        if tariff:
+                            traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                            hwid_limit = tariff.device_limit
+                        else:
+                            logger.warning(f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — обновим без лимитов")
+
+                    valid_email = f"{key['email']}@fake.local"
+
+                    inbound_ids = [
+                        s["inbound_id"]
+                        for s in cluster_servers
+                        if s.get("inbound_id")
+                    ]
+
+                    await remna.update_user(
+                        uuid=key["client_id"],
+                        expire_at=expire_iso,
+                        telegram_id=key["tg_id"],
+                        email=valid_email,
+                        active_user_inbounds=inbound_ids,
+                        traffic_limit_bytes=traffic_limit_bytes,
+                        hwid_device_limit=hwid_limit,
+                    )
+
+                else:
+                    await delete_key_from_cluster(
+                        cluster_name, key["email"], key["client_id"], session
+                    )
+
+                    await session.execute(
+                        delete(Key).where(
+                            Key.tg_id == key["tg_id"],
+                            Key.client_id == key["client_id"]
+                        )
+                    )
+
+                    await create_key_on_cluster(
+                        cluster_name,
+                        key["tg_id"],
+                        key["client_id"],
+                        key["email"],
+                        key["expiry_time"],
+                        plan=key["tariff_id"],
+                        session=session,
+                        remnawave_link=key["remnawave_link"],
+                    )
 
                 await asyncio.sleep(0.5)
 
             except Exception as e:
                 logger.error(
-                    f"Ошибка при синхронизации ключа {key['client_id']} в {cluster_name}: {e}"
+                    f"[Sync] Ошибка при обработке ключа {key['client_id']} в {cluster_name}: {e}"
                 )
 
         await callback_query.message.edit_text(
@@ -622,7 +667,7 @@ async def handle_sync_cluster(
         )
 
     except Exception as e:
-        logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
+        logger.error(f"[Sync] Ошибка синхронизации кластера {cluster_name}: {e}")
         await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при синхронизации: {e}",
             reply_markup=build_admin_back_kb("clusters"),
