@@ -1,5 +1,4 @@
 import asyncio
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -64,6 +63,7 @@ from .keyboard import (
     build_users_balance_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
+    build_editor_btn
 )
 
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")
@@ -1589,9 +1589,12 @@ async def handle_user_ban(
     await state.set_state(BanUserStates.waiting_for_reason)
     await state.update_data(tg_id=callback_data.tg_id)
 
+    kb = InlineKeyboardBuilder()
+    kb.row(build_editor_btn("⬅️ Назад", tg_id=callback_data.tg_id, edit=True))
+
     await callback.message.edit_text(
         text="✏️ Введите причину блокировки (или <code>-</code>, чтобы пропустить):",
-        reply_markup=build_admin_back_kb(f"users_edit|{callback_data.tg_id}"),
+        reply_markup=kb.as_markup(),
     )
 
 
@@ -1603,9 +1606,12 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     user_data = await state.get_data()
     tg_id = user_data.get("tg_id")
 
+    kb = InlineKeyboardBuilder()
+    kb.row(build_editor_btn("⬅️ Назад", tg_id=tg_id, edit=True))
+
     await message.answer(
         "⏳ Введите срок блокировки в днях (0 — навсегда):",
-        reply_markup=build_admin_back_kb(f"users_edit|{tg_id}"),
+        reply_markup=kb.as_markup(),
     )
 
 

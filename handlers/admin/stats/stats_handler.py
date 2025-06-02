@@ -267,7 +267,7 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSe
 
 async def send_daily_stats_report(session: AsyncSession):
     try:
-        today = datetime.utcnow().date()
+        today = datetime.now(pytz.timezone("Europe/Moscow")).date()
         now_moscow = datetime.now(pytz.timezone("Europe/Moscow"))
         update_time = now_moscow.strftime("%d.%m.%y %H:%M")
 
