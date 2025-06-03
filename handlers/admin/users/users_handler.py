@@ -623,7 +623,7 @@ async def handle_user_choose_tariff(
     result = await session.execute(
         select(Tariff)
         .where(Tariff.group_code == group_code, Tariff.is_active == True)
-        .order_by(Tariff.duration_days)
+        .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
 
