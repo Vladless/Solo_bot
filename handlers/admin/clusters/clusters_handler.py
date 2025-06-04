@@ -611,9 +611,9 @@ async def handle_sync_cluster(
                             traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
                             hwid_limit = tariff.device_limit
                         else:
-                            logger.warning(f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — обновим без лимитов")
-
-                    valid_email = f"{key['email']}@fake.local"
+                            logger.warning(
+                                f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — обновим без лимитов"
+                            )
 
                     inbound_ids = [
                         s["inbound_id"]
@@ -621,15 +621,40 @@ async def handle_sync_cluster(
                         if s.get("inbound_id")
                     ]
 
-                    await remna.update_user(
+                    success = await remna.update_user(
                         uuid=key["client_id"],
                         expire_at=expire_iso,
                         telegram_id=key["tg_id"],
-                        email=valid_email,
+                        email=f"{key['email']}@fake.local",
                         active_user_inbounds=inbound_ids,
                         traffic_limit_bytes=traffic_limit_bytes,
                         hwid_device_limit=hwid_limit,
                     )
+
+                    if not success:
+                        logger.warning(f"[Sync] ошибка обновления, пробуем пересоздать")
+
+                        await delete_key_from_cluster(
+                            cluster_name, key["email"], key["client_id"], session
+                        )
+
+                        await session.execute(
+                            delete(Key).where(
+                                Key.tg_id == key["tg_id"],
+                                Key.client_id == key["client_id"]
+                            )
+                        )
+
+                        await create_key_on_cluster(
+                            cluster_name,
+                            key["tg_id"],
+                            key["client_id"],
+                            key["email"],
+                            key["expiry_time"],
+                            plan=key["tariff_id"],
+                            session=session,
+                            remnawave_link=key["remnawave_link"],
+                        )
 
                 else:
                     await delete_key_from_cluster(

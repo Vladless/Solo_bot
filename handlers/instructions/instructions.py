@@ -144,12 +144,19 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
 
 @router.callback_query(F.data.startswith("connect_tv|"))
-async def process_connect_tv(callback_query: CallbackQuery):
-    key_name = callback_query.data.split("|")[1]
+async def process_connect_tv(callback_query: CallbackQuery, session: Any):
+    data = callback_query.data.split("|")
+    key_name = data[1]
+    callback_data = callback_query.data
+
+    if key_name == "direct" and len(data) > 2:
+        callback_data = f"continue_tv|{key_name}|{data[2]}"
+    else:
+        callback_data = callback_data.replace("connect_tv", "continue_tv")
 
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}")
+        InlineKeyboardButton(text=TV_CONTINUE, callback_data=callback_data)
     )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -165,19 +172,20 @@ async def process_connect_tv(callback_query: CallbackQuery):
 
 @router.callback_query(F.data.startswith("continue_tv|"))
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    data = callback_query.data.split("|")
+    key_name = data[1]
+    subscription_link = None
 
-    record = await get_key_details(session, key_name)
-    subscription_link = record["key"]
+    if key_name == "direct" and len(data) > 2:
+        subscription_link = data[2]
+    else:
+        record = await get_key_details(session, key_name)
+        subscription_link = record["key"]
+
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text=TV_INSTRUCTIONS, url="https://vpn4tv.com/quick-guide.html"
-        )
-    )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}|{subscription_link}" if subscription_link else f"connect_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(

@@ -152,6 +152,9 @@ async def key_cluster_mode(
                 text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
             )
         )
+        builder.row(
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|direct|{final_link}")
+        )
     elif CONNECT_PHONE_BUTTON:
         builder.row(
             InlineKeyboardButton(

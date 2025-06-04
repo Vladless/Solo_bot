@@ -326,6 +326,9 @@ async def render_key_info(
                 text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
             )
         )
+        builder.row(
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|direct|{final_link}")
+        )
     else:
         if CONNECT_PHONE_BUTTON:
             builder.row(
