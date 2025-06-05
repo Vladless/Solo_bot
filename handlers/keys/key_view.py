@@ -327,7 +327,7 @@ async def render_key_info(
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|direct|{final_link}")
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}")
         )
     else:
         if CONNECT_PHONE_BUTTON:

@@ -153,7 +153,7 @@ async def key_cluster_mode(
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|direct|{final_link}")
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
         )
     elif CONNECT_PHONE_BUTTON:
         builder.row(

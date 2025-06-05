@@ -529,7 +529,7 @@ async def finalize_key_creation(
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|direct|{public_link or remnawave_link}")
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
         )
     elif CONNECT_PHONE_BUTTON:
         builder.row(
