@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import pytz
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 from collections import Counter
 
@@ -267,9 +267,15 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSe
 
 async def send_daily_stats_report(session: AsyncSession):
     try:
-        today = datetime.now(pytz.timezone("Europe/Moscow")).date()
         now_moscow = datetime.now(pytz.timezone("Europe/Moscow"))
         update_time = now_moscow.strftime("%d.%m.%y %H:%M")
+
+        today = (
+            pytz.timezone("Europe/Moscow")
+            .localize(datetime.combine((now_moscow - timedelta(days=1)).date(), datetime.min.time()))
+            .astimezone(pytz.UTC)
+            .replace(tzinfo=None)
+        )
 
         registrations_today = await count_users_registered_since(session, today)
         payments_today = await sum_payments_since(session, today)
@@ -288,3 +294,8 @@ async def send_daily_stats_report(session: AsyncSession):
 
     except Exception as e:
         logger.error(f"[Stats] Ошибка при отправке статистики: {e}")
+
+
+@router.message(F.text == "Сводка", IsAdminFilter())
+async def test_stats_command(message: Message, session: AsyncSession):
+    await send_daily_stats_report(session)
