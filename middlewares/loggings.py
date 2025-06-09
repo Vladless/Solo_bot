@@ -26,23 +26,16 @@ class LoggingMiddleware(BaseMiddleware):
 
         if user_info["user_id"]:
             logger.info(
-                f"Активность пользователя - "
-                f"ID пользователя: {user_info['user_id']}, "
-                f"Имя пользователя: {user_info['username'] or 'Не указано'}, "
-                f"Действие: {user_info['action'] or 'Неизвестно'}"
+                f"Активность пользователя │ "
+                f"ID: {str(user_info['user_id']).ljust(10)} │ "
+                f"Имя: {user_info['username'] or '—':<15} │ "
+                f"Действие: {user_info['action'] or '—'}"
             )
 
         return await handler(event, data)
 
     def _extract_user_info(self, event: TelegramObject) -> UserInfo:
-        """Извлекает информацию о пользователе из различных типов событий.
-
-        Args:
-            event: Событие Telegram
-
-        Returns:
-            Словарь с информацией о пользователе
-        """
+        """Извлекает информацию о пользователе из различных типов событий."""
         result: UserInfo = {"user_id": None, "username": None, "action": None}
 
         if hasattr(event, "from_user") and isinstance(event.from_user, User):

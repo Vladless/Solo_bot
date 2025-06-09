@@ -1,9 +1,10 @@
 from aiohttp.web_urldispatcher import UrlDispatcher
 
 import bot
+from config import TBLOCKER_WEBHOOK_PATH
+
+from .tblocker import tblocker_webhook
 
 
 async def register_web_routes(router: UrlDispatcher) -> None:
-    dp = bot.dp
-
-    # todo: add your api routes here
+    router.add_post(TBLOCKER_WEBHOOK_PATH, tblocker_webhook)

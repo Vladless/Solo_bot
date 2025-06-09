@@ -1,27 +1,25 @@
 import asyncio
-import time
-
+from datetime import datetime, timezone
 from typing import Any
-
-import asyncpg
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backup import create_backup_and_send_to_admins
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    DATABASE_URL,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    TOTAL_GB,
     USE_COUNTRY_SELECTION,
 )
 from database import check_unique_server_name, get_servers, update_key_expiry
+from database.models import Key, Server, Tariff
 from filters.admin import IsAdminFilter
 from handlers.keys.key_utils import (
     create_client_on_server,
@@ -41,8 +39,8 @@ from .keyboard import (
     build_manage_cluster_kb,
     build_panel_type_kb,
     build_sync_cluster_kb,
+    build_tariff_group_selection_kb,
 )
-
 
 router = Router()
 
@@ -64,8 +62,8 @@ class AdminClusterStates(StatesGroup):
     AdminPanelCallback.filter(F.action == "clusters"),
     IsAdminFilter(),
 )
-async def handle_servers(callback_query: CallbackQuery):
-    servers = await get_servers()
+async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
+    servers = await get_servers(session, include_enabled=True)
 
     text = (
         "<b>🔧 Управление кластерами</b>\n\n"
@@ -91,7 +89,9 @@ async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
         "<i>Пример:</i> <code>cluster1</code> или <code>us_east_1</code>"
     )
 
-    await callback_query.message.edit_text(text=text, reply_markup=build_admin_back_kb("clusters"))
+    await callback_query.message.edit_text(
+        text=text, reply_markup=build_admin_back_kb("clusters")
+    )
 
     await state.set_state(AdminClusterStates.waiting_for_cluster_name)
 
@@ -100,7 +100,8 @@ async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
 async def handle_cluster_name_input(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
-            text="❌ Имя кластера не может быть пустым! Попробуйте снова.", reply_markup=build_admin_back_kb("clusters")
+            text="❌ Имя кластера не может быть пустым! Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
@@ -132,7 +133,8 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым. Попробуйте снова.", reply_markup=build_admin_back_kb("clusters")
+            text="❌ Имя сервера не может быть пустым. Попробуйте снова.",
+            reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
@@ -148,7 +150,7 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
     user_data = await state.get_data()
     cluster_name = user_data.get("cluster_name")
 
-    if not await check_unique_server_name(server_name, session, cluster_name):
+    if not await check_unique_server_name(session, server_name, cluster_name):
         await message.answer(
             text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.",
             reply_markup=build_admin_back_kb("clusters"),
@@ -228,9 +230,15 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action.in_(["panel_3xui", "panel_remnawave"])), IsAdminFilter())
+@router.callback_query(
+    AdminClusterCallback.filter(F.action.in_(["panel_3xui", "panel_remnawave"])),
+    IsAdminFilter(),
+)
 async def handle_panel_type_selection(
-    callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext
+    callback_query: CallbackQuery,
+    callback_data: AdminClusterCallback,
+    state: FSMContext,
+    session: AsyncSession,
 ):
     panel_type = "3x-ui" if callback_data.action == "panel_3xui" else "remnawave"
 
@@ -241,20 +249,24 @@ async def handle_panel_type_selection(
     subscription_url = user_data.get("subscription_url")
     inbound_id = user_data.get("inbound_id")
 
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute(
-        """
-        INSERT INTO servers (cluster_name, server_name, api_url, subscription_url, inbound_id, panel_type)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        cluster_name,
-        server_name,
-        api_url,
-        subscription_url,
-        inbound_id,
-        panel_type,
+    result = await session.execute(
+        select(Server.tariff_group).where(Server.cluster_name == cluster_name).limit(1)
     )
-    await conn.close()
+    row = result.first()
+    tariff_group = row[0] if row else None
+
+    new_server = Server(
+        cluster_name=cluster_name,
+        server_name=server_name,
+        api_url=api_url,
+        subscription_url=subscription_url,
+        inbound_id=inbound_id,
+        panel_type=panel_type,
+        tariff_group=tariff_group,
+    )
+
+    session.add(new_server)
+    await session.commit()
 
     await callback_query.message.edit_text(
         text=f"✅ Сервер <b>{server_name}</b> с панелью <b>{panel_type}</b> успешно добавлен в кластер <b>{cluster_name}</b>!",
@@ -263,22 +275,51 @@ async def handle_panel_type_selection(
     await state.clear()
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "manage"), IsAdminFilter())
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "manage"), IsAdminFilter()
+)
 async def handle_clusters_manage(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: AsyncSession,
 ):
     cluster_name = callback_data.data
 
+    result = await session.execute(
+        select(Server.tariff_group)
+        .where(Server.cluster_name == cluster_name, Server.tariff_group.isnot(None))
+        .limit(1)
+    )
+    row = result.first()
+    tariff_group = row[0] if row else "—"
+
+    result = await session.execute(
+        select(Server.server_name).where(Server.cluster_name == cluster_name)
+    )
+    server_names = [row[0] for row in result.all()]
+    result = await session.execute(
+        select(func.count(func.distinct(Key.tg_id))).where(
+            (Key.server_id == cluster_name) | (Key.server_id.in_(server_names))
+        )
+    )
+    user_count = result.scalar() or 0
+
+    text = (
+        f"<b>🔧 Управление кластером <code>{cluster_name}</code></b>\n\n"
+        f"📁 <b>Тарифная группа:</b> <code>{tariff_group}</code>\n"
+        f"👥 <b>Пользователей на кластере:</b> <code>{user_count}</code>"
+    )
+
     await callback_query.message.edit_text(
-        text=f"<b>🔧 Управление кластером {cluster_name}</b>",
+        text=text,
         reply_markup=build_cluster_management_kb(cluster_name),
     )
 
 
 @router.callback_query(F.data.startswith("cluster_servers|"), IsAdminFilter())
-async def handle_cluster_servers(callback: CallbackQuery):
+async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession):
     cluster_name = callback.data.split("|", 1)[1]
-    servers = await get_servers()
+    servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
 
     await callback.message.edit_text(
@@ -287,16 +328,22 @@ async def handle_cluster_servers(callback: CallbackQuery):
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "availability"), IsAdminFilter())
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "availability"), IsAdminFilter()
+)
 async def handle_cluster_availability(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: Any,
 ):
     cluster_name = callback_data.data
     servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
 
     if not cluster_servers:
-        await callback_query.message.edit_text(text=f"Кластер '{cluster_name}' не содержит серверов.")
+        await callback_query.message.edit_text(
+            text=f"Кластер '{cluster_name}' не содержит серверов."
+        )
         return
 
     await callback_query.message.edit_text(
@@ -316,7 +363,12 @@ async def handle_cluster_availability(
 
         try:
             if panel_type == "3x-ui":
-                xui = AsyncApi(server["api_url"], username=ADMIN_USERNAME, password=ADMIN_PASSWORD, logger=None)
+                xui = AsyncApi(
+                    server["api_url"],
+                    username=ADMIN_USERNAME,
+                    password=ADMIN_PASSWORD,
+                    logger=None,
+                )
                 await xui.login()
                 inbound_id = int(server["inbound_id"])
                 online_clients = await xui.client.online()
@@ -355,19 +407,27 @@ async def handle_cluster_availability(
 
                 online_remna_users = matching_node.get("usersOnline", 0)
                 total_online_users += online_remna_users
-                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+                result_text += (
+                    f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+                )
 
         except Exception as e:
             error_text = str(e) or "Сервер недоступен"
             result_text += f"❌ <b>{prefix} {server_name}</b> - ошибка: {error_text}\n"
 
     result_text += f"\n👥 Всего пользователей онлайн: {total_online_users}"
-    await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("clusters"))
+    await callback_query.message.edit_text(
+        text=result_text, reply_markup=build_admin_back_kb("clusters")
+    )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter())
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter()
+)
 async def handle_clusters_backup(
-    callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any
+    callback_query: types.CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: Any,
 ):
     cluster_name = callback_data.data
 
@@ -375,6 +435,9 @@ async def handle_clusters_backup(
     cluster_servers = servers.get(cluster_name, [])
 
     for server in cluster_servers:
+        if server.get("panel_type") == "remnawave":
+            continue
+
         xui = AsyncApi(
             server["api_url"],
             username=ADMIN_USERNAME,
@@ -385,7 +448,7 @@ async def handle_clusters_backup(
 
     text = (
         f"<b>Бэкап для кластера {cluster_name} был успешно создан и отправлен администраторам!</b>\n\n"
-        f"🔔 <i>Бэкапы отправлены в боты панелей.</i>"
+        f"🔔 <i>Бэкапы отправлены в боты панелей (3x-ui).</i>"
     )
 
     await callback_query.message.edit_text(
@@ -395,7 +458,11 @@ async def handle_clusters_backup(
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "sync"), IsAdminFilter())
-async def handle_sync(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+async def handle_sync(
+    callback_query: types.CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: Any,
+):
     cluster_name = callback_data.data
 
     servers = await get_servers(session)
@@ -407,18 +474,34 @@ async def handle_sync(callback_query: types.CallbackQuery, callback_data: AdminC
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "sync-server"), IsAdminFilter())
-async def handle_sync_server(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "sync-server"), IsAdminFilter()
+)
+async def handle_sync_server(
+    callback_query: types.CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: AsyncSession,
+):
     server_name = callback_data.data
 
     try:
-        query_keys = """
-                SELECT s.*, k.tg_id, k.client_id, k.email, k.expiry_time
-                FROM servers s
-                JOIN keys k ON s.cluster_name = k.server_id
-                WHERE s.server_name = $1;
-            """
-        keys_to_sync = await session.fetch(query_keys, server_name)
+        stmt = (
+            select(
+                Server.api_url,
+                Server.inbound_id,
+                Server.server_name,
+                Server.panel_type,
+                Key.tg_id,
+                Key.client_id,
+                Key.email,
+                Key.expiry_time,
+                Key.tariff_id,
+            )
+            .join(Key, Server.cluster_name == Key.server_id)
+            .where(Server.server_name == server_name)
+        )
+        result = await session.execute(stmt)
+        keys_to_sync = result.mappings().all()
 
         if not keys_to_sync:
             await callback_query.message.edit_text(
@@ -427,15 +510,16 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
             )
             return
 
-        text = f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
-
         await callback_query.message.edit_text(
-            text=text,
+            text=f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
         )
 
         semaphore = asyncio.Semaphore(2)
         for key in keys_to_sync:
             try:
+                if key["panel_type"] == "remnawave":
+                    continue
+
                 await create_client_on_server(
                     {
                         "api_url": key["api_url"],
@@ -447,10 +531,14 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
                     key["email"],
                     key["expiry_time"],
                     semaphore,
+                    plan=key["tariff_id"],
+                    session=session,
                 )
                 await asyncio.sleep(0.6)
             except Exception as e:
-                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в сервер {server_name}: {e}")
+                logger.error(
+                    f"Ошибка при добавлении ключа {key['client_id']} в сервер {server_name}: {e}"
+                )
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для сервера {server_name}",
@@ -459,21 +547,33 @@ async def handle_sync_server(callback_query: types.CallbackQuery, callback_data:
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей для сервера {server_name}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при синхронизации: {e}", reply_markup=build_admin_back_kb("clusters")
+            text=f"❌ Произошла ошибка при синхронизации: {e}",
+            reply_markup=build_admin_back_kb("clusters"),
         )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "sync-cluster"), IsAdminFilter())
-async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data: AdminClusterCallback, session: Any):
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "sync-cluster"), IsAdminFilter()
+)
+async def handle_sync_cluster(
+    callback_query: CallbackQuery,
+    callback_data: AdminClusterCallback,
+    session: AsyncSession,
+):
     cluster_name = callback_data.data
 
     try:
-        query_keys = """
-            SELECT tg_id, client_id, email, expiry_time, remnawave_link
-            FROM keys
-            WHERE server_id = $1
-        """
-        keys_to_sync = await session.fetch(query_keys, cluster_name)
+        result = await session.execute(
+            select(
+                Key.tg_id,
+                Key.client_id,
+                Key.email,
+                Key.expiry_time,
+                Key.remnawave_link,
+                Key.tariff_id,
+            ).where(Key.server_id == cluster_name)
+        )
+        keys_to_sync = result.mappings().all()
 
         if not keys_to_sync:
             await callback_query.message.edit_text(
@@ -482,31 +582,109 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
             )
             return
 
+        servers = await get_servers(session)
+        cluster_servers = servers.get(cluster_name, [])
+        only_remnawave = all(s.get("panel_type") == "remnawave" for s in cluster_servers)
+
         await callback_query.message.edit_text(
             text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
         )
+
         for key in keys_to_sync:
             try:
-                await delete_key_from_cluster(cluster_name, key["email"], key["client_id"])
+                if only_remnawave:
+                    expire_iso = (
+                        datetime.utcfromtimestamp(key["expiry_time"] / 1000)
+                        .replace(tzinfo=timezone.utc)
+                        .isoformat()
+                    )
 
-                await session.execute(
-                    "DELETE FROM keys WHERE tg_id = $1 AND client_id = $2", key["tg_id"], key["client_id"]
-                )
+                    remna = RemnawaveAPI(cluster_servers[0]["api_url"])
+                    if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                        raise Exception("Не удалось авторизоваться в Remnawave")
 
-                await create_key_on_cluster(
-                    cluster_name,
-                    key["tg_id"],
-                    key["client_id"],
-                    key["email"],
-                    key["expiry_time"],
-                    session=session,
-                    remnawave_link=key.get("remnawave_link"),
-                )
+                    traffic_limit_bytes = 0
+                    hwid_limit = None
+                    if key["tariff_id"]:
+                        tariff = await session.get(Tariff, key["tariff_id"])
+                        if tariff:
+                            traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                            hwid_limit = tariff.device_limit
+                        else:
+                            logger.warning(
+                                f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — обновим без лимитов"
+                            )
+
+                    inbound_ids = [
+                        s["inbound_id"]
+                        for s in cluster_servers
+                        if s.get("inbound_id")
+                    ]
+
+                    success = await remna.update_user(
+                        uuid=key["client_id"],
+                        expire_at=expire_iso,
+                        telegram_id=key["tg_id"],
+                        email=f"{key['email']}@fake.local",
+                        active_user_inbounds=inbound_ids,
+                        traffic_limit_bytes=traffic_limit_bytes,
+                        hwid_device_limit=hwid_limit,
+                    )
+
+                    if not success:
+                        logger.warning(f"[Sync] ошибка обновления, пробуем пересоздать")
+
+                        await delete_key_from_cluster(
+                            cluster_name, key["email"], key["client_id"], session
+                        )
+
+                        await session.execute(
+                            delete(Key).where(
+                                Key.tg_id == key["tg_id"],
+                                Key.client_id == key["client_id"]
+                            )
+                        )
+
+                        await create_key_on_cluster(
+                            cluster_name,
+                            key["tg_id"],
+                            key["client_id"],
+                            key["email"],
+                            key["expiry_time"],
+                            plan=key["tariff_id"],
+                            session=session,
+                            remnawave_link=key["remnawave_link"],
+                        )
+
+                else:
+                    await delete_key_from_cluster(
+                        cluster_name, key["email"], key["client_id"], session
+                    )
+
+                    await session.execute(
+                        delete(Key).where(
+                            Key.tg_id == key["tg_id"],
+                            Key.client_id == key["client_id"]
+                        )
+                    )
+
+                    await create_key_on_cluster(
+                        cluster_name,
+                        key["tg_id"],
+                        key["client_id"],
+                        key["email"],
+                        key["expiry_time"],
+                        plan=key["tariff_id"],
+                        session=session,
+                        remnawave_link=key["remnawave_link"],
+                    )
 
                 await asyncio.sleep(0.5)
 
             except Exception as e:
-                logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в {cluster_name}: {e}")
+                logger.error(
+                    f"[Sync] Ошибка при обработке ключа {key['client_id']} в {cluster_name}: {e}"
+                )
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для кластера {cluster_name}",
@@ -514,7 +692,7 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
         )
 
     except Exception as e:
-        logger.error(f"Ошибка синхронизации ключей в кластере {cluster_name}: {e}")
+        logger.error(f"[Sync] Ошибка синхронизации кластера {cluster_name}: {e}")
         await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при синхронизации: {e}",
             reply_markup=build_admin_back_kb("clusters"),
@@ -522,7 +700,9 @@ async def handle_sync_cluster(callback_query: types.CallbackQuery, callback_data
 
 
 @router.callback_query(AdminServerCallback.filter(F.action == "add"), IsAdminFilter())
-async def handle_add_server(callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
+async def handle_add_server(
+    callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext
+):
     cluster_name = callback_data.data
 
     await state.update_data(cluster_name=cluster_name)
@@ -541,8 +721,14 @@ async def handle_add_server(callback_query: CallbackQuery, callback_data: AdminS
     await state.set_state(AdminClusterStates.waiting_for_server_name)
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "add_time"), IsAdminFilter())
-async def handle_add_time(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "add_time"), IsAdminFilter()
+)
+async def handle_add_time(
+    callback_query: CallbackQuery,
+    callback_data: AdminClusterCallback,
+    state: FSMContext,
+):
     cluster_name = callback_data.data
     await state.set_state(AdminClusterStates.waiting_for_days_input)
     await state.update_data(cluster_name=cluster_name)
@@ -554,7 +740,7 @@ async def handle_add_time(callback_query: CallbackQuery, callback_data: AdminClu
 
 
 @router.message(AdminClusterStates.waiting_for_days_input, IsAdminFilter())
-async def handle_days_input(message: Message, state: FSMContext, session: Any):
+async def handle_days_input(message: Message, state: FSMContext, session: AsyncSession):
     try:
         days = int(message.text.strip())
         if days <= 0:
@@ -562,47 +748,104 @@ async def handle_days_input(message: Message, state: FSMContext, session: Any):
 
         user_data = await state.get_data()
         cluster_name = user_data.get("cluster_name")
-
-        now = int(time.time() * 1000)
         add_ms = days * 86400 * 1000
-        total_gb = int((days / 30) * TOTAL_GB * 1024**3)
 
-        keys = await session.fetch(
-            "SELECT tg_id, client_id, email, expiry_time FROM keys WHERE server_id = $1",
-            cluster_name,
+        result = await session.execute(
+            select(Server.tariff_group)
+            .where(Server.cluster_name == cluster_name)
+            .where(Server.tariff_group.isnot(None))
+            .limit(1)
         )
+        row = result.first()
+        if not row or not row[0]:
+            result = await session.execute(
+                select(Server.tariff_group)
+                .where(Server.server_name == cluster_name)
+                .where(Server.tariff_group.isnot(None))
+                .limit(1)
+            )
+            row = result.first()
+            if not row or not row[0]:
+                await message.answer(
+                    "❌ Не удалось определить тарифную группу для этого кластера или сервера."
+                )
+                await state.clear()
+                return
+
+        group_code = row[0]
+
+        result = await session.execute(
+            select(Tariff)
+            .where(
+                Tariff.group_code == group_code,
+                Tariff.is_active.is_(True),
+                Tariff.duration_days >= days,
+            )
+            .order_by(Tariff.duration_days.asc())
+            .limit(1)
+        )
+        tariff = result.scalars().first()
+        if not tariff:
+            await message.answer("❌ Нет активных тарифов, подходящих по сроку.")
+            await state.clear()
+            return
+
+        total_gb = tariff.traffic_limit or 0
+
+        server_stmt = select(Server.server_name).where(
+            Server.cluster_name == cluster_name
+        )
+        server_rows = await session.execute(server_stmt)
+        server_names = [row[0] for row in server_rows.all()]
+        server_names.append(cluster_name)
+
+        result = await session.execute(
+            select(Key).where(Key.server_id.in_(server_names))
+        )
+        keys = result.scalars().all()
 
         if not keys:
-            await message.answer("❌ Нет подписок в этом кластере.")
+            await message.answer("❌ Нет подписок в этом кластере или сервере.")
             await state.clear()
             return
 
         for key in keys:
-            new_expiry = (key["expiry_time"] or now) + add_ms
+            new_expiry = key.expiry_time + add_ms
             await renew_key_in_cluster(
                 cluster_name,
-                email=key["email"],
-                client_id=key["client_id"],
+                email=key.email,
+                client_id=key.client_id,
                 new_expiry_time=new_expiry,
                 total_gb=total_gb,
+                session=session,
             )
-            await update_key_expiry(key["client_id"], new_expiry, session)
+            await update_key_expiry(session, key.client_id, new_expiry)
+
+            logger.info(
+                f"[Cluster Extend] {key.email} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}"
+            )
 
         await message.answer(
             f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
         )
+
     except ValueError:
         await message.answer("❌ Введите корректное число дней.")
-        return
     except Exception as e:
-        logger.error(f"Ошибка при добавлении дней: {e}")
+        logger.error(f"[Cluster Extend] Ошибка при добавлении дней: {e}")
         await message.answer("❌ Произошла ошибка при продлении времени.")
     finally:
         await state.clear()
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "rename"), IsAdminFilter())
-async def handle_rename_cluster(callback_query: CallbackQuery, callback_data: AdminClusterCallback, state: FSMContext):
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "rename"), IsAdminFilter()
+)
+async def handle_rename_cluster(
+    callback_query: CallbackQuery,
+    callback_data: AdminClusterCallback,
+    state: FSMContext,
+):
     cluster_name = callback_data.data
     await state.update_data(old_cluster_name=cluster_name)
 
@@ -621,7 +864,9 @@ async def handle_rename_cluster(callback_query: CallbackQuery, callback_data: Ad
 
 
 @router.message(AdminClusterStates.waiting_for_new_cluster_name, IsAdminFilter())
-async def handle_new_cluster_name_input(message: Message, state: FSMContext, session: Any):
+async def handle_new_cluster_name_input(
+    message: Message, state: FSMContext, session: AsyncSession
+):
     if not message.text:
         await message.answer(
             text="❌ Имя кластера не может быть пустым! Попробуйте снова.",
@@ -640,11 +885,14 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
     user_data = await state.get_data()
     old_cluster_name = user_data.get("old_cluster_name")
 
-    conn = await asyncpg.connect(DATABASE_URL)
     try:
-        existing_cluster = await conn.fetchval(
-            "SELECT cluster_name FROM servers WHERE cluster_name = $1 LIMIT 1", new_cluster_name
+        result = await session.execute(
+            select(Server.cluster_name)
+            .where(Server.cluster_name == new_cluster_name)
+            .limit(1)
         )
+        existing_cluster = result.scalar()
+
         if existing_cluster:
             await message.answer(
                 text=f"❌ Кластер с именем '{new_cluster_name}' уже существует. Введите другое имя.",
@@ -652,38 +900,57 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
             )
             return
 
-        keys_count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", old_cluster_name)
+        keys_count_result = await session.execute(
+            select(func.count())
+            .select_from(Key)
+            .where(Key.server_id == old_cluster_name)
+        )
+        keys_count = keys_count_result.scalar()
 
-        async with conn.transaction():
-            await conn.execute(
-                "UPDATE servers SET cluster_name = $1 WHERE cluster_name = $2", new_cluster_name, old_cluster_name
+        await session.execute(
+            update(Server)
+            .where(Server.cluster_name == old_cluster_name)
+            .values(cluster_name=new_cluster_name)
+        )
+
+        if keys_count > 0:
+            await session.execute(
+                update(Key)
+                .where(Key.server_id == old_cluster_name)
+                .values(server_id=new_cluster_name)
             )
 
-            if keys_count > 0:
-                await conn.execute(
-                    "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_cluster_name
-                )
+        await session.commit()
 
         await message.answer(
             text=f"✅ Название кластера успешно изменено с '{old_cluster_name}' на '{new_cluster_name}'!",
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
-        logger.error(f"Ошибка при смене имени кластера {old_cluster_name} на {new_cluster_name}: {e}")
+        await session.rollback()
+        logger.error(
+            f"Ошибка при смене имени кластера {old_cluster_name} на {new_cluster_name}: {e}"
+        )
         await message.answer(
             text=f"❌ Произошла ошибка при смене имени кластера: {e}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
-        await conn.close()
         await state.clear()
 
 
-@router.callback_query(AdminServerCallback.filter(F.action == "rename"), IsAdminFilter())
-async def handle_rename_server(callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
+@router.callback_query(
+    AdminServerCallback.filter(F.action == "rename"), IsAdminFilter()
+)
+async def handle_rename_server(
+    callback_query: CallbackQuery,
+    callback_data: AdminServerCallback,
+    state: FSMContext,
+    session: AsyncSession,
+):
     old_server_name = callback_data.data
 
-    servers = await get_servers()
+    servers = await get_servers(session=session)
     cluster_name = None
     for c_name, server_list in servers.items():
         for server in server_list:
@@ -717,7 +984,9 @@ async def handle_rename_server(callback_query: CallbackQuery, callback_data: Adm
 
 
 @router.message(AdminClusterStates.waiting_for_new_server_name, IsAdminFilter())
-async def handle_new_server_name_input(message: Message, state: FSMContext, session: Any):
+async def handle_new_server_name_input(
+    message: Message, state: FSMContext, session: AsyncSession
+):
     if not message.text:
         await message.answer(
             text="❌ Имя сервера не может быть пустым! Попробуйте снова.",
@@ -737,13 +1006,16 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
     old_server_name = user_data.get("old_server_name")
     cluster_name = user_data.get("cluster_name")
 
-    conn = await asyncpg.connect(DATABASE_URL)
     try:
-        existing_server = await conn.fetchval(
-            "SELECT server_name FROM servers WHERE cluster_name = $1 AND server_name = $2 LIMIT 1",
-            cluster_name,
-            new_server_name,
+        result = await session.execute(
+            select(Server)
+            .where(
+                Server.cluster_name == cluster_name,
+                Server.server_name == new_server_name,
+            )
+            .limit(1)
         )
+        existing_server = result.scalar()
         if existing_server:
             await message.answer(
                 text=f"❌ Сервер с именем '{new_server_name}' уже существует в кластере '{cluster_name}'. Введите другое имя.",
@@ -751,55 +1023,74 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
             )
             return
 
-        keys_count = await conn.fetchval("SELECT COUNT(*) FROM keys WHERE server_id = $1", old_server_name)
+        result = await session.execute(
+            select(func.count())
+            .select_from(Key)
+            .where(Key.server_id == old_server_name)
+        )
+        keys_count = result.scalar()
 
-        async with conn.transaction():
-            await conn.execute(
-                "UPDATE servers SET server_name = $1 WHERE cluster_name = $2 AND server_name = $3",
-                new_server_name,
-                cluster_name,
-                old_server_name,
+        await session.execute(
+            update(Server)
+            .where(
+                Server.cluster_name == cluster_name,
+                Server.server_name == old_server_name,
+            )
+            .values(server_name=new_server_name)
+        )
+
+        if keys_count > 0:
+            await session.execute(
+                update(Key)
+                .where(Key.server_id == old_server_name)
+                .values(server_id=new_server_name)
             )
 
-            if keys_count > 0:
-                await conn.execute(
-                    "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_server_name, old_server_name
-                )
-
-        final_text = f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!"
+        await session.commit()
 
         await message.answer(
-            text=final_text,
+            text=f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' в кластере '{cluster_name}'!",
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
-        logger.error(f"Ошибка при смене имени сервера {old_server_name} на {new_server_name}: {e}")
+        await session.rollback()
+        logger.error(
+            f"Ошибка при смене имени сервера {old_server_name} на {new_server_name}: {e}"
+        )
         await message.answer(
             text=f"❌ Произошла ошибка при смене имени сервера: {e}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
-        await conn.close()
         await state.clear()
 
 
 @router.callback_query(F.data.startswith("transfer_to_server|"))
-async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContext):
-    data = callback_query.data.split("|")
-    new_server_name = data[1]
-    old_server_name = data[2]
-
-    user_data = await state.get_data()
-    cluster_name = user_data.get("cluster_name")
-
-    conn = await asyncpg.connect(DATABASE_URL)
+async def handle_server_transfer(
+    callback_query: CallbackQuery, state: FSMContext, session: AsyncSession
+):
     try:
-        async with conn.transaction():
-            await conn.execute("UPDATE keys SET server_id = $1 WHERE server_id = $2", new_server_name, old_server_name)
+        data = callback_query.data.split("|")
+        new_server_name = data[1]
+        old_server_name = data[2]
 
-            await conn.execute(
-                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, old_server_name
+        user_data = await state.get_data()
+        cluster_name = user_data.get("cluster_name")
+
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_server_name)
+            .values(server_id=new_server_name)
+        )
+
+        await session.execute(
+            delete(Server).where(
+                Server.cluster_name == cluster_name,
+                Server.server_name == old_server_name,
             )
+        )
+
+        await session.commit()
 
         base_text = f"✅ Ключи успешно перенесены на сервер '{new_server_name}', сервер '{old_server_name}' удален!"
         sync_reminder = '\n\n⚠️ Не забудьте сделать "Синхронизацию".'
@@ -810,48 +1101,128 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
+        await session.rollback()
         logger.error(f"Ошибка при переносе ключей на сервер {new_server_name}: {e}")
         await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при переносе ключей: {e}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
-        await conn.close()
         await state.clear()
 
 
 @router.callback_query(F.data.startswith("transfer_to_cluster|"))
-async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMContext):
-    data = callback_query.data.split("|")
-    new_cluster_name = data[1]
-    old_cluster_name = data[2]
-    old_server_name = data[3]
-
-    user_data = await state.get_data()
-    cluster_name = user_data.get("cluster_name")
-
-    conn = await asyncpg.connect(DATABASE_URL)
+async def handle_cluster_transfer(
+    callback_query: CallbackQuery, state: FSMContext, session: AsyncSession
+):
     try:
-        async with conn.transaction():
-            await conn.execute("UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_server_name)
-            await conn.execute(
-                "UPDATE keys SET server_id = $1 WHERE server_id = $2", new_cluster_name, old_cluster_name
-            )
+        data = callback_query.data.split("|")
+        new_cluster_name = data[1]
+        old_cluster_name = data[2]
+        old_server_name = data[3]
 
-            await conn.execute(
-                "DELETE FROM servers WHERE cluster_name = $1 AND server_name = $2", cluster_name, old_server_name
+        user_data = await state.get_data()
+        cluster_name = user_data.get("cluster_name")
+
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_server_name)
+            .values(server_id=new_cluster_name)
+        )
+        await session.execute(
+            update(Key)
+            .where(Key.server_id == old_cluster_name)
+            .values(server_id=new_cluster_name)
+        )
+
+        await session.execute(
+            delete(Server).where(
+                Server.cluster_name == cluster_name,
+                Server.server_name == old_server_name,
             )
+        )
+
+        await session.commit()
 
         await callback_query.message.edit_text(
-            text=f"✅ Ключи успешно перенесены в кластер '{new_cluster_name}', сервер '{old_server_name}' и кластер '{old_cluster_name}' удалены!\n\n⚠️ Не забудьте сделать \"Синхронизацию\".",
+            text=(
+                f"✅ Ключи успешно перенесены в кластер '<b>{new_cluster_name}</b>', "
+                f"сервер '<b>{old_server_name}</b>' и кластер '<b>{old_cluster_name}</b>' удалены!\n\n"
+                f'⚠️ Не забудьте сделать "Синхронизацию".'
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
+        await session.rollback()
         logger.error(f"Ошибка при переносе ключей в кластер {new_cluster_name}: {e}")
         await callback_query.message.edit_text(
             text=f"❌ Произошла ошибка при переносе ключей: {e}",
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
-        await conn.close()
         await state.clear()
+
+
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "set_tariff"), IsAdminFilter()
+)
+async def show_tariff_group_selection(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session
+):
+    cluster_name = callback_data.data
+    result = await session.execute(
+        select(Tariff.id, Tariff.group_code)
+        .where(Tariff.group_code.isnot(None))
+        .distinct(Tariff.group_code)
+    )
+    rows = result.mappings().all()
+    groups = [(r["id"], r["group_code"]) for r in rows]
+
+    if not groups:
+        await callback.message.edit_text("❌ Нет доступных тарифных групп.")
+        return
+
+    await callback.message.edit_text(
+        f"<b>💸 Выберите тарифную группу для кластера <code>{cluster_name}</code>:</b>",
+        reply_markup=build_tariff_group_selection_kb(cluster_name, groups),
+    )
+
+
+@router.callback_query(
+    AdminClusterCallback.filter(F.action == "apply_tariff_group"), IsAdminFilter()
+)
+async def apply_tariff_group(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session
+):
+    try:
+        cluster_name, group_id = callback_data.data.split("|", 1)
+        group_id = int(group_id)
+
+        result = await session.execute(
+            select(Tariff.group_code).where(Tariff.id == group_id)
+        )
+        row = result.mappings().first()
+
+        if not row:
+            await callback.message.edit_text("❌ Тарифная группа не найдена.")
+            return
+
+        group_code = row["group_code"]
+
+        await session.execute(
+            update(Server)
+            .where(Server.cluster_name == cluster_name)
+            .values(tariff_group=group_code)
+        )
+        await session.commit()
+
+        await callback.message.edit_text(
+            f"✅ Для кластера <code>{cluster_name}</code> установлена тарифная группа: <b>{group_code}</b>",
+            reply_markup=build_cluster_management_kb(cluster_name),
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при применении тарифной группы: {e}")
+        await callback.message.edit_text(
+            "❌ Произошла ошибка при установке тарифной группы."
+        )

@@ -10,14 +10,15 @@ CANCEL = "❌ Отмена"
 
 # Профиль
 
-ADD_SUB = "➕ Подписка"
+ADD_SUB = "➕ Добавить новую подписку"
 MY_SUBS = "📱 Мои подписки"
-BALANCE = "💰 Баланс"
+BALANCE = "💵 Баланс"
 INVITE = "👥 Пригласить"
 GIFTS = "🎁 Подарить"
 INSTRUCTIONS = "📘 Инструкции"
 TOP_FIVE = "🏆 Топ-5"
 TRIAL_SUB = "🎁 Пробная подписка"
+MY_SUB = "🔐 Моя подписка"
 
 # Меню Оплат и баланса
 
@@ -30,7 +31,12 @@ YOOMONEY = "💳 ЮМани: перевод по карте"
 CRYPTOBOT = "💰 CryptoBot: криптовалюта"
 STARS = "⭐ Оплата Звездами"
 ROBOKASSA = "⭐ RoboKassa"
+DISCOUNT_TARIFF = "🔥 Получить скидку"
+MAX_DISCOUNT_TARIFF = "⚡ Получить максимальную скидку"
 
+# Кнопки подписки на канал
+SUB_CHANELL = "📢 Подписаться"
+SUB_CHANELL_DONE = "✅ Я подписался"
 
 # Подарки
 
@@ -73,6 +79,7 @@ MANUAL_INSTRUCTIONS = "📖 Ручная установка"
 RENEW_KEY = "🔄 Продлить подписку"
 TV_CONTINUE = "▶ Продолжить"
 TV_INSTRUCTIONS = "📖 Полная инструкция"
+HWID_BUTTON = "♻️ Сбросить привязку"
 
 
 # Кнопки касс

@@ -15,7 +15,6 @@ from .profile import router as profile_router
 from .refferal import router as refferal_router
 from .start import router as start_router
 
-
 router = Router(name="handlers_main_router")
 
 router.include_routers(

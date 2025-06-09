@@ -1,9 +1,4 @@
-import html
-
-from datetime import datetime
 from typing import Any
-
-import pytz
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -19,19 +14,19 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import INLINE_MODE, USERNAME_BOT
-from database import (
-    create_coupon,
-    delete_coupon,
-    get_all_coupons,
-)
+from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 from handlers.utils import format_days
 from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
-from .keyboard import AdminCouponDeleteCallback, build_coupons_kb, build_coupons_list_kb, format_coupons_list
-
+from .keyboard import (
+    AdminCouponDeleteCallback,
+    build_coupons_kb,
+    build_coupons_list_kb,
+    format_coupons_list,
+)
 
 router = Router()
 
@@ -47,7 +42,9 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
+    await callback_query.message.edit_text(
+        text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb()
+    )
 
 
 @router.callback_query(
@@ -67,7 +64,9 @@ async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext
 
 
 @router.callback_query(F.data == "coupon_type_balance")
-async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
+async def handle_balance_coupon_selection(
+    callback_query: CallbackQuery, state: FSMContext
+):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
@@ -81,7 +80,9 @@ async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: 
 
 
 @router.callback_query(F.data == "coupon_type_days")
-async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
+async def handle_days_coupon_selection(
+    callback_query: CallbackQuery, state: FSMContext
+):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
@@ -95,7 +96,9 @@ async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSM
 
 
 @router.message(AdminCouponsState.waiting_for_balance_data, IsAdminFilter())
-async def handle_balance_coupon_input(message: Message, state: FSMContext, session: Any):
+async def handle_balance_coupon_input(
+    message: Message, state: FSMContext, session: Any
+):
     text = message.text.strip()
     parts = text.split()
 
@@ -123,7 +126,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         return
 
     try:
-        await create_coupon(coupon_code, coupon_amount, usage_limit, session, days=None)
+        await create_coupon(session, coupon_code, coupon_amount, usage_limit, days=None)
 
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
         text = (
@@ -144,7 +147,9 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
 
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
+        await message.answer(
+            "❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup()
+        )
 
 
 @router.message(AdminCouponsState.waiting_for_days_data, IsAdminFilter())
@@ -176,7 +181,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         return
 
     try:
-        await create_coupon(coupon_code, 0, usage_limit, session, days=days)
+        await create_coupon(session, coupon_code, 0, usage_limit, days=days)
 
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
         text = (
@@ -197,7 +202,9 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
 
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
+        await message.answer(
+            "❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup()
+        )
 
 
 @router.callback_query(
@@ -211,43 +218,66 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
         await update_coupons_list(callback_query.message, session, page)
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
-        await callback_query.message.edit_text("Произошла ошибка при получении списка купонов.")
+        await callback_query.message.edit_text(
+            "Произошла ошибка при получении списка купонов."
+        )
 
 
-@router.callback_query(AdminCouponDeleteCallback.filter(F.confirm.is_(None)), IsAdminFilter())
-async def handle_coupon_delete(callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any):
+@router.callback_query(
+    AdminCouponDeleteCallback.filter(F.confirm.is_(None)), IsAdminFilter()
+)
+async def handle_coupon_delete(
+    callback_query: CallbackQuery,
+    callback_data: AdminCouponDeleteCallback,
+    session: Any,
+):
     coupon_code = callback_data.coupon_code
     kb = InlineKeyboardBuilder()
     kb.button(
-        text="✅ Да, удалить", callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=True).pack()
+        text="✅ Да, удалить",
+        callback_data=AdminCouponDeleteCallback(
+            coupon_code=coupon_code, confirm=True
+        ).pack(),
     )
     kb.button(
-        text="❌ Нет, отменить", callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=False).pack()
+        text="❌ Нет, отменить",
+        callback_data=AdminCouponDeleteCallback(
+            coupon_code=coupon_code, confirm=False
+        ).pack(),
     )
     kb.adjust(1)
 
     await callback_query.message.edit_text(
-        f"Вы уверены, что хотите удалить купон <b>{coupon_code}</b>?", reply_markup=kb.as_markup()
+        f"Вы уверены, что хотите удалить купон <b>{coupon_code}</b>?",
+        reply_markup=kb.as_markup(),
     )
 
 
-@router.callback_query(AdminCouponDeleteCallback.filter(F.confirm.is_not(None)), IsAdminFilter())
-async def confirm_coupon_delete(callback_query: CallbackQuery, callback_data: AdminCouponDeleteCallback, session: Any):
+@router.callback_query(
+    AdminCouponDeleteCallback.filter(F.confirm.is_not(None)), IsAdminFilter()
+)
+async def confirm_coupon_delete(
+    callback_query: CallbackQuery,
+    callback_data: AdminCouponDeleteCallback,
+    session: Any,
+):
     coupon_code = callback_data.coupon_code
     confirm = callback_data.confirm
 
     if confirm:
         try:
-            result = await delete_coupon(coupon_code, session)
+            result = await delete_coupon(session, coupon_code)
             if not result:
                 await callback_query.message.edit_text(
-                    f"❌ Купон с кодом {coupon_code} не найден.", reply_markup=build_admin_back_kb("coupons")
+                    f"❌ Купон с кодом {coupon_code} не найден.",
+                    reply_markup=build_admin_back_kb("coupons"),
                 )
                 return
         except Exception as e:
             logger.error(f"Ошибка при удалении купона: {e}")
             await callback_query.message.edit_text(
-                "Произошла ошибка при удалении купона.", reply_markup=build_admin_back_kb("coupons")
+                "Произошла ошибка при удалении купона.",
+                reply_markup=build_admin_back_kb("coupons"),
             )
             return
 
@@ -310,7 +340,9 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         id=coupon_code,
         title=title,
         description=description,
-        input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
+        input_message_content=InputTextMessageContent(
+            message_text=message_text, parse_mode=ParseMode.HTML
+        ),
         reply_markup=builder.as_markup(),
     )
 

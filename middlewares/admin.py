@@ -14,7 +14,9 @@ class AdminMiddleware(BaseMiddleware):
     является ли пользователь администратором.
     """
 
-    _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
+    _admin_ids: set[int] = (
+        set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
+    )
 
     async def __call__(
         self,
@@ -22,28 +24,12 @@ class AdminMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        """Обрабатывает событие и добавляет флаг администратора в data.
-
-        Args:
-            handler: Обработчик события
-            event: Событие Telegram
-            data: Словарь с данными события
-
-        Returns:
-            Результат выполнения обработчика
-        """
+        """Обрабатывает событие и добавляет флаг администратора в data."""
         data["admin"] = self._check_admin_access(event)
         return await handler(event, data)
 
     def _check_admin_access(self, event: TelegramObject) -> bool:
-        """Проверяет, имеет ли пользователь права администратора.
-
-        Args:
-            event: Событие Telegram
-
-        Returns:
-            True, если пользователь администратор, иначе False
-        """
+        """Проверяет, имеет ли пользователь права администратора."""
         try:
             if isinstance(event, Message):
                 return event.from_user and event.from_user.id in self._admin_ids

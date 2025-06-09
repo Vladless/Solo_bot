@@ -3,7 +3,6 @@ from aiogram.types import CallbackQuery, Message
 
 from config import ADMIN_ID
 
-
 maintenance_mode = False
 
 
@@ -17,7 +16,9 @@ class MaintenanceModeMiddleware(BaseMiddleware):
                 user_id = event.from_user.id
 
             if user_id and user_id not in ADMIN_ID:
-                await event.answer("⚙️ Бот временно недоступен. Ведутся технические работы.")
+                await event.answer(
+                    "⚙️ Бот временно недоступен. Ведутся технические работы."
+                )
                 return
 
         return await handler(event, data)

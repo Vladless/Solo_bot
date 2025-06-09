@@ -1,5 +1,9 @@
+import asyncio
+import os
 import subprocess
+import sys
 
+import psutil
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
@@ -7,36 +11,38 @@ from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb, build_restart_kb
 
-
 router = Router()
 
 
 @router.callback_query(
-    AdminPanelCallback.filter(F.action == "restart"),
-    IsAdminFilter(),
+    AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter()
 )
-async def handle_restart(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="🤔 Вы уверены, что хотите перезагрузить бота?",
-        reply_markup=build_restart_kb(),
-    )
-
-
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "restart_confirm"),
-    IsAdminFilter(),
-)
-async def handle_restart_confirm(callback_query: CallbackQuery):
+async def handle_restart_confirm(
+    callback_query: CallbackQuery, callback_data: AdminPanelCallback
+):
     kb = build_admin_back_kb()
+    await callback_query.message.edit_text("🔄 Перезапускаем бота...", reply_markup=kb)
+
+    asyncio.create_task(restart_bot())
+
+
+async def restart_bot():
+    await asyncio.sleep(1)
+
     try:
-        subprocess.run(
-            ["sudo", "systemctl", "restart", "bot.service"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
-    except subprocess.CalledProcessError:
-        await callback_query.message.edit_text(text="🔄 Бот успешно перезагружен!", reply_markup=kb)
+        parent = psutil.Process(os.getpid()).parent()
+        is_systemd = parent and "systemd" in parent.name().lower()
+
+        if is_systemd:
+            subprocess.run(
+                ["sudo", "systemctl", "restart", "bot.service"],
+                check=True,
+            )
+        else:
+            python_exe = sys.executable
+            script_path = os.path.abspath(sys.argv[0])
+            os.execv(python_exe, [python_exe, script_path] + sys.argv[1:])
+
     except Exception as e:
-        await callback_query.message.edit_text(text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}", reply_markup=kb)
+        print(f"[Restart] Ошибка при перезапуске: {e}")
+        os._exit(1)

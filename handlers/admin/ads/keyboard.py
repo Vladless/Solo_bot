@@ -12,14 +12,20 @@ class AdminAdsCallback(CallbackData, prefix="admin_ads"):
 
 def build_ads_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="➕ Новая ссылка", callback_data=AdminAdsCallback(action="create").pack())
-    builder.button(text="📊 Список", callback_data=AdminAdsCallback(action="list").pack())
+    builder.button(
+        text="➕ Новая ссылка", callback_data=AdminAdsCallback(action="create").pack()
+    )
+    builder.button(
+        text="📊 Список", callback_data=AdminAdsCallback(action="list").pack()
+    )
     builder.row(build_admin_back_btn())
     builder.adjust(1)
     return builder.as_markup()
 
 
-def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
+def build_ads_list_kb(
+    ads: list, current_page: int, total_pages: int
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for ad in ads:
@@ -33,14 +39,18 @@ def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineK
         pagination_buttons.append(
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data=AdminAdsCallback(action="list", code=f"{current_page - 1}").pack(),
+                callback_data=AdminAdsCallback(
+                    action="list", code=f"{current_page - 1}"
+                ).pack(),
             )
         )
     if current_page < total_pages:
         pagination_buttons.append(
             InlineKeyboardButton(
                 text="Вперед ➡️",
-                callback_data=AdminAdsCallback(action="list", code=f"{current_page + 1}").pack(),
+                callback_data=AdminAdsCallback(
+                    action="list", code=f"{current_page + 1}"
+                ).pack(),
             )
         )
     if pagination_buttons:
@@ -52,7 +62,10 @@ def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineK
 
 def build_ads_stats_kb(code: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="🗑️ Удалить", callback_data=AdminAdsCallback(action="delete_confirm", code=code).pack())
+    builder.button(
+        text="🗑️ Удалить",
+        callback_data=AdminAdsCallback(action="delete_confirm", code=code).pack(),
+    )
     builder.row(build_admin_back_btn("ads"))
     return builder.as_markup()
 
@@ -66,12 +79,18 @@ def build_ads_delete_confirm_kb(code: str) -> InlineKeyboardMarkup:
             code=code,
         ).pack(),
     )
-    builder.button(text="❌ Отмена", callback_data=AdminAdsCallback(action="view", code=code).pack())
+    builder.button(
+        text="❌ Отмена",
+        callback_data=AdminAdsCallback(action="view", code=code).pack(),
+    )
     builder.adjust(1)
     return builder.as_markup()
 
 
 def build_cancel_input_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="❌ Отмена", callback_data=AdminAdsCallback(action="cancel_input", code="none").pack())
+    builder.button(
+        text="❌ Отмена",
+        callback_data=AdminAdsCallback(action="cancel_input", code="none").pack(),
+    )
     return builder.as_markup()

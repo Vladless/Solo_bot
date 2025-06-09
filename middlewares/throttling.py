@@ -16,7 +16,10 @@ class ThrottlingMiddleware(BaseMiddleware):
         current_count = self.cache.get(user_id, 0)
 
         if current_count >= 3:
-            if isinstance(event, CallbackQuery) and user_id not in self.throttle_notice_cache:
+            if (
+                isinstance(event, CallbackQuery)
+                and user_id not in self.throttle_notice_cache
+            ):
                 self.throttle_notice_cache[user_id] = None
                 bot: Bot = data["bot"]
                 await bot.answer_callback_query(

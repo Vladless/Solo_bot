@@ -1,6 +1,6 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from handlers.buttons import MAIN_MENU, RENEW_KEY
+from handlers.buttons import DISCOUNT_TARIFF, MAIN_MENU, MAX_DISCOUNT_TARIFF, RENEW_KEY
 
 
 def build_notification_kb(email: str) -> InlineKeyboardMarkup:
@@ -27,3 +27,34 @@ def build_notification_expired_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=MAIN_MENU, callback_data="profile")
     return builder.as_markup()
+
+
+def build_hot_lead_kb(final: bool = False) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=DISCOUNT_TARIFF if not final else MAX_DISCOUNT_TARIFF,
+                    callback_data=(
+                        "hot_lead_discount" if not final else "hot_lead_final_discount"
+                    ),
+                )
+            ]
+        ]
+    )
+
+
+def build_tariffs_keyboard(
+    tariffs: list[dict], prefix: str = "tariff"
+) -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=f"{t['name']} — {t['price_rub']}₽",
+                callback_data=f"{prefix}|{t['id']}",
+            )
+        ]
+        for t in tariffs
+    ]
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

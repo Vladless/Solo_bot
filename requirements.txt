@@ -46,3 +46,7 @@ httpx
 qrcode
 pillow
 rich
+apscheduler
+alembic
+psycopg2-binary
+psutil

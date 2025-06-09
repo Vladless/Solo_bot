@@ -1,21 +1,12 @@
 import time
-
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 import py3xui
-
 from py3xui import AsyncApi
 
-from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
-    LIMIT_IP,
-    SUPERNODE,
-    USE_XUI_TOKEN,
-    XUI_TOKEN,
-)
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
 from logger import logger
 
 
@@ -71,7 +62,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
         client = py3xui.Client(
             id=config.client_id,
             email=config.email.lower(),
-            limit_ip=config.limit_ip,
+            limit_ip=config.limit_ip if config.limit_ip is not None else 0,
             total_gb=config.total_gb,
             expiry_time=config.expiry_time,
             enable=config.enable,
@@ -91,7 +82,9 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
     except Exception as e:
         error_message = str(e)
         if "Duplicate email" in error_message:
-            logger.warning(f"Дублированный email: {config.email}. Пропуск. Сообщение: {error_message}")
+            logger.warning(
+                f"Дублированный email: {config.email}. Пропуск. Сообщение: {error_message}"
+            )
             return {"status": "duplicate", "email": config.email}
 
         logger.error(f"Ошибка при добавлении клиента {config.email}: {error_message}")
@@ -107,6 +100,7 @@ async def extend_client_key(
     total_gb: int,
     sub_id: str,
     tg_id: int,
+    limit_ip: int = 0,
 ) -> bool | None:
     try:
         client = await xui.client.get_by_email(email)
@@ -114,7 +108,9 @@ async def extend_client_key(
             logger.warning(f"Клиент с email {email} не найден или не имеет ID.")
             return None
 
-        logger.info(f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}")
+        logger.info(
+            f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}"
+        )
 
         client.id = client_id
         client.expiry_time = new_expiry_time
@@ -122,7 +118,7 @@ async def extend_client_key(
         client.sub_id = sub_id
         client.total_gb = total_gb
         client.enable = True
-        client.limit_ip = LIMIT_IP
+        client.limit_ip = limit_ip
         client.inbound_id = inbound_id
         client.tg_id = tg_id
 
@@ -148,15 +144,6 @@ async def delete_client(
 ) -> bool:
     """
     Удаляет клиента с сервера 3x-ui.
-
-    Args:
-        xui: Экземпляр API клиента
-        inbound_id: ID входящего соединения
-        email: Email клиента
-        client_id: ID клиента
-
-    Returns:
-        bool: True если удаление успешно, False в противном случае
     """
     try:
         if SUPERNODE:
@@ -202,7 +189,13 @@ async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, 
         return {"status": "error", "error": str(e)}
 
 
-async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, client_id: str, enable: bool = True) -> bool:
+async def toggle_client(
+    xui: py3xui.AsyncApi,
+    inbound_id: int,
+    email: str,
+    client_id: str,
+    enable: bool = True,
+) -> bool:
     try:
         client = await xui.client.get_by_email(email)
         if not client:
@@ -213,7 +206,7 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
         client.enable = enable
         client.id = client_id
         client.flow = "xtls-rprx-vision"
-        client.limit_ip = LIMIT_IP
+        client.limit_ip = 0
         client.inbound_id = inbound_id
 
         await xui.client.update(client.id, client)
@@ -223,10 +216,14 @@ async def toggle_client(xui: py3xui.AsyncApi, inbound_id: int, email: str, clien
 
     except httpx.ConnectTimeout as e:
         status = "включении" if enable else "отключении"
-        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
+        logger.error(
+            f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}"
+        )
         return False
 
     except Exception as e:
         status = "включении" if enable else "отключении"
-        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
+        logger.error(
+            f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}"
+        )
         return False

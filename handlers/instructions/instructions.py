@@ -1,13 +1,8 @@
 import os
-
 from typing import Any
 
 from aiogram import F, Router
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    Message,
-)
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
@@ -34,14 +29,13 @@ from handlers.buttons import (
 from handlers.texts import (
     CHOOSE_DEVICE_TEXT,
     CONNECT_TV_TEXT,
-    INSTRUCTIONS,
     INSTRUCTION_MACOS,
     INSTRUCTION_PC,
+    INSTRUCTIONS,
     KEY_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
-
 
 router = Router()
 
@@ -72,7 +66,7 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
 @router.callback_query(F.data.startswith("connect_pc|"))
 async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(key_name, session)
+    record = await get_key_details(session, key_name)
     if not record:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -85,8 +79,12 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}"))
-    builder.row(InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}")
+    )
+    builder.row(
+        InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}")
+    )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
     await edit_or_send_message(
@@ -100,14 +98,16 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("windows_menu|"))
 async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(key_name, session)
+    record = await get_key_details(session, key_name)
     key = record["key"]
     key_message_text = KEY_MESSAGE.format(key)
     instruction_message = f"{key_message_text}{INSTRUCTION_PC}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
-    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}"))
+    builder.row(
+        InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}")
+    )
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -122,14 +122,16 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("macos_menu|"))
 async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(key_name, session)
+    record = await get_key_details(session, key_name)
     key = record["key"]
     key_message_text = KEY_MESSAGE.format(key)
     instruction_message = f"{key_message_text}{INSTRUCTION_MACOS}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
-    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}"))
+    builder.row(
+        InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}")
+    )
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -142,11 +144,13 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
 
 @router.callback_query(F.data.startswith("connect_tv|"))
-async def process_connect_tv(callback_query: CallbackQuery):
+async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
+    builder.row(
+        InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}")
+    )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -162,13 +166,11 @@ async def process_connect_tv(callback_query: CallbackQuery):
 @router.callback_query(F.data.startswith("continue_tv|"))
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-
-    record = await get_key_details(key_name, session)
-    subscription_link = record["key"]
+    record = await get_key_details(session, key_name)
+    subscription_link = record.get("key") or record.get("remnawave_link")
     message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=TV_INSTRUCTIONS, url="https://vpn4tv.com/quick-guide.html"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
