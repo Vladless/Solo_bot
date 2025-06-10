@@ -101,6 +101,7 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
     preserved_paths = {
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
+        os.path.join(PROJECT_DIR, ".git"),
     }
 
     if not update_buttons:
@@ -205,9 +206,7 @@ def update_from_beta():
             f"[cyan]🔢 Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]"
         )
         if local_version == remote_version:
-            if not Confirm.ask(
-                "[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"
-            ):
+            if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
     else:
         console.print("[red]⚠️ Не удалось определить версии.[/red]")
@@ -243,6 +242,10 @@ def update_from_beta():
         exclude_options += "--exclude=handlers/buttons.py "
 
     subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+
+    if os.path.exists(os.path.join(TEMP_DIR, ".git")):
+        subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
+
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
     fix_permissions()
@@ -314,6 +317,10 @@ def update_from_release():
             exclude_options += "--exclude=handlers/buttons.py "
 
         subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+
+        if os.path.exists(os.path.join(TEMP_DIR, ".git")):
+            subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
+
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
         fix_permissions()
@@ -351,7 +358,7 @@ def show_update_menu():
 
 def show_menu():
     table = Table(
-        title="Solobot CLI v0.1.8", title_style="bold magenta", header_style="bold blue"
+        title="Solobot CLI v0.1.9", title_style="bold magenta", header_style="bold blue"
     )
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")

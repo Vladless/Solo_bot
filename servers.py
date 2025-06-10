@@ -1,6 +1,7 @@
 import asyncio
 import re
 from datetime import datetime, timedelta
+import ssl
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -32,14 +33,29 @@ async def ping_server(server_ip: str) -> bool:
 
 
 async def check_tcp_connection(host: str, port: int) -> bool:
-    """Проверяет доступность сервера через TCP (порт 443)."""
+    """Проверяет доступность сервера через TCP с попыткой SSL-соединения."""
     try:
-        _reader, writer = await asyncio.open_connection(host, port)
+        ssl_context = ssl.create_default_context()
+        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context)
         writer.close()
         await writer.wait_closed()
         return True
+    except ssl.SSLError as e:
+        logger.warning(f"[SSL Error] Сертификат сервера {host} вызвал ошибку: {e}")
+        await notify_ssl_error(host, str(e))
+        return False
     except Exception:
         return False
+
+
+async def notify_ssl_error(server_host: str, error_text: str):
+    message = (
+        f"⚠️ <b>Ошибка SSL на сервере</b> <code>{server_host}</code>\n\n"
+        f"<b>Описание:</b> {error_text}\n"
+        "Проверьте корректность сертификата или конфигурации HTTPS."
+    )
+    for admin_id in ADMIN_ID:
+        await bot.send_message(admin_id, message)
 
 
 async def notify_admin(server_name: str, status: str, down_duration: timedelta = None):
