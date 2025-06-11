@@ -15,6 +15,7 @@ from .servers import router as servers_router
 from .stats import router as stats_router
 from .tariffs import router as tariffs_router
 from .users import router as users_router
+from .gifts import router as gifts_router
 
 router = Router(name="admins_main_router")
 
@@ -32,4 +33,5 @@ router.include_routers(
     bans_router,
     ads_router,
     tariffs_router,
+    gifts_router
 )

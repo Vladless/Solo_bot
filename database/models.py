@@ -152,7 +152,17 @@ class Gift(DictLikeMixin, Base):
     gift_link = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_used = Column(Boolean, default=False)
+    is_unlimited = Column(Boolean, default=False)
+    max_usages = Column(Integer, nullable=True)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
+
+
+class GiftUsage(DictLikeMixin, Base):
+    __tablename__ = "gift_usages"
+
+    gift_id = Column(String, ForeignKey("gifts.gift_id"), primary_key=True)
+    tg_id = Column(BigInteger, primary_key=True)
+    used_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ManualBan(DictLikeMixin, Base):

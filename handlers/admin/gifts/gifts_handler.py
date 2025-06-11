@@ -1,0 +1,207 @@
+from aiogram import F, Router, types, Bot
+from aiogram.types import CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete, func
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from ..panel.keyboard import AdminPanelCallback
+from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
+from database.models import Tariff, Gift, GiftUsage
+from handlers.payments.gift import finalize_gift
+
+router = Router()
+
+class GiftCreationState(StatesGroup):
+    waiting_for_gift_limit = State()
+    waiting_for_limit_input_or_unlimited = State()
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "gifts"))
+async def admin_gift_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        text="🎁 <b>Подарки</b>\nВыберите, что хотите сделать:",
+        reply_markup=build_admin_gifts_kb()
+    )
+
+@router.callback_query(F.data == "admin_gift_create")
+async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession):
+    result = await session.execute(
+        select(Tariff)
+        .where(Tariff.group_code == "gifts", Tariff.is_active == True)
+        .order_by(Tariff.id)
+    )
+    tariffs = result.scalars().all()
+
+    if not tariffs:
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+        await callback.message.edit_text("❌ Нет активных тарифов в группе 'gifts'.", reply_markup=builder.as_markup())
+        return
+
+    kb = InlineKeyboardBuilder()
+    for t in tariffs:
+        kb.button(text=f"{t.name} – {t.duration_days // 30} мес", callback_data=f"admin_gift_select|{t.id}")
+    kb.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()
+))
+
+    await callback.message.edit_text(
+        "🎁 Выберите тариф для подарка:",
+        reply_markup=kb.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("admin_gift_select|"))
+async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
+    tariff_id = int(callback.data.split("|")[1])
+    await state.update_data(tariff_id=tariff_id)
+    await state.set_state(GiftCreationState.waiting_for_limit_input_or_unlimited)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔙 Назад", callback_data="admin_gift_create")
+    await callback.message.edit_text(
+        "🔢 Введите максимальное количество активаций подарка:",
+        reply_markup=kb.as_markup()
+    )
+
+
+@router.callback_query(F.data == "gift_limit_unlimited")
+async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    session: AsyncSession = callback.bot["session"]
+    await state.clear()
+    await finalize_gift(callback.message, session, bot, data, is_unlimited=True)
+
+@router.message(GiftCreationState.waiting_for_limit_input_or_unlimited)
+async def handle_limited_gift_input(message: types.Message, session: AsyncSession, state: FSMContext, bot: Bot):
+    try:
+        max_usages = int(message.text.strip())
+        if max_usages <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введите корректное положительное число.")
+        return
+
+    data = await state.get_data()
+    data["max_usages"] = max_usages
+    await state.clear()
+    await finalize_gift(message, session, bot, data, is_unlimited=False)
+
+@router.callback_query(F.data == "admin_gifts_all")
+async def show_gifts_page(callback: CallbackQuery, session: AsyncSession):
+    await show_gift_list(callback, session, page=1)
+
+@router.callback_query(F.data.startswith("gifts_page|"))
+async def paginate_gifts(callback: CallbackQuery, session: AsyncSession):
+    page = int(callback.data.split("|")[1])
+    await show_gift_list(callback, session, page)
+
+
+async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: int):
+    limit = 10
+    offset = (page - 1) * limit
+
+    stmt = select(Gift).order_by(Gift.created_at.desc()).offset(offset).limit(limit)
+    result = await session.execute(stmt)
+    gifts = result.scalars().all()
+
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+
+    if not gifts:
+        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+        await callback.message.edit_text(
+            "❌ Подарки не найдены.",
+            reply_markup=builder.as_markup()
+        )
+        return
+
+    keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
+
+    builder.inline_keyboard.extend(keyboard.inline_keyboard)
+    builder.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
+
+    await callback.message.edit_text(
+        f"🎁 <b>Список подарков</b>\nСтраница {page}:",
+        reply_markup=builder.as_markup()
+    )
+
+
+async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: int):
+    limit = 10
+    offset = (page - 1) * limit
+
+    stmt = select(Gift).order_by(Gift.created_at.desc()).offset(offset).limit(limit)
+    result = await session.execute(stmt)
+    gifts = result.scalars().all()
+
+    builder = InlineKeyboardBuilder()
+
+    if not gifts:
+        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+        await callback.message.edit_text(
+            "❌ Подарки не найдены.",
+            reply_markup=builder.as_markup()
+        )
+        return
+
+    keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
+
+    for row in keyboard.inline_keyboard:
+        builder.row(*row)
+
+    await callback.message.edit_text(
+        f"🎁 <b>Список подарков</b>\nСтраница {page}:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("gift_view|"))
+async def view_gift(callback: CallbackQuery, session: AsyncSession):
+    gift_id = callback.data.split("|")[1]
+
+    result = await session.execute(select(Gift).where(Gift.gift_id == gift_id))
+    gift = result.scalar_one_or_none()
+
+    if not gift:
+        await callback.message.edit_text("❌ Подарок не найден.")
+        return
+
+    usage_result = await session.execute(
+        select(func.count()).select_from(GiftUsage).where(GiftUsage.gift_id == gift_id)
+    )
+    used_count = usage_result.scalar_one()
+
+    usage_text = f"{used_count}/{gift.max_usages}" if gift.max_usages else "∞"
+
+    text = (
+        f"🎁 <b>Подарок</b>\n"
+        f"ID: <code>{gift.gift_id}</code>\n"
+        f"Месяцев: <b>{gift.selected_months}</b>\n"
+        f"Активаций: <b>{usage_text}</b>\n"
+        f"Срок действия: <i>{gift.expiry_time.strftime('%d.%m.%Y')}</i>\n"
+        f"<b>Ссылка для активации:</b>\n<blockquote>{gift.gift_link}</blockquote>"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🗑 Удалить", callback_data=f"gift_delete|{gift_id}")
+    builder.button(text="🔙 Назад", callback_data="admin_gifts_all")
+
+    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("gift_delete|"))
+async def delete_gift(callback: CallbackQuery, session: AsyncSession):
+    gift_id = callback.data.split("|")[1]
+
+    await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
+    await session.execute(delete(Gift).where(Gift.gift_id == gift_id))
+    await session.commit()
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🔙 Назад к списку", callback_data="admin_gifts_all")
+
+    await callback.message.edit_text(
+        "✅ Подарок удалён.",
+        reply_markup=builder.as_markup()
+    )

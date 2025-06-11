@@ -16,6 +16,8 @@ async def store_gift_link(
     expiry_time: datetime,
     gift_link: str,
     tariff_id: int | None = None,
+    is_unlimited: bool = False,
+    max_usages: int | None = None,
 ):
     try:
         stmt = insert(Gift).values(
@@ -28,10 +30,12 @@ async def store_gift_link(
             created_at=datetime.utcnow(),
             is_used=False,
             tariff_id=tariff_id,
+            is_unlimited=is_unlimited,
+            max_usages=max_usages,
         )
         await session.execute(stmt)
         await session.commit()
-        logger.info(f"🎁 Подарок {gift_id} сохранён (tariff_id={tariff_id})")
+        logger.info(f"🎁 Подарок {gift_id} сохранён (tariff_id={tariff_id}, max_usages={max_usages})")
         return True
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении подарка {gift_id}: {e}")

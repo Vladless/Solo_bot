@@ -51,6 +51,11 @@ def build_panel_kb() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
+            text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="📊 Статистика",
             callback_data=AdminPanelCallback(action="stats").pack(),
         ),
@@ -59,7 +64,7 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         ),
     )
     builder.button(text=MAIN_MENU, callback_data="profile")
-    builder.adjust(1, 1, 2, 2, 1, 2, 1)
+    builder.adjust(1, 1, 2, 2, 1, 1, 2, 1)
     return builder.as_markup()
 
 
