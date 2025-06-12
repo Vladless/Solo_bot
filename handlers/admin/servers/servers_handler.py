@@ -8,17 +8,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers
 from database.models import Key, Server
+from database.servers import (
+    get_server_by_name,
+    update_server_field,
+    update_server_name_with_keys,
+    get_available_clusters,
+    update_server_cluster,
+)
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 
 from ..panel.keyboard import build_admin_back_kb
-from .keyboard import AdminServerCallback, build_manage_server_kb
+from .keyboard import (
+    AdminServerCallback, 
+    build_manage_server_kb,
+    build_edit_server_fields_kb,
+    build_panel_type_selection_kb,
+    build_cluster_selection_kb,
+    build_cancel_edit_kb,
+)
 
 router = Router()
 
 
 class ServerLimitState(StatesGroup):
     waiting_for_limit = State()
+
+
+class ServerEditState(StatesGroup):
+    choosing_field = State()
+    editing_value = State()
 
 
 @router.callback_query(
@@ -46,14 +65,22 @@ async def handle_server_manage(
         api_url = server["api_url"]
         subscription_url = server["subscription_url"]
         inbound_id = server["inbound_id"]
+        panel_type = server.get("panel_type") or "не указан"
         max_keys = server.get("max_keys")
         limit_display = f"{max_keys}" if max_keys else "не задан"
 
         text = (
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
+            f"<b>🗂 Кластер:</b> {cluster_name}\n"
             f"<b>📡 API URL:</b> {api_url}\n"
-            f"<b>🌐 Subscription URL:</b> {subscription_url}\n"
+        )
+
+        if subscription_url:
+            text += f"<b>🌐 Subscription URL:</b> {subscription_url}\n"
+            
+        text += (
             f"<b>🔑 Inbound ID:</b> {inbound_id}\n"
+            f"<b>⚙️ Тип панели:</b> {panel_type}\n"
             f"<b>📈 Лимит ключей:</b> {limit_display}"
         )
 
@@ -353,3 +380,131 @@ async def save_server_limit(
 
     except ValueError:
         await message.answer("❌ Введите корректное целое число (0 = без лимита)")
+
+
+@router.callback_query(F.data.startswith("edit_server|"), IsAdminFilter())
+async def start_edit_server(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    server_name = callback.data.split("|")[1]
+
+    await state.clear()
+    
+    server_data = await get_server_by_name(session, server_name)
+    if not server_data:
+        await callback.message.edit_text("❌ Сервер не найден.")
+        return
+    
+    await callback.message.edit_text(
+        f"<b>✏️ Редактирование сервера: {server_name}</b>\n\n"
+        "Выберите поле для редактирования:",
+        reply_markup=build_edit_server_fields_kb(server_name, server_data)
+    )
+
+
+@router.callback_query(F.data.startswith("edit_server_field|"), IsAdminFilter())
+async def ask_new_field_value(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, server_name, field = callback.data.split("|")
+    
+    if field == "cluster_name":
+        clusters = await get_available_clusters(session)
+        await callback.message.edit_text(
+            f"<b>🗂 Выберите кластер для сервера {server_name}:</b>",
+            reply_markup=build_cluster_selection_kb(server_name, clusters)
+        )
+        return
+    
+    await state.update_data(server_name=server_name, field=field)
+    await state.set_state(ServerEditState.editing_value)
+    
+    field_names = {
+        "server_name": "имя сервера",
+        "api_url": "API URL",
+        "subscription_url": "Subscription URL",
+        "inbound_id": "Inbound ID",
+    }
+    
+    await callback.message.edit_text(
+        f"✏️ Введите новое значение для <b>{field_names.get(field, field)}</b>:",
+        reply_markup=build_cancel_edit_kb(server_name)
+    )
+
+
+@router.callback_query(F.data.startswith("select_panel_type|"), IsAdminFilter())
+async def select_panel_type(callback: CallbackQuery):
+    server_name = callback.data.split("|")[1]
+    
+    await callback.message.edit_text(
+        f"<b>⚙️ Выберите тип панели для сервера {server_name}:</b>",
+        reply_markup=build_panel_type_selection_kb(server_name)
+    )
+
+
+@router.callback_query(F.data.startswith("set_panel_type|"), IsAdminFilter())
+async def set_panel_type(callback: CallbackQuery, session: AsyncSession):
+    _, server_name, panel_type = callback.data.split("|")
+    
+    success = await update_server_field(session, server_name, "panel_type", panel_type)
+    if success:
+        await callback.message.edit_text(
+            f"✅ Тип панели сервера {server_name} изменен на {panel_type}",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="⬅️ Назад к серверу",
+                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            ).as_markup()
+        )
+    else:
+        await callback.message.edit_text("❌ Ошибка при изменении типа панели")
+
+
+@router.callback_query(F.data.startswith("set_cluster|"), IsAdminFilter())
+async def set_cluster(callback: CallbackQuery, session: AsyncSession):
+    _, server_name, new_cluster = callback.data.split("|")
+    
+    success = await update_server_cluster(session, server_name, new_cluster)
+    if success:
+        await callback.message.edit_text(
+            f"✅ Кластер сервера {server_name} изменен на {new_cluster}",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="⬅️ Назад к серверу",
+                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            ).as_markup()
+        )
+    else:
+        await callback.message.edit_text("❌ Ошибка при изменении кластера")
+
+
+@router.message(ServerEditState.editing_value, IsAdminFilter())
+async def apply_field_edit(message: types.Message, state: FSMContext, session: AsyncSession):
+    data = await state.get_data()
+    server_name = data["server_name"]
+    field = data["field"]
+    value = message.text.strip()
+
+    if field == "server_name":
+        success = await update_server_name_with_keys(session, server_name, value)
+        if success:
+            server_name = value
+        else:
+            await message.answer("❌ Ошибка при изменении имени сервера. Возможно, такое имя уже существует.")
+            return
+    else:
+        success = await update_server_field(session, server_name, field, value)
+    
+    if success:
+        field_names = {
+            "server_name": "имя сервера",
+            "api_url": "API URL",
+            "subscription_url": "Subscription URL",
+            "inbound_id": "Inbound ID",
+        }
+        
+        await message.answer(
+            f"✅ {field_names.get(field, field).capitalize()} изменено",
+            reply_markup=InlineKeyboardBuilder().button(
+                text="⬅️ Назад к серверу",
+                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            ).as_markup()
+        )
+    else:
+        await message.answer("❌ Ошибка при изменении поля")
+        
+    await state.clear()
