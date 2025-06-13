@@ -390,6 +390,11 @@ async def build_cluster_selection_kb(
             text=cluster_id, callback_data=f"{action}|{tg_id}|{email}|{cluster_id}"
         )
 
-    builder.button(text=BACK, callback_data=f"edit_user_key|{tg_id}|{email}")
+    builder.button(
+        text=BACK, 
+        callback_data=AdminUserEditorCallback(
+            action="users_key_edit", tg_id=tg_id, data=email
+        ).pack()
+    )
     builder.adjust(1)
     return builder.as_markup()
