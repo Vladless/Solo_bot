@@ -239,6 +239,9 @@ async def handle_referral_link(
             return
 
         user_exists = await check_user_exists(session, user_id)
+        if user_exists:
+            await message.answer("❌ Вы уже зарегистрированы и не можете стать рефералом.")
+            return
         if not user_exists:
             if isinstance(user, dict):
                 await add_user(session=session, **user)

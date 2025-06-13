@@ -291,14 +291,7 @@ async def render_key_info(
             traffic_limit = tariff.get("traffic_limit", 0)
             device_limit = tariff.get("device_limit", 0)
 
-    tariff_duration = ""
-    if tariff and tariff.get("duration_days", 0) > 0:
-        duration_days = tariff["duration_days"]
-        if duration_days >= 30:
-            months = duration_days // 30
-            tariff_duration = format_months(months)
-        else:
-            tariff_duration = format_days(duration_days)
+    tariff_duration = tariff_name
 
     response_message = key_message(
         final_link,
