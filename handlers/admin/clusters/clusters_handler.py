@@ -663,6 +663,8 @@ async def handle_sync_cluster(
                             session=session,
                             remnawave_link=key["remnawave_link"],
                         )
+                    
+                    await asyncio.sleep(0.1)
 
                 else:
                     await delete_key_from_cluster(
@@ -686,8 +688,8 @@ async def handle_sync_cluster(
                         session=session,
                         remnawave_link=key["remnawave_link"],
                     )
-
-                await asyncio.sleep(0.5)
+                    
+                    await asyncio.sleep(0.5)
 
             except Exception as e:
                 logger.error(

@@ -580,13 +580,7 @@ async def process_auto_renew_or_notify(
         client_id = key.client_id
         current_expiry = key.expiry_time
         duration_days = selected_tariff["duration_days"]
-        tariff_duration = ""
-        if duration_days > 0:
-            if duration_days >= 30:
-                months = duration_days // 30
-                tariff_duration = format_months(months)
-            else:
-                tariff_duration = format_days(duration_days)
+        tariff_duration = selected_tariff["name"]
         renewal_cost = selected_tariff["price_rub"]
         traffic_limit = selected_tariff["traffic_limit"]
         device_limit = selected_tariff["device_limit"]
@@ -627,7 +621,7 @@ async def process_auto_renew_or_notify(
         await delete_notification(conn, tg_id, notification_id)
 
         renewed_message = get_renewal_message(
-            tariff_name=tariff_duration,
+            tariff_name=selected_tariff["name"],
             traffic_limit=selected_tariff.get("traffic_limit") if selected_tariff.get("traffic_limit") is not None else 0,
             device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
             expiry_date=formatted_expiry_date

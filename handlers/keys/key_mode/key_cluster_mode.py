@@ -197,14 +197,7 @@ async def key_cluster_mode(
             device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
         )
     else:
-        tariff_duration = ""
-        if tariff_info and tariff_info.get("duration_days", 0) > 0:
-            duration_days = tariff_info["duration_days"]
-            if duration_days >= 30:
-                months = duration_days // 30
-                tariff_duration = format_months(months)
-            else:
-                tariff_duration = format_days(duration_days)
+        tariff_duration = tariff_info["name"]
         
         key_message_text = key_message_success(
             final_link,
