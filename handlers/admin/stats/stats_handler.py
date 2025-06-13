@@ -47,8 +47,8 @@ router = Router()
 async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
     try:
         now = datetime.utcnow()
-        today = now.date()
         moscow_tz = pytz.timezone("Europe/Moscow")
+        today = now.astimezone(moscow_tz).date()
 
         total_users = await count_total_users(session)
         users_updated_today = await count_users_updated_today(session, today)
@@ -267,26 +267,28 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSe
 
 async def send_daily_stats_report(session: AsyncSession):
     try:
-        now_moscow = datetime.now(pytz.timezone("Europe/Moscow"))
+        moscow_tz = pytz.timezone("Europe/Moscow")
+        now_moscow = datetime.now(moscow_tz)
         update_time = now_moscow.strftime("%d.%m.%y %H:%M")
 
-        today = (
-            pytz.timezone("Europe/Moscow")
-            .localize(datetime.combine((now_moscow - timedelta(days=1)).date(), datetime.min.time()))
-            .astimezone(pytz.UTC)
-            .replace(tzinfo=None)
-        )
+        report_date = now_moscow.date() - timedelta(days=1)
 
-        registrations_today = await count_users_registered_since(session, today)
-        payments_today = await sum_payments_since(session, today)
+        start = moscow_tz.localize(datetime.combine(report_date, datetime.min.time()))
+        end = moscow_tz.localize(datetime.combine(report_date + timedelta(days=1), datetime.min.time()))
+
+        start_utc = start.astimezone(pytz.UTC).replace(tzinfo=None)
+        end_utc = end.astimezone(pytz.UTC).replace(tzinfo=None)
+
+        registrations_today = await count_users_registered_between(session, start_utc, end_utc)
+        payments_today = await sum_payments_between(session, start_utc, end_utc)
         active_keys = await count_active_keys(session)
 
         text = (
-            "🗓️ <b>Сводка за день</b>\n\n"
+            f"🗓️ <b>Сводка за {report_date.strftime('%d.%m.%Y')} с 00:00 до 23:59 МСК</b>\n\n"
             f"👤 Новых пользователей: <b>{registrations_today}</b>\n"
             f"💰 Оплачено: <b>{payments_today} ₽</b>\n"
             f"🔐 Активных ключей: <b>{active_keys}</b>\n\n"
-            f"⏱️ <i>{update_time} МСК</i>"
+            f"⏱️ <i>Отчёт сгенерирован: {update_time} МСК</i>"
         )
 
         for admin_id in ADMIN_ID:

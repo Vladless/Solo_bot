@@ -103,6 +103,7 @@ async def process_callback_renew_key(
             return
 
         selected_tariffs = [t for t in tariffs if t["is_active"]]
+        selected_tariffs = sorted(selected_tariffs, key=lambda t: t["id"])
 
         if not selected_tariffs:
             await callback_query.message.answer("❌ Нет доступных тарифов для продления.")

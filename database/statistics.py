@@ -122,7 +122,7 @@ async def sum_payments_since(session: AsyncSession, since: date) -> float:
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
             and_(
                 Payment.created_at >= since,
-                Payment.payment_system.notin_(["referral", "coupon"])
+                Payment.payment_system.notin_(["referral", "coupon", "cashback"])
             )
         )
     )
@@ -135,7 +135,7 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
             and_(
                 Payment.created_at >= start,
                 Payment.created_at < end,
-                Payment.payment_system.notin_(["referral", "coupon"])
+                Payment.payment_system.notin_(["referral", "coupon", "cashback"])
             )
         )
     )
@@ -145,7 +145,7 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
 async def sum_total_payments(session: AsyncSession) -> float:
     result = await session.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.payment_system.notin_(["referral", "coupon"])
+            Payment.payment_system.notin_(["referral", "coupon", "cashback"])
         )
     )
     return round(float(result), 2)
