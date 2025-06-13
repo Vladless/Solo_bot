@@ -286,11 +286,6 @@ async def complete_key_renewal(
             logger.error(f"[Error] Тариф с id={tariff_id} не найден.")
             return
 
-        if tariff["duration_days"] % 30 == 0:
-            months_formatted = format_months(tariff["duration_days"] // 30)
-        else:
-            months_formatted = format_days(tariff["duration_days"])
-
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
         
@@ -304,7 +299,7 @@ async def complete_key_renewal(
         )
 
         response_message = get_renewal_message(
-            tariff_name=months_formatted,
+            tariff_name=tariff["name"],
             traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
             device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
             expiry_date=formatted_expiry_date
