@@ -9,6 +9,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from robokassa import HashAlgorithm, Robokassa
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta
+from sqlalchemy import select, and_
 
 from config import (
     ROBOKASSA_ENABLE,
@@ -25,6 +27,7 @@ from database import (
     get_key_count,
     get_temporary_data,
     update_balance,
+    Payment
 )
 from handlers.buttons import BACK, PAY_2
 from handlers.payments.utils import send_payment_success_notification
@@ -207,16 +210,32 @@ async def robokassa_webhook(request: web.Request):
             return web.Response(status=400)
 
         tg_id = shp_id
-
         logger.info(f"Processing payment for user {tg_id} with amount {amount}.")
 
         async with async_session_maker() as session:
+            recent_time = datetime.utcnow() - timedelta(minutes=1)
+
+            result = await session.execute(
+                select(Payment).where(
+                    and_(
+                        Payment.tg_id == int(tg_id),
+                        Payment.amount == float(amount),
+                        Payment.status == "success",
+                        Payment.created_at >= recent_time
+                    )
+                )
+            )
+            duplicate = result.scalar_one_or_none()
+
+            if duplicate:
+                logger.warning(f"[Robokassa] Повторный webhook. Платёж уже обработан: tg_id={tg_id}, amount={amount}")
+                return web.Response(text=f"OK{inv_id}")
+
             await update_balance(session, int(tg_id), float(amount))
             await send_payment_success_notification(tg_id, float(amount), session)
             await add_payment(session, int(tg_id), float(amount), "robokassa")
 
-        logger.info(f"Payment successful. Balance updated for user {tg_id}.")
-
+        logger.info(f"✅ Payment successful. Balance updated for user {tg_id}.")
         return web.Response(text=f"OK{inv_id}")
 
     except Exception as e:
