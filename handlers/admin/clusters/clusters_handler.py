@@ -304,10 +304,18 @@ async def handle_clusters_manage(
     )
     user_count = result.scalar() or 0
 
+    result = await session.execute(
+        select(func.count()).where(
+            (Key.server_id == cluster_name) | (Key.server_id.in_(server_names))
+        )
+    )
+    subscription_count = result.scalar() or 0
+
     text = (
         f"<b>🔧 Управление кластером <code>{cluster_name}</code></b>\n\n"
         f"📁 <b>Тарифная группа:</b> <code>{tariff_group}</code>\n"
-        f"👥 <b>Пользователей на кластере:</b> <code>{user_count}</code>"
+        f"👥 <b>Пользователей на кластере:</b> <code>{user_count}</code>\n"
+        f"🔑 <b>Всего подписок:</b> <code>{subscription_count}</code>"
     )
 
     await callback_query.message.edit_text(

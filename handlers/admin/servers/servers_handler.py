@@ -69,6 +69,11 @@ async def handle_server_manage(
         max_keys = server.get("max_keys")
         limit_display = f"{max_keys}" if max_keys else "не задан"
 
+        result = await session.execute(
+            select(func.count()).where(Key.server_id == server_name)
+        )
+        subscription_count = result.scalar() or 0
+
         text = (
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
             f"<b>🗂 Кластер:</b> {cluster_name}\n"
@@ -83,6 +88,9 @@ async def handle_server_manage(
             f"<b>⚙️ Тип панели:</b> {panel_type}\n"
             f"<b>📈 Лимит ключей:</b> {limit_display}"
         )
+
+        if subscription_count > 0:
+            text += f"\n<b>🔑 Подписок на сервере:</b> {subscription_count}"
 
         await callback_query.message.edit_text(
             text=text,
