@@ -205,7 +205,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, session: An
             if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
                 await process_custom_amount_input(callback_query, session)
             elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
-                await handle_custom_amount_input(callback_query, session)
+                await handle_custom_amount_input(message=callback_query, session=session)
             elif USE_NEW_PAYMENT_FLOW == "STARS":
                 await process_custom_amount_input_stars(callback_query, session)
             elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":

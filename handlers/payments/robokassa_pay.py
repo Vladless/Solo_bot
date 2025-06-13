@@ -309,7 +309,7 @@ async def handle_custom_amount_input(
             await edit_or_send_message(
                 target_message=target_message,
                 text="Данные для оплаты не найдены. Попробуйте снова.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
 
@@ -320,7 +320,7 @@ async def handle_custom_amount_input(
             await edit_or_send_message(
                 target_message=target_message,
                 text="Недостаточная сумма для пополнения.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
 
@@ -339,7 +339,7 @@ async def handle_custom_amount_input(
             await edit_or_send_message(
                 target_message=target_message,
                 text="Некорректное состояние данных. Попробуйте снова.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
 
@@ -357,5 +357,5 @@ async def handle_custom_amount_input(
         await edit_or_send_message(
             target_message=target_message,
             text="Произошла ошибка при создании платежа. Попробуйте позже.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
         )
