@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any
+from aiogram.fsm.context import FSMContext
+from collections import defaultdict
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
@@ -44,9 +46,7 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
-async def process_callback_renew_key(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
@@ -85,43 +85,50 @@ async def process_callback_renew_key(
             await callback_query.message.answer("❌ Не удалось определить тарифную группу.")
             return
 
-        cluster_group = row[0]
-        selected_tariffs = []
-        target_group = cluster_group
+        group_code = row[0]
 
         if tariff_id:
             if await check_tariff_exists(session, tariff_id):
                 current_tariff = await get_tariff_by_id(session, tariff_id)
-                
                 if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts"]:
-                    target_group = current_tariff["group_code"]
+                    group_code = current_tariff["group_code"]
 
-        tariffs = await get_tariffs(session, group_code=target_group)
-        
+        tariffs = await get_tariffs(session, group_code=group_code)
+        tariffs = [t for t in tariffs if t["is_active"]]
         if not tariffs:
             await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
             return
 
-        selected_tariffs = [t for t in tariffs if t["is_active"]]
-        selected_tariffs = sorted(selected_tariffs, key=lambda t: t["id"])
+        grouped_tariffs = defaultdict(list)
+        for t in tariffs:
+            subgroup = t.get("subgroup_title")
+            grouped_tariffs[subgroup].append(t)
 
-        if not selected_tariffs:
-            await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
-            return
+        await state.update_data(
+            renew_key_name=key_name,
+            renew_client_id=client_id
+        )
 
         builder = InlineKeyboardBuilder()
-        for t in selected_tariffs:
-            button_text = f"{t['name']} — {t['price_rub']}₽"
+
+        for t in grouped_tariffs.get(None, []):
             builder.row(
                 InlineKeyboardButton(
-                    text=button_text,
+                    text=f"{t['name']} — {t['price_rub']}₽",
                     callback_data=f"renew_plan|{t['id']}|{client_id}",
                 )
             )
 
-        builder.row(
-            InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}")
-        )
+        for subgroup in sorted(k for k in grouped_tariffs if k):
+            safe = subgroup.replace(" ", "_")[:30]
+            builder.row(
+                InlineKeyboardButton(
+                    text=subgroup,
+                    callback_data=f"renew_subgroup|{safe}",
+                )
+            )
+
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}"))
 
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
@@ -138,12 +145,90 @@ async def process_callback_renew_key(
         )
 
     except Exception as e:
-        logger.error(
-            f"[RENEW] Ошибка в process_callback_renew_key для tg_id={tg_id}: {e}"
+        logger.error(f"[RENEW] Ошибка в process_callback_renew_key для tg_id={tg_id}: {e}")
+        await callback_query.message.answer("❌ Произошла ошибка при обработке. Попробуйте позже.")
+
+
+@router.callback_query(F.data.startswith("renew_subgroup|"))
+async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    try:
+        parts = callback.data.split("|")
+        subgroup = parts[1].replace("_", " ")
+
+        data = await state.get_data()
+        client_id = data.get("renew_client_id")
+        key_name = data.get("renew_key_name")
+
+        if not client_id or not key_name:
+            await callback.message.answer("❌ Данные для подгруппы не найдены.")
+            return
+
+        record = await get_key_details(session, key_name)
+        if not record:
+            await callback.message.answer("❌ Ключ не найден.")
+            return
+
+        server_id = record["server_id"]
+        try:
+            server_id_int = int(server_id)
+            filter_condition = or_(
+                Server.id == server_id_int,
+                Server.server_name == server_id,
+                Server.cluster_name == server_id,
+            )
+        except ValueError:
+            filter_condition = or_(
+                Server.server_name == server_id,
+                Server.cluster_name == server_id,
+            )
+
+        row = await session.execute(
+            select(Server.tariff_group).where(filter_condition).limit(1)
         )
-        await callback_query.message.answer(
-            "❌ Произошла ошибка при обработке. Попробуйте позже."
+        row = row.first()
+        if not row or not row[0]:
+            logger.warning(f"[RENEW_SUBGROUP] Тарифная группа не найдена для server_id={server_id}")
+            await callback.message.answer("❌ Не удалось определить тарифную группу.")
+            return
+
+        group_code = row[0]
+        tariffs = await get_tariffs(session, group_code=group_code)
+        filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+
+        if not filtered:
+            await edit_or_send_message(
+                target_message=callback.message,
+                text="❌ В этой подгруппе пока нет тарифов.",
+                reply_markup=None,
+            )
+            return
+
+        builder = InlineKeyboardBuilder()
+        for t in filtered:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{t['name']} — {t['price_rub']}₽",
+                    callback_data=f"renew_plan|{t['id']}|{client_id}",
+                )
+            )
+
+        builder.row(
+            InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=f"renew_key|{key_name}"
+            )
         )
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+        await edit_or_send_message(
+            target_message=callback.message,
+            text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+            reply_markup=builder.as_markup(),
+        )
+
+    except Exception as e:
+        logger.error(f"[RENEW_SUBGROUP] Ошибка при отображении подгруппы: {e}")
+        await callback.message.answer("❌ Произошла ошибка при отображении тарифов.")
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))

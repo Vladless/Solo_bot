@@ -77,6 +77,7 @@ class Tariff(DictLikeMixin, Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    subgroup_title = Column(String, nullable=True)
 
 
 class Server(DictLikeMixin, Base):

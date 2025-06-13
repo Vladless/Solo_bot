@@ -1,6 +1,7 @@
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from collections import defaultdict
 
 from ..panel.keyboard import AdminPanelCallback
 
@@ -66,7 +67,22 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
     else:
         group_code = "unknown"
 
+    grouped = defaultdict(list)
     for t in tariffs:
+        subgroup = t.get("subgroup_title")
+        grouped[subgroup].append(t)
+
+    for subgroup_title, items in grouped.items():
+        if subgroup_title:
+            safe_subgroup = subgroup_title.replace(" ", "_")
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{subgroup_title}",
+                    callback_data=f"view_subgroup|{safe_subgroup}|{group_code}"
+                )
+            )
+
+    for t in grouped.get(None, []):
         title = f"{t['name']} — {t['price_rub']}₽"
         builder.row(
             InlineKeyboardButton(
@@ -84,7 +100,15 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад", callback_data=AdminTariffCallback(action="list").pack()
+            text="Сгруппировать в подгруппу",
+            callback_data=f"start_subgrouping|{group_code}"
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=AdminTariffCallback(action="list").pack(),
         )
     )
 

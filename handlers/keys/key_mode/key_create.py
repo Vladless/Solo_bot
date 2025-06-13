@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any
+from collections import defaultdict
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import pytz
 from aiogram import F, Router
@@ -104,14 +106,30 @@ async def handle_key_creation(
         )
         return
 
-    builder = InlineKeyboardBuilder()
+    grouped_tariffs = defaultdict(list)
     for t in tariffs:
+        subgroup = t.get("subgroup_title")
+        grouped_tariffs[subgroup].append(t)
+
+    builder = InlineKeyboardBuilder()
+
+    for t in grouped_tariffs.get(None, []):
         builder.row(
             InlineKeyboardButton(
                 text=f"{t['name']} — {t['price_rub']}₽",
                 callback_data=f"select_tariff_plan|{t['id']}",
             )
         )
+
+    for subgroup in sorted(k for k in grouped_tariffs if k):
+        safe = subgroup.replace(" ", "_")
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{subgroup}",
+                callback_data=f"tariff_subgroup_user|{safe}",
+            )
+        )
+
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     target_message = (
@@ -126,8 +144,60 @@ async def handle_key_creation(
         reply_markup=builder.as_markup(),
     )
 
-    await state.update_data(tg_id=tg_id)
+    await state.update_data(tg_id=tg_id, cluster_name=cluster_name)
     await state.set_state(Form.waiting_for_server_selection)
+
+
+@router.callback_query(F.data.startswith("tariff_subgroup_user|"))
+async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMContext, session: Any):
+    subgroup = callback.data.split("|")[1].replace("_", " ")
+    data = await state.get_data()
+    cluster_name = data.get("cluster_name")
+
+    tariffs = await get_tariffs_for_cluster(session, cluster_name)
+    filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup]
+
+    if not filtered:
+        await edit_or_send_message(
+            target_message=callback.message,
+            text="❌ В этой подгруппе пока нет тарифов.",
+            reply_markup=None,
+        )
+        return
+
+    builder = InlineKeyboardBuilder()
+    for t in filtered:
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{t['name']} — {t['price_rub']}₽",
+                callback_data=f"select_tariff_plan|{t['id']}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data="back_to_tariff_group_list"
+        )
+    )
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+        reply_markup=builder.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "back_to_tariff_group_list")
+async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, session: Any):
+    data = await state.get_data()
+    tg_id = callback.from_user.id
+    await handle_key_creation(
+        tg_id=tg_id,
+        state=state,
+        session=session,
+        message_or_query=callback,
+    )
 
 
 @router.callback_query(F.data.startswith("select_tariff_plan|"))
