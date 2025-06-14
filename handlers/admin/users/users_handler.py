@@ -1203,7 +1203,8 @@ async def change_expiry_time(
         new_expiry_time=expiry_time,
         total_gb=traffic_limit,
         session=session,
-        hwid_device_limit=device_limit
+        hwid_device_limit=device_limit,
+        reset_traffic=False,
     )
     
     await update_key_expiry(session, client_id, expiry_time)

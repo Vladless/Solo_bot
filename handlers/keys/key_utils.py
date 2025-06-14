@@ -287,6 +287,7 @@ async def renew_key_in_cluster(
     total_gb: int,
     session: AsyncSession,
     hwid_device_limit: int = None,
+    reset_traffic: bool = True,
 ):
     try:
         servers = await get_servers(session)
@@ -368,7 +369,8 @@ async def renew_key_in_cluster(
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
-                        await remna.reset_user_traffic(client_id)
+                        if reset_traffic:
+                            await remna.reset_user_traffic(client_id)
                     else:
                         logger.warning(
                             f"Не удалось продлить подписку Remnawave {client_id}"

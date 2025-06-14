@@ -19,7 +19,13 @@ from config import (
     SHOW_START_MENU_ONCE,
     SUPPORT_CHAT_URL,
 )
-from database import add_user, check_user_exists, get_trial, get_key_count
+from database import (
+    add_user,
+    check_user_exists,
+    get_trial,
+    get_key_count,
+    get_coupon_by_code,
+)
 from database.models import TrackingSource, User
 from handlers.buttons import (
     ABOUT_VPN,
@@ -175,6 +181,10 @@ async def process_start_logic(
             if "coupons" in part:
                 logger.info(f"Обнаружена ссылка на купон: {part}")
                 coupon_code = part.split("coupons")[1].strip("_")
+                coupon = await get_coupon_by_code(session, coupon_code)
+                if not coupon:
+                    continue
+                    
                 await activate_coupon(
                     message,
                     state,
@@ -183,6 +193,9 @@ async def process_start_logic(
                     admin=admin,
                     user_data=user_data,
                 )
+                
+                if coupon.days:
+                    return
                 continue
 
             if "gift" in part:

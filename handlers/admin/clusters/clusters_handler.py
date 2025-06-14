@@ -828,6 +828,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 new_expiry_time=new_expiry,
                 total_gb=total_gb,
                 session=session,
+                reset_traffic=False,
             )
             await update_key_expiry(session, key.client_id, new_expiry)
 

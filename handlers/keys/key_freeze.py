@@ -142,6 +142,7 @@ async def process_callback_unfreeze_subscription_confirm(
             total_gb=total_gb,
             session=session,
             hwid_device_limit=hwid_limit,
+            reset_traffic=False,
         )
 
         text_ok = SUBSCRIPTION_UNFROZEN_MSG

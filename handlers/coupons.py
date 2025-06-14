@@ -243,8 +243,9 @@ async def handle_key_extension(
             client_id=client_id,
             new_expiry_time=new_expiry,
             total_gb=total_gb,
+            session=session,
             hwid_device_limit=device_limit,
-            session=session
+            reset_traffic=False,
         )
         await update_key_expiry(session, client_id, new_expiry)
         await update_coupon_usage_count(session, coupon.id)
