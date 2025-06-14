@@ -34,6 +34,8 @@ def build_ads_list_kb(
             callback_data=AdminAdsCallback(action="view", code=ad["code"]).pack(),
         )
 
+    builder.adjust(1)  # вот это добавляем для вертикального списка
+
     pagination_buttons = []
     if current_page > 1:
         pagination_buttons.append(
