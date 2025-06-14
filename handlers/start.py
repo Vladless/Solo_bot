@@ -1,7 +1,8 @@
 import os
+from datetime import datetime
 from typing import Any
 
-from aiogram import F, Router
+from aiogram import F, Router, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
@@ -18,8 +19,9 @@ from config import (
     DONATIONS_ENABLE,
     SHOW_START_MENU_ONCE,
     SUPPORT_CHAT_URL,
+    NOTIFY_NEW_USERS,
 )
-from database import add_user, check_user_exists, get_trial, get_key_count
+from database import add_user, check_user_exists, get_trial, get_key_count, get_keys, get_trial, get_key_count
 from database.models import TrackingSource, User
 from handlers.buttons import (
     ABOUT_VPN,
@@ -29,12 +31,14 @@ from handlers.buttons import (
     SUB_CHANELL,
     SUB_CHANELL_DONE,
     SUPPORT,
+    TARIFFS,
     TRIAL_SUB,
 )
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
+from utils.notifications import notify_new_user
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -59,13 +63,15 @@ async def handle_start_callback_query(
     session: Any,
     admin: bool,
     captcha: bool = False,
+    bot: Bot = None,
 ):
-    await start_command(callback_query.message, state, session, admin, captcha)
+    await callback_query.answer()
+    await start_command(callback_query.message, state, session, admin, captcha=captcha, bot=bot)
 
 
 @router.message(Command("start"))
 async def start_command(
-    message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True
+    message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True, bot: Bot = None
 ):
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
@@ -82,7 +88,7 @@ async def start_command(
 
     state_data = await state.get_data()
     text_to_process = state_data.get("original_text", message.text)
-    await process_start_logic(message, state, session, admin, text_to_process)
+    await process_start_logic(message, state, session, admin, text_to_process, bot=bot)
 
 
 @router.callback_query(F.data == "check_subscription")
@@ -143,7 +149,8 @@ async def process_start_logic(
     admin: bool,
     text_to_process: str = None,
     user_data: dict | None = None,
-):
+    bot: Bot = None,
+) -> None:
     user_data = user_data or {
         "tg_id": (message.from_user or message.chat).id,
         "username": getattr(message.from_user, "username", None),
@@ -225,8 +232,30 @@ async def process_start_logic(
             return
 
         user_exists = await check_user_exists(session, user_data["tg_id"])
-        if not user_exists:
+        is_new_user = not user_exists
+        
+        if is_new_user:
             await add_user(session=session, **user_data)
+        
+        # Проверяем, активируется ли сейчас триал
+        is_trial_activation = False
+        trial_status = await get_trial(session, user_data["tg_id"])
+        key_count = await get_key_count(session, user_data["tg_id"])
+        
+        # Отправляем уведомление о новом пользователе
+        if NOTIFY_NEW_USERS and bot is not None and is_new_user:
+            try:
+                await notify_new_user(
+                    bot=bot,
+                    user_id=user_data['tg_id'],
+                    username=user_data.get('username'),
+                    full_name=f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or 'Не указано'
+                )
+                logger.info(f"Successfully sent new user notification for user {user_data['tg_id']}")
+            except Exception as e:
+                logger.error(f"Failed to send new user notification: {e}", exc_info=True)
+        elif NOTIFY_NEW_USERS and bot is None and is_new_user:
+            logger.warning("Bot instance is None, cannot send new user notification")
 
         trial_status = await get_trial(session, user_data["tg_id"])
         key_count = await get_key_count(session, user_data["tg_id"])
@@ -287,16 +316,48 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     builder = InlineKeyboardBuilder()
 
     trial_status = None
+    has_active_subscription = False
+    
     if session is not None:
+        # Check trial status
         trial_status = await get_trial(session, message.chat.id)
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
-        if trial_status == 0:
+        
+        # Check for active subscriptions
+        current_time = int(datetime.utcnow().timestamp() * 1000)
+        keys = await get_keys(session, message.chat.id)
+        active_keys = [k for k in keys if k.expiry_time > current_time]
+        has_active_subscription = len(active_keys) > 0
+        
+        if trial_status == 0 and not has_active_subscription:
             builder.row(
                 InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key")
             )
     else:
         logger.warning(
             f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}"
+        )
+
+    # Debug log the conditions
+    logger.info(f"[DEBUG] User {message.chat.id} - Trial status: {trial_status}, Type: {type(trial_status)}, Has active sub: {has_active_subscription}")
+    
+    # Show renew button for active subscription
+    if has_active_subscription:
+        logger.info(f"[DEBUG] Showing renew button for user {message.chat.id}")
+        builder.row(
+            InlineKeyboardButton(
+                text="🔄 Продлить подписку",
+                callback_data=f"renew_key|{active_keys[0].email}"
+            )
+        )
+    # Show buy button when trial is not available (used up or not 0) and no active subscription
+    elif trial_status != 0 and not has_active_subscription:
+        logger.info(f"[DEBUG] Showing buy button for user {message.chat.id} (trial status: {trial_status})")
+        builder.row(
+            InlineKeyboardButton(
+                text="💳 Купить подписку",
+                callback_data="create_key"
+            )
         )
 
     if trial_status != 0 or not SHOW_START_MENU_ONCE:
@@ -318,7 +379,10 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
             )
         )
 
-    builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
+    builder.row(
+        InlineKeyboardButton(text=TARIFFS, callback_data="show_tariffs"),
+        InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn")
+    )
 
     await edit_or_send_message(
         target_message=message,

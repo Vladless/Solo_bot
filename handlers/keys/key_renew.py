@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from aiogram import F, Router
+from aiogram import F, Router, Bot
 from aiogram.types import CallbackQuery, InlineKeyboardButton
+
+from utils.notifications import send_admin_notification, notify_subscription
+from database.users import upsert_user
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from math import ceil
-import pytz
 
 from bot import bot
 from config import USE_NEW_PAYMENT_FLOW
@@ -33,14 +35,13 @@ from handlers.texts import (
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
     PLAN_SELECTION_MSG,
-    get_renewal_message,
+    SUCCESS_RENEWAL_MSG,
 )
 from handlers.buttons import MY_SUB
-from handlers.utils import edit_or_send_message, format_days, format_months, get_russian_month
+from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
 
 router = Router()
-moscow_tz = pytz.timezone("Europe/Moscow")
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
@@ -110,7 +111,7 @@ async def process_callback_renew_key(
 
         builder = InlineKeyboardBuilder()
         for t in selected_tariffs:
-            button_text = f"{t['name']} — {t['price_rub']}₽"
+            button_text = f"📅 {t['name']} — {t['price_rub']}₽"
             builder.row(
                 InlineKeyboardButton(
                     text=button_text,
@@ -292,22 +293,7 @@ async def complete_key_renewal(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
-        
-        formatted_expiry_date = datetime.fromtimestamp(
-            new_expiry_time / 1000, tz=moscow_tz
-        ).strftime("%d %B %Y, %H:%M")
-        
-        formatted_expiry_date = formatted_expiry_date.replace(
-            datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
-            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
-        )
-
-        response_message = get_renewal_message(
-            tariff_name=months_formatted,
-            traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
-            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
-            expiry_date=formatted_expiry_date
-        )
+        response_message = SUCCESS_RENEWAL_MSG.format(months_formatted=months_formatted)
 
         if callback_query:
             try:
@@ -355,6 +341,23 @@ async def complete_key_renewal(
             .values(tariff_id=tariff_id)
         )
         await update_balance(session, tg_id, -cost)
+        
+        # Получаем информацию о пользователе для уведомления
+        user = await upsert_user(session, tg_id, only_if_exists=True)
+        username = user.get('username') if user else ""
+        
+        # Отправляем уведомление администраторам
+        await notify_subscription(
+            bot=bot,
+            user_id=tg_id,
+            username=username,
+            subscription_type=tariff.get('name', 'Неизвестно'),
+            duration_days=tariff['duration_days'],
+            amount=cost,
+            tariff_name=tariff.get('name', 'Неизвестно'),
+            is_trial=False,
+            is_renewal=True
+        )
 
         logger.info(
             f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})"
