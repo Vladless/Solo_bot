@@ -6,8 +6,15 @@ from middlewares import maintenance
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
-def build_management_kb() -> InlineKeyboardMarkup:
+def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    if admin_role == "superadmin":
+        builder.button(
+            text="👑 Управление админами",
+            callback_data=AdminPanelCallback(action="admins").pack(),
+        )
+
     builder.button(
         text="💾 Создать резервную копию",
         callback_data=AdminPanelCallback(action="backups").pack(),
@@ -39,5 +46,93 @@ def build_management_kb() -> InlineKeyboardMarkup:
     )
 
     builder.row(build_admin_back_btn())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_admins_kb(admins: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for tg_id, role in admins:
+        builder.button(
+            text=f"🧑 {tg_id} ({role})",
+            callback_data=AdminPanelCallback(action=f"admin_menu|{tg_id}").pack()
+        )
+
+    builder.button(
+        text="➕ Добавить админа",
+        callback_data=AdminPanelCallback(action="add_admin").pack()
+    )
+    builder.row(build_admin_back_btn())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_single_admin_menu(tg_id: int, role: str = "moderator") -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="✏ Изменить роль",
+        callback_data=AdminPanelCallback(action=f"edit_role|{tg_id}").pack()
+    )
+
+    builder.button(
+        text="🗑 Удалить админа",
+        callback_data=AdminPanelCallback(action=f"delete_admin|{tg_id}").pack()
+    )
+
+    if role == "superadmin":
+        builder.button(
+            text="🎟 Выпустить токен",
+            callback_data=AdminPanelCallback(action=f"generate_token|{tg_id}").pack()
+        )
+
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action="admins").pack()
+    )
+
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_role_selection_kb(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="👑 superadmin",
+        callback_data=AdminPanelCallback(action=f"set_role|{tg_id}|superadmin").pack()
+    )
+    builder.button(
+        text="🛡 moderator",
+        callback_data=AdminPanelCallback(action=f"set_role|{tg_id}|moderator").pack()
+    )
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action=f"admin_menu|{tg_id}").pack()
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_admin_back_kb_to_admins() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action="admins").pack()
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_token_result_kb(token: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="📋 Скопировать токен",
+        switch_inline_query_current_chat=token
+    )
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action="admins").pack()
+    )
     builder.adjust(1)
     return builder.as_markup()

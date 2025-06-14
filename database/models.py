@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+import secrets
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
 Base = declarative_base()
@@ -57,7 +58,7 @@ class Key(DictLikeMixin, Base):
     key = Column(String)
     server_id = Column(String)
     remnawave_link = Column(String)
-    tariff_id = Column(Integer, ForeignKey("tariffs.id"))
+    tariff_id = Column(Integer, ForeignKey("tariffs.id", ondelete="SET NULL"))
     is_frozen = Column(Boolean, default=False)
     alias = Column(String)
     notified = Column(Boolean, default=False)
@@ -202,11 +203,15 @@ class TrackingSource(DictLikeMixin, Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Log(DictLikeMixin, Base):
-    __tablename__ = "logs"
+class Admin(Base):
+    __tablename__ = "admins"
 
-    id = Column(Integer, primary_key=True)
-    event_type = Column(String)
-    tg_id = Column(BigInteger)
-    details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    tg_id = Column(BigInteger, primary_key=True)
+    token = Column(String, unique=True, nullable=True)
+    description = Column(String, nullable=True)
+    role = Column(String, nullable=False, default="admin")
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def generate_token() -> str:
+        return secrets.token_urlsafe(32)

@@ -9,7 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
 from database.models import Tariff, Gift, GiftUsage
-from handlers.payments.gift import finalize_gift
+
 
 router = Router()
 
@@ -67,6 +67,7 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "gift_limit_unlimited")
 async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    from handlers.payments.gift import finalize_gift
     data = await state.get_data()
     session: AsyncSession = callback.bot["session"]
     await state.clear()
@@ -74,6 +75,7 @@ async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot:
 
 @router.message(GiftCreationState.waiting_for_limit_input_or_unlimited)
 async def handle_limited_gift_input(message: types.Message, session: AsyncSession, state: FSMContext, bot: Bot):
+    from handlers.payments.gift import finalize_gift
     try:
         max_usages = int(message.text.strip())
         if max_usages <= 0:
