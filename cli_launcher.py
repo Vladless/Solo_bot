@@ -228,7 +228,8 @@ def update_from_beta():
     os.chdir(PROJECT_DIR)
     console.print("[cyan]📅 Клонируем временный репозиторий...[/cyan]")
     subprocess.run(["rm", "-rf", TEMP_DIR])
-    if os.system(f"git clone -b dev {GITHUB_REPO} {TEMP_DIR}") != 0:
+
+    if os.system(f"git clone --depth=1000000 -b dev {GITHUB_REPO} {TEMP_DIR}") != 0:
         console.print("[red]❌ Ошибка при клонировании. Обновление отменено.[/red]")
         return
 
@@ -301,7 +302,7 @@ def update_from_release():
         console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(
-            f"git clone --depth 1 --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
+            f"git clone --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
             shell=True,
             check=True,
         )
@@ -358,7 +359,7 @@ def show_update_menu():
 
 def show_menu():
     table = Table(
-        title="Solobot CLI v0.1.9", title_style="bold magenta", header_style="bold blue"
+        title="Solobot CLI v0.2.0", title_style="bold magenta", header_style="bold blue"
     )
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")

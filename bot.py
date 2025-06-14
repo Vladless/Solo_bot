@@ -23,10 +23,6 @@ def get_git_commit_number() -> str:
     repo_url = "https://github.com/Vladless/Solo_bot"
 
     try:
-        current_branch = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-        ).decode().strip()
-
         local_number = subprocess.check_output(
             ["git", "rev-list", "--count", "HEAD"]
         ).decode().strip()
@@ -34,12 +30,27 @@ def get_git_commit_number() -> str:
         local_hash = subprocess.check_output(
             ["git", "rev-parse", "HEAD"]
         ).decode().strip()
+
+        try:
+            branch = subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+            ).decode().strip()
+
+            if branch == "HEAD":
+                describe = subprocess.check_output(["git", "describe", "--tags", "--exact-match"], stderr=subprocess.DEVNULL).decode().strip()
+                if describe.startswith("v") or "release" in describe.lower():
+                    branch = "main"
+                else:
+                    branch = "dev"
+        except Exception:
+            branch = "dev"
+
     except Exception:
         return "\n(Требуется обновление через CLI)"
 
     try:
         remote_commit = subprocess.check_output(
-            ["git", "ls-remote", "origin", f"refs/heads/{current_branch}"]
+            ["git", "ls-remote", "origin", f"refs/heads/{branch}"]
         ).decode()
         remote_hash = remote_commit.split()[0]
 
