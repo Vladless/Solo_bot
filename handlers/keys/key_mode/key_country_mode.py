@@ -569,7 +569,7 @@ async def finalize_key_creation(
             device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
         )
     else:
-        tariff_duration = tariff_info["name"]
+        tariff_duration = tariff_info["name"] if tariff_info else None
         
         key_message_text = key_message_success(
             link_to_show,

@@ -579,7 +579,7 @@ async def handle_sync_cluster(
                 Key.expiry_time,
                 Key.remnawave_link,
                 Key.tariff_id,
-            ).where(Key.server_id == cluster_name)
+            ).where(Key.server_id == cluster_name, Key.is_frozen.is_(False))
         )
         keys_to_sync = result.mappings().all()
 
@@ -616,7 +616,10 @@ async def handle_sync_cluster(
                     if key["tariff_id"]:
                         tariff = await session.get(Tariff, key["tariff_id"])
                         if tariff:
-                            traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                            if tariff.traffic_limit is not None:
+                                traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                            else:
+                                traffic_limit_bytes = 0
                             hwid_limit = tariff.device_limit
                         else:
                             logger.warning(

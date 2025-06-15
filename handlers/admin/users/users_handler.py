@@ -121,7 +121,10 @@ async def handle_hwid_menu(
             break
 
     if not remna_server:
-        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        await callback_query.message.edit_text(
+            "🚫 Нет доступного сервера Remnawave.",
+            reply_markup=build_editor_kb(tg_id)
+        )
         return
 
     api = RemnawaveAPI(remna_server["api_url"])
@@ -181,7 +184,10 @@ async def handle_hwid_reset(
             break
 
     if not remna_server:
-        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        await callback_query.message.edit_text(
+            "🚫 Нет доступного сервера Remnawave.",
+            reply_markup=build_editor_kb(tg_id)
+        )
         return
 
     api = RemnawaveAPI(remna_server["api_url"])

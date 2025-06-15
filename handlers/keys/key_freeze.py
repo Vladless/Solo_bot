@@ -6,7 +6,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import text
 
-from database import get_key_details, mark_key_as_frozen, mark_key_as_unfrozen
+from config import TRIAL_CONFIG
+from database import (
+    get_key_details,
+    get_servers,
+    get_tariff_by_id,
+    mark_key_as_frozen,
+    mark_key_as_unfrozen,
+)
 from handlers.buttons import APPLY, BACK, CANCEL
 from handlers.keys.key_utils import renew_key_in_cluster, toggle_client_on_cluster
 from handlers.texts import (
@@ -71,7 +78,13 @@ async def process_callback_unfreeze_subscription_confirm(
             cluster_id, email, client_id, enable=True, session=session
         )
         if result["status"] != "success":
-            text_error = f"Произошла ошибка при включении подписки.\nДетали: {result.get('error') or result.get('results')}"
+            logger.warning(f"Не удалось включить подписку: {result.get('error') or result.get('results')}")
+
+        servers = await get_servers(session)
+        cluster_servers = servers.get(cluster_id, [])
+
+        if not cluster_servers:
+            text_error = "Сервер не найден."
             builder = InlineKeyboardBuilder()
             builder.row(
                 InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
@@ -80,6 +93,18 @@ async def process_callback_unfreeze_subscription_confirm(
                 callback_query.message, text_error, builder.as_markup()
             )
             return
+
+        tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
+
+        if not tariff:
+            logger.info(
+                "[Unfreeze] Тариф не найден — возможно ключ триальный. Применяем дефолтные значения."
+            )
+            total_gb = TRIAL_CONFIG["traffic_limit_gb"]
+            hwid_limit = TRIAL_CONFIG["hwid_limit"]
+        else:
+            total_gb = int(tariff.get("traffic_limit") or 0)
+            hwid_limit = int(tariff.get("device_limit") or 0)
 
         now_ms = int(time.time() * 1000)
         leftover = record["expiry_time"]
@@ -91,45 +116,7 @@ async def process_callback_unfreeze_subscription_confirm(
         await mark_key_as_unfrozen(session, record["tg_id"], client_id, new_expiry_time)
         await session.commit()
 
-        from database.servers import get_servers
-
-        servers = await get_servers(session)
-        cluster_servers = servers.get(cluster_id, [])
-
-        tariff = None
-        for srv in cluster_servers:
-            result = await session.execute(
-                text(
-                    """
-                    SELECT t.*
-                    FROM tariffs t
-                    JOIN servers s ON s.tariff_group = t.group_code
-                    WHERE s.server_name = :server_name
-                    ORDER BY t.duration_days DESC
-                    LIMIT 1
-                """
-                ),
-                {"server_name": srv["server_name"]},
-            )
-            row = result.mappings().first()
-            if row:
-                tariff = row
-                break
-
-        await session.commit()
-
-        if not tariff:
-            logger.info(
-                "[Unfreeze] Тариф не найден — возможно ключ триальный. Применяем дефолтные значения."
-            )
-            base_bytes = 15 * 1024
-            hwid_limit = 1
-        else:
-            base_bytes = int(tariff.get("traffic_limit") or 0)
-            hwid_limit = int(tariff.get("device_limit") or 0)
-
         added_days = max(leftover / (1000 * 86400), 0.01)
-        total_gb = int((added_days / 30) * base_bytes)
         logger.info(
             f"[Unfreeze Debug] Запуск renew_key_in_cluster с expiry={new_expiry_time}, gb={total_gb}, hwid={hwid_limit}"
         )
@@ -244,3 +231,4 @@ async def process_callback_freeze_subscription_confirm(
 
     except Exception as e:
         await handle_error(tg_id, callback_query, f"Ошибка при заморозке подписки: {e}")
+
