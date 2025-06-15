@@ -51,3 +51,4 @@ alembic
 psycopg2-binary
 psutil
 uvicorn
+fastapi

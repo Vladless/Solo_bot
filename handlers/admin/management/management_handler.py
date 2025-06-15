@@ -141,7 +141,10 @@ async def show_admins(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "add_admin"))
 async def prompt_new_admin(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Введите <code>tg_id</code> нового админа:")
+    await callback.message.edit_text(
+        "Введите <code>tg_id</code> нового админа:",
+        reply_markup=build_admin_back_kb_to_admins()
+    )
     await state.set_state(AdminState.waiting_for_tg_id)
 
 
@@ -159,7 +162,7 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
     else:
         session.add(Admin(
             tg_id=tg_id,
-            role="admin",
+            role="moderator",
             description="Добавлен вручную"
         ))
         await session.commit()
