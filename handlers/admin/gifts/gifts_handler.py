@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
 from database.models import Tariff, Gift, GiftUsage
+from handlers.utils import format_days, format_months
 
 
 router = Router()
@@ -41,9 +43,16 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
 
     kb = InlineKeyboardBuilder()
     for t in tariffs:
-        kb.button(text=f"{t.name} – {t.duration_days // 30} мес", callback_data=f"admin_gift_select|{t.id}")
-    kb.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()
-))
+        if t.duration_days % 30 == 0:
+            duration_text = format_months(t.duration_days // 30)
+        else:
+            duration_text = format_days(t.duration_days)
+
+        kb.button(
+            text=f"{t.name} – {duration_text}",
+            callback_data=f"admin_gift_select|{t.id}"
+        )
+
 
     await callback.message.edit_text(
         "🎁 Выберите тариф для подарка:",
@@ -89,9 +98,11 @@ async def handle_limited_gift_input(message: types.Message, session: AsyncSessio
     await state.clear()
     await finalize_gift(message, session, bot, data, is_unlimited=False)
 
+
 @router.callback_query(F.data == "admin_gifts_all")
 async def show_gifts_page(callback: CallbackQuery, session: AsyncSession):
     await show_gift_list(callback, session, page=1)
+
 
 @router.callback_query(F.data.startswith("gifts_page|"))
 async def paginate_gifts(callback: CallbackQuery, session: AsyncSession):
@@ -173,15 +184,20 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
         select(func.count()).select_from(GiftUsage).where(GiftUsage.gift_id == gift_id)
     )
     used_count = usage_result.scalar_one()
-
     usage_text = f"{used_count}/{gift.max_usages}" if gift.max_usages else "∞"
+
+    duration_days = (gift.expiry_time.date() - gift.created_at.date()).days
+    if duration_days % 30 == 0:
+        duration_text = format_months(duration_days // 30)
+    else:
+        duration_text = format_days(duration_days)
 
     text = (
         f"🎁 <b>Подарок</b>\n"
         f"ID: <code>{gift.gift_id}</code>\n"
-        f"Месяцев: <b>{gift.selected_months}</b>\n"
+        f"Срок: <b>{duration_text}</b>\n"
         f"Активаций: <b>{usage_text}</b>\n"
-        f"Срок действия: <i>{gift.expiry_time.strftime('%d.%m.%Y')}</i>\n"
+        f"Истекает: <i>{gift.expiry_time.strftime('%d.%m.%Y')}</i>\n"
         f"<b>Ссылка для активации:</b>\n<blockquote>{gift.gift_link}</blockquote>"
     )
 

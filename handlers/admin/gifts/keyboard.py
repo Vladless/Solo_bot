@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.models import Tariff, Gift
 from ..panel.keyboard import AdminPanelCallback
+from handlers.utils import get_plural_form, format_months, format_days
 
 from handlers.buttons import BACK
 
@@ -35,21 +36,38 @@ def build_gift_tariffs_kb(tariffs: list[Tariff]) -> InlineKeyboardMarkup:
 
 def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    row = []
 
-    for gift in gifts:
-        button_text = f"{gift.gift_id[:6]}... — {gift.selected_months} мес."
-        builder.button(
-            text=button_text,
-            callback_data=f"gift_view|{gift.gift_id}",
+    for i, gift in enumerate(gifts):
+        if gift.selected_months > 0:
+            duration_text = format_months(gift.selected_months)
+        else:
+            days = (gift.expiry_time.date() - gift.created_at.date()).days
+            duration_text = format_days(days)
+
+        button_text = f"{gift.gift_id[:6]}... — {duration_text}"
+
+        row.append(
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"gift_view|{gift.gift_id}",
+            )
         )
+
+        if len(row) == 2 or i == len(gifts) - 1:
+            builder.row(*row)
+            row = []
 
     nav = []
     if page > 1:
         nav.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"gifts_page|{page - 1}"))
     if len(gifts) == 10:
         nav.append(InlineKeyboardButton(text="➡️ Далее", callback_data=f"gifts_page|{page + 1}"))
+    if nav:
+        builder.row(*nav)
 
-    builder.row(*nav)
-    builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+    builder.row(
+        InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+    )
 
     return builder.as_markup()

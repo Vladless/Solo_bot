@@ -46,14 +46,22 @@ def build_cancel_kb() -> InlineKeyboardMarkup:
 
 def build_tariff_groups_kb(groups: list[str]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for group in groups:
-        builder.button(
-            text=group,
-            callback_data=AdminTariffCallback(action=f"group|{group}").pack(),
+    row = []
+
+    for i, group in enumerate(groups):
+        row.append(
+            InlineKeyboardButton(
+                text=group,
+                callback_data=AdminTariffCallback(action=f"group|{group}").pack(),
+            )
         )
+        if len(row) == 2 or i == len(groups) - 1:
+            builder.row(*row)
+            row = []
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад", callback_data=AdminPanelCallback(action="tariffs").pack()
+            text="⬅️ Назад",
+            callback_data=AdminPanelCallback(action="tariffs").pack(),
         )
     )
     return builder.as_markup()

@@ -173,13 +173,6 @@ def format_days(days: int) -> str:
     return f"{days} {get_plural_form(days, 'день', 'дня', 'дней')}"
 
 
-def format_hours(hours: int) -> str:
-    """Форматирует количество часов с правильным склонением"""
-    if hours <= 0:
-        return "0 часов"
-    return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
-
-
 def format_minutes(minutes: int) -> str:
     """Форматирует количество минут с правильным склонением"""
     if minutes <= 0:
