@@ -30,3 +30,17 @@ class GiftUsageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class GiftUpdate(BaseModel):
+    recipient_tg_id: Optional[int] = None
+    selected_months: Optional[int] = None
+    expiry_time: Optional[datetime] = None
+    gift_link: Optional[str] = None
+    is_used: Optional[bool] = None
+    is_unlimited: Optional[bool] = None
+    max_usages: Optional[int] = None
+    tariff_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True

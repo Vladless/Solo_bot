@@ -4,5 +4,5 @@ from .tariffs import TariffResponse, TariffUpdate, TariffBase
 from .servers import ServerResponse, ServerBase, ServerUpdate
 from .coupons import CouponResponse, CouponUsageResponse, CouponBase, CouponUpdate
 from .referrals import ReferralResponse
-from .gifts import GiftResponse, GiftUsageResponse
+from .gifts import GiftResponse, GiftUsageResponse, GiftUpdate, GiftBase
 from .misc import ManualBanResponse, TemporaryDataResponse, BlockedUserResponse, TrackingSourceResponse, PaymentResponse, NotificationResponse
