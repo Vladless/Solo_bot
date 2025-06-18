@@ -88,8 +88,9 @@ async def process_callback_view_profile(
         builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
     else:
         builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
+
     if BALANCE_BUTTON:
-    builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
+        builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
 
     row_buttons = []
     if REFERRAL_BUTTON:
