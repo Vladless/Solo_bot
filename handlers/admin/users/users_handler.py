@@ -8,7 +8,7 @@ from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -77,6 +77,7 @@ class UserEditorState(StatesGroup):
     waiting_for_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
+    preview_message = State()
     selecting_cluster = State()
     selecting_duration = State()
     selecting_country = State()
@@ -315,7 +316,14 @@ async def handle_send_message(
     tg_id = callback_data.tg_id
 
     await callback_query.message.edit_text(
-        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:",
+        text=(
+            "✉️ Введите текст сообщения, которое вы хотите отправить пользователю:\n\n"
+            "Поддерживается только Telegram-форматирование — <b>жирный</b>, <i>курсив</i> и другие стили через редактор Telegram.\n\n"
+            "Вы можете отправить:\n"
+            "• Только <b>текст</b>\n"
+            "• Только <b>картинку</b>\n"
+            "• <b>Текст + картинку</b>"
+        ),
         reply_markup=build_editor_kb(tg_id),
     )
 
@@ -327,18 +335,76 @@ async def handle_send_message(
 async def handle_message_text_input(message: Message, state: FSMContext):
     data = await state.get_data()
     tg_id = data.get("tg_id")
+    text_message = message.html_text or message.text or message.caption or ""
+    photo = message.photo[-1].file_id if message.photo else None
 
-    try:
-        await message.bot.send_message(chat_id=tg_id, text=message.text)
+    max_len = 1024 if photo else 4096
+    if len(text_message) > max_len:
         await message.answer(
+            f"⚠️ Сообщение слишком длинное.\n"
+            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(text_message)}</b>.",
+            reply_markup=build_editor_kb(tg_id),
+        )
+        await state.clear()
+        return
+
+    await state.update_data(text=text_message, photo=photo)
+    await state.set_state(UserEditorState.preview_message)
+
+    if photo:
+        await message.answer_photo(photo=photo, caption=text_message, parse_mode="HTML")
+    else:
+        await message.answer(text=text_message, parse_mode="HTML")
+
+    await message.answer(
+        "👀 Это предпросмотр сообщения. Отправить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📤 Отправить", callback_data="send_user_message"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_user_message"),
+            ]
+        ]),
+    )
+
+
+@router.callback_query(F.data == "send_user_message", IsAdminFilter(), UserEditorState.preview_message)
+async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+    text_message = data.get("text")
+    photo = data.get("photo")
+    try:
+        if photo:
+            await callback_query.bot.send_photo(
+                chat_id=tg_id,
+                photo=photo,
+                caption=text_message,
+                parse_mode="HTML",
+            )
+        else:
+            await callback_query.bot.send_message(
+                chat_id=tg_id,
+                text=text_message,
+                parse_mode="HTML",
+            )
+        await callback_query.message.edit_text(
             text="✅ Сообщение успешно отправлено.", reply_markup=build_editor_kb(tg_id)
         )
     except Exception as e:
-        await message.answer(
+        await callback_query.message.edit_text(
             text=f"❌ Не удалось отправить сообщение: {e}",
             reply_markup=build_editor_kb(tg_id),
         )
+    await state.clear()
 
+
+@router.callback_query(F.data == "cancel_user_message", IsAdminFilter(), UserEditorState.preview_message)
+async def handle_cancel_user_message(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+    await callback_query.message.edit_text(
+        text="🚫 Отправка сообщения отменена.", reply_markup=build_editor_kb(tg_id)
+    )
     await state.clear()
 
 

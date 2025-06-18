@@ -18,7 +18,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT
+from config import ADMIN_ID, INLINE_MODE, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT, REFERRAL_BONUS_PERCENTAGES
 from database import (
     add_referral,
     add_user,
@@ -34,10 +34,11 @@ from handlers.texts import (
     REFERRAL_OFFERS,
     REFERRAL_SUCCESS_MSG,
     TOP_REFERRALS_TEXT,
+    INVITE_MESSAGE_TEMPLATE,
 )
 from logger import logger
 
-from .texts import get_referral_link, invite_message_send
+from .texts import get_referral_link
 from .utils import edit_or_send_message, format_days
 
 router = Router()
@@ -57,7 +58,32 @@ async def invite_handler(
 
     referral_link = get_referral_link(chat_id)
     referral_stats = await get_referral_stats(session, chat_id)
-    invite_message = invite_message_send(referral_link, referral_stats)
+
+    bonuses_lines = []
+    for level, value in REFERRAL_BONUS_PERCENTAGES.items():
+        if isinstance(value, float):
+            bonuses_lines.append(f"{level} уровень: 🌟 {int(value * 100)}% бонуса")
+        else:
+            bonuses_lines.append(f"{level} уровень: 💸 {int(value)}₽ бонуса")
+    bonuses_block = "\n".join(bonuses_lines)
+
+    details_lines = []
+    for level, stats in referral_stats['referrals_by_level'].items():
+        bonus_value = REFERRAL_BONUS_PERCENTAGES.get(level)
+        if isinstance(bonus_value, float):
+            bonus_str = f"{int(bonus_value * 100)}%"
+        else:
+            bonus_str = f"{int(bonus_value)}₽"
+        details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_str}")
+    details_block = "\n".join(details_lines)
+
+    invite_message = INVITE_MESSAGE_TEMPLATE.format(
+        referral_link=referral_link,
+        bonuses_block=bonuses_block,
+        total_referrals=referral_stats['total_referrals'],
+        details_block=details_block,
+        total_referral_bonus=referral_stats['total_referral_bonus'],
+    )
     image_path = os.path.join("img", "pic_invite.jpg")
 
     builder = InlineKeyboardBuilder()
