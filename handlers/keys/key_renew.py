@@ -128,7 +128,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 )
             )
 
-        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{record['email']}"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="renew_menu"))
 
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
@@ -215,7 +215,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         builder.row(
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data=f"renew_key|{key_name}"
+                callback_data="renew_menu"
             )
         )
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))

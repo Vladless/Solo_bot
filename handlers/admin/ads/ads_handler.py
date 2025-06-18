@@ -90,13 +90,19 @@ async def handle_ads_code_input(
 
 
 @router.callback_query(AdminAdsCallback.filter(F.action == "list"), IsAdminFilter())
-async def handle_ads_list(callback_query: CallbackQuery, session: AsyncSession):
+async def handle_ads_list(callback_query: CallbackQuery, session: AsyncSession, callback_data: AdminAdsCallback):
     try:
         result = await session.execute(
             select(TrackingSource).order_by(TrackingSource.created_at.desc())
         )
         ads = result.scalars().all()
-        reply_markup = build_ads_list_kb(ads, current_page=1, total_pages=1)
+        items_per_page = 6
+        if callback_data.code and callback_data.code.isdigit():
+            current_page = int(callback_data.code)
+        else:
+            current_page = 1
+        total_pages = (len(ads) + items_per_page - 1) // items_per_page
+        reply_markup = build_ads_list_kb(ads, current_page, total_pages)
         await callback_query.message.edit_text(
             "📋 Выберите ссылку для просмотра статистики:", reply_markup=reply_markup
         )

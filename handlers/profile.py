@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
+    BALANCE_BUTTON,
     GIFT_BUTTON,
     INSTRUCTIONS_BUTTON,
     NEWS_MESSAGE,
@@ -19,6 +20,7 @@ from handlers.buttons import (
     ADD_SUB,
     BACK,
     BALANCE,
+    RENEW_KEY,
     GIFTS,
     INSTRUCTIONS,
     INVITE,
@@ -80,11 +82,13 @@ async def process_callback_view_profile(
 
     builder = InlineKeyboardBuilder()
     if key_count > 0:
+        builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="renew_menu"))
         builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
     elif trial_status == 0:
         builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
     else:
         builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
+    if BALANCE_BUTTON:
     builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
 
     row_buttons = []

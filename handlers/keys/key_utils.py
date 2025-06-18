@@ -437,7 +437,7 @@ async def renew_key_in_cluster(
 
             traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
 
-            async def update_or_create_client():
+            async def update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name):
                 updated = await extend_client_key(
                     xui=xui,
                     inbound_id=int(inbound_id),
@@ -466,7 +466,7 @@ async def renew_key_in_cluster(
                     )
                     await add_client(xui, config)
 
-            tasks.append(update_or_create_client())
+            tasks.append(update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 

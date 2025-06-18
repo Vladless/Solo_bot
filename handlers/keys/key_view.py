@@ -130,7 +130,6 @@ def build_keys_response(records):
     else:
         response_message = NO_SUBSCRIPTIONS_MSG
 
-    builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
@@ -357,12 +356,7 @@ async def render_key_info(
 
     if ENABLE_DELETE_KEY_BUTTON:
         builder.row(
-            InlineKeyboardButton(text=RENEW, callback_data=f"renew_key|{key_name}"),
             InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text=RENEW_FULL, callback_data=f"renew_key|{key_name}")
         )
 
     if USE_COUNTRY_SELECTION:
@@ -443,3 +437,49 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
 
     image_path = os.path.join("img", "pic_view.jpg")
     await render_key_info(callback_query.message, session, key_name, image_path)
+
+
+@router.callback_query(F.data == "renew_menu")
+async def process_renew_menu(callback_query: CallbackQuery, session: Any):
+    tg_id = callback_query.from_user.id
+    records = await get_keys(session, tg_id)
+    servers_dict = await get_servers(session)
+    all_server_names = set()
+    for servers in servers_dict.values():
+        for s in servers:
+            all_server_names.add(s["server_name"])
+    builder = InlineKeyboardBuilder()
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    if records:
+        for record in records:
+            if getattr(record, 'is_frozen', False):
+                continue
+            alias = record.alias
+            email = record.email
+            expiry_time = record.expiry_time
+            server_id = record.server_id
+            key_display = alias.strip() if alias else email
+
+            if expiry_time:
+                expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
+                now = datetime.now(moscow_tz)
+                days_left = (expiry_date_full - now).days
+                if (expiry_date_full - now).total_seconds() <= 0:
+                    days_text = "🔴 Истекла"
+                else:
+                    days_text = format_days(days_left)
+            else:
+                days_text = "истекла"
+            server_info = f" ({server_id})" if server_id in all_server_names else ""
+            btn_text = f"🔑 {key_display} (⏳{days_text}) {server_info}"
+            builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"renew_key|{email}"))
+    text = "Выберите подписку для продления или купите новую"
+    builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    image_path = os.path.join("img", "pic_view.jpg")
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=text,
+        reply_markup=builder.as_markup(),
+        media_path=image_path,
+    )

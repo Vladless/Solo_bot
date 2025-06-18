@@ -27,12 +27,23 @@ def build_ads_list_kb(
     ads: list, current_page: int, total_pages: int
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    items_per_page = 6
 
-    for ad in ads:
-        builder.button(
-            text=f"📎 {ad['name']}",
-            callback_data=AdminAdsCallback(action="view", code=ad["code"]).pack(),
+    start = (current_page - 1) * items_per_page
+    end = start + items_per_page
+    page_ads = ads[start:end]
+
+    row = []
+    for i, ad in enumerate(page_ads, 1):
+        row.append(
+            InlineKeyboardButton(
+                text=f"📎 {ad['name']}",
+                callback_data=AdminAdsCallback(action="view", code=ad["code"]).pack(),
+            )
         )
+        if i % 2 == 0 or i == len(page_ads):
+            builder.row(*row)
+            row = []
 
     pagination_buttons = []
     if current_page > 1:
