@@ -263,21 +263,24 @@ async def render_key_info(
     hwid_count = 0
     is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
     if is_full_remnawave and client_id:
-        servers = await get_servers(session)
-        remna_server = next(
-            (
-                srv
-                for cl in servers.values()
-                for srv in cl
-                if srv.get("panel_type") == "remnawave"
-            ),
-            None,
-        )
-        if remna_server:
-            api = RemnawaveAPI(remna_server["api_url"])
-            if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                devices = await api.get_user_hwid_devices(client_id)
-                hwid_count = len(devices or [])
+        try:
+            servers = await get_servers(session)
+            remna_server = next(
+                (
+                    srv
+                    for cl in servers.values()
+                    for srv in cl
+                    if srv.get("panel_type") == "remnawave"
+                ),
+                None,
+            )
+            if remna_server:
+                api = RemnawaveAPI(remna_server["api_url"])
+                if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                    devices = await api.get_user_hwid_devices(client_id)
+                    hwid_count = len(devices or [])
+        except Exception as e:
+            logger.error(f"Ошибка при получении HWID для {client_id}: {e}")
 
     tariff_name = ""
     traffic_limit = 0
