@@ -18,6 +18,7 @@ from config import (
     DONATIONS_ENABLE,
     SHOW_START_MENU_ONCE,
     SUPPORT_CHAT_URL,
+    TRIAL_TIME_DISABLE,
 )
 from database import (
     add_user,
@@ -303,16 +304,15 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     if session is not None:
         trial_status = await get_trial(session, message.chat.id)
         logger.info(f"Trial status для {message.chat.id}: {trial_status}")
-        if trial_status == 0:
-            builder.row(
-                InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key")
-            )
     else:
-        logger.warning(
-            f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}"
-        )
+        logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 
-    if trial_status != 0 or not SHOW_START_MENU_ONCE:
+    show_trial_button = trial_status == 0 and not TRIAL_TIME_DISABLE
+    show_profile_button = not SHOW_START_MENU_ONCE or trial_status != 0 or TRIAL_TIME_DISABLE
+
+    if show_trial_button:
+        builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
+    if show_profile_button:
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if CHANNEL_EXISTS:

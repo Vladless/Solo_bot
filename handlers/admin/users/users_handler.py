@@ -1458,6 +1458,7 @@ async def handle_create_key_start(
     builder = InlineKeyboardBuilder()
     for cluster in cluster_names:
         builder.button(text=f"🌐 {cluster}", callback_data=cluster)
+    builder.adjust(2)
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
