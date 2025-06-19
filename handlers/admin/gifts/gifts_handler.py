@@ -10,7 +10,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
 from database.models import Tariff, Gift, GiftUsage
-from handlers.utils import format_days, format_months
+from handlers.utils import format_days, format_months, edit_or_send_message
+
+from logger import logger
 
 
 router = Router()
@@ -28,36 +30,107 @@ async def admin_gift_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_gift_create")
 async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession):
-    result = await session.execute(
+    stmt = (
         select(Tariff)
         .where(Tariff.group_code == "gifts", Tariff.is_active == True)
-        .order_by(Tariff.id)
+        .order_by(Tariff.duration_days)
     )
+    result = await session.execute(stmt)
     tariffs = result.scalars().all()
 
     if not tariffs:
         builder = InlineKeyboardBuilder()
         builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
-        await callback.message.edit_text("❌ Нет активных тарифов в группе 'gifts'.", reply_markup=builder.as_markup())
+        await callback.message.edit_text(
+            "❌ Нет активных тарифов в группе 'gifts'.",
+            reply_markup=builder.as_markup()
+        )
         return
 
-    kb = InlineKeyboardBuilder()
+    from collections import defaultdict
+    grouped_tariffs = defaultdict(list)
     for t in tariffs:
+        grouped_tariffs[t.subgroup_title].append(t)
+
+    builder = InlineKeyboardBuilder()
+
+    for t in grouped_tariffs.get(None, []):
         if t.duration_days % 30 == 0:
             duration_text = format_months(t.duration_days // 30)
         else:
             duration_text = format_days(t.duration_days)
 
-        kb.button(
+        builder.button(
             text=f"{t.name} – {duration_text}",
             callback_data=f"admin_gift_select|{t.id}"
         )
 
+    for subgroup in sorted(k for k in grouped_tariffs if k):
+        safe = subgroup.replace(" ", "_")[:30]
+        builder.row(
+            types.InlineKeyboardButton(
+                text=subgroup,
+                callback_data=f"admin_gift_subgroup|{safe}",
+            )
+        )
+
+    builder.row(
+        types.InlineKeyboardButton(
+            text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()
+        )
+    )
 
     await callback.message.edit_text(
         "🎁 Выберите тариф для подарка:",
-        reply_markup=kb.as_markup()
+        reply_markup=builder.as_markup()
     )
+
+
+@router.callback_query(F.data.startswith("admin_gift_subgroup|"))
+async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: AsyncSession):
+    try:
+        subgroup = callback.data.split("|", 1)[1].replace("_", " ")
+
+        stmt = (
+            select(Tariff)
+            .where(Tariff.group_code == "gifts", Tariff.is_active == True)
+            .order_by(Tariff.duration_days)
+        )
+        result = await session.execute(stmt)
+        tariffs = result.scalars().all()
+
+        filtered = [t for t in tariffs if t.subgroup_title == subgroup]
+        if not filtered:
+            await callback.message.edit_text("❌ В этой подгруппе пока нет тарифов.")
+            return
+
+        builder = InlineKeyboardBuilder()
+        for t in filtered:
+            if t.duration_days % 30 == 0:
+                duration_text = format_months(t.duration_days // 30)
+            else:
+                duration_text = format_days(t.duration_days)
+
+            builder.row(
+                types.InlineKeyboardButton(
+                    text=f"{t.name} – {duration_text}",
+                    callback_data=f"admin_gift_select|{t.id}",
+                )
+            )
+
+        builder.row(
+            types.InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_gift_create")
+        )
+
+        await edit_or_send_message(
+            target_message=callback.message,
+            text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+            reply_markup=builder.as_markup(),
+        )
+
+    except Exception as e:
+        logger.error(f"[ADMIN_GIFT_SUBGROUP] Ошибка при отображении подгруппы: {e}")
+        await callback.message.answer("❌ Произошла ошибка при отображении тарифов.")
 
 
 @router.callback_query(F.data.startswith("admin_gift_select|"))
