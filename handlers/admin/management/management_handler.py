@@ -5,15 +5,27 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 import hashlib
+import time
+from dateutil import parser
 
-from database.models import Key, Admin
+import os, subprocess, sys
+import json
+from aiogram import Bot
+from panels.remnawave import RemnawaveAPI
+from tempfile import NamedTemporaryFile
+import traceback
+from datetime import datetime
+from sqlalchemy.exc import SQLAlchemyError
+
+from database.models import Key, Admin, Server, User
 from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares import maintenance
 
 from ..panel.keyboard import build_admin_back_kb
-from .keyboard import AdminPanelCallback, build_management_kb, build_admins_kb, build_single_admin_menu, build_role_selection_kb, build_admin_back_kb_to_admins, build_token_result_kb
+from .keyboard import AdminPanelCallback, build_management_kb, build_export_db_sources_kb, build_admins_kb, build_back_to_db_menu, build_single_admin_menu, build_role_selection_kb, build_database_kb, build_admin_back_kb_to_admins, build_token_result_kb
 from asyncio import sleep
+from config import DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 
 router = Router()
@@ -21,6 +33,10 @@ router = Router()
 
 class AdminManagementStates(StatesGroup):
     waiting_for_new_domain = State()
+
+
+class DatabaseState(StatesGroup):
+    waiting_for_backup_file = State()
 
 
 class AdminState(StatesGroup):
@@ -263,3 +279,285 @@ async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallbac
         f"🗑 Админ <code>{tg_id}</code> удалён.",
         reply_markup=build_admin_back_kb_to_admins()
     )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "database"))
+async def handle_database_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        text="🗄 <b>Управление базой данных</b>",
+        reply_markup=build_database_kb(),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "restore_db"))
+async def prompt_restore_db(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📂 Отправьте файл резервной копии (.sql), чтобы восстановить базу данных.\n"
+        "⚠️ Все текущие данные будут перезаписаны.",
+        reply_markup=build_back_to_db_menu(),
+    )
+    await state.set_state(DatabaseState.waiting_for_backup_file)
+
+
+@router.message(DatabaseState.waiting_for_backup_file)
+async def restore_database(message: Message, state: FSMContext, bot: Bot):
+
+    document = message.document
+
+    if not document or not document.file_name.endswith(".sql"):
+        await message.answer("❌ Пожалуйста, отправьте файл с расширением .sql.")
+        return
+
+    try:
+        with NamedTemporaryFile(delete=False, suffix=".sql") as tmp_file:
+            tmp_path = tmp_file.name
+
+        await bot.download(document, destination=tmp_path)
+        logger.info(f"[Restore] Файл получен и сохранён: {tmp_path}")
+
+        is_custom_dump = False
+        with open(tmp_path, "rb") as f:
+            signature = f.read(5)
+            if signature == b"PGDMP":
+                is_custom_dump = True
+
+        logger.info(f"[Restore] Определён формат: {'custom' if is_custom_dump else 'plain'}")
+
+        subprocess.run([
+            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{DB_NAME}' AND pid <> pg_backend_pid();"
+        ], check=True)
+
+        subprocess.run([
+            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
+            f"DROP DATABASE IF EXISTS {DB_NAME};"
+        ], check=True)
+
+        subprocess.run([
+            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
+            f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};"
+        ], check=True)
+
+        logger.info("[Restore] База данных пересоздана")
+
+        os.environ["PGPASSWORD"] = DB_PASSWORD
+
+        if is_custom_dump:
+            result = subprocess.run([
+                "pg_restore",
+                f"--dbname={DB_NAME}",
+                "-U", DB_USER,
+                "-h", PG_HOST,
+                "-p", PG_PORT,
+                "--no-owner",
+                "--exit-on-error",
+                tmp_path,
+            ], capture_output=True, text=True)
+        else:
+            result = subprocess.run([
+                "psql",
+                "-U", DB_USER,
+                "-h", PG_HOST,
+                "-p", PG_PORT,
+                "-d", DB_NAME,
+                "-f", tmp_path,
+            ], capture_output=True, text=True)
+
+        del os.environ["PGPASSWORD"]
+
+        if result.returncode != 0:
+            logger.error(f"[Restore] Ошибка восстановления: {result.stderr}")
+            await message.answer(
+                f"❌ Ошибка при восстановлении базы данных:\n<pre>{result.stderr}</pre>",
+            )
+            return
+
+        await message.answer(
+            "✅ База данных восстановлена.",
+            reply_markup=build_back_to_db_menu(),
+        )
+        logger.info("[Restore] Успешно восстановлено. Завершаем процесс для перезапуска.")
+        await state.clear()
+        sys.exit(0)
+
+    except Exception as e:
+        logger.exception(f"[Restore] Непредвиденная ошибка: {e}")
+        await message.answer(
+            f"❌ Произошла ошибка:\n<pre>{traceback.format_exc()}</pre>",
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "export_db"))
+async def handle_export_db(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📤 Выберите панель, с которой требуется получить данные:\n\n"
+        "<i>Подтянутся подписки с панели и будут сохранены в базу данных бота.</i>",
+        reply_markup=build_export_db_sources_kb(),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "back_to_db_menu"))
+async def back_to_database_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📦 Управление базой данных:",
+        reply_markup=build_database_kb()
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"))
+async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
+    await callback.answer()
+
+    result = await session.execute(
+        select(Server).where(Server.panel_type == "remnawave", Server.enabled == True)
+    )
+    servers = result.scalars().all()
+
+    if not servers:
+        await callback.message.edit_text(
+            "❌ Нет доступных Remnawave-серверов.",
+            reply_markup=build_back_to_db_menu(),
+        )
+        return
+
+    server = servers[0]
+    api = RemnawaveAPI(base_url=server.api_url)
+
+    if not await api.login(username=REMNAWAVE_LOGIN, password=REMNAWAVE_PASSWORD):
+        await callback.message.edit_text(
+            "❌ Не удалось авторизоваться на Remnawave панели.",
+            reply_markup=build_back_to_db_menu(),
+        )
+        return
+
+    users = await api.get_all_users()
+    if not users:
+        await callback.message.edit_text(
+            "📭 На панели нет клиентов.",
+            reply_markup=build_back_to_db_menu(),
+        )
+        return
+
+    logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
+
+    added_users = await import_remnawave_users(session, users)
+
+    server_id = server.cluster_name or server.server_name
+
+    added_keys = await import_remnawave_keys(session, users, server_id=server_id)
+
+    preview = ""
+    for i, user in enumerate(users[:3], 1):
+        email = user.get("email") or user.get("username") or "-"
+        expire = user.get("expireAt", "")[:10]
+        preview += f"{i}. {email} — до {expire}\n"
+
+    await callback.message.edit_text(
+        f"📄 Найдено клиентов: <b>{len(users)}</b>\n"
+        f"👤 Импортировано пользователей: <b>{added_users}</b>\n"
+        f"🔐 Импортировано ключей: <b>{added_keys}</b>\n\n"
+        f"<b>Первые 3:</b>\n{preview}",
+        reply_markup=build_back_to_db_menu(),
+    )
+
+
+async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> int:
+    added = 0
+
+    for user in users:
+        tg_id = user.get("telegramId")
+        if not tg_id:
+            continue
+
+        exists = await session.execute(select(User).where(User.tg_id == tg_id))
+        if exists.scalar():
+            continue
+
+        try:
+            new_user = User(
+                tg_id=tg_id,
+                username=None,
+                first_name=None,
+                last_name=None,
+                language_code=None,
+                is_bot=False,
+                balance=0.0,
+                trial=1,
+                source_code=None,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            session.add(new_user)
+            added += 1
+
+        except SQLAlchemyError as e:
+            logger.error(f"[Remnawave Import] Ошибка при добавлении пользователя {tg_id}: {e}")
+            continue
+
+    await session.commit()
+    return added
+
+
+async def import_remnawave_keys(session: AsyncSession, users: list[dict], server_id: str) -> int:
+    added = 0
+
+    for user in users:
+        tg_id = user.get("telegramId")
+        client_id = user.get("uuid")
+        email = user.get("email") or user.get("username")
+        remnawave_link = user.get("subscriptionUrl")
+        expire_at = user.get("expireAt")
+        created_at = user.get("createdAt")
+
+        if not tg_id or not client_id:
+            logger.warning(f"[SKIP] Пропущен клиент: tg_id={tg_id}, client_id={client_id}")
+            continue
+
+        exists_stmt = await session.execute(
+            select(Key).where(Key.client_id == client_id)
+        )
+        if exists_stmt.scalar():
+            logger.info(f"[SKIP] Ключ уже существует: {client_id}")
+            continue
+
+        try:
+            created_ts = (
+                int(parser.isoparse(created_at).timestamp() * 1000)
+                if created_at else int(time.time() * 1000)
+            )
+            expire_ts = (
+                int(parser.isoparse(expire_at).timestamp() * 1000)
+                if expire_at else int(time.time() * 1000)
+            )
+
+            new_key = Key(
+                tg_id=tg_id,
+                client_id=client_id,
+                email=email,
+                created_at=created_ts,
+                expiry_time=expire_ts,
+                key="",
+                server_id=server_id,
+                remnawave_link=remnawave_link,
+                tariff_id=None,
+                is_frozen=False,
+                alias=None,
+                notified=False,
+                notified_24h=False,
+            )
+            session.add(new_key)
+            added += 1
+
+            logger.info(f"[ADD] Ключ добавлен: {client_id}, до {expire_at}, email={email}, server_id={server_id}")
+
+        except Exception as e:
+            logger.error(f"[ERROR] Ошибка при добавлении ключа {client_id}: {e}")
+
+    await session.commit()
+    logger.info(f"[IMPORT] Всего добавлено ключей: {added}")
+    return added

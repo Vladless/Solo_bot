@@ -16,8 +16,8 @@ def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
         )
 
     builder.button(
-        text="💾 Создать резервную копию",
-        callback_data=AdminPanelCallback(action="backups").pack(),
+        text="🗄 Управление БД",
+        callback_data=AdminPanelCallback(action="database").pack(),
     )
     builder.button(
         text="📛 Управление банами",
@@ -46,6 +46,50 @@ def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
     )
 
     builder.row(build_admin_back_btn())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_database_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="💾 Создать резервную копию",
+        callback_data=AdminPanelCallback(action="backups").pack(),
+    )
+    builder.button(
+        text="♻️ Восстановить БД",
+        callback_data=AdminPanelCallback(action="restore_db").pack(),
+    )
+    builder.button(
+        text="📤 Получить данные БД",
+        callback_data=AdminPanelCallback(action="export_db").pack(),
+    )
+    builder.row(build_admin_back_btn())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def build_back_to_db_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="⬅️ Назад", callback_data=AdminPanelCallback(action="database").pack()
+    )
+    return builder.as_markup()
+
+
+def build_export_db_sources_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.button(
+        text="🌀 Remnawave",
+        callback_data=AdminPanelCallback(action="export_remnawave").pack()
+    )
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action="back_to_db_menu").pack()
+    )
+
     builder.adjust(1)
     return builder.as_markup()
 

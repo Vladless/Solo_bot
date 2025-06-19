@@ -24,17 +24,13 @@ def build_panel_kb() -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="search_user").pack(),
     )
     builder.button(
-        text="🔑 Поиск по названию ключа",
+        text="🔑 Поиск по ключу",
         callback_data=AdminPanelCallback(action="search_key").pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🖥️ Серверы", callback_data=AdminPanelCallback(action="clusters").pack()
-        ),
-        InlineKeyboardButton(
-            text="🤖 Управление",
-            callback_data=AdminPanelCallback(action="management").pack(),
-        ),
+
+    builder.button(
+        text="🖥️ Управление серверами",
+        callback_data=AdminPanelCallback(action="clusters").pack(),
     )
     builder.row(
         InlineKeyboardButton(
@@ -47,12 +43,15 @@ def build_panel_kb() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()
-        )
-    )
-    builder.row(
+        ),
         InlineKeyboardButton(
             text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()
-        )
+        ),
+    )
+
+    builder.button(
+        text="🤖 Управление ботом",
+        callback_data=AdminPanelCallback(action="management").pack(),
     )
     builder.row(
         InlineKeyboardButton(
@@ -60,11 +59,18 @@ def build_panel_kb() -> InlineKeyboardMarkup:
             callback_data=AdminPanelCallback(action="stats").pack(),
         ),
         InlineKeyboardButton(
-            text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()
+            text="📈 Аналитика",
+            callback_data=AdminPanelCallback(action="ads").pack(),
         ),
     )
-    builder.button(text=MAIN_MENU, callback_data="profile")
-    builder.adjust(1, 1, 2, 2, 1, 1, 2, 1)
+
+    builder.button(
+        text=MAIN_MENU,
+        callback_data="profile",
+    )
+
+    builder.adjust(1, 1, 1, 2, 2, 1, 2, 1)
+
     return builder.as_markup()
 
 
