@@ -13,6 +13,7 @@ from config import (
     NEWS_MESSAGE,
     REFERRAL_BUTTON,
     SHOW_START_MENU_ONCE,
+    TRIAL_TIME_DISABLE,
 )
 from database import get_balance, get_key_count, get_trial
 from handlers.buttons import (
@@ -84,7 +85,7 @@ async def process_callback_view_profile(
     if key_count > 0:
         builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="renew_menu"))
         builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
-    elif trial_status == 0:
+    elif trial_status == 0 and not TRIAL_TIME_DISABLE:
         builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
     else:
         builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
