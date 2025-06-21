@@ -3,6 +3,7 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware
 from aiogram.types import InlineKeyboardButton, Message, Update
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
 
 from bot import bot
 from config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
@@ -41,6 +42,23 @@ class SubscriptionMiddleware(BaseMiddleware):
             member = await bot.get_chat_member(CHANNEL_ID, tg_id)
             if member.status not in ("member", "administrator", "creator"):
                 logger.info(f"[SubMiddleware] Пользователь {tg_id} не подписан")
+
+                state: FSMContext = data.get("state")
+                if state:
+                    original_text = message.text or message.caption
+                    user_data = {
+                        "tg_id": message.from_user.id,
+                        "username": message.from_user.username,
+                        "first_name": message.from_user.first_name,
+                        "last_name": message.from_user.last_name,
+                        "language_code": message.from_user.language_code,
+                        "is_bot": message.from_user.is_bot,
+                    }
+                    await state.update_data(
+                        original_text=original_text,
+                        user_data=user_data,
+                    )
+
                 return await self._ask_to_subscribe(message)
         except Exception as e:
             logger.warning(

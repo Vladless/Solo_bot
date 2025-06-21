@@ -130,15 +130,19 @@ class CouponUsage(DictLikeMixin, Base):
 class Referral(DictLikeMixin, Base):
     __tablename__ = "referrals"
 
-    referred_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
-    referrer_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
+    referred_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
+    referrer_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
     reward_issued = Column(Boolean, default=False)
 
 
 class Notification(DictLikeMixin, Base):
     __tablename__ = "notifications"
 
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
+    tg_id = Column(
+        BigInteger,
+        ForeignKey("users.tg_id", ondelete="CASCADE"),
+        primary_key=True
+    )
     notification_type = Column(String, primary_key=True)
     last_notification_time = Column(DateTime, default=datetime.utcnow)
 
