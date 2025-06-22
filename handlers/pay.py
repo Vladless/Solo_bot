@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import (
     CRYPTO_BOT_ENABLE,
     DONATIONS_ENABLE,
+    FREEKASSA_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     YOOKASSA_ENABLE,
@@ -22,6 +23,7 @@ from handlers.buttons import (
     BALANCE_HISTORY,
     COUPON,
     CRYPTOBOT,
+    FREEKASSA,
     MAIN_MENU,
     PAYMENT,
     ROBOKASSA,
@@ -30,6 +32,7 @@ from handlers.buttons import (
     YOOMONEY,
 )
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
+from handlers.payments.freekassa_pay import process_callback_pay_freekassa
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
 from handlers.payments.stars_pay import process_callback_pay_stars
 from handlers.payments.yookassa_pay import process_callback_pay_yookassa
@@ -58,6 +61,8 @@ async def handle_pay(
         payment_handlers.append(process_callback_pay_stars)
     if ROBOKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_robokassa)
+    if FREEKASSA_ENABLE:
+        payment_handlers.append(process_callback_pay_freekassa)
 
     if len(payment_handlers) == 1:
         await callback_query.answer()
@@ -75,6 +80,8 @@ async def handle_pay(
         builder.row(InlineKeyboardButton(text=STARS, callback_data="pay_stars"))
     if ROBOKASSA_ENABLE:
         builder.row(InlineKeyboardButton(text=ROBOKASSA, callback_data="pay_robokassa"))
+    if FREEKASSA_ENABLE:
+        builder.row(InlineKeyboardButton(text=FREEKASSA, callback_data="pay_freekassa"))
     if DONATIONS_ENABLE:
         builder.row(
             InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
