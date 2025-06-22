@@ -45,6 +45,23 @@ async def fetch_url_content(
         return [], {}
 
 
+async def combine_subscription_lines(urls: list[str]) -> list[str]:
+    combined = []
+    for url in urls:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        content = await response.text(encoding='utf-8')  # Ensure UTF-8 encoding
+                        for line in content.splitlines():
+                            line = line.strip()
+                            if line and not any(line.startswith(proto) for proto in ("vmess://", "trojan://", "ss://", "ssr://")):
+                                combined.append(line)
+        except Exception as e:
+            logger.error(f"Error fetching subscription from {url}: {e}")
+    return combined
+
+
 async def combine_unique_lines(
     urls: list[str], identifier: str, query_string: str
 ) -> tuple[list[str], list[dict[str, str]]]:
@@ -159,22 +176,52 @@ def calculate_traffic(
 
 
 def clean_subscription_line(line: str) -> str:
-    if "#" not in line:
+    if not line:
         return line
+
+    # First, URL-decode the entire line to handle any URL-encoded characters
     try:
-        base, meta = line.split("#", 1)
-    except ValueError:
-        return line
-    parts = meta.split("-")
-    country = parts[0].strip() if parts else ""
-    traffic = ""
-    for part in parts[1:]:
-        part_decoded = urllib.parse.unquote(part).strip()
-        if re.search(r"\d+(?:[.,]\d+)?\s*(?:GB|MB|KB|TB)", part_decoded, re.IGNORECASE):
-            traffic = part_decoded
-            break
-    meta_clean = f"{country} - {traffic}" if traffic else country
-    return base + "#" + meta_clean
+        import urllib.parse
+        decoded_line = urllib.parse.unquote(line)
+    except Exception as e:
+        logger.error(f"Error URL-decoding line: {e}")
+        decoded_line = line
+
+    # Handle lines with metadata (after #)
+    if "#" in decoded_line:
+        try:
+            base_part, meta_part = decoded_line.split("#", 1)
+            base_part = base_part.strip()
+            meta_part = meta_part.strip()
+            
+            # Process metadata (country and traffic)
+            meta_parts = meta_part.split("-", 1)
+            country = meta_parts[0].strip()
+            traffic = ""
+            
+            if len(meta_parts) > 1:
+                # Look for traffic pattern in the rest of the meta
+                traffic_match = re.search(
+                    r"(\d+(?:[.,]\d+)?\s*[GMK]?B)", 
+                    meta_parts[1], 
+                    re.IGNORECASE
+                )
+                if traffic_match:
+                    traffic = traffic_match.group(1).strip()
+            
+            # Rebuild the line with proper formatting
+            meta_clean = f"{country} - {traffic}" if traffic else country
+            result = base_part
+            if meta_clean:
+                result += f" #{meta_clean}"
+            return result.strip()
+            
+        except Exception as e:
+            logger.error(f"Error parsing subscription line: {e}")
+            return decoded_line
+    
+    # For lines without metadata, just clean up extra spaces
+    return ' '.join(part for part in decoded_line.split() if part)
 
 
 def format_time_left(expiry_time_ms: int | None) -> str:
@@ -225,21 +272,22 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "update-always": "true",
-            "announce": "base64:"
-            + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "announce-url": f"{SUPPORT_CHAT_URL}",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
     else:
+        # Default headers for other clients
         encoded_project_name = f"{project_name}\n{subscription_info}"
         return {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "3",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
         }
 
 
@@ -288,10 +336,26 @@ async def handle_subscription(request: web.Request) -> web.Response:
                 clean_subscription_line(line) for line in combined_subscriptions
             ]
 
-            base64_encoded = base64.b64encode(
-                "\n".join(cleaned_subscriptions).encode("utf-8")
-            ).decode("utf-8")
+            # Join the cleaned subscription lines with proper newlines
+            subscription_content = "\n".join(cleaned_subscriptions)
+            
+            # Log the raw subscription content for debugging
+            logger.debug(f"Raw subscription content (first 200 chars): {subscription_content[:200]}")
+            
+            # Ensure proper UTF-8 encoding before base64
+            try:
+                base64_encoded = base64.b64encode(
+                    subscription_content.encode("utf-8")
+                ).decode("utf-8")
+            except UnicodeEncodeError as e:
+                logger.error(f"UTF-8 encoding error: {e}")
+                # Fallback to replacing problematic characters
+                base64_encoded = base64.b64encode(
+                    subscription_content.encode("utf-8", errors="replace")
+                ).decode("utf-8")
+            
             subscription_info = f"📄 Подписка: {email} — {time_left}"
+            logger.debug(f"Subscription info: {subscription_info}")
 
             user_agent = request.headers.get("User-Agent", "")
             subscription_userinfo = calculate_traffic(
@@ -301,7 +365,20 @@ async def handle_subscription(request: web.Request) -> web.Response:
                 user_agent, PROJECT_NAME, subscription_info, subscription_userinfo
             )
 
-            return web.Response(text=base64_encoded, headers=headers)
+            # Create response with minimal parameters
+            response = web.Response(
+                text=base64_encoded,
+                headers=headers
+            )
+            
+            # Set content type and cache control headers
+            response.content_type = 'text/plain; charset=utf-8'
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            return response
 
         except Exception as e:
             logger.error(f"Ошибка в handle_subscription: {e}", exc_info=True)
