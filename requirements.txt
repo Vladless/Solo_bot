@@ -1,3 +1,4 @@
+fastapi==0.109.2
 aiocryptopay==0.4.7
 aiofiles==24.1.0
 aiogram==3.13.1
@@ -39,6 +40,7 @@ sqlalchemy==2.0.38
 strenum==0.4.15
 typing-extensions==4.12.2
 urllib3==2.2.3
+uvicorn==0.27.1
 wrapt==1.16.0
 yarl==1.15.5
 yookassa==3.3.0

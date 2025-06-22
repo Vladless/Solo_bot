@@ -41,10 +41,11 @@ class User(DictLikeMixin, Base):
     language_code = Column(String)
     is_bot = Column(Boolean, default=False)
     balance = Column(Float, default=0.0)
+    referral_balance = Column(Float, default=0.0)  # New field for referral earnings
     trial = Column(Integer, default=0)
     source_code = Column(String, ForeignKey("tracking_sources.code"))
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Key(DictLikeMixin, Base):
@@ -53,7 +54,7 @@ class Key(DictLikeMixin, Base):
     tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=False)
     client_id = Column(String, primary_key=True)
     email = Column(String, unique=True)
-    created_at = Column(BigInteger)
+    created_at = Column(BigInteger, default=lambda: int(datetime.now().timestamp()))
     expiry_time = Column(BigInteger)
     key = Column(String)
     server_id = Column(String)
@@ -63,6 +64,20 @@ class Key(DictLikeMixin, Base):
     alias = Column(String)
     notified = Column(Boolean, default=False)
     notified_24h = Column(Boolean, default=False)
+
+
+class BalanceHistory(DictLikeMixin, Base):
+    __tablename__ = "balance_history"
+
+    id = Column(Integer, primary_key=True)
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    balance_before = Column(Float, nullable=False)
+    balance_after = Column(Float, nullable=False)
+    operation_type = Column(String(20), nullable=False)  # 'manual', 'referral', 'purchase', etc.
+    description = Column(String(255))
+    admin_id = Column(BigInteger, nullable=True)  # Admin who made the change, if applicable
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Tariff(DictLikeMixin, Base):

@@ -8,7 +8,7 @@ from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -19,14 +19,17 @@ from database import (
     delete_key,
     delete_user_data,
     get_balance,
+    get_balance_history,
     get_client_id_by_email,
     get_key_details,
+    get_referral_balance,
     get_servers,
     get_tariff_by_id,
     get_tariffs_for_cluster,
     set_user_balance,
     update_balance,
     update_key_expiry,
+    update_referral_balance,
     update_trial,
 )
 from database.models import Key, ManualBan, Payment, Referral, Server, Tariff, User
@@ -77,6 +80,7 @@ class UserEditorState(StatesGroup):
     waiting_for_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
+    preview_message = State()
     selecting_cluster = State()
     selecting_duration = State()
     selecting_country = State()
@@ -121,7 +125,10 @@ async def handle_hwid_menu(
             break
 
     if not remna_server:
-        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        await callback_query.message.edit_text(
+            "🚫 Нет доступного сервера Remnawave.",
+            reply_markup=build_editor_kb(tg_id)
+        )
         return
 
     api = RemnawaveAPI(remna_server["api_url"])
@@ -181,7 +188,10 @@ async def handle_hwid_reset(
             break
 
     if not remna_server:
-        await callback_query.message.edit_text("🚫 Нет доступного сервера Remnawave.")
+        await callback_query.message.edit_text(
+            "🚫 Нет доступного сервера Remnawave.",
+            reply_markup=build_editor_kb(tg_id)
+        )
         return
 
     api = RemnawaveAPI(remna_server["api_url"])
@@ -309,7 +319,14 @@ async def handle_send_message(
     tg_id = callback_data.tg_id
 
     await callback_query.message.edit_text(
-        text="✉️ Введите текст сообщения, которое вы хотите отправить пользователю:",
+        text=(
+            "✉️ Введите текст сообщения, которое вы хотите отправить пользователю:\n\n"
+            "Поддерживается только Telegram-форматирование — <b>жирный</b>, <i>курсив</i> и другие стили через редактор Telegram.\n\n"
+            "Вы можете отправить:\n"
+            "• Только <b>текст</b>\n"
+            "• Только <b>картинку</b>\n"
+            "• <b>Текст + картинку</b>"
+        ),
         reply_markup=build_editor_kb(tg_id),
     )
 
@@ -321,18 +338,76 @@ async def handle_send_message(
 async def handle_message_text_input(message: Message, state: FSMContext):
     data = await state.get_data()
     tg_id = data.get("tg_id")
+    text_message = message.html_text or message.text or message.caption or ""
+    photo = message.photo[-1].file_id if message.photo else None
 
-    try:
-        await message.bot.send_message(chat_id=tg_id, text=message.text)
+    max_len = 1024 if photo else 4096
+    if len(text_message) > max_len:
         await message.answer(
+            f"⚠️ Сообщение слишком длинное.\n"
+            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(text_message)}</b>.",
+            reply_markup=build_editor_kb(tg_id),
+        )
+        await state.clear()
+        return
+
+    await state.update_data(text=text_message, photo=photo)
+    await state.set_state(UserEditorState.preview_message)
+
+    if photo:
+        await message.answer_photo(photo=photo, caption=text_message, parse_mode="HTML")
+    else:
+        await message.answer(text=text_message, parse_mode="HTML")
+
+    await message.answer(
+        "👀 Это предпросмотр сообщения. Отправить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📤 Отправить", callback_data="send_user_message"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_user_message"),
+            ]
+        ]),
+    )
+
+
+@router.callback_query(F.data == "send_user_message", IsAdminFilter(), UserEditorState.preview_message)
+async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+    text_message = data.get("text")
+    photo = data.get("photo")
+    try:
+        if photo:
+            await callback_query.bot.send_photo(
+                chat_id=tg_id,
+                photo=photo,
+                caption=text_message,
+                parse_mode="HTML",
+            )
+        else:
+            await callback_query.bot.send_message(
+                chat_id=tg_id,
+                text=text_message,
+                parse_mode="HTML",
+            )
+        await callback_query.message.edit_text(
             text="✅ Сообщение успешно отправлено.", reply_markup=build_editor_kb(tg_id)
         )
     except Exception as e:
-        await message.answer(
+        await callback_query.message.edit_text(
             text=f"❌ Не удалось отправить сообщение: {e}",
             reply_markup=build_editor_kb(tg_id),
         )
+    await state.clear()
 
+
+@router.callback_query(F.data == "cancel_user_message", IsAdminFilter(), UserEditorState.preview_message)
+async def handle_cancel_user_message(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tg_id = data.get("tg_id")
+    await callback_query.message.edit_text(
+        text="🚫 Отправка сообщения отменена.", reply_markup=build_editor_kb(tg_id)
+    )
     await state.clear()
 
 
@@ -374,26 +449,85 @@ async def handle_balance_change(
     result = await session.execute(stmt)
     records = result.all()
 
-    balance = await get_balance(session, tg_id)
-    balance = int(balance or 0)
-
-    text = (
-        f"<b>💵 Изменение баланса</b>"
-        f"\n\n🆔 ID: <b>{tg_id}</b>"
-        f"\n💰 Баланс: <b>{balance}Р</b>"
-        f"\n📊 Последние операции (5):"
+    # Get user balances
+    balance = int(await get_balance(session, tg_id) or 0)
+    referral_balance = int(await get_referral_balance(session, tg_id) or 0)
+    
+    # Get user's active subscription if exists
+    active_key = await session.execute(
+        select(Key)
+        .where(Key.tg_id == tg_id)
+        .order_by(Key.expiry_time.desc())
+        .limit(1)
     )
+    active_key = active_key.scalar_one_or_none()
+    
+    text = (
+        f"<b>💵 Управление балансом</b>"
+        f"\n\n👤 Пользователь: <b>ID {tg_id}</b>"
+        f"\n💰 Основной баланс: <b>{balance}₽</b>"
+        f"\n💎 Реферальный баланс: <b>{referral_balance}₽</b>"
+    )
+    
+    # Add subscription info if exists
+    if active_key:
+        created_at = datetime.fromtimestamp(active_key.created_at / 1000).strftime('%Y-%m-%d %H:%M')
+        expiry_time = datetime.fromtimestamp(active_key.expiry_time / 1000).strftime('%Y-%m-%d %H:%M')
+        tariff_name = "Неизвестный тариф"
+        if active_key.tariff_id:
+            tariff = await session.get(Tariff, active_key.tariff_id)
+            if tariff:
+                tariff_name = tariff.name
+                
+        text += (
+            f"\n\n📅 <b>Активная подписка:</b>"
+            f"\n├ Тариф: <b>{tariff_name}</b>"
+            f"\n├ Создана: <code>{created_at}</code>"
+            f"\n└ Истекает: <code>{expiry_time}</code>"
+        )
+    else:
+        text += "\n\nℹ️ Активная подписка отсутствует"
+    
+    # Add balance history header
+    text += "\n\n📊 <b>История операций (последние 5):</b>"
+    
+    # Get balance history
+    history = await get_balance_history(session, tg_id, limit=5)
 
-    if records:
-        for amount, payment_system, status, created_at in records:
-            date = created_at.strftime("%Y-%m-%d %H:%M:%S")
+    if history:
+        for item in history:
+            amount = item['amount']
+            op_type = item['operation_type']
+            desc = item['description'] or 'Без описания'
+            date = item['created_at'].strftime("%Y-%m-%d %H:%M")
+            
+            # Determine operation icon and sign
+            if amount > 0:
+                icon = "🟢 +"
+            elif amount < 0:
+                icon = "🔴 "
+            else:
+                icon = "⚪ "
+                
             text += (
-                f"\n<blockquote>💸 Сумма: {amount} | {payment_system}"
-                f"\n📌 Статус: {status}"
-                f"\n⏳ Дата: {date}</blockquote>"
+                f"\n<blockquote>{icon}{abs(amount):.2f}₽"
+                f"\n├ Тип: {op_type}"
+                f"\n└ {desc}"
+                f"\n<code>⏳ {date}</code></blockquote>"
             )
     else:
-        text += "\n <i>🚫 Отсутствуют</i>"
+        text += "\n <i>🚫 История операций отсутствует</i>"
+        
+    # Add payment history header if available
+    if records:
+        text += "\n\n💳 <b>История платежей (последние 3):</b>"
+        for amount, payment_system, status, created_at in records[:3]:
+            date = created_at.strftime("%Y-%m-%d %H:%M")
+            text += (
+                f"\n<blockquote>💳 {amount}₽ | {payment_system}"
+                f"\n📌 Статус: {status}"
+                f"<code>\n⏳ {date}</code></blockquote>"
+            )
 
     await callback_query.message.edit_text(
         text=text, reply_markup=await build_users_balance_kb(session, tg_id)
@@ -414,12 +548,27 @@ async def handle_balance_add(
 
     if amount is not None:
         amount = int(amount)
+        admin_id = callback_query.from_user.id
         if amount >= 0:
-            await update_balance(session, tg_id, amount)
+            await update_balance(
+                session, 
+                tg_id, 
+                amount,
+                operation_type='manual_add',
+                description=f"Ручное пополнение администратором {admin_id}",
+                admin_id=admin_id
+            )
         else:
             current_balance = await get_balance(session, tg_id)
             new_balance = max(0, current_balance + amount)
-            await set_user_balance(session, tg_id, new_balance)
+            await set_user_balance(
+                session, 
+                tg_id, 
+                new_balance,
+                operation_type='manual_deduct',
+                description=f"Ручное списание администратором {admin_id}",
+                admin_id=admin_id
+            )
 
         await handle_balance_change(callback_query, callback_data, session)
         return
@@ -484,20 +633,46 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Any
         )
         return
 
-    amount = int(message.text)
-
-    if op_type == "add":
-        text = f"✅ К балансу пользователя добавлено <b>{amount}Р</b>"
-        await update_balance(session, tg_id, amount)
-    elif op_type == "take":
-        current_balance = await get_balance(session, tg_id)
-        new_balance = max(0, current_balance - amount)
-        deducted = current_balance if amount > current_balance else amount
-        text = f"✅ Из баланса пользователя было вычтено <b>{deducted}Р</b>"
-        await set_user_balance(session, tg_id, new_balance)
-    else:
-        text = f"✅ Баланс пользователя изменен на <b>{amount}Р</b>"
-        await set_user_balance(session, tg_id, amount)
+    try:
+        amount = float(message.text)
+        admin_id = message.from_user.id
+        
+        if op_type == "add":
+            text = f"✅ К балансу пользователя добавлено <b>{amount:.2f}₽</b>"
+            await update_balance(
+                session, 
+                tg_id, 
+                amount,
+                operation_type='manual_add',
+                description=f"Ручное пополнение через форму (админ: {admin_id})",
+                admin_id=admin_id
+            )
+        elif op_type == "take":
+            current_balance = await get_balance(session, tg_id)
+            new_balance = max(0, current_balance - amount)
+            deducted = current_balance if amount > current_balance else amount
+            text = f"✅ Из баланса пользователя было вычтено <b>{deducted:.2f}₽</b>"
+            await set_user_balance(
+                session, 
+                tg_id, 
+                new_balance,
+                operation_type='manual_deduct',
+                description=f"Ручное списание через форму (админ: {admin_id})",
+                admin_id=admin_id
+            )
+        else:  # set
+            text = f"✅ Баланс пользователя изменен на <b>{amount:.2f}₽</b>"
+            await set_user_balance(
+                session, 
+                tg_id, 
+                amount,
+                operation_type='manual_set',
+                description=f"Ручная установка баланса (админ: {admin_id})",
+                admin_id=admin_id
+            )
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введите корректную сумму (например, 100 или 150.50)")
+        return
 
     await message.answer(text=text, reply_markup=build_users_balance_change_kb(tg_id))
 
@@ -533,10 +708,18 @@ async def handle_key_edit(
         if row:
             tariff_name = f"{row[0]} ({row[1]})"
 
+    # Format the creation date
+    created_at = key_details.get('created_at')
+    if isinstance(created_at, (int, float)):
+        created_at_str = datetime.utcfromtimestamp(created_at / 1000).strftime("%d.%m.%Y %H:%M")
+    else:
+        created_at_str = "Неизвестно"
+
     text = (
         f"<b>🔑 Информация о ключе</b>"
         f"\n\n<code>{key_value}</code>"
-        f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']} (UTC)</b>"
+        f"\n\n📅 Дата создания: <b>{created_at_str} (UTC)</b>"
+        f"\n⏰ Дата истечения: <b>{key_details['expiry_date']} (UTC)</b>"
         f"\n🌐 Кластер: <b>{key_details['cluster_name']}</b>"
         f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
         f"\n📦 Тариф: <b>{tariff_name}</b>"
@@ -1097,7 +1280,7 @@ async def process_user_search(
     await state.clear()
 
     stmt_user = select(
-        User.username, User.balance, User.created_at, User.updated_at
+        User.username, User.balance, User.referral_balance, User.created_at, User.updated_at
     ).where(User.tg_id == tg_id)
     result_user = await session.execute(stmt_user)
     user_data = result_user.first()
@@ -1109,8 +1292,9 @@ async def process_user_search(
         )
         return
 
-    username, balance, created_at, updated_at = user_data
+    username, balance, referral_balance, created_at, updated_at = user_data
     balance = int(balance or 0)
+    referral_balance = int(referral_balance or 0)
     created_at_str = created_at.astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
     updated_at_str = updated_at.astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
 
@@ -1143,7 +1327,8 @@ async def process_user_search(
         f"\n📄 Логин: <b>@{username}</b>"
         f"\n📅 Дата регистрации: <b>{created_at_str}</b>"
         f"\n🏃 Дата активности: <b>{updated_at_str}</b>"
-        f"\n💰 Баланс: <b>{balance}</b>"
+        f"\n💰 Основной баланс: <b>{balance}₽</b>"
+        f"\n💎 Реферальный баланс: <b>{referral_balance}₽</b>"
         f"\n👥 Количество рефералов: <b>{referral_count}</b>"
     )
 
@@ -1203,7 +1388,8 @@ async def change_expiry_time(
         new_expiry_time=expiry_time,
         total_gb=traffic_limit,
         session=session,
-        hwid_device_limit=device_limit
+        hwid_device_limit=device_limit,
+        reset_traffic=False,
     )
     
     await update_key_expiry(session, client_id, expiry_time)
@@ -1385,6 +1571,7 @@ async def handle_create_key_start(
     builder = InlineKeyboardBuilder()
     for cluster in cluster_names:
         builder.button(text=f"🌐 {cluster}", callback_data=cluster)
+    builder.adjust(2)
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(

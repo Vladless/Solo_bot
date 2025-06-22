@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
@@ -287,6 +287,7 @@ async def renew_key_in_cluster(
     total_gb: int,
     session: AsyncSession,
     hwid_device_limit: int = None,
+    reset_traffic: bool = True,
 ):
     try:
         servers = await get_servers(session)
@@ -368,11 +369,48 @@ async def renew_key_in_cluster(
                     )
                     if updated:
                         logger.info(f"Подписка Remnawave {client_id} успешно продлена")
-                        await remna.reset_user_traffic(client_id)
+                        if reset_traffic:
+                            await remna.reset_user_traffic(client_id)
                     else:
-                        logger.warning(
-                            f"Не удалось продлить подписку Remnawave {client_id}"
+                        logger.warning(f"Не удалось продлить подписку Remnawave {client_id}, пробуем создать")
+                        result = await session.execute(
+                            select(Key.remnawave_link, Key.key).where(Key.client_id == client_id)
                         )
+                        row = result.one_or_none()
+                        remnawave_link = row[0] if row else None
+                        old_key = row[1] if row else None
+                        
+                        user_data = {
+                            "username": email,
+                            "trafficLimitStrategy": "NO_RESET",
+                            "expireAt": expire_iso,
+                            "telegramId": tg_id,
+                            "activeUserInbounds": remnawave_inbound_ids,
+                        }
+                        if remnawave_link and "/" in remnawave_link:
+                            user_data["shortUuid"] = remnawave_link.rstrip("/").split("/")[-1]
+                        if traffic_limit_bytes and traffic_limit_bytes > 0:
+                            user_data["trafficLimitBytes"] = traffic_limit_bytes
+                        if hwid_device_limit is not None:
+                            user_data["hwidDeviceLimit"] = hwid_device_limit
+
+                        result = await remna.create_user(user_data)
+                        if result:
+                            new_client_id = result.get("uuid")
+                            new_remnawave_link = result.get("subscriptionUrl")
+                            logger.info(f"Пользователь Remnawave {client_id} успешно создан")
+                            
+                            await session.execute(
+                                update(Key)
+                                .where(Key.client_id == client_id)
+                                .values(
+                                    client_id=new_client_id,
+                                    remnawave_link=new_remnawave_link
+                                )
+                            )
+                            await session.commit()
+                        else:
+                            logger.error(f"Не удалось создать пользователя Remnawave {client_id}")
                 else:
                     logger.error("Не удалось войти в Remnawave API")
 
@@ -398,8 +436,9 @@ async def renew_key_in_cluster(
                 sub_id = unique_email
 
             traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
-            tasks.append(
-                extend_client_key(
+
+            async def update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name):
+                updated = await extend_client_key(
                     xui=xui,
                     inbound_id=int(inbound_id),
                     email=unique_email,
@@ -410,7 +449,24 @@ async def renew_key_in_cluster(
                     tg_id=tg_id,
                     limit_ip=hwid_device_limit,
                 )
-            )
+                
+                if not updated:
+                    logger.warning(f"Не удалось обновить клиента {unique_email}, пробуем создать")
+                    config = ClientConfig(
+                        client_id=client_id,
+                        email=unique_email,
+                        tg_id=tg_id,
+                        limit_ip=hwid_device_limit if hwid_device_limit is not None else 0,
+                        total_gb=traffic_bytes,
+                        expiry_time=new_expiry_time,
+                        enable=True,
+                        flow="xtls-rprx-vision",
+                        inbound_id=int(inbound_id),
+                        sub_id=sub_id,
+                    )
+                    await add_client(xui, config)
+
+            tasks.append(update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.keys import delete_key
 from database.models import (
+    BalanceHistory,
     BlockedUser,
     CouponUsage,
     Gift,
@@ -55,21 +56,88 @@ async def add_user(
         raise
 
 
-async def update_balance(session: AsyncSession, tg_id: int, amount: float) -> None:
+async def update_balance(
+    session: AsyncSession, 
+    tg_id: int, 
+    amount: float, 
+    operation_type: str = 'manual',
+    description: str = None,
+    admin_id: int = None
+) -> None:
     try:
-        result = await session.execute(select(User.balance).where(User.tg_id == tg_id))
-        current = result.scalar_one_or_none() or 0
-        new_balance = current + amount
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(balance=new_balance)
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise ValueError(f"User {tg_id} not found")
+            
+        current_balance = user.balance or 0
+        new_balance = current_balance + amount
+        
+        # Update user balance
+        user.balance = new_balance
+        
+        # Log the balance change
+        balance_history = BalanceHistory(
+            tg_id=tg_id,
+            amount=amount,
+            balance_before=current_balance,
+            balance_after=new_balance,
+            operation_type=operation_type,
+            description=description,
+            admin_id=admin_id
         )
+        session.add(balance_history)
+        
         await session.commit()
         logger.info(
-            f"[DB] Баланс пользователя {tg_id} обновлён: {current} → {new_balance}"
+            f"[DB] Баланс пользователя {tg_id} обновлён: {current_balance} → {new_balance} "
+            f"(операция: {operation_type}, описание: {description or 'нет'})"
         )
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при обновлении баланса пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
+
+
+async def update_referral_balance(
+    session: AsyncSession, 
+    tg_id: int, 
+    amount: float,
+    operation_type: str = 'referral',
+    description: str = None
+) -> None:
+    try:
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise ValueError(f"User {tg_id} not found")
+            
+        current_balance = user.referral_balance or 0
+        new_balance = current_balance + amount
+        
+        # Update user referral balance
+        user.referral_balance = new_balance
+        
+        # Log the balance change
+        balance_history = BalanceHistory(
+            tg_id=tg_id,
+            amount=amount,
+            balance_before=current_balance,
+            balance_after=new_balance,
+            operation_type=operation_type,
+            description=description or "Начисление реферального бонуса"
+        )
+        session.add(balance_history)
+        
+        await session.commit()
+        logger.info(
+            f"[DB] Реферальный баланс пользователя {tg_id} обновлён: {current_balance} → {new_balance} "
+            f"(описание: {description or 'нет'})"
+        )
+    except SQLAlchemyError as e:
+        logger.error(f"[DB] Ошибка при обновлении реферального баланса пользователя {tg_id}: {e}")
+        await session.rollback()
+        raise
 
 
 async def check_user_exists(session: AsyncSession, tg_id: int) -> bool:
@@ -84,15 +152,96 @@ async def get_balance(session: AsyncSession, tg_id: int) -> float:
     return round(balance, 1) if balance is not None else 0.0
 
 
-async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) -> None:
+async def get_referral_balance(session: AsyncSession, tg_id: int) -> float:
+    result = await session.execute(select(User.referral_balance).where(User.tg_id == tg_id))
+    balance = result.scalar_one_or_none()
+    return round(balance, 1) if balance is not None else 0.0
+
+
+async def get_balance_history(
+    session: AsyncSession, 
+    tg_id: int, 
+    limit: int = 10, 
+    operation_type: str = None
+) -> list:
+    """
+    Получить историю изменений баланса пользователя
+    
+    :param session: Асинхронная сессия SQLAlchemy
+    :param tg_id: ID пользователя в Telegram
+    :param limit: Максимальное количество записей
+    :param operation_type: Тип операции (если None, то все типы)
+    :return: Список записей истории баланса
+    """
     try:
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(balance=balance)
-        )
+        query = select(BalanceHistory).where(BalanceHistory.tg_id == tg_id)
+        
+        if operation_type:
+            query = query.where(BalanceHistory.operation_type == operation_type)
+            
+        query = query.order_by(BalanceHistory.created_at.desc()).limit(limit)
+        
+        result = await session.execute(query)
+        history = result.scalars().all()
+        
+        return [{
+            'id': item.id,
+            'amount': item.amount,
+            'balance_before': item.balance_before,
+            'balance_after': item.balance_after,
+            'operation_type': item.operation_type,
+            'description': item.description,
+            'admin_id': item.admin_id,
+            'created_at': item.created_at
+        } for item in history]
+        
+    except SQLAlchemyError as e:
+        logger.error(f"[DB] Ошибка при получении истории баланса пользователя {tg_id}: {e}")
+        return []
+
+
+async def set_user_balance(
+    session: AsyncSession, 
+    tg_id: int, 
+    balance: float,
+    operation_type: str = 'manual',
+    description: str = None,
+    admin_id: int = None
+) -> None:
+    try:
+        result = await session.execute(select(User).where(User.tg_id == tg_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise ValueError(f"User {tg_id} not found")
+            
+        current_balance = user.balance or 0
+        amount = balance - current_balance
+        
+        # Update user balance
+        user.balance = balance
+        
+        # Log the balance change if there's an actual change
+        if amount != 0:
+            balance_history = BalanceHistory(
+                tg_id=tg_id,
+                amount=amount,
+                balance_before=current_balance,
+                balance_after=balance,
+                operation_type=operation_type,
+                description=description or f"Установка баланса в {balance}",
+                admin_id=admin_id
+            )
+            session.add(balance_history)
+        
         await session.commit()
+        logger.info(
+            f"[DB] Баланс пользователя {tg_id} установлен: {balance} "
+            f"(изменение: {amount}, операция: {operation_type}, описание: {description or 'нет'})"
+        )
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def update_trial(session: AsyncSession, tg_id: int, status: int):
