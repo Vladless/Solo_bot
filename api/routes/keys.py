@@ -16,7 +16,7 @@ router = generate_crud_router(
     schema_update=KeyUpdate,
     identifier_field="tg_id",
     extra_get_by_email=True,
-    enabled_methods=["get_all", "get_one", "get_by_email"]
+    enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"]
 )
 
 

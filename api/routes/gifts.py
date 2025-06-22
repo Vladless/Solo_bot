@@ -1,7 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Path, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 from api.routes.base_crud import generate_crud_router
 from api.schemas import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
-from database.models import Gift, GiftUsage
+from database.models import Gift, GiftUsage, Admin
+from api.depends import get_session, verify_admin_token
 
 router = APIRouter()
 
@@ -18,6 +22,19 @@ gift_router = generate_crud_router(
 router.include_router(gift_router, prefix="", tags=["Gifts"])
 
 
+@router.get("/by_tg_id/{tg_id}", response_model=list[GiftResponse], tags=["Gifts"])
+async def get_gifts_by_tg_id(
+    tg_id: int = Path(...),
+    admin: Admin = Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Gift).where(Gift.sender_tg_id == tg_id))
+    gifts = result.scalars().all()
+    if not gifts:
+        raise HTTPException(status_code=404, detail="Gifts not found")
+    return gifts
+
+
 gift_usage_router = generate_crud_router(
     model=GiftUsage,
     schema_response=GiftUsageResponse,
@@ -28,4 +45,3 @@ gift_usage_router = generate_crud_router(
 )
 router.include_router(gift_usage_router, prefix="/usages", tags=["GiftUsages"])
 router.include_router(gift_usage_router, prefix="/usages", tags=["Gifts"])
-

@@ -10,7 +10,7 @@ class ServerBase(BaseModel):
     inbound_id: str
     panel_type: str
     max_keys: Optional[int] = None       
-    tariff_group: str
+    tariff_group: Optional[str] = ""
     enabled: bool = True
 
 

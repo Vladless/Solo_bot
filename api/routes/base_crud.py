@@ -65,6 +65,21 @@ def generate_crud_router(
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
             return obj
 
+    if "get_all_by_field" in enabled_methods:
+        @router.get(f"/all/{{{parameter_name}}}", response_model=list[schema_response])
+        async def get_all_by_field(
+            value: Union[int, str] = Path(..., alias=parameter_name),
+            admin: Admin = Depends(verify_admin_token),
+            session: AsyncSession = Depends(get_session),
+        ):
+            field = getattr(model, identifier_field)
+            casted = _cast_identifier_type(field, value)
+            result = await session.execute(select(model).where(field == casted))
+            objs = result.scalars().all()
+            if not objs:
+                raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
+            return objs
+
     if "create" in enabled_methods:
         @router.post("/", response_model=schema_response)
         async def create(

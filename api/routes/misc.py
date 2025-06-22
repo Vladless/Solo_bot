@@ -1,9 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Path, HTTPException, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from api.routes.base_crud import generate_crud_router
 from database.models import (
     Payment, Referral, Notification,
-    ManualBan, TemporaryData, BlockedUser, TrackingSource
+    ManualBan, TemporaryData, BlockedUser, TrackingSource, Admin
 )
+from api.depends import get_session, verify_admin_token
 from api.schemas import (
     PaymentResponse, ReferralResponse, NotificationResponse,
     ManualBanResponse, TemporaryDataResponse, BlockedUserResponse,
@@ -24,6 +27,20 @@ router.include_router(
     prefix="/payments",
     tags=["Payments"]
 )
+
+
+@router.get("/payments/by_tg_id/{tg_id}", response_model=list[PaymentResponse], tags=["Payments"])
+async def get_payments_by_tg_id(
+    tg_id: int = Path(...),
+    admin: Admin = Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Payment).where(Payment.tg_id == tg_id))
+    payments = result.scalars().all()
+    if not payments:
+        raise HTTPException(status_code=404, detail="Payments not found")
+    return payments
+
 
 router.include_router(
     generate_crud_router(
