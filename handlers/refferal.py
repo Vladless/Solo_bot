@@ -118,19 +118,19 @@ async def inline_referral_handler(inline_query: InlineQuery):
     results: list[InlineQueryResultArticle] = []
 
     for index, offer in enumerate(REFERRAL_OFFERS):
-        description = offer["description"][:64]
         message_text = offer["message"].format(
-            trial_time=trial_days,
             trial_time_formatted=trial_time_formatted
         )[:4096]
+        title = offer["title"].format(trial_time_formatted=trial_time_formatted)
+        description = offer["description"]
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=offer["title"], url=referral_link))
+        builder.row(InlineKeyboardButton(text=title, url=referral_link))
 
         results.append(
             InlineQueryResultArticle(
                 id=str(index),
-                title=offer["title"],
+                title=title,
                 description=description,
                 input_message_content=InputTextMessageContent(
                     message_text=message_text, parse_mode=ParseMode.HTML
