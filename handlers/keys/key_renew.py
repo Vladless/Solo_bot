@@ -46,7 +46,7 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 
 
 @router.callback_query(F.data.startswith("renew_key|"))
-async def process_callback_renew_key(callback_query: CallbackQuery, session: AsyncSession):
+async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
 
@@ -60,6 +60,11 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Asy
         expiry_time = record["expiry_time"]
         server_id = record["server_id"]
         tariff_id = record.get("tariff_id")
+
+        await state.update_data(
+            renew_key_name=key_name,
+            renew_client_id=client_id
+        )
 
         logger.info(f"[RENEW] Получение тарифов для server_id={server_id}")
 
@@ -110,7 +115,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Asy
             builder.row(
                 InlineKeyboardButton(
                     text=f"{t['name']} — {t['price_rub']}₽",
-                    callback_data=f"renew_plan|{t['id']}|{client_id}|{key_name}",
+                    callback_data=f"renew_plan|{t['id']}",
                 )
             )
 
@@ -119,7 +124,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Asy
             builder.row(
                 InlineKeyboardButton(
                     text=subgroup,
-                    callback_data=f"renew_subgroup|{safe}|{client_id}|{key_name}",
+                    callback_data=f"renew_subgroup|{safe}",
                 )
             )
 
@@ -145,12 +150,14 @@ async def process_callback_renew_key(callback_query: CallbackQuery, session: Asy
 
 
 @router.callback_query(F.data.startswith("renew_subgroup|"))
-async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, session: AsyncSession):
+async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     try:
         parts = callback.data.split("|")
         subgroup = parts[1].replace("_", " ")
-        client_id = parts[2]
-        key_name = parts[3]
+
+        data = await state.get_data()
+        client_id = data.get("renew_client_id")
+        key_name = data.get("renew_key_name")
 
         if not client_id or not key_name:
             await callback.message.answer("❌ Данные для подгруппы не найдены.")
@@ -201,7 +208,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, session: Async
             builder.row(
                 InlineKeyboardButton(
                     text=f"{t['name']} — {t['price_rub']}₽",
-                    callback_data=f"renew_plan|{t['id']}|{client_id}|{key_name}",
+                    callback_data=f"renew_plan|{t['id']}",
                 )
             )
 
@@ -225,10 +232,18 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, session: Async
 
 
 @router.callback_query(F.data.startswith("renew_plan|"))
-async def process_callback_renew_plan(callback_query: CallbackQuery, session: Any):
+async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.from_user.id
-    tariff_id, client_id, key_name = callback_query.data.split("|")[1:]
+    tariff_id = callback_query.data.split("|")[1]
     tariff_id = int(tariff_id)
+
+    data = await state.get_data()
+    client_id = data.get("renew_client_id")
+    key_name = data.get("renew_key_name")
+
+    if not client_id or not key_name:
+        await callback_query.message.answer("❌ Данные для продления не найдены.")
+        return
 
     try:
         tariff = await get_tariff_by_id(session, tariff_id)
