@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+import secrets
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
 Base = declarative_base()
@@ -57,7 +58,7 @@ class Key(DictLikeMixin, Base):
     key = Column(String)
     server_id = Column(String)
     remnawave_link = Column(String)
-    tariff_id = Column(Integer, ForeignKey("tariffs.id"))
+    tariff_id = Column(Integer, ForeignKey("tariffs.id", ondelete="SET NULL"))
     is_frozen = Column(Boolean, default=False)
     alias = Column(String)
     notified = Column(Boolean, default=False)
@@ -77,6 +78,7 @@ class Tariff(DictLikeMixin, Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+    subgroup_title = Column(String, nullable=True)
 
 
 class Server(DictLikeMixin, Base):
@@ -128,15 +130,19 @@ class CouponUsage(DictLikeMixin, Base):
 class Referral(DictLikeMixin, Base):
     __tablename__ = "referrals"
 
-    referred_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
-    referrer_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
+    referred_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
+    referrer_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
     reward_issued = Column(Boolean, default=False)
 
 
 class Notification(DictLikeMixin, Base):
     __tablename__ = "notifications"
 
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), primary_key=True)
+    tg_id = Column(
+        BigInteger,
+        ForeignKey("users.tg_id", ondelete="CASCADE"),
+        primary_key=True
+    )
     notification_type = Column(String, primary_key=True)
     last_notification_time = Column(DateTime, default=datetime.utcnow)
 
@@ -152,7 +158,17 @@ class Gift(DictLikeMixin, Base):
     gift_link = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_used = Column(Boolean, default=False)
+    is_unlimited = Column(Boolean, default=False)
+    max_usages = Column(Integer, nullable=True)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
+
+
+class GiftUsage(DictLikeMixin, Base):
+    __tablename__ = "gift_usages"
+
+    gift_id = Column(String, ForeignKey("gifts.gift_id"), primary_key=True)
+    tg_id = Column(BigInteger, primary_key=True)
+    used_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ManualBan(DictLikeMixin, Base):
@@ -191,11 +207,15 @@ class TrackingSource(DictLikeMixin, Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Log(DictLikeMixin, Base):
-    __tablename__ = "logs"
+class Admin(Base):
+    __tablename__ = "admins"
 
-    id = Column(Integer, primary_key=True)
-    event_type = Column(String)
-    tg_id = Column(BigInteger)
-    details = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    tg_id = Column(BigInteger, primary_key=True)
+    token = Column(String, unique=True, nullable=True)
+    description = Column(String, nullable=True)
+    role = Column(String, nullable=False, default="admin")
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def generate_token() -> str:
+        return secrets.token_urlsafe(32)

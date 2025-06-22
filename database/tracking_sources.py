@@ -74,15 +74,31 @@ async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
 
 
 async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | None:
+    source_result = await session.execute(
+        select(TrackingSource.created_at).where(TrackingSource.code == code)
+    )
+    created_at_row = source_result.first()
+    if not created_at_row:
+        return None
+
+    created_at = created_at_row[0]
+
     reg_subq = (
         select(func.count(func.distinct(User.tg_id)))
-        .where(User.source_code == code)
+        .where(
+            (User.source_code == code) &
+            (User.created_at >= created_at)
+        )
         .scalar_subquery()
     )
 
     trial_subq = (
         select(func.count(func.distinct(User.tg_id)))
-        .where((User.source_code == code) & (User.trial == 1))
+        .where(
+            (User.source_code == code) &
+            (User.trial == 1) &
+            (User.created_at >= created_at)
+        )
         .scalar_subquery()
     )
 
@@ -90,9 +106,10 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         select(func.count(func.distinct(Payment.tg_id)))
         .join(User, Payment.tg_id == User.tg_id)
         .where(
-            (User.source_code == code)
-            & (Payment.status == "success")
-            & not_(Payment.payment_system.in_(["coupon", "referral"]))
+            (User.source_code == code) &
+            (Payment.status == "success") &
+            not_(Payment.payment_system.in_(["coupon", "referral", "cashback"])) &
+            (Payment.created_at >= created_at)
         )
         .scalar_subquery()
     )
@@ -101,9 +118,10 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         select(func.coalesce(func.sum(Payment.amount), 0))
         .join(User, Payment.tg_id == User.tg_id)
         .where(
-            (User.source_code == code)
-            & (Payment.status == "success")
-            & not_(Payment.payment_system.in_(["coupon", "referral"]))
+            (User.source_code == code) &
+            (Payment.status == "success") &
+            not_(Payment.payment_system.in_(["coupon", "referral", "cashback"])) &
+            (Payment.created_at >= created_at)
         )
         .scalar_subquery()
     )

@@ -50,3 +50,6 @@ apscheduler
 alembic
 psycopg2-binary
 psutil
+uvicorn
+fastapi
+python-dateutil
