@@ -166,7 +166,8 @@ def clean_subscription_line(line: str) -> str:
     except ValueError:
         return line
     parts = meta.split("-")
-    country = parts[0].strip() if parts else ""
+    # URL-decode the country code part to handle emojis and special characters
+    country = urllib.parse.unquote(parts[0].strip()) if parts else ""
     traffic = ""
     for part in parts[1:]:
         part_decoded = urllib.parse.unquote(part).strip()
