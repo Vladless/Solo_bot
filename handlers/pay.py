@@ -112,7 +112,7 @@ async def balance_handler(callback_query: CallbackQuery, session: AsyncSession):
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     text = BALANCE_MANAGEMENT_TEXT.format(balance=balance)
-    image_path = os.path.join("img", "pic.jpg")
+    image_path = os.path.join("img", "pay.jpg")
 
     await edit_or_send_message(
         target_message=callback_query.message,
