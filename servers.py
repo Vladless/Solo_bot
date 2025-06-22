@@ -21,22 +21,43 @@ PING_SEMAPHORE = asyncio.Semaphore(3)
 
 
 async def ping_server(server_ip: str) -> bool:
-    """Пингует сервер через ICMP или TCP 443, если ICMP недоступен."""
+    """Пингует сервер через ICMP или TCP 443, если ICMP недоступен.
+    
+    Args:
+        server_ip: Адрес сервера для проверки (также используется как SNI)
+    """
     async with PING_SEMAPHORE:
         try:
             response = ping(server_ip, timeout=3)
             if response is not None and response is not False:
                 return True
-            return await check_tcp_connection(server_ip, 443)
+            # Передаем server_ip как SNI
+            return await check_tcp_connection(server_ip, 443, sni=server_ip)
         except Exception:
-            return await check_tcp_connection(server_ip, 443)
+            # Передаем server_ip как SNI
+            return await check_tcp_connection(server_ip, 443, sni=server_ip)
 
 
-async def check_tcp_connection(host: str, port: int) -> bool:
-    """Проверяет доступность сервера через TCP с попыткой SSL-соединения."""
+async def check_tcp_connection(host: str, port: int, sni: str = None) -> bool:
+    """Проверяет доступность сервера через TCP с попыткой SSL-соединения.
+    
+    Args:
+        host: Адрес сервера для подключения
+        port: Порт для подключения
+        sni: Опциональное имя хоста для SNI (Server Name Indication)
+    """
     try:
         ssl_context = ssl.create_default_context()
-        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context)
+        # Отключаем проверку имени хоста в сертификате
+        ssl_context.check_hostname = False
+        # Разрешаем самоподписанные сертификаты
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Если SNI не указан, используем хост по умолчанию
+        server_hostname = sni if sni is not None else host
+        reader, writer = await asyncio.open_connection(
+            host, port, ssl=ssl_context, server_hostname=server_hostname
+        )
         writer.close()
         await writer.wait_closed()
         return True
