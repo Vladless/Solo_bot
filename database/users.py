@@ -15,6 +15,7 @@ from database.models import (
     Referral,
     TemporaryData,
     User,
+    GiftUsage
 )
 from logger import logger
 
@@ -179,16 +180,29 @@ async def upsert_user(
 async def delete_user_data(session: AsyncSession, tg_id: int):
     try:
         await session.execute(delete(Notification).where(Notification.tg_id == tg_id))
+
+        result = await session.execute(
+            select(Gift.gift_id).where(Gift.sender_tg_id == tg_id)
+        )
+        gift_ids = [row[0] for row in result.all()]
+        if gift_ids:
+            await session.execute(delete(GiftUsage).where(GiftUsage.gift_id.in_(gift_ids)))
+
         await session.execute(delete(Gift).where(Gift.sender_tg_id == tg_id))
+
         await session.execute(
             update(Gift)
             .where(Gift.recipient_tg_id == tg_id)
             .values(recipient_tg_id=None)
         )
+
         await session.execute(delete(Payment).where(Payment.tg_id == tg_id))
         await session.execute(
             delete(Referral).where(
-                or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id)
+                or_(
+                    Referral.referrer_tg_id == tg_id,
+                    Referral.referred_tg_id == tg_id
+                )
             )
         )
         await session.execute(delete(CouponUsage).where(CouponUsage.user_id == tg_id))
@@ -196,11 +210,13 @@ async def delete_user_data(session: AsyncSession, tg_id: int):
         await session.execute(delete(TemporaryData).where(TemporaryData.tg_id == tg_id))
         await session.execute(delete(BlockedUser).where(BlockedUser.tg_id == tg_id))
         await session.execute(delete(User).where(User.tg_id == tg_id))
+
         await session.commit()
         logger.info(f"[DB] Данные пользователя {tg_id} полностью удалены")
+
     except SQLAlchemyError as e:
-        logger.error(f"[DB] Ошибка при удалении данных пользователя {tg_id}: {e}")
         await session.rollback()
+        logger.error(f"[DB] Ошибка при удалении данных пользователя {tg_id}: {e}")
         raise
 
 
