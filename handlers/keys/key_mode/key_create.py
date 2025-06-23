@@ -35,6 +35,7 @@ from handlers.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
+    TARIFF_DESCRIPTIONS,
 )
 from handlers.utils import edit_or_send_message, get_least_loaded_cluster
 from logger import logger
@@ -140,7 +141,7 @@ async def handle_key_creation(
 
     await edit_or_send_message(
         target_message=target_message,
-        text=SELECT_TARIFF_PLAN_MSG,
+        text=f"{TARIFF_DESCRIPTIONS}\n\n{SELECT_TARIFF_PLAN_MSG}",
         reply_markup=builder.as_markup(),
     )
 
