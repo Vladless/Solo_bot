@@ -6,7 +6,7 @@ from datetime import datetime
 class GiftBase(BaseModel):
     sender_tg_id: int
     recipient_tg_id: Optional[int] = None
-    selected_months: int
+    selected_months: Optional[int] = None
     expiry_time: datetime
     gift_link: str
     is_used: bool = False

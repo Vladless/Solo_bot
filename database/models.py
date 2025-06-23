@@ -13,6 +13,7 @@ from sqlalchemy import (
     Text,
 )
 import secrets
+import uuid
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
 Base = declarative_base()
@@ -150,7 +151,7 @@ class Notification(DictLikeMixin, Base):
 class Gift(DictLikeMixin, Base):
     __tablename__ = "gifts"
 
-    gift_id = Column(String, primary_key=True)
+    gift_id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
     sender_tg_id = Column(BigInteger, ForeignKey("users.tg_id"))
     recipient_tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=True)
     selected_months = Column(Integer)

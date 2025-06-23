@@ -3,7 +3,7 @@ from api.routes import users, keys, coupons, servers, tariffs, gifts, referrals,
 
 app = FastAPI(
     title="SoloBot API (preAlpha)",
-    version="0.1.1",
+    version="0.1.2",
     docs_url="/api/docs",           
     redoc_url="/api/redoc",         
     openapi_url="/api/openapi.json" 

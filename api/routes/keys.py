@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from database.models import Key, Admin
+from database.models import Key, Admin, Tariff
 from api.schemas.keys import KeyBase, KeyResponse, KeyUpdate
 from api.routes.base_crud import generate_crud_router
 from api.depends import get_session, verify_admin_token
@@ -47,3 +47,23 @@ async def delete_key_by_email(
     except Exception as e:
         logger.error(f"[API] Ошибка при удалении ключа: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при удалении ключа")
+
+
+@router.get("/routers/{tg_id}", response_model=list[KeyResponse])
+async def get_router_keys_by_tg_id(
+    tg_id: int = Path(..., description="Telegram ID пользователя"),
+    session: AsyncSession = Depends(get_session),
+    admin: Admin = Depends(verify_admin_token),
+):
+    tariffs_result = await session.execute(
+        select(Tariff.id).where(Tariff.group_code == "routers")
+    )
+    tariff_ids = [row[0] for row in tariffs_result.all()]
+    if not tariff_ids:
+        return []
+
+    keys_result = await session.execute(
+        select(Key).where(Key.tg_id == tg_id, Key.tariff_id.in_(tariff_ids))
+    )
+    keys = keys_result.scalars().all()
+    return keys

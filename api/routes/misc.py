@@ -25,7 +25,8 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/payments",
-    tags=["Payments"]
+    tags=["Payments"],
+    dependencies=[Depends(verify_admin_token)]
 )
 
 
@@ -52,7 +53,8 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/referrals",
-    tags=["Referrals"]
+    tags=["Referrals"],
+    dependencies=[Depends(verify_admin_token)]
 )
 
 router.include_router(
@@ -65,7 +67,8 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/notifications",
-    tags=["Notifications"]
+    tags=["Notifications"],
+    dependencies=[Depends(verify_admin_token)]
 )
 
 
@@ -79,9 +82,9 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/manual-bans",
-    tags=["Bans"]
+    tags=["Bans"],
+    dependencies=[Depends(verify_admin_token)]
 )
-
 
 router.include_router(
     generate_crud_router(
@@ -93,9 +96,9 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/blocked-users",
-    tags=["Bans"]
+    tags=["Bans"],
+    dependencies=[Depends(verify_admin_token)]
 )
-
 
 router.include_router(
     generate_crud_router(
@@ -107,9 +110,9 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/temporary-data",
-    tags=["TemporaryData"]
+    tags=["TemporaryData"],
+    dependencies=[Depends(verify_admin_token)]
 )
-
 
 router.include_router(
     generate_crud_router(
@@ -121,5 +124,6 @@ router.include_router(
         enabled_methods=["get_all", "get_one", "delete"]
     ),
     prefix="/tracking-sources",
-    tags=["TrackingSources"]
+    tags=["TrackingSources"],
+    dependencies=[Depends(verify_admin_token)]
 )
