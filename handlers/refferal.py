@@ -119,9 +119,13 @@ async def inline_referral_handler(inline_query: InlineQuery):
 
     for index, offer in enumerate(REFERRAL_OFFERS):
         message_text = offer["message"].format(
+            trial_time=trial_time_formatted,
             trial_time_formatted=trial_time_formatted
         )[:4096]
-        title = offer["title"].format(trial_time_formatted=trial_time_formatted)
+        title = offer["title"].format(
+            trial_time=trial_time_formatted,
+            trial_time_formatted=trial_time_formatted
+        )
         description = offer["description"]
 
         builder = InlineKeyboardBuilder()
