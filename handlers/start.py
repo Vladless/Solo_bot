@@ -1,11 +1,15 @@
 import os
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
+
+import config
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.filters import CommandObject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +61,16 @@ from .refferal import handle_referral_link
 from .utils import edit_or_send_message
 
 router = Router()
+
+
+@router.callback_query(F.data == "my_subs")
+async def handle_my_subs_callback(
+    callback_query: CallbackQuery,
+    session: AsyncSession,
+):
+    """Handle the 'my_subs' callback to show the subscription list."""
+    from handlers.keys.key_view import process_callback_or_message_view_keys
+    await process_callback_or_message_view_keys(callback_query, session)
 
 
 @router.callback_query(F.data == "start")
@@ -293,6 +307,40 @@ async def handle_utm_link(
         )
 
 
+async def get_subscription_status(session: AsyncSession, tg_id: int) -> str:
+    """
+    Возвращает статус подписки пользователя:
+    - 'no_trial' - не активировал пробную подписку
+    - 'trial_used' - пробная подписка была активирована и закончилась
+    - 'single_sub' - есть одна активная подписка
+    - 'multi_sub' - несколько активных подписок
+    """
+    # Получаем активные ключи пользователя
+    from database import get_keys
+    keys = await get_keys(session, tg_id)
+    
+    # Фильтруем активные ключи
+    active_keys = [k for k in keys if k.expiry_time > int(datetime.utcnow().timestamp() * 1000)]
+    
+    # Если есть активные ключи, возвращаем их количество
+    if len(active_keys) > 1:
+        return 'multi_sub'
+    elif len(active_keys) == 1:
+        return 'single_sub'
+        
+    # Если активных ключей нет, проверяем статус триала
+    if TRIAL_TIME_DISABLE:
+        # Если триал отключен, это как будто триал был использован
+        return 'trial_used'
+    else:
+        # Проверяем, использовал ли пользователь триал
+        trial_status = await get_trial(session, tg_id)
+        if trial_status == 0:
+            return 'no_trial'
+        else:
+            return 'trial_used'
+
+
 async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     """Функция для отображения стандартного меню через редактирование сообщения."""
     logger.info(f"Показываю главное меню для пользователя {message.chat.id}")
@@ -300,21 +348,65 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     image_path = os.path.join("img", "pic.jpg")
     builder = InlineKeyboardBuilder()
 
-    trial_status = None
-    if session is not None:
-        trial_status = await get_trial(session, message.chat.id)
-        logger.info(f"Trial status для {message.chat.id}: {trial_status}")
+    # Получаем статус подписки пользователя
+    subscription_status = await get_subscription_status(session, message.chat.id)
+    logger.info(f"Subscription status для {message.chat.id}: {subscription_status}")
+
+    # Проверяем, включено ли новое поведение кнопок (magic button)
+    # По умолчанию False, если параметр не указан в конфиге
+    try:
+        use_magic_button = config.ENABLE_MAGIC_BUTTON
+    except AttributeError:
+        logger.warning("Параметр ENABLE_MAGIC_BUTTON не найден в конфиге. Используется значение по умолчанию: False")
+        use_magic_button = False
+
+    # Проверяем, включено ли новое поведение кнопок
+    if use_magic_button:
+        # Новое поведение: полный функционал с разными кнопками
+        if subscription_status == 'no_trial':
+            # Пробная подписка не активирована
+            builder.row(InlineKeyboardButton(
+                text="🎁 Пробная подписка", 
+                callback_data="create_key"
+            ))
+        elif subscription_status == 'trial_used':
+            # Пробная подписка была активирована и закончилась
+            builder.row(InlineKeyboardButton(
+                text="💳 Купить подписку", 
+                callback_data="pay"
+            ))
+        else:
+            # Есть активная подписка
+            if subscription_status == 'single_sub':
+                # Для одной подписки получаем её данные и ведём сразу на подключение
+                from database import get_keys
+                keys = await get_keys(session, message.chat.id)
+                active_keys = [k for k in keys if k.expiry_time > int(datetime.utcnow().timestamp() * 1000)]
+                if active_keys:
+                    # Use email instead of client_id to ensure compatibility with get_key_details
+                    email = active_keys[0].email
+                    builder.row(InlineKeyboardButton(
+                        text="📱 Подключить устройство",
+                        callback_data=f"connect_device|{email}"
+                    ))
+            else:
+                # Для нескольких подписок показываем список
+                builder.row(InlineKeyboardButton(
+                    text="📋 Выбрать подписку",
+                    callback_data="my_subs"
+                ))
     else:
-        logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
+        # Старое поведение: только кнопка пробной подписки, если доступна
+        if subscription_status == 'no_trial':
+            builder.row(InlineKeyboardButton(
+                text="🎁 Пробная подписка", 
+                callback_data="create_key"
+            ))
 
-    show_trial_button = trial_status == 0 and not TRIAL_TIME_DISABLE
-    show_profile_button = not SHOW_START_MENU_ONCE or trial_status != 0 or TRIAL_TIME_DISABLE
+    # Кнопка личного кабинета (всегда показываем)
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if show_trial_button:
-        builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
-    if show_profile_button:
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
+    # Кнопки поддержки и канала
     if CHANNEL_EXISTS:
         builder.row(
             InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
@@ -323,6 +415,7 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     else:
         builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
 
+    # Кнопка админки
     if admin:
         builder.row(
             InlineKeyboardButton(
@@ -331,6 +424,7 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
             )
         )
 
+    # Кнопка "О VPN"
     builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 
     await edit_or_send_message(
