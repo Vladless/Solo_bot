@@ -26,6 +26,7 @@ from database import (
     get_tariffs_for_cluster,
     get_trial,
 )
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
@@ -106,6 +107,19 @@ async def handle_key_creation(
         )
         return
 
+    group_code = tariffs[0].get("group_code") if tariffs else None
+    if not group_code:
+        await edit_or_send_message(
+            target_message=(
+                message_or_query.message
+                if isinstance(message_or_query, CallbackQuery)
+                else message_or_query
+            ),
+            text="❌ Не удалось определить группу тарифов.",
+            reply_markup=None,
+        )
+        return
+
     grouped_tariffs = defaultdict(list)
     for t in tariffs:
         subgroup = t.get("subgroup_title")
@@ -122,11 +136,11 @@ async def handle_key_creation(
         )
 
     for subgroup in sorted(k for k in grouped_tariffs if k):
-        safe = subgroup.replace(" ", "_")
+        subgroup_hash = create_subgroup_hash(subgroup, group_code)
         builder.row(
             InlineKeyboardButton(
                 text=f"{subgroup}",
-                callback_data=f"tariff_subgroup_user|{safe}",
+                callback_data=f"tariff_subgroup_user|{subgroup_hash}",
             )
         )
 
@@ -144,15 +158,25 @@ async def handle_key_creation(
         reply_markup=builder.as_markup(),
     )
 
-    await state.update_data(tg_id=tg_id, cluster_name=cluster_name)
+    await state.update_data(tg_id=tg_id, cluster_name=cluster_name, group_code=group_code)
     await state.set_state(Form.waiting_for_server_selection)
 
 
 @router.callback_query(F.data.startswith("tariff_subgroup_user|"))
 async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMContext, session: Any):
-    subgroup = callback.data.split("|")[1].replace("_", " ")
+    subgroup_hash = callback.data.split("|")[1]
     data = await state.get_data()
     cluster_name = data.get("cluster_name")
+    group_code = data.get("group_code")
+
+    subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    if not subgroup:
+        await edit_or_send_message(
+            target_message=callback.message,
+            text="❌ Подгруппа не найдена.",
+            reply_markup=None,
+        )
+        return
 
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
     filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup]

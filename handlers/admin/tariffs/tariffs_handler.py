@@ -10,11 +10,12 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import delete, distinct, select, update
+from sqlalchemy import delete, distinct, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import create_tariff
 from database.models import Key, Server, Tariff
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback
@@ -54,6 +55,23 @@ class TariffSubgroupState(StatesGroup):
 class SubgroupEditState(StatesGroup):
     entering_new_title = State()
     confirming_deletion = State()
+    editing_tariffs = State()
+
+
+MAX_TARIFF_NAME_LENGTH = 40
+MAX_SUBGROUP_TITLE_LENGTH = 40
+
+
+def validate_tariff_name(name: str) -> tuple[bool, str]:
+    if len(name) > MAX_TARIFF_NAME_LENGTH:
+        return False, f"Название тарифа слишком длинное. Максимум {MAX_TARIFF_NAME_LENGTH} символов."
+    return True, ""
+
+
+def validate_subgroup_title(title: str) -> tuple[bool, str]:
+    if len(title) > MAX_SUBGROUP_TITLE_LENGTH:
+        return False, f"Название подгруппы слишком длинное. Максимум {MAX_SUBGROUP_TITLE_LENGTH} символов."
+    return True, ""
 
 
 @router.callback_query(
@@ -108,7 +126,17 @@ async def process_tariff_group(message: Message, state: FSMContext):
 
 @router.message(TariffCreateState.name, IsAdminFilter())
 async def process_tariff_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text.strip())
+    name = message.text.strip()
+
+    is_valid, error_msg = validate_tariff_name(name)
+    if not is_valid:
+        await message.answer(
+            f"❌ {error_msg}\n\nПовторите ввод:",
+            reply_markup=build_cancel_kb(),
+        )
+        return
+    
+    await state.update_data(name=name)
     await state.set_state(TariffCreateState.duration)
     await message.answer(
         "📅 Введите <b>длительность тарифа в днях</b> (например: <i>30</i>):",
@@ -441,6 +469,15 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
         await state.clear()
         return
 
+    if field == "name":
+        is_valid, error_msg = validate_tariff_name(value)
+        if not is_valid:
+            await message.answer(
+                f"❌ {error_msg}\n\nПовторите ввод:",
+                reply_markup=build_cancel_kb(),
+            )
+            return
+
     if field in ["duration_days", "price_rub", "traffic_limit", "device_limit"]:
         try:
             num = int(value)
@@ -523,12 +560,27 @@ async def start_subgrouping(callback: CallbackQuery, state: FSMContext, session:
     group_code = callback.data.split("|", 1)[1]
 
     result = await session.execute(
-        select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id)
+        select(Tariff)
+        .where(
+            Tariff.group_code == group_code,
+            (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == ""))
+        )
+        .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
 
     if not tariffs:
-        await callback.message.edit_text("❌ В этой группе нет тарифов.")
+        await callback.message.edit_text(
+            "❌ Нет доступных тарифов для группировки.\n\nВсе тарифы уже находятся в подгруппах.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                    )]
+                ]
+            )
+        )
         return
 
     await state.set_state(TariffSubgroupState.selecting_tariffs)
@@ -572,7 +624,12 @@ async def toggle_tariff_subgroup_selection(callback: CallbackQuery, state: FSMCo
 
     group_code = data["group_code"]
     result = await session.execute(
-        select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id)
+        select(Tariff)
+        .where(
+            Tariff.group_code == group_code,
+            (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == ""))
+        )
+        .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
 
@@ -623,6 +680,19 @@ async def ask_subgroup_title(callback: CallbackQuery, state: FSMContext):
 @router.message(TariffSubgroupState.entering_subgroup_title, IsAdminFilter())
 async def apply_subgroup_title(message: Message, state: FSMContext, session: AsyncSession):
     title = message.text.strip()
+
+    is_valid, error_msg = validate_subgroup_title(title)
+    if not is_valid:
+        await message.answer(
+            f"❌ {error_msg}\n\nПовторите ввод:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")]
+                ]
+            ),
+        )
+        return
+    
     data = await state.get_data()
     selected_ids = data.get("selected_tariff_ids", [])
 
@@ -650,8 +720,13 @@ async def cancel_subgrouping(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("view_subgroup|"), IsAdminFilter())
 async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
-    _, encoded_subgroup, group_code = callback.data.split("|", 2)
-    subgroup_title = encoded_subgroup.replace("_", " ")
+    _, subgroup_hash, group_code = callback.data.split("|", 2)
+
+    subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    
+    if not subgroup_title:
+        await callback.message.edit_text("❌ Подгруппа не найдена.")
+        return
 
     result = await session.execute(
         select(Tariff).where(
@@ -680,13 +755,19 @@ async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
     builder.row(
         InlineKeyboardButton(
             text="📝 Переименовать подгруппу",
-            callback_data=f"rename_subgroup|{encoded_subgroup}|{group_code}",
+            callback_data=f"rename_subgroup|{subgroup_hash}|{group_code}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="✏️ Редактировать подгруппу",
+            callback_data=f"edit_subgroup_tariffs|{subgroup_hash}|{group_code}",
         )
     )
     builder.row(
         InlineKeyboardButton(
             text="🗑 Удалить подгруппу",
-            callback_data=f"delete_subgroup|{encoded_subgroup}|{group_code}",
+            callback_data=f"delete_subgroup|{subgroup_hash}|{group_code}",
         )
     )
 
@@ -704,13 +785,19 @@ async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.startswith("rename_subgroup|"), IsAdminFilter())
-async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext):
-    _, encoded_subgroup, group_code = callback.data.split("|", 2)
-    subgroup_title = encoded_subgroup.replace("_", " ")
+async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, subgroup_hash, group_code = callback.data.split("|", 2)
+
+    subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    
+    if not subgroup_title:
+        await callback.message.edit_text("❌ Подгруппа не найдена.")
+        return
 
     await state.update_data(
         subgroup_title=subgroup_title,
         group_code=group_code,
+        subgroup_hash=subgroup_hash,
     )
 
     await state.set_state(SubgroupEditState.entering_new_title)
@@ -718,7 +805,7 @@ async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext):
         f"📝 Введите новое название подгруппы:\n<b>{subgroup_title}</b>\n\nИли нажмите Отмена.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{encoded_subgroup}|{group_code}")]
+                [InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
             ]
         )
     )
@@ -727,6 +814,23 @@ async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext):
 @router.message(SubgroupEditState.entering_new_title, IsAdminFilter())
 async def save_new_subgroup_title(message: Message, state: FSMContext, session: AsyncSession):
     new_title = message.text.strip()
+
+    is_valid, error_msg = validate_subgroup_title(new_title)
+    if not is_valid:
+        data = await state.get_data()
+        subgroup_hash = data.get("subgroup_hash")
+        group_code = data.get("group_code")
+        
+        await message.answer(
+            f"❌ {error_msg}\n\nПовторите ввод:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
+                ]
+            ),
+        )
+        return
+    
     data = await state.get_data()
     old_title = data["subgroup_title"]
     group_code = data["group_code"]
@@ -742,6 +846,8 @@ async def save_new_subgroup_title(message: Message, state: FSMContext, session: 
     await session.commit()
     await state.clear()
 
+    new_hash = create_subgroup_hash(new_title, group_code)
+
     await message.answer(
         f"✅ Подгруппа <b>{old_title}</b> переименована в <b>{new_title}</b>.",
         reply_markup=InlineKeyboardMarkup(
@@ -753,13 +859,19 @@ async def save_new_subgroup_title(message: Message, state: FSMContext, session: 
 
 
 @router.callback_query(F.data.startswith("delete_subgroup|"), IsAdminFilter())
-async def confirm_delete_subgroup(callback: CallbackQuery, state: FSMContext):
-    _, encoded_subgroup, group_code = callback.data.split("|", 2)
-    subgroup_title = encoded_subgroup.replace("_", " ")
+async def confirm_delete_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, subgroup_hash, group_code = callback.data.split("|", 2)
+
+    subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    
+    if not subgroup_title:
+        await callback.message.edit_text("❌ Подгруппа не найдена.")
+        return
 
     await state.update_data(
         subgroup_title=subgroup_title,
         group_code=group_code,
+        subgroup_hash=subgroup_hash,
     )
     await state.set_state(SubgroupEditState.confirming_deletion)
 
@@ -770,7 +882,7 @@ async def confirm_delete_subgroup(callback: CallbackQuery, state: FSMContext):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Удалить", callback_data="confirm_subgroup_deletion"),
-                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{encoded_subgroup}|{group_code}")
+                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
                 ]
             ]
         )
@@ -799,6 +911,216 @@ async def perform_subgroup_deletion(callback: CallbackQuery, state: FSMContext, 
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack())]
+            ]
+        )
+    )
+
+
+@router.callback_query(F.data.startswith("edit_subgroup_tariffs|"), IsAdminFilter())
+async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, subgroup_hash, group_code = callback.data.split("|", 2)
+
+    subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    
+    if not subgroup_title:
+        await callback.message.edit_text("❌ Подгруппа не найдена.")
+        return
+
+    result = await session.execute(
+        select(Tariff)
+        .where(
+            Tariff.group_code == group_code,
+            or_(
+                Tariff.subgroup_title == subgroup_title,
+                Tariff.subgroup_title.is_(None),
+                Tariff.subgroup_title == ''
+            )
+        )
+        .order_by(Tariff.id)
+    )
+    all_tariffs_to_show = result.scalars().all()
+
+    subgroup_tariff_ids = {t.id for t in all_tariffs_to_show if t.subgroup_title == subgroup_title}
+
+    if not all_tariffs_to_show:
+        await callback.message.edit_text(
+            "❌ Нет доступных тарифов для редактирования.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="⬅️ Назад",
+                        callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
+                    )]
+                ]
+            )
+        )
+        return
+
+    await state.set_state(SubgroupEditState.editing_tariffs)
+    await state.update_data(
+        subgroup_title=subgroup_title,
+        group_code=group_code,
+        subgroup_hash=subgroup_hash,
+        selected_tariff_ids=list(subgroup_tariff_ids)
+    )
+
+    builder = InlineKeyboardBuilder()
+    for tariff in all_tariffs_to_show:
+        is_in_subgroup = tariff.id in subgroup_tariff_ids
+        prefix = "✅ " if is_in_subgroup else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{tariff.name}",
+                callback_data=f"edit_sub_toggle|{tariff.id}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
+    )
+
+    await callback.message.edit_text(
+        f"✏️ <b>Редактирование подгруппы: {subgroup_title}</b>\n\n"
+        "✅ - тарифы в подгруппе\n\n"
+        "Нажмите на тариф, чтобы добавить/убрать его:",
+        reply_markup=builder.as_markup()
+    )
+
+
+@router.callback_query(F.data.startswith("edit_sub_toggle|"), SubgroupEditState.editing_tariffs, IsAdminFilter())
+async def toggle_tariff_in_subgroup_edit(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    tariff_id = int(callback.data.split("|")[1])
+    data = await state.get_data()
+    selected_ids = set(data.get("selected_tariff_ids", []))
+
+    if tariff_id in selected_ids:
+        selected_ids.remove(tariff_id)
+    else:
+        selected_ids.add(tariff_id)
+
+    await state.update_data(selected_tariff_ids=list(selected_ids))
+
+    subgroup_title = data["subgroup_title"]
+    group_code = data["group_code"]
+    subgroup_hash = data["subgroup_hash"]
+
+    result = await session.execute(
+        select(Tariff)
+        .where(
+            Tariff.group_code == group_code,
+            or_(
+                Tariff.subgroup_title == subgroup_title,
+                Tariff.subgroup_title.is_(None),
+                Tariff.subgroup_title == ''
+            )
+        )
+        .order_by(Tariff.id)
+    )
+    all_tariffs_to_show = result.scalars().all()
+
+    builder = InlineKeyboardBuilder()
+    for tariff in all_tariffs_to_show:
+        is_selected = tariff.id in selected_ids
+        prefix = "✅ " if is_selected else ""
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{tariff.name}",
+                callback_data=f"edit_sub_toggle|{tariff.id}"
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
+    )
+
+    await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "edit_sub_save", SubgroupEditState.editing_tariffs, IsAdminFilter())
+async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    data = await state.get_data()
+    subgroup_title = data["subgroup_title"]
+    group_code = data["group_code"]
+    subgroup_hash = data["subgroup_hash"]
+    selected_tariff_ids = set(data.get("selected_tariff_ids", []))
+
+    result = await session.execute(
+        select(Tariff)
+        .where(
+            Tariff.group_code == group_code,
+            Tariff.subgroup_title == subgroup_title
+        )
+    )
+    current_subgroup_tariffs = result.scalars().all()
+    current_tariff_ids = {t.id for t in current_subgroup_tariffs}
+
+    to_add = selected_tariff_ids - current_tariff_ids
+    to_remove = current_tariff_ids - selected_tariff_ids
+
+    if to_remove:
+        await session.execute(
+            update(Tariff)
+            .where(Tariff.id.in_(to_remove))
+            .values(subgroup_title=None, updated_at=datetime.utcnow())
+        )
+
+    if to_add:
+        await session.execute(
+            update(Tariff)
+            .where(Tariff.id.in_(to_add))
+            .values(subgroup_title=subgroup_title, updated_at=datetime.utcnow())
+        )
+
+    await session.commit()
+    await state.clear()
+
+    if not selected_tariff_ids:
+        await callback.message.edit_text(
+            f"✅ Подгруппа <b>{subgroup_title}</b> была расформирована.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="⬅️ Назад к группе тарифов",
+                        callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                    )]
+                ]
+            )
+        )
+        return
+
+    changes_text = []
+    if to_add:
+        added_names = []
+        for tariff_id in to_add:
+            result = await session.execute(select(Tariff.name).where(Tariff.id == tariff_id))
+            name = result.scalar_one()
+            if name:
+                added_names.append(name)
+        changes_text.append(f"➕ Добавлено: {', '.join(added_names)}")
+
+    if to_remove:
+        removed_names = []
+        for tariff_id in to_remove:
+            result = await session.execute(select(Tariff.name).where(Tariff.id == tariff_id))
+            name = result.scalar_one()
+            if name:
+                removed_names.append(name)
+        changes_text.append(f"➖ Удалено: {', '.join(removed_names)}")
+
+    if not changes_text:
+        changes_text.append("Изменений не было")
+
+    await callback.message.edit_text(
+        f"✅ <b>Подгруппа обновлена: {subgroup_title}</b>\n\n"
+        f"{chr(10).join(changes_text)}",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="⬅️ Назад к подгруппе",
+                    callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
+                )]
             ]
         )
     )

@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from collections import defaultdict
 
+from database.tariffs import create_subgroup_hash
 from ..panel.keyboard import AdminPanelCallback
 
 
@@ -82,11 +83,11 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
 
     for subgroup_title, items in grouped.items():
         if subgroup_title:
-            safe_subgroup = subgroup_title.replace(" ", "_")
+            subgroup_hash = create_subgroup_hash(subgroup_title, group_code)
             builder.row(
                 InlineKeyboardButton(
                     text=f"{subgroup_title}",
-                    callback_data=f"view_subgroup|{safe_subgroup}|{group_code}"
+                    callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
                 )
             )
 

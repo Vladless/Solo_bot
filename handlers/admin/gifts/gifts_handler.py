@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
 from database.models import Tariff, Gift, GiftUsage
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.utils import format_days, format_months, edit_or_send_message
 
 from logger import logger
@@ -66,11 +67,11 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
         )
 
     for subgroup in sorted(k for k in grouped_tariffs if k):
-        safe = subgroup.replace(" ", "_")[:30]
+        subgroup_hash = create_subgroup_hash(subgroup, "gifts")
         builder.row(
             types.InlineKeyboardButton(
                 text=subgroup,
-                callback_data=f"admin_gift_subgroup|{safe}",
+                callback_data=f"admin_gift_subgroup|{subgroup_hash}",
             )
         )
 
@@ -89,7 +90,12 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
 @router.callback_query(F.data.startswith("admin_gift_subgroup|"))
 async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: AsyncSession):
     try:
-        subgroup = callback.data.split("|", 1)[1].replace("_", " ")
+        subgroup_hash = callback.data.split("|", 1)[1]
+
+        subgroup = await find_subgroup_by_hash(session, subgroup_hash, "gifts")
+        if not subgroup:
+            await callback.message.edit_text("❌ Подгруппа не найдена.")
+            return
 
         stmt = (
             select(Tariff)

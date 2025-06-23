@@ -1,4 +1,5 @@
 from datetime import datetime
+import hashlib
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,6 +7,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Server, Tariff
 from logger import logger
+
+
+def create_subgroup_hash(subgroup_title: str, group_code: str) -> str:
+    if not subgroup_title:
+        return ""
+
+    unique_key = f"{subgroup_title}:{group_code}"
+    hash_object = hashlib.md5(unique_key.encode('utf-8'))
+    return hash_object.hexdigest()[:8]
+
+
+async def find_subgroup_by_hash(session: AsyncSession, subgroup_hash: str, group_code: str) -> str | None:
+    result = await session.execute(
+        select(Tariff.subgroup_title)
+        .where(Tariff.group_code == group_code, Tariff.subgroup_title.isnot(None))
+        .distinct()
+    )
+    subgroups = [row[0] for row in result.fetchall()]
+    
+    for subgroup_title in subgroups:
+        if create_subgroup_hash(subgroup_title, group_code) == subgroup_hash:
+            return subgroup_title
+    
+    return None
 
 
 async def get_tariffs(

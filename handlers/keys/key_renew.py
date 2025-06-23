@@ -25,6 +25,7 @@ from database import (
     check_tariff_exists,
 )
 from database.models import Server, Key
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.buttons import BACK, MAIN_MENU, PAYMENT
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
@@ -120,11 +121,11 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             )
 
         for subgroup in sorted(k for k in grouped_tariffs if k):
-            safe = subgroup.replace(" ", "_")[:30]
+            subgroup_hash = create_subgroup_hash(subgroup, group_code)
             builder.row(
                 InlineKeyboardButton(
                     text=subgroup,
-                    callback_data=f"renew_subgroup|{safe}",
+                    callback_data=f"renew_subgroup|{subgroup_hash}",
                 )
             )
 
@@ -152,8 +153,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 @router.callback_query(F.data.startswith("renew_subgroup|"))
 async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     try:
-        parts = callback.data.split("|")
-        subgroup = parts[1].replace("_", " ")
+        subgroup_hash = callback.data.split("|")[1]
 
         data = await state.get_data()
         client_id = data.get("renew_client_id")
@@ -192,6 +192,12 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             return
 
         group_code = row[0]
+
+        subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+        if not subgroup:
+            await callback.message.answer("❌ Подгруппа не найдена.")
+            return
+            
         tariffs = await get_tariffs(session, group_code=group_code)
         filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
 
