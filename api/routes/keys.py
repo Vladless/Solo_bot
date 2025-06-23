@@ -1,6 +1,7 @@
-from fastapi import Depends, HTTPException, Path
+from fastapi import Depends, HTTPException, Path, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime
 
 from database.models import Key, Admin, Tariff
 from api.schemas.keys import KeyBase, KeyResponse, KeyUpdate
@@ -8,6 +9,8 @@ from api.routes.base_crud import generate_crud_router
 from api.depends import get_session, verify_admin_token
 from handlers.keys.key_utils import delete_key_from_cluster
 from logger import logger
+
+from handlers.keys.key_utils import renew_key_in_cluster
 
 router = generate_crud_router(
     model=Key,
@@ -67,3 +70,46 @@ async def get_router_keys_by_tg_id(
     )
     keys = keys_result.scalars().all()
     return keys
+
+
+@router.patch("/edit/by_email/{email}", response_model=KeyResponse)
+async def edit_key_by_email(
+    email: str = Path(..., description="Email клиента"),
+    key_update: KeyUpdate = Body(...),
+    session: AsyncSession = Depends(get_session),
+    admin: Admin = Depends(verify_admin_token),
+):
+    result = await session.execute(select(Key).where(Key.email == email))
+    db_key = result.scalar_one_or_none()
+    if not db_key:
+        raise HTTPException(status_code=404, detail="Ключ не найден")
+
+    for field, value in key_update.dict(exclude_unset=True).items():
+        if field == "expiry_time" and value is not None:
+            if isinstance(value, int):
+                ms = value
+            elif isinstance(value, datetime):
+                ms = int(value.timestamp() * 1000)
+            else:
+                raise HTTPException(status_code=400, detail="Некорректный формат времени")
+            setattr(db_key, field, ms)
+        else:
+            setattr(db_key, field, value)
+
+    try:
+        await renew_key_in_cluster(
+            cluster_id=db_key.server_id,
+            email=db_key.email,
+            client_id=db_key.client_id,
+            new_expiry_time=int(db_key.expiry_time // 1000) if db_key.expiry_time else None,
+            total_gb=db_key.traffic_limit if hasattr(db_key, "traffic_limit") else None,
+            session=session,
+            hwid_device_limit=db_key.device_limit if hasattr(db_key, "device_limit") else None,
+            reset_traffic=True,
+        )
+        await session.commit()
+        logger.info(f"[API] Ключ обновлён: {db_key.client_id}")
+        return db_key
+    except Exception as e:
+        logger.error(f"[API] Ошибка при обновлении ключа: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка при обновлении ключа")
