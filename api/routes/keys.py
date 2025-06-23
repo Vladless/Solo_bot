@@ -79,6 +79,8 @@ async def edit_key_by_email(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
+    logger.info(f"[API] edit_key_by_email called for email={email}, payload={key_update.dict(exclude_unset=False)}")
+
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
@@ -97,19 +99,23 @@ async def edit_key_by_email(
             setattr(db_key, field, value)
 
     try:
+        new_expiry_time = db_key.expiry_time
+        logger.info(f"[API] renew_key_in_cluster new_expiry_time (ms) = {new_expiry_time}")
         await renew_key_in_cluster(
             cluster_id=db_key.server_id,
             email=db_key.email,
             client_id=db_key.client_id,
-            new_expiry_time=int(db_key.expiry_time // 1000) if db_key.expiry_time else None,
-            total_gb=db_key.traffic_limit if hasattr(db_key, "traffic_limit") else None,
+            new_expiry_time=new_expiry_time,
+            total_gb=getattr(db_key, "traffic_limit", None),
             session=session,
-            hwid_device_limit=db_key.device_limit if hasattr(db_key, "device_limit") else None,
-            reset_traffic=True,
+            hwid_device_limit=getattr(db_key, "device_limit", None),
+            reset_traffic=True
         )
         await session.commit()
+
         logger.info(f"[API] Ключ обновлён: {db_key.client_id}")
         return db_key
+
     except Exception as e:
         logger.error(f"[API] Ошибка при обновлении ключа: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при обновлении ключа")
