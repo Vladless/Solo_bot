@@ -91,17 +91,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             return
 
         group_code = row[0]
-        
-        # Save tariff group to state for back navigation
-        await state.update_data(tariff_group=group_code)
 
         if tariff_id:
             if await check_tariff_exists(session, tariff_id):
                 current_tariff = await get_tariff_by_id(session, tariff_id)
                 if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts"]:
                     group_code = current_tariff["group_code"]
-                    # Update tariff group in state if it's different
-                    await state.update_data(tariff_group=group_code)
 
         tariffs = await get_tariffs(session, group_code=group_code)
         tariffs = [t for t in tariffs if t["is_active"]]
@@ -133,7 +128,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 )
             )
 
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="renew_menu"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="renew_menu"))
 
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
@@ -217,11 +212,10 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                 )
             )
 
-        # Back button returns to tariff group list
         builder.row(
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data=f"renew_key|{key_name}"  # This will go back to the tariff group list
+                callback_data="renew_menu"
             )
         )
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -286,10 +280,6 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             required_amount = ceil(cost - balance)
             logger.info(f"[RENEW] Недостаточно средств: {required_amount}₽")
 
-            # Get tariff group from state for back navigation
-            data = await state.get_data()
-            tariff_group = data.get('tariff_group', '')
-            
             await create_temporary_data(
                 session,
                 tg_id,
@@ -302,7 +292,6 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                     "new_expiry_time": new_expiry_time,
                     "total_gb": total_gb,
                     "email": email,
-                    "tariff_group": tariff_group,  # Store for back navigation
                 },
             )
 
@@ -317,13 +306,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             else:
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-                
-                # Back button returns to tariff group list
-                data = await state.get_data()
-                tariff_group = data.get('tariff_group', '')
-                back_data = f"renew_key|{data.get('renew_key_name', '')}" if tariff_group else "renew_menu"
-                builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=back_data))
-                
+                builder.row(
+                    InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+                )
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(

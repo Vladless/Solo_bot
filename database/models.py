@@ -99,34 +99,12 @@ class Server(DictLikeMixin, Base):
 class Payment(DictLikeMixin, Base):
     __tablename__ = "payments"
 
-    TYPE_PAYMENT = 'payment'
-    TYPE_REFERRAL = 'referral'
-    TYPE_MANUAL_TOPUP = 'manual_topup'
-    TYPE_MANUAL_DEDUCT = 'manual_deduct'
-    TYPE_REFERRAL_BONUS = 'referral_bonus'
-
     id = Column(Integer, primary_key=True)
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=False, index=True)
-    amount = Column(Float, nullable=False)
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id"))
+    amount = Column(Float)
     payment_system = Column(String)
-    status = Column(String, default='success')
-    operation_type = Column(String, default=TYPE_PAYMENT, nullable=False, index=True)
-    description = Column(String, nullable=True)
-    admin_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'tg_id': self.tg_id,
-            'amount': self.amount,
-            'payment_system': self.payment_system,
-            'status': self.status,
-            'operation_type': self.operation_type,
-            'description': self.description,
-            'admin_id': self.admin_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
+    status = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Coupon(DictLikeMixin, Base):

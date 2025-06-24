@@ -60,15 +60,6 @@ async def confirm_create_new_key(
     await handle_key_creation(tg_id, state, session, callback_query)
 
 
-@router.callback_query(F.data == "back_to_server_selection")
-async def handle_back_to_server_selection(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
-    """Обработчик возврата в меню продления/создания подписки"""
-    from handlers.keys.key_view import process_renew_menu
-    
-    # Navigate back to the renew menu
-    await process_renew_menu(callback, session)
-
-
 async def handle_key_creation(
     tg_id: int,
     state: FSMContext,
@@ -140,7 +131,7 @@ async def handle_key_creation(
             )
         )
 
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="renew_menu"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     target_message = (
         message_or_query.message
@@ -189,6 +180,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
             callback_data="back_to_tariff_group_list"
         )
     )
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback.message,
@@ -251,13 +243,7 @@ async def select_tariff_plan(
         else:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-            
-            # Back button returns to tariff group list
-            builder.row(InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data="back_to_tariff_group_list"
-            ))
-            
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),

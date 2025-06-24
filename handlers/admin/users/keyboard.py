@@ -1,6 +1,4 @@
 from datetime import datetime, timezone
-from typing import Optional, Dict, List, Tuple
-from datetime import datetime, timedelta
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -10,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
-from database.models import Key, Server, Tariff, Payment
+from database.models import Key, Server, Tariff
 from handlers.buttons import BACK
 from handlers.utils import format_days
 
@@ -30,14 +28,6 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
     data: str
     month: int | None = None
     edit: bool = False
-
-
-class BalanceActionCallback(CallbackData, prefix="balance_action"):
-    """Callback data for balance management actions"""
-    action: str  # 'topup', 'deduct', 'set'
-    user_id: int
-    amount: Optional[float] = None
-    description: Optional[str] = None
 
 
 def build_user_edit_kb(
@@ -387,53 +377,6 @@ def build_editor_btn(text: str, tg_id: int, edit: bool = False) -> InlineKeyboar
             action="users_editor", tg_id=tg_id, edit=edit
         ).pack(),
     )
-
-
-def format_balance_history(
-    transactions: list[dict],
-    current_page: int,
-    total_transactions: int,
-    user_id: int
-) -> str:
-    """
-    Format balance history for display
-    
-    Args:
-        transactions: List of transaction dictionaries
-        current_page: Current page number
-        total_transactions: Total number of transactions
-        user_id: User ID for the history
-        
-    Returns:
-        Formatted history string
-    """
-    # Format header
-    text = (
-        f"📊 <b>История операций</b>\n"
-        f"ID пользователя: <code>{user_id}</code>\n"
-        f"Страница: {current_page}\n"
-        f"Всего операций: {total_transactions}\n\n"
-    )
-    
-    if not transactions:
-        return text + "Нет операций для отображения"
-    
-    # Add transactions
-    for t in transactions:
-        amount = f"+{t['amount']:.2f}₽" if t['amount'] >= 0 else f"{t['amount']:.2f}₽"
-        date = datetime.fromisoformat(t['created_at']).strftime("%d.%m %H:%M")
-        op_type = {
-            'payment': '💳 Платеж',
-            'manual_topup': '➕ Пополнение',
-            'manual_deduct': '➖ Списание',
-            'referral': '👥 Реферал',
-            'referral_bonus': '🎁 Бонус'
-        }.get(t['operation_type'], t['operation_type'])
-        
-        desc = f" - {t['description']}" if t['description'] else ""
-        text += f"\n• {date} | {op_type} | {amount}{desc}"
-    
-    return text
 
 
 async def build_cluster_selection_kb(
