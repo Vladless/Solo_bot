@@ -97,7 +97,7 @@ async def process_callback_pay_robokassa(
                     callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_tariff_group_list"))
 
     key_count = await get_key_count(session, tg_id)
 
@@ -329,7 +329,18 @@ async def handle_custom_amount_input(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_url))
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_robokassa"))
+        
+        # Set back button based on payment type
+        if state_type == "waiting_for_renewal_payment":
+            tariff_group = user_data.get("data", {}).get("tariff_group", "")
+            if tariff_group:
+                back_data = f"renew_subgroup|{tariff_group.replace(' ', '_')}"
+            else:
+                back_data = "renew_menu"
+        else:
+            back_data = "back_to_tariff_group_list"
+            
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=back_data))
 
         if state_type == "waiting_for_payment":
             message_text = f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"

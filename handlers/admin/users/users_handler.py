@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import pytz
 from aiogram import F, Router, types
@@ -10,11 +10,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update, case
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, USE_COUNTRY_SELECTION
+from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, USE_COUNTRY_SELECTION, logger
 from database import (
     delete_key,
     delete_user_data,
@@ -30,7 +30,15 @@ from database import (
     update_trial,
 )
 from database.models import Key, ManualBan, Payment, Referral, Server, Tariff, User
+from database.payments import (
+    get_user_balance,
+    get_referral_balance,
+    get_payment_history,
+    add_payment,
+    update_user_balance
+)
 from filters.admin import IsAdminFilter
+from handlers.buttons import BACK
 from handlers.keys.key_utils import (
     create_key_on_cluster,
     delete_key_from_cluster,
@@ -433,145 +441,425 @@ async def handle_balance_change(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
+    """Show balance management menu"""
     tg_id = callback_data.tg_id
-
-    stmt = (
-        select(
-            Payment.amount, Payment.payment_system, Payment.status, Payment.created_at
-        )
-        .where(Payment.tg_id == tg_id)
-        .order_by(Payment.created_at.desc())
-        .limit(5)
-    )
-    result = await session.execute(stmt)
-    records = result.all()
-
-    balance = await get_balance(session, tg_id)
-    balance = int(balance or 0)
-
-    text = (
-        f"<b>💵 Изменение баланса</b>"
-        f"\n\n🆔 ID: <b>{tg_id}</b>"
-        f"\n💰 Баланс: <b>{balance}Р</b>"
-        f"\n📊 Последние операции (5):"
-    )
-
-    if records:
-        for amount, payment_system, status, created_at in records:
-            date = created_at.strftime("%Y-%m-%d %H:%M:%S")
-            text += (
-                f"\n<blockquote>💸 Сумма: {amount} | {payment_system}"
-                f"\n📌 Статус: {status}"
-                f"\n⏳ Дата: {date}</blockquote>"
-            )
-    else:
-        text += "\n <i>🚫 Отсутствуют</i>"
-
-    await callback_query.message.edit_text(
-        text=text, reply_markup=await build_users_balance_kb(session, tg_id)
-    )
-
-
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_add"), IsAdminFilter()
-)
-async def handle_balance_add(
-    callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    state: FSMContext,
-    session: Any,
-):
-    tg_id = callback_data.tg_id
-    amount = callback_data.data
-
-    if amount is not None:
-        amount = int(amount)
-        if amount >= 0:
-            await update_balance(session, tg_id, amount)
-        else:
-            current_balance = await get_balance(session, tg_id)
-            new_balance = max(0, current_balance + amount)
-            await set_user_balance(session, tg_id, new_balance)
-
-        await handle_balance_change(callback_query, callback_data, session)
+    user = await session.get(User, tg_id)
+    
+    if not user:
+        await callback_query.answer("❌ Пользователь не найден", show_alert=True)
         return
-
-    await state.update_data(tg_id=tg_id, op_type="add")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
+    
+    # Get balances
+    balance = await get_user_balance(session, tg_id)
+    ref_balance = await get_referral_balance(session, tg_id)
+    
+    # Get recent transactions
+    transactions, _ = await get_payment_history(
+        session=session,
+        tg_id=tg_id,
+        limit=5
+    )
+    
+    # Format message
+    text = (
+        f"👤 <b>Управление балансом</b>\n"
+        f"Пользователь: <code>{tg_id}</code>\n"
+        f"Имя: {user.first_name or 'Не указано'}\n"
+        f"Username: @{user.username or 'Нет'}\n\n"
+        f"💰 <b>Основной баланс:</b> {balance:.2f}₽\n"
+        f"🎁 <b>Реферальный баланс:</b> {ref_balance:.2f}₽\n\n"
+        f"📊 <b>Последние операции:</b>"
+    )
+    
+    if transactions:
+        for t in transactions:
+            amount = f"+{t['amount']:.2f}₽" if t['amount'] >= 0 else f"{t['amount']:.2f}₽"
+            date = datetime.fromisoformat(t['created_at']).strftime("%d.%m %H:%M")
+            desc = f" - {t['description']}" if t['description'] else ""
+            text += f"\n• {date} | {amount} | {t['operation_type']}{desc}"
+    else:
+        text += "\nНет операций"
+    
+    # Send or update message
     await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id),
+        text=text,
+        reply_markup=await build_users_balance_kb(session, tg_id)
     )
 
 
 @router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_take"), IsAdminFilter()
+    AdminUserEditorCallback.filter(F.action == "balance_management"), IsAdminFilter()
 )
-async def handle_balance_take(
+async def handle_balance_management(
     callback_query: CallbackQuery,
     callback_data: AdminUserEditorCallback,
     state: FSMContext,
 ):
+    """Show balance management options"""
     tg_id = callback_data.tg_id
-
-    await state.update_data(tg_id=tg_id, op_type="take")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
-    await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите вычесть из баланса пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id),
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Add balance management buttons
+    builder.add(
+        InlineKeyboardButton(
+            text="➕ Пополнить баланс",
+            callback_data=BalanceActionCallback(
+                action="topup", user_id=tg_id
+            ).pack()
+        ),
+        InlineKeyboardButton(
+            text="➖ Списать с баланса",
+            callback_data=BalanceActionCallback(
+                action="deduct", user_id=tg_id
+            ).pack()
+        ),
+        InlineKeyboardButton(
+            text="✏️ Установить баланс",
+            callback_data=BalanceActionCallback(
+                action="set", user_id=tg_id
+            ).pack()
+        ),
     )
+    
+    # Add back button
+    builder.add(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_edit", tg_id=tg_id
+            ).pack()
+        )
+    )
+    
+    builder.adjust(1, 1, 1, 1)
+    
+    await callback_query.message.edit_text(
+        f"💰 <b>Управление балансом</b>\n"
+        f"ID пользователя: <code>{tg_id}</code>\n\n"
+        "Выберите действие:",
+        reply_markup=builder.as_markup()
+    )
+    
+    await callback.answer()
 
 
 @router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_set"), IsAdminFilter()
+    AdminUserEditorCallback.filter(F.action == "balance_history"), IsAdminFilter()
 )
-async def handle_balance_set(
+async def handle_balance_history_view(
     callback_query: CallbackQuery,
     callback_data: AdminUserEditorCallback,
-    state: FSMContext,
+    session: AsyncSession,
 ):
+    """Show transaction history"""
     tg_id = callback_data.tg_id
-
-    await state.update_data(tg_id=tg_id, op_type="set")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
-    await callback_query.message.edit_text(
-        text="✍️ Введите баланс, который хотите установить пользователю:",
-        reply_markup=build_users_balance_change_kb(tg_id),
+    page = 1  # Start with first page
+    
+    # Get paginated history
+    transactions, total = await get_payment_history(
+        session=session,
+        tg_id=tg_id,
+        limit=5,
+        page=page
     )
+    
+    # Format message
+    text = format_balance_history(transactions, page, total, tg_id)
+    
+    # Build pagination keyboard
+    builder = InlineKeyboardBuilder()
+    
+    # Add pagination buttons if needed
+    if total > 5:
+        if page > 1:
+            builder.add(
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data=AdminUserEditorCallback(
+                        action="balance_history_page",
+                        tg_id=tg_id,
+                        data=page - 1
+                    ).pack()
+                )
+            )
+        
+        if page * 5 < total:
+            builder.add(
+                InlineKeyboardButton(
+                    text="Вперед ➡️",
+                    callback_data=AdminUserEditorCallback(
+                        action="balance_history_page",
+                        tg_id=tg_id,
+                        data=page + 1
+                    ).pack()
+                )
+            )
+    
+    # Add back button
+    builder.add(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_edit", tg_id=tg_id
+            ).pack()
+        )
+    )
+    
+    builder.adjust(2, 1)
+    
+    # Send or update message
+    try:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Error showing balance history: {e}")
+        await callback.answer("Произошла ошибка при загрузке истории", show_alert=True)
+    
+    await callback.answer()
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "balance_history_page"), IsAdminFilter()
+)
+async def handle_balance_history_page(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    """Handle pagination for balance history"""
+    tg_id = callback_data.tg_id
+    page = int(callback_data.data or 1)
+    
+    # Get paginated history
+    transactions, total = await get_payment_history(
+        session=session,
+        tg_id=tg_id,
+        limit=5,
+        page=page
+    )
+    
+    # Format message
+    text = format_balance_history(transactions, page, total, tg_id)
+    
+    # Build pagination keyboard
+    builder = InlineKeyboardBuilder()
+    
+    # Add pagination buttons if needed
+    if total > 5:
+        if page > 1:
+            builder.add(
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data=AdminUserEditorCallback(
+                        action="balance_history_page",
+                        tg_id=tg_id,
+                        data=page - 1
+                    ).pack()
+                )
+            )
+        
+        if page * 5 < total:
+            builder.add(
+                InlineKeyboardButton(
+                    text="Вперед ➡️",
+                    callback_data=AdminUserEditorCallback(
+                        action="balance_history_page",
+                        tg_id=tg_id,
+                        data=page + 1
+                    ).pack()
+                )
+            )
+    
+    # Add back button
+    builder.add(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_edit", tg_id=tg_id
+            ).pack()
+        )
+    )
+    
+    builder.adjust(2, 1)
+    
+    # Update message
+    try:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=builder.as_markup(),
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Error updating history page: {e}")
+        await callback.answer("Произошла ошибка при загрузке страницы", show_alert=True)
+    
+    await callback.answer()
+
+
+@router.callback_query(
+    BalanceActionCallback.filter(F.action.in_(["topup", "deduct", "set"])),
+    IsAdminFilter()
+)
+async def handle_balance_action(
+    callback: CallbackQuery,
+    callback_data: BalanceActionCallback,
+    state: FSMContext,
+    session: AsyncSession
+):
+    """Handle balance actions (topup, deduct, set)"""
+    action = callback_data.action
+    user_id = callback_data.user_id
+    
+    # If amount is already provided, process the action immediately
+    if callback_data.amount is not None:
+        return await _process_balance_action(
+            callback=callback,
+            callback_data=callback_data,
+            session=session
+        )
+    
+    # Otherwise, ask for amount
+    await state.set_state(UserEditorState.waiting_for_balance)
+    await state.update_data(
+        action=action,
+        user_id=user_id,
+        description=callback_data.description
+    )
+    
+    action_texts = {
+        "topup": "пополнить баланс",
+        "deduct": "списать с баланса",
+        "set": "установить баланс"
+    }
+    
+    await callback.message.edit_text(
+        f"💰 Введите сумму, которую хотите {action_texts[action]}:\n"
+        "(Можно использовать дробные числа, например: 100.50)",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=AdminUserEditorCallback(
+                    action="balance_management",
+                    tg_id=user_id
+                ).pack()
+            )
+        ]])
+    )
+    await callback.answer()
+
+
+async def _process_balance_action(
+    callback: CallbackQuery,
+    callback_data: BalanceActionCallback,
+    session: AsyncSession
+):
+    """Process balance action with the provided amount"""
+    user_id = callback_data.user_id
+    amount = float(callback_data.amount)
+    description = callback_data.description or ""
+    
+    try:
+        if callback_data.action == "topup":
+            await update_user_balance(
+                session=session,
+                tg_id=user_id,
+                amount=amount,
+                operation_type="manual_topup",
+                description=description,
+                admin_id=callback.from_user.id
+            )
+            text = f"✅ Баланс пользователя пополнен на {amount:.2f}₽"
+            
+        elif callback_data.action == "deduct":
+            await update_user_balance(
+                session=session,
+                tg_id=user_id,
+                amount=-amount,  # Negative amount for deduction
+                operation_type="manual_deduct",
+                description=description,
+                admin_id=callback.from_user.id
+            )
+            text = f"✅ С баланса пользователя списано {amount:.2f}₽"
+            
+        elif callback_data.action == "set":
+            current_balance = await get_user_balance(session, user_id)
+            difference = amount - current_balance
+            
+            await update_user_balance(
+                session=session,
+                tg_id=user_id,
+                amount=difference,
+                operation_type="manual_set",
+                description=f"Установлен баланс {amount:.2f}₽ (было {current_balance:.2f}₽)",
+                admin_id=callback.from_user.id
+            )
+            text = f"✅ Баланс пользователя установлен на {amount:.2f}₽"
+        
+        await session.commit()
+        
+        # Show success message
+        await callback.answer(text, show_alert=True)
+        
+        # Return to balance management
+        await handle_balance_change(
+            callback,
+            AdminUserEditorCallback(
+                action="users_balance_edit",
+                tg_id=user_id
+            ),
+            session
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing balance action: {e}")
+        await callback.answer("❌ Произошла ошибка при обновлении баланса", show_alert=True)
 
 
 @router.message(UserEditorState.waiting_for_balance, IsAdminFilter())
-async def handle_balance_input(message: Message, state: FSMContext, session: Any):
-    data = await state.get_data()
-    tg_id = data.get("tg_id")
-    op_type = data.get("op_type")
-
-    if not message.text.isdigit() or int(message.text) < 0:
-        await message.answer(
-            text="🚫 Пожалуйста, введите корректную сумму!",
-            reply_markup=build_users_balance_change_kb(tg_id),
+async def handle_balance_input(message: Message, state: FSMContext):
+    """Handle balance amount input"""
+    try:
+        amount = float(message.text.replace(',', '.'))
+        if amount <= 0:
+            raise ValueError("Amount must be positive")
+            
+        data = await state.get_data()
+        action = data.get("action")
+        user_id = data.get("user_id")
+        description = data.get("description", "")
+        
+        # Process the action
+        await _process_balance_action(
+            callback=message,
+            callback_data=BalanceActionCallback(
+                action=action,
+                user_id=user_id,
+                amount=amount,
+                description=description
+            ),
+            session=message.bot.session
         )
-        return
-
-    amount = int(message.text)
-
-    if op_type == "add":
-        text = f"✅ К балансу пользователя добавлено <b>{amount}Р</b>"
-        await update_balance(session, tg_id, amount)
-    elif op_type == "take":
-        current_balance = await get_balance(session, tg_id)
-        new_balance = max(0, current_balance - amount)
-        deducted = current_balance if amount > current_balance else amount
-        text = f"✅ Из баланса пользователя было вычтено <b>{deducted}Р</b>"
-        await set_user_balance(session, tg_id, new_balance)
-    else:
-        text = f"✅ Баланс пользователя изменен на <b>{amount}Р</b>"
-        await set_user_balance(session, tg_id, amount)
-
-    await message.answer(text=text, reply_markup=build_users_balance_change_kb(tg_id))
+        
+        # Clear state
+        await state.clear()
+        
+    except (ValueError, TypeError):
+        await message.answer(
+            "❌ Пожалуйста, введите корректную сумму (например: 100 или 100.50)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🔙 Отмена",
+                    callback_data=AdminUserEditorCallback(
+                        action="balance_management",
+                        tg_id=(await state.get_data()).get("user_id", 0)
+                    ).pack()
+                )
+            ]])
+        )
 
 
 @router.callback_query(

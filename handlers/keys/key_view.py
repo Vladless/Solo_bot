@@ -476,7 +476,7 @@ async def process_renew_menu(callback_query: CallbackQuery, session: Any):
             server_info = f" ({server_id})" if server_id in all_server_names else ""
             btn_text = f"🔑 {key_display} (⏳{days_text}) {server_info}"
             builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"renew_key|{email}"))
-    text = "Выберите подписку для продления или купите новую"
+    text = "Продли — и VPN продолжит работать без сбоев. Новую подписку бери только если точно знаешь, зачем. Без шуток."
     builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     image_path = os.path.join("img", "pic_view.jpg")
