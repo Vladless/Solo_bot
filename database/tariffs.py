@@ -41,7 +41,7 @@ async def get_tariffs(
             result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         elif group_code:
             result = await session.execute(
-                select(Tariff).where(Tariff.group_code == group_code)
+                select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id)
             )
         else:
             result = await session.execute(select(Tariff))
