@@ -4,6 +4,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+import re
 
 from config import USERNAME_BOT
 from database import create_tracking_source, get_tracking_source_stats
@@ -50,7 +51,8 @@ async def handle_ads_name_input(message: Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(AdminAdsState.waiting_for_new_code)
     await message.answer(
-        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.",
+        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.\n\n"
+        f"💡 <b>Правила:</b> только латинские буквы и цифры",
         reply_markup=build_cancel_input_kb(),
     )
 
@@ -62,6 +64,15 @@ async def handle_ads_code_input(
     code = message.text.strip()
     data = await state.get_data()
     name = data["name"]
+
+    if not re.match(r'^[a-zA-Z0-9]+$', code):
+        await message.answer(
+            "❌ Код может содержать только латинские буквы и цифры\n"
+            "Введите код заново:",
+            reply_markup=build_cancel_input_kb(),
+        )
+        return
+    
     code_with_prefix = f"utm_{code}"
 
     try:
