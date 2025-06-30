@@ -285,6 +285,7 @@ async def render_key_info(
     tariff_name = ""
     traffic_limit = 0
     device_limit = 0
+    subgroup_title = ""
     tariff = None
     if record.get("tariff_id"):
         tariff = await get_tariff_by_id(session, record["tariff_id"])
@@ -292,6 +293,7 @@ async def render_key_info(
             tariff_name = tariff["name"]
             traffic_limit = tariff.get("traffic_limit", 0)
             device_limit = tariff.get("device_limit", 0)
+            subgroup_title = tariff.get("subgroup_title", "")
 
     tariff_duration = tariff_name
 
@@ -304,7 +306,8 @@ async def render_key_info(
         hwid_count=hwid_count if device_limit is not None else 0,
         tariff_name=tariff_duration,
         traffic_limit=traffic_limit,
-        device_limit=device_limit
+        device_limit=device_limit,
+        subgroup_title=subgroup_title
     )
 
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:

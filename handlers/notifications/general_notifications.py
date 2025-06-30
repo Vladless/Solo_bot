@@ -403,7 +403,8 @@ async def handle_expired_keys(
                         get_renewal_message(
                             tariff_name=tariff.get("name", ""),
                             traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
-                            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0
+                            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
+                            subgroup_title=tariff.get("subgroup_title", "")
                         ),
                     )
                     continue
@@ -624,7 +625,8 @@ async def process_auto_renew_or_notify(
             tariff_name=selected_tariff["name"],
             traffic_limit=selected_tariff.get("traffic_limit") if selected_tariff.get("traffic_limit") is not None else 0,
             device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
-            expiry_date=formatted_expiry_date
+            expiry_date=formatted_expiry_date,
+            subgroup_title=selected_tariff.get("subgroup_title", "")
         )
 
         keyboard = build_notification_expired_kb()

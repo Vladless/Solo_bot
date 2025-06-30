@@ -115,7 +115,7 @@ async def process_callback_delete_server(
 
     server_name = callback_data.data
 
-    servers_dict = await get_servers(session)
+    servers_dict = await get_servers(session, include_enabled=True)
     cluster_name = None
     for c_name, server_list in servers_dict.items():
         if any(s["server_name"] == server_name for s in server_list):

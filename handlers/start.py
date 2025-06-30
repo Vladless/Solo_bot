@@ -58,6 +58,8 @@ from .utils import edit_or_send_message
 
 router = Router()
 
+processing_gifts = set()
+
 
 @router.callback_query(F.data == "start")
 async def handle_start_callback_query(
@@ -208,11 +210,22 @@ async def process_start_logic(
 
                 gift_id = parts[0]
                 sender_id = parts[1]
-                logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
-                await handle_gift_link(
-                    gift_id, message, state, session, user_data=user_data
-                )
-                gift_detected = True
+
+                if gift_id in processing_gifts:
+                    await message.answer("⏳ Подарок уже обрабатывается, подождите...")
+                    return await process_callback_view_profile(message, state, admin, session)
+
+                processing_gifts.add(gift_id)
+                
+                try:
+                    logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
+                    await handle_gift_link(
+                        gift_id, message, state, session, user_data=user_data
+                    )
+                    gift_detected = True
+                finally:
+                    processing_gifts.discard(gift_id)
+                
                 break
 
             if "referral" in part:

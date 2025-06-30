@@ -570,12 +570,14 @@ async def finalize_key_creation(
         )
     else:
         tariff_duration = tariff_info["name"] if tariff_info else None
+        subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
         
         key_message_text = key_message_success(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
-            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0
+            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
+            subgroup_title=subgroup_title
         )
 
     await edit_or_send_message(

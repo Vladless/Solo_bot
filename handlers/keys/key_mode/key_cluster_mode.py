@@ -198,12 +198,14 @@ async def key_cluster_mode(
         )
     else:
         tariff_duration = tariff_info["name"]
+        subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
         
         key_message_text = key_message_success(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
-            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0
+            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
+            subgroup_title=subgroup_title
         )
 
     default_media_path = "img/pic.jpg"

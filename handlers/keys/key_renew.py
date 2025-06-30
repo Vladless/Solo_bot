@@ -401,7 +401,8 @@ async def complete_key_renewal(
             tariff_name=tariff["name"],
             traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
             device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
-            expiry_date=formatted_expiry_date
+            expiry_date=formatted_expiry_date,
+            subgroup_title=tariff.get("subgroup_title", "")
         )
 
         if callback_query:
