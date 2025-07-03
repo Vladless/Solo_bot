@@ -96,7 +96,7 @@ def get_git_commit_number() -> str:
         return ""
 
 
-version = f"v4.4-b140642{get_git_commit_number()}"
+version = f"v4.4-b030735{get_git_commit_number()}"
 
 
 dp.message.filter(IsPrivateFilter())
