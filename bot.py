@@ -93,7 +93,7 @@ def get_git_commit_number() -> str:
         )
 
     except Exception:
-        return ""
+        return f"\n(Требуется обновление через CLI, команда <code>sudo solobot</code>)"
 
 
 version = f"v4.4-b030735{get_git_commit_number()}"
