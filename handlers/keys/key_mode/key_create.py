@@ -53,11 +53,18 @@ class Form(FSMContext):
 
 
 @router.callback_query(F.data == "create_key")
+@router.message(F.text == "/buy")
 async def confirm_create_new_key(
-    callback_query: CallbackQuery, state: FSMContext, session: Any
+    callback_query_or_message: CallbackQuery | Message, state: FSMContext, session: Any
 ):
-    tg_id = callback_query.message.chat.id
-    await handle_key_creation(tg_id, state, session, callback_query)
+    if isinstance(callback_query_or_message, CallbackQuery):
+        tg_id = callback_query_or_message.message.chat.id
+        message_or_query = callback_query_or_message
+    else:
+        tg_id = callback_query_or_message.chat.id
+        message_or_query = callback_query_or_message
+    
+    await handle_key_creation(tg_id, state, session, message_or_query)
 
 
 async def handle_key_creation(

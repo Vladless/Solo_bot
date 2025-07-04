@@ -67,7 +67,7 @@ def get_git_commit_number() -> str:
             branch = "dev"
 
     except Exception as e:
-        return f"\n(Требуется обновление через CLI: {e})"
+        return f"\n(Требуется обновление через CLI (команда <code>sudo solobot</code>): {e})"
 
     try:
         remote_commit = subprocess.check_output(
