@@ -10,7 +10,7 @@ class GiftBase(BaseModel):
     expiry_time: datetime
     gift_link: str
     is_used: bool = False
-    is_unlimited: bool = False
+    is_unlimited: Optional[bool] = False
     max_usages: Optional[int] = None
     tariff_id: Optional[int] = None
 
