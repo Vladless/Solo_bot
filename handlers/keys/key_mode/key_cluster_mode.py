@@ -21,17 +21,8 @@ from database import (
     update_balance,
     update_trial,
 )
-from handlers.buttons import (
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    MAIN_MENU,
-    MY_SUB,
-    PC_BUTTON,
-    SUPPORT,
-    TV_BUTTON,
-)
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.keys.key_utils import create_key_on_cluster
-from handlers.texts import key_message_success
 from handlers.utils import (
     edit_or_send_message,
     generate_random_email,
@@ -56,6 +47,9 @@ async def key_cluster_mode(
 ):
     target_message = None
     safe_to_edit = False
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     if isinstance(message_or_query, CallbackQuery) and message_or_query.message:
         target_message = message_or_query.message
@@ -149,31 +143,31 @@ async def key_cluster_mode(
     if await is_full_remnawave_cluster(least_loaded_cluster, session):
         builder.row(
             InlineKeyboardButton(
-                text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
+                text=buttons.CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
+            InlineKeyboardButton(text=buttons.TV_BUTTON, callback_data=f"connect_tv|{email}")
         )
     elif CONNECT_PHONE_BUTTON:
         builder.row(
             InlineKeyboardButton(
-                text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
+                text=buttons.CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
             )
         )
         builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+            InlineKeyboardButton(text=buttons.PC_BUTTON, callback_data=f"connect_pc|{email}"),
+            InlineKeyboardButton(text=buttons.TV_BUTTON, callback_data=f"connect_tv|{email}"),
         )
     else:
         builder.row(
             InlineKeyboardButton(
-                text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
+                text=buttons.CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
             )
         )
-    builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MY_SUB, callback_data=f"view_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     expiry_time_local = expiry_time.astimezone(moscow_tz)
     remaining_time = expiry_time_local - datetime.now(moscow_tz)
@@ -190,7 +184,7 @@ async def key_cluster_mode(
             tariff_duration = format_months(months)
         else:
             tariff_duration = format_days(trial_days)
-        key_message_text = key_message_success(
+        key_message_text = texts.key_message_success(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
@@ -200,7 +194,7 @@ async def key_cluster_mode(
         tariff_duration = tariff_info["name"]
         subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
         
-        key_message_text = key_message_success(
+        key_message_text = texts.key_message_success(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
@@ -208,20 +202,17 @@ async def key_cluster_mode(
             subgroup_title=subgroup_title
         )
 
-    default_media_path = "img/pic.jpg"
     if safe_to_edit:
         await edit_or_send_message(
             target_message=target_message,
             text=key_message_text,
             reply_markup=builder.as_markup(),
-            media_path=default_media_path,
+            media_path="img/pic.jpg",
         )
     else:
-        photo = FSInputFile(default_media_path)
-        await bot.send_photo(
+        await bot.send_message(
             chat_id=tg_id,
-            photo=photo,
-            caption=key_message_text,
+            text=key_message_text,
             reply_markup=builder.as_markup(),
         )
 

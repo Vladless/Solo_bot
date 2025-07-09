@@ -7,14 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import DISCOUNT_ACTIVE_HOURS, HOT_LEAD_INTERVAL_HOURS
 from database import add_notification, check_notification_time, get_hot_leads
 from database.models import Notification
-from handlers.buttons import MAIN_MENU
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.notifications.notify_kb import build_hot_lead_kb
 from handlers.notifications.notify_utils import send_notification
-from handlers.texts import (
-    HOT_LEAD_FINAL_MESSAGE,
-    HOT_LEAD_LOST_OPPORTUNITY,
-    HOT_LEAD_MESSAGE,
-)
 from logger import logger
 
 
@@ -26,6 +21,9 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
         notified = 0
 
         for tg_id in leads:
+            texts = await get_user_texts(session, tg_id)
+            buttons = await get_user_buttons(session, tg_id)
+            
             has_step_1 = await session.scalar(
                 select(
                     select(Notification)
@@ -55,9 +53,9 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 if not can_send:
                     continue
 
-                keyboard = build_hot_lead_kb()
+                keyboard = build_hot_lead_kb(buttons.DISCOUNT_TARIFF, buttons.MAX_DISCOUNT_TARIFF)
                 result = await send_notification(
-                    bot, tg_id, None, HOT_LEAD_MESSAGE, keyboard
+                    bot, tg_id, None, texts.HOT_LEAD_MESSAGE, keyboard
                 )
                 if result:
                     await add_notification(session, tg_id, "hot_lead_step_2")
@@ -89,11 +87,11 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 if expired:
                     builder = InlineKeyboardBuilder()
                     builder.row(
-                        InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+                        InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile")
                     )
 
                     result = await send_notification(
-                        bot, tg_id, None, HOT_LEAD_LOST_OPPORTUNITY, builder.as_markup()
+                        bot, tg_id, None, texts.HOT_LEAD_LOST_OPPORTUNITY, builder.as_markup()
                     )
                     if result:
                         await add_notification(
@@ -114,9 +112,9 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 if not can_send:
                     continue
 
-                keyboard = build_hot_lead_kb(final=True)
+                keyboard = build_hot_lead_kb(buttons.DISCOUNT_TARIFF, buttons.MAX_DISCOUNT_TARIFF, final=True)
                 result = await send_notification(
-                    bot, tg_id, None, HOT_LEAD_FINAL_MESSAGE, keyboard
+                    bot, tg_id, None, texts.HOT_LEAD_FINAL_MESSAGE, keyboard
                 )
                 if result:
                     await add_notification(session, tg_id, "hot_lead_step_3")

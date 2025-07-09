@@ -27,16 +27,11 @@ from database import (
     get_trial,
 )
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
-from handlers.buttons import MAIN_MENU, PAYMENT
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
-from handlers.texts import (
-    CREATING_CONNECTION_MSG,
-    INSUFFICIENT_FUNDS_MSG,
-    SELECT_TARIFF_PLAN_MSG,
-)
 from handlers.utils import edit_or_send_message, get_least_loaded_cluster
 from logger import logger
 
@@ -73,6 +68,9 @@ async def handle_key_creation(
     session: Any,
     message_or_query: Message | CallbackQuery,
 ):
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     current_time = datetime.now(moscow_tz)
 
     if not TRIAL_TIME_DISABLE:
@@ -91,7 +89,7 @@ async def handle_key_creation(
                     if isinstance(message_or_query, CallbackQuery)
                     else message_or_query
                 ),
-                text=CREATING_CONNECTION_MSG,
+                text=texts.CREATING_CONNECTION_MSG,
                 reply_markup=None,
             )
 
@@ -151,7 +149,7 @@ async def handle_key_creation(
             )
         )
 
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     target_message = (
         message_or_query.message
@@ -161,7 +159,7 @@ async def handle_key_creation(
 
     await edit_or_send_message(
         target_message=target_message,
-        text=SELECT_TARIFF_PLAN_MSG,
+        text=texts.SELECT_TARIFF_PLAN_MSG,
         reply_markup=builder.as_markup(),
     )
 
@@ -171,6 +169,9 @@ async def handle_key_creation(
 
 @router.callback_query(F.data.startswith("tariff_subgroup_user|"))
 async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMContext, session: Any):
+    tg_id = callback.from_user.id
+    buttons = await get_user_buttons(session, tg_id)
+    
     subgroup_hash = callback.data.split("|")[1]
     data = await state.get_data()
     cluster_name = data.get("cluster_name")
@@ -210,7 +211,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
             callback_data="back_to_tariff_group_list"
         )
     )
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback.message,
@@ -236,6 +237,9 @@ async def select_tariff_plan(
     callback_query: CallbackQuery, session: Any, state: FSMContext
 ):
     tg_id = callback_query.from_user.id
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     tariff_id = int(callback_query.data.split("|")[1])
 
     tariff = await get_tariff_by_id(session, tariff_id)
@@ -272,11 +276,11 @@ async def select_tariff_plan(
             await process_custom_amount_input_yoomoney(callback_query, session)
         else:
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+            builder.row(InlineKeyboardButton(text=buttons.PAYMENT, callback_data="pay"))
+            builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
             await edit_or_send_message(
                 target_message=callback_query.message,
-                text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
+                text=texts.INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
                 reply_markup=builder.as_markup(),
             )
         return
@@ -287,7 +291,7 @@ async def select_tariff_plan(
     )
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=CREATING_CONNECTION_MSG,
+        text=texts.CREATING_CONNECTION_MSG,
         reply_markup=builder.as_markup(),
     )
 

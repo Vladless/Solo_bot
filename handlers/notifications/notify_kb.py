@@ -1,9 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from handlers.buttons import DISCOUNT_TARIFF, MAIN_MENU, MAX_DISCOUNT_TARIFF, RENEW_KEY_NOTIFICATION
 
-
-def build_notification_kb(email: str) -> InlineKeyboardMarkup:
+def build_notification_kb(email: str, main_menu_text: str, renew_key_text: str) -> InlineKeyboardMarkup:
     """
     Формирует inline-клавиатуру для уведомлений.
     Кнопки: "🔄 Продлить VPN" (callback_data содержит email) и "👤 Личный кабинет".
@@ -11,13 +9,13 @@ def build_notification_kb(email: str) -> InlineKeyboardMarkup:
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     builder = InlineKeyboardBuilder()
-    builder.button(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{email}")
-    builder.button(text=MAIN_MENU, callback_data="profile")
+    builder.button(text=renew_key_text, callback_data=f"renew_key|{email}")
+    builder.button(text=main_menu_text, callback_data="profile")
     builder.adjust(1)
     return builder.as_markup()
 
 
-def build_notification_expired_kb() -> InlineKeyboardMarkup:
+def build_notification_expired_kb(main_menu_text: str) -> InlineKeyboardMarkup:
     """
     Формирует inline-клавиатуру для уведомлений после удаления или продления.
     Кнопка: "👤 Личный кабинет"
@@ -25,18 +23,18 @@ def build_notification_expired_kb() -> InlineKeyboardMarkup:
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     builder = InlineKeyboardBuilder()
-    builder.button(text=MAIN_MENU, callback_data="profile")
+    builder.button(text=main_menu_text, callback_data="profile")
     return builder.as_markup()
 
 
-def build_hot_lead_kb(final: bool = False) -> InlineKeyboardMarkup:
+def build_hot_lead_kb(discount_text: str, max_discount_text: str, final: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=DISCOUNT_TARIFF if not final else MAX_DISCOUNT_TARIFF,
+                    text=max_discount_text if final else discount_text,
                     callback_data=(
-                        "hot_lead_discount" if not final else "hot_lead_final_discount"
+                        "hot_lead_final_discount" if final else "hot_lead_discount"
                     ),
                 )
             ]

@@ -16,23 +16,13 @@ from config import (
     TRIAL_TIME_DISABLE,
 )
 from database import get_balance, get_key_count, get_trial
-from handlers.buttons import (
-    ABOUT_VPN,
-    ADD_SUB,
-    BACK,
-    BALANCE,
-    RENEW_KEY,
-    GIFTS,
-    INSTRUCTIONS,
-    INVITE,
-    MY_SUBS,
-    TRIAL_SUB,
+from handlers.localization import (
+    get_user_texts,
+    get_user_buttons
 )
-from handlers.texts import ADD_SUBSCRIPTION_HINT
 from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
-from .texts import profile_message_send
 from .utils import edit_or_send_message
 
 router = Router()
@@ -57,6 +47,10 @@ async def process_callback_view_profile(
         chat_id = chat.id
         target_message = callback_query_or_message
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, chat_id)
+    buttons = await get_user_buttons(session, chat_id)
+
     user = chat if chat.type == "private" else from_user
 
     if getattr(user, "full_name", None):
@@ -75,35 +69,35 @@ async def process_callback_view_profile(
     balance = await get_balance(session, chat_id) or 0
     trial_status = await get_trial(session, chat_id)
 
-    profile_message = profile_message_send(username, chat_id, int(balance), key_count)
+    profile_message = texts.profile_message_send(username, chat_id, int(balance), key_count)
     if key_count == 0:
-        profile_message += ADD_SUBSCRIPTION_HINT
+        profile_message += texts.ADD_SUBSCRIPTION_HINT
     else:
         profile_message += f"\n<blockquote> <i>{NEWS_MESSAGE}</i></blockquote>"
 
     builder = InlineKeyboardBuilder()
     if key_count > 0:
-        builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data="renew_menu"))
-        builder.row(InlineKeyboardButton(text=MY_SUBS, callback_data="view_keys"))
+        builder.row(InlineKeyboardButton(text=buttons.RENEW_KEY, callback_data="renew_menu"))
+        builder.row(InlineKeyboardButton(text=buttons.MY_SUBS, callback_data="view_keys"))
     elif trial_status == 0 and not TRIAL_TIME_DISABLE:
-        builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
+        builder.row(InlineKeyboardButton(text=buttons.TRIAL_SUB, callback_data="create_key"))
     else:
-        builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
+        builder.row(InlineKeyboardButton(text=buttons.ADD_SUB, callback_data="create_key"))
 
     if BALANCE_BUTTON:
-        builder.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
+        builder.row(InlineKeyboardButton(text=buttons.BALANCE, callback_data="balance"))
 
     row_buttons = []
     if REFERRAL_BUTTON:
-        row_buttons.append(InlineKeyboardButton(text=INVITE, callback_data="invite"))
+        row_buttons.append(InlineKeyboardButton(text=buttons.INVITE, callback_data="invite"))
     if GIFT_BUTTON:
-        row_buttons.append(InlineKeyboardButton(text=GIFTS, callback_data="gifts"))
+        row_buttons.append(InlineKeyboardButton(text=buttons.GIFTS, callback_data="gifts"))
     if row_buttons:
         builder.row(*row_buttons)
 
     if INSTRUCTIONS_BUTTON:
         builder.row(
-            InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions")
+            InlineKeyboardButton(text=buttons.INSTRUCTIONS, callback_data="instructions")
         )
     if admin:
         builder.row(
@@ -113,9 +107,9 @@ async def process_callback_view_profile(
             )
         )
     if SHOW_START_MENU_ONCE:
-        builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
+        builder.row(InlineKeyboardButton(text=buttons.ABOUT_VPN, callback_data="about_vpn"))
     else:
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
+        builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="start"))
 
     await edit_or_send_message(
         target_message=target_message,

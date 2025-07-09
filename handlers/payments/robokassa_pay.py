@@ -29,9 +29,8 @@ from database import (
     update_balance,
     Payment
 )
-from handlers.buttons import BACK, PAY_2
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 from handlers.utils import edit_or_send_message
 from logger import logger
 
@@ -72,32 +71,36 @@ def generate_payment_link(amount, inv_id, description, tg_id):
 
 @router.callback_query(F.data == "pay_robokassa")
 async def process_callback_pay_robokassa(
-    callback_query: types.CallbackQuery, state: FSMContext, session: Any
+    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession
 ):
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} initiated Robokassa payment.")
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+
     builder = InlineKeyboardBuilder()
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
+    for i in range(0, len(texts.PAYMENT_OPTIONS), 2):
+        if i + 1 < len(texts.PAYMENT_OPTIONS):
             builder.row(
                 InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
+                    text=texts.PAYMENT_OPTIONS[i]["text"],
+                    callback_data=f'robokassa_amount|{texts.PAYMENT_OPTIONS[i]["callback_data"]}',
                 ),
                 InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i + 1]["callback_data"]}',
+                    text=texts.PAYMENT_OPTIONS[i + 1]["text"],
+                    callback_data=f'robokassa_amount|{texts.PAYMENT_OPTIONS[i + 1]["callback_data"]}',
                 ),
             )
         else:
             builder.row(
                 InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f'robokassa_amount|{PAYMENT_OPTIONS[i]["callback_data"]}',
+                    text=texts.PAYMENT_OPTIONS[i]["text"],
+                    callback_data=f'robokassa_amount|{texts.PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+    builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="balance"))
 
     key_count = await get_key_count(session, tg_id)
 
@@ -119,7 +122,7 @@ async def process_callback_pay_robokassa(
     await callback_query.message.delete()
 
     new_message = await callback_query.message.answer(
-        text="Выберите сумму пополнения:",
+        text=texts.CHOOSE_PAYMENT_AMOUNT,
         reply_markup=builder.as_markup(),
     )
     await state.update_data(
@@ -131,16 +134,22 @@ async def process_callback_pay_robokassa(
 
 @router.callback_query(F.data.startswith("robokassa_amount|"))
 async def process_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
+    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession
 ):
     logger.info(f"Получены данные callback_data: {callback_query.data}")
+
+    tg_id = callback_query.message.chat.id
+    
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     data = callback_query.data.split("|")
     if len(data) != 3 or data[1] != "amount":
         logger.error("Ошибка: callback_data не соответствует формату.")
         await edit_or_send_message(
             target_message=callback_query.message,
-            text="Ошибка: данные повреждены.",
+            text=texts.PAYMENT_DATA_CORRUPTED,
             reply_markup=types.InlineKeyboardMarkup(),
             force_text=True,
         )
@@ -155,7 +164,7 @@ async def process_amount_selection(
         logger.error(f"Некорректное значение суммы: {amount_str}. Ошибка: {e}")
         await edit_or_send_message(
             target_message=callback_query.message,
-            text="Некорректная сумма.",
+            text=texts.INVALID_AMOUNT,
             reply_markup=types.InlineKeyboardMarkup(),
             force_text=True,
         )
@@ -165,21 +174,20 @@ async def process_amount_selection(
     logger.info(f"User {callback_query.message.chat.id} selected amount: {amount}.")
     inv_id = 0
 
-    tg_id = callback_query.message.chat.id
-    payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
+    payment_url = generate_payment_link(amount, inv_id, texts.BALANCE_REPLENISHMENT, tg_id)
 
     logger.info(f"Payment URL for user {callback_query.message.chat.id}: {payment_url}")
 
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="pay_robokassa")],
+            [InlineKeyboardButton(text=buttons.PAYMENT_BUTTON_TEXT, url=payment_url)],
+            [InlineKeyboardButton(text=buttons.BACK, callback_data="pay_robokassa")],
         ]
     )
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=DEFAULT_PAYMENT_MESSAGE.format(amount=amount),
+        text=texts.DEFAULT_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
         force_text=True,
     )
@@ -266,17 +274,21 @@ def check_payment_signature(params):
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
 async def process_custom_amount_selection(
-    callback_query: types.CallbackQuery, state: FSMContext
+    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession
 ):
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} chose to enter a custom amount.")
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_robokassa"))
+    builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="pay_robokassa"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=ENTER_SUM,
+        text=texts.ENTER_SUM,
         reply_markup=builder.as_markup(),
         force_text=True,
     )
@@ -302,13 +314,17 @@ async def handle_custom_amount_input(
     logger.info(f"User {tg_id} initiated payment through ROBOKASSA")
     inv_id = 0
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+
     try:
         user_data = await get_temporary_data(session, tg_id)
 
         if not user_data:
             await edit_or_send_message(
                 target_message=target_message,
-                text="Данные для оплаты не найдены. Попробуйте снова.",
+                text=texts.PAYMENT_DATA_NOT_FOUND,
                 reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
@@ -319,26 +335,26 @@ async def handle_custom_amount_input(
         if amount <= 0:
             await edit_or_send_message(
                 target_message=target_message,
-                text="Недостаточная сумма для пополнения.",
+                text=texts.INSUFFICIENT_AMOUNT,
                 reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
 
-        payment_url = generate_payment_link(amount, inv_id, "Пополнение баланса", tg_id)
+        payment_url = generate_payment_link(amount, inv_id, texts.BALANCE_REPLENISHMENT, tg_id)
         logger.info(f"Generated payment link for user {tg_id}: {payment_url}")
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text="💳 Оплатить", url=payment_url))
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_robokassa"))
+        builder.row(InlineKeyboardButton(text=buttons.PAYMENT_BUTTON_TEXT, url=payment_url))
+        builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="pay_robokassa"))
 
         if state_type == "waiting_for_payment":
-            message_text = f"Вы выбрали пополнение на {amount} рублей для создания нового ключа. Перейдите по ссылке для оплаты:"
+            message_text = texts.PAYMENT_FOR_NEW_KEY.format(amount=amount)
         elif state_type == "waiting_for_renewal_payment":
-            message_text = f"Вы выбрали пополнение на {amount} рублей для продления ключа. Перейдите по ссылке для оплаты:"
+            message_text = texts.PAYMENT_FOR_KEY_RENEWAL.format(amount=amount)
         else:
             await edit_or_send_message(
                 target_message=target_message,
-                text="Некорректное состояние данных. Попробуйте снова.",
+                text=texts.INVALID_STATE_DATA,
                 reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
             )
             return
@@ -356,6 +372,6 @@ async def handle_custom_amount_input(
         logger.error(f"Ошибка при создании платежа для пользователя {tg_id}: {e}")
         await edit_or_send_message(
             target_message=target_message,
-            text="Произошла ошибка при создании платежа. Попробуйте позже.",
+            text=texts.PAYMENT_CREATION_ERROR,
             reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[]),
         )

@@ -3,19 +3,22 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import SUPPORT_CHAT_URL
-from handlers.buttons import MAIN_MENU, SUPPORT
-from handlers.texts import FALLBACK_MESSAGE
+from handlers.localization import get_user_texts, get_user_buttons
 
 fallback_router = Router()
 
 
 @fallback_router.message(F.text)
-async def handle_unhandled_messages(message: Message):
+async def handle_unhandled_messages(message: Message, session):
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, message.chat.id)
+    buttons = await get_user_buttons(session, message.chat.id)
+    
     keyboard = InlineKeyboardBuilder()
-    keyboard.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    keyboard.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    keyboard.row(InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL))
+    keyboard.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     await message.answer(
-        FALLBACK_MESSAGE,
+        texts.FALLBACK_MESSAGE,
         reply_markup=keyboard.as_markup(),
     )

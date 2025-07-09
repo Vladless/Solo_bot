@@ -7,8 +7,7 @@ from aiogram.fsm.context import FSMContext
 
 from bot import bot
 from config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
-from handlers.buttons import SUB_CHANELL, SUB_CHANELL_DONE
-from handlers.texts import SUBSCRIPTION_REQUIRED_MSG
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.utils import edit_or_send_message
 from logger import logger
 
@@ -59,26 +58,31 @@ class SubscriptionMiddleware(BaseMiddleware):
                         user_data=user_data,
                     )
 
-                return await self._ask_to_subscribe(message)
+                session = data.get("session")
+                return await self._ask_to_subscribe(message, session, tg_id)
         except Exception as e:
             logger.warning(
                 f"[SubMiddleware] Ошибка при проверке подписки для {tg_id}: {e}"
             )
-            return await self._ask_to_subscribe(message)
+            session = data.get("session")
+            return await self._ask_to_subscribe(message, session, tg_id)
 
         return await handler(event, data)
 
-    async def _ask_to_subscribe(self, message: Message):
+    async def _ask_to_subscribe(self, message: Message, session, tg_id: int):
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+        
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
+        builder.row(InlineKeyboardButton(text=buttons.SUB_CHANELL, url=CHANNEL_URL))
         builder.row(
             InlineKeyboardButton(
-                text=SUB_CHANELL_DONE, callback_data="check_subscription"
+                text=buttons.SUB_CHANELL_DONE, callback_data="check_subscription"
             )
         )
 
         await edit_or_send_message(
             target_message=message,
-            text=SUBSCRIPTION_REQUIRED_MSG,
+            text=texts.SUBSCRIPTION_REQUIRED_MSG,
             reply_markup=builder.as_markup(),
         )

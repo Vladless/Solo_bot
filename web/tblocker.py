@@ -9,8 +9,7 @@ from aiohttp import web
 from bot import bot
 from config import BLOCK_DURATION, SERVER_COUNTRIES, TIMESTAMP_TTL
 from database import get_key_details
-from handlers.buttons import MAIN_MENU
-from handlers.texts import TORRENT_BLOCKED_MSG, TORRENT_UNBLOCKED_MSG
+from handlers.localization import get_user_texts, get_user_buttons
 from logger import logger
 
 last_unblock_data = {}
@@ -51,19 +50,23 @@ def handle_telegram_errors(func):
 
 @handle_telegram_errors
 async def send_notification(
-    tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str
+    session, tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str
 ):
     country = get_country_from_server(server)
 
+    # Получаем локализованные тексты и кнопки
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     if action == "block":
-        message = TORRENT_BLOCKED_MSG.format(
+        message = texts.TORRENT_BLOCKED_MSG.format(
             username=username, country=country, duration=BLOCK_DURATION
         )
     else:
-        message = TORRENT_UNBLOCKED_MSG.format(username=username, country=country)
+        message = texts.TORRENT_UNBLOCKED_MSG.format(username=username, country=country)
 
     await bot.send_message(
         chat_id=tg_id, text=message, parse_mode="HTML", reply_markup=builder.as_markup()
@@ -120,6 +123,7 @@ async def tblocker_webhook(request: web.Request):
                 return web.json_response({"error": "Key not found"}, status=404)
 
             success = await send_notification(
+                session=session,
                 tg_id=key_info["tg_id"],
                 username=username,
                 ip=ip,

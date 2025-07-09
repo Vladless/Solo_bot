@@ -14,14 +14,8 @@ from database import (
     mark_key_as_frozen,
     mark_key_as_unfrozen,
 )
-from handlers.buttons import APPLY, BACK, CANCEL
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.keys.key_utils import renew_key_in_cluster, toggle_client_on_cluster
-from handlers.texts import (
-    FREEZE_SUBSCRIPTION_CONFIRM_MSG,
-    SUBSCRIPTION_FROZEN_MSG,
-    SUBSCRIPTION_UNFROZEN_MSG,
-    UNFREEZE_SUBSCRIPTION_CONFIRM_MSG,
-)
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
 
@@ -32,17 +26,21 @@ router = Router()
 async def process_callback_unfreeze_subscription(
     callback_query: CallbackQuery, session: Any
 ):
+    tg_id = callback_query.message.chat.id
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     key_name = callback_query.data.split("|")[1]
-    confirm_text = UNFREEZE_SUBSCRIPTION_CONFIRM_MSG
+    confirm_text = texts.UNFREEZE_SUBSCRIPTION_CONFIRM_MSG
 
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text=APPLY,
+            text=buttons.APPLY,
             callback_data=f"unfreeze_subscription_confirm|{key_name}",
         ),
         InlineKeyboardButton(
-            text=CANCEL,
+            text=buttons.CANCEL,
             callback_data=f"view_key|{key_name}",
         ),
     )
@@ -62,6 +60,9 @@ async def process_callback_unfreeze_subscription_confirm(
     Размораживает (включает) подписку.
     """
     tg_id = callback_query.message.chat.id
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     key_name = callback_query.data.split("|")[1]
 
     try:
@@ -87,7 +88,7 @@ async def process_callback_unfreeze_subscription_confirm(
             text_error = "Сервер не найден."
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
+                InlineKeyboardButton(text=buttons.BACK, callback_data=f"view_key|{key_name}")
             )
             await edit_or_send_message(
                 callback_query.message, text_error, builder.as_markup()
@@ -132,10 +133,10 @@ async def process_callback_unfreeze_subscription_confirm(
             reset_traffic=False,
         )
 
-        text_ok = SUBSCRIPTION_UNFROZEN_MSG
+        text_ok = texts.SUBSCRIPTION_UNFROZEN_MSG
         builder = InlineKeyboardBuilder()
         builder.row(
-            InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
+            InlineKeyboardButton(text=buttons.BACK, callback_data=f"view_key|{key_name}")
         )
         await edit_or_send_message(callback_query.message, text_ok, builder.as_markup())
 
@@ -150,18 +151,22 @@ async def process_callback_freeze_subscription(
     """
     Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
     """
+    tg_id = callback_query.message.chat.id
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     key_name = callback_query.data.split("|")[1]
 
-    confirm_text = FREEZE_SUBSCRIPTION_CONFIRM_MSG
+    confirm_text = texts.FREEZE_SUBSCRIPTION_CONFIRM_MSG
 
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text=APPLY,
+            text=buttons.APPLY,
             callback_data=f"freeze_subscription_confirm|{key_name}",
         ),
         InlineKeyboardButton(
-            text=CANCEL,
+            text=buttons.CANCEL,
             callback_data=f"view_key|{key_name}",
         ),
     )
@@ -181,6 +186,9 @@ async def process_callback_freeze_subscription_confirm(
     Замораживает (отключает) подписку.
     """
     tg_id = callback_query.message.chat.id
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
+    
     key_name = callback_query.data.split("|")[1]
 
     try:
@@ -206,10 +214,10 @@ async def process_callback_freeze_subscription_confirm(
             await mark_key_as_frozen(session, record["tg_id"], client_id, time_left)
             await session.commit()
 
-            text_ok = SUBSCRIPTION_FROZEN_MSG
+            text_ok = texts.SUBSCRIPTION_FROZEN_MSG
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
+                InlineKeyboardButton(text=buttons.BACK, callback_data=f"view_key|{key_name}")
             )
             await edit_or_send_message(
                 target_message=callback_query.message,
@@ -221,7 +229,7 @@ async def process_callback_freeze_subscription_confirm(
             text_error = f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
             builder = InlineKeyboardBuilder()
             builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
+                InlineKeyboardButton(text=buttons.BACK, callback_data=f"view_key|{key_name}")
             )
             await edit_or_send_message(
                 target_message=callback_query.message,
