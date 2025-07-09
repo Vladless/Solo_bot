@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from aiogram import F, Router
@@ -20,6 +21,59 @@ router = Router()
 class AdminSender(StatesGroup):
     waiting_for_message = State()
     preview = State()
+
+
+def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
+    if "BUTTONS:" not in text:
+        return text, None
+
+    parts = text.split("BUTTONS:", 1)
+    clean_text = parts[0].strip()
+    buttons_text = parts[1].strip()
+    
+    if not buttons_text:
+        return clean_text, None
+
+    buttons = []
+    button_lines = [line.strip() for line in buttons_text.split('\n') if line.strip()]
+    
+    for line in button_lines:
+        try:
+            button_data = json.loads(line)
+
+            if not isinstance(button_data, dict) or "text" not in button_data:
+                logger.warning(f"Неверный формат кнопки: {line}")
+                continue
+                
+            text_btn = button_data["text"]
+
+            if "callback" in button_data:
+                callback_data = button_data["callback"]
+                if len(callback_data) > 64:
+                    logger.warning(f"Callback слишком длинный: {callback_data}")
+                    continue
+                button = InlineKeyboardButton(text=text_btn, callback_data=callback_data)
+            elif "url" in button_data:
+                url = button_data["url"]
+                button = InlineKeyboardButton(text=text_btn, url=url)
+            else:
+                logger.warning(f"Кнопка без действия: {line}")
+                continue
+                
+            buttons.append([button])
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Ошибка парсинга JSON кнопки: {line} - {e}")
+            continue
+        except Exception as e:
+            logger.error(f"Ошибка создания кнопки: {line} - {e}")
+            continue
+    
+    if not buttons:
+        return clean_text, None
+        
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    return clean_text, keyboard
 
 
 @router.callback_query(
@@ -47,7 +101,14 @@ async def handle_sender_callback_text(
             "Вы можете отправить:\n"
             "• Только <b>текст</b>\n"
             "• Только <b>картинку</b>\n"
-            "• <b>Текст + картинку</b>"
+            "• <b>Текст + картинку</b>\n"
+            "• <b>Сообщение + кнопки</b> (см. формат ниже)\n\n"
+            "<b>📋 Пример формата кнопок:</b>\n"
+            "<code>Ваше сообщение</code>\n\n"
+            "<code>BUTTONS:</code>\n"
+            '<code>{"text": "👤 Личный кабинет", "callback": "profile"}</code>\n'
+            '<code>{"text": "🎁 Забрать купон", "url": "https://t.me/cupons"}</code>\n'
+            '<code>{"text": "📢 Канал", "url": "https://t.me/channel"}</code>'
         ),
         reply_markup=build_admin_back_kb("sender"),
     )
@@ -71,26 +132,41 @@ async def handle_sender_callback(callback_query: CallbackQuery, session: AsyncSe
 
 @router.message(AdminSender.waiting_for_message, IsAdminFilter())
 async def handle_message_input(message: Message, state: FSMContext):
-    text_message = message.html_text or message.text or message.caption or ""
+    original_text = message.html_text or message.text or message.caption or ""
     photo = message.photo[-1].file_id if message.photo else None
 
+    clean_text, keyboard = parse_message_buttons(original_text)
+
     max_len = 1024 if photo else 4096
-    if len(text_message) > max_len:
+    if len(clean_text) > max_len:
         await message.answer(
             f"⚠️ Сообщение слишком длинное.\n"
-            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(text_message)}</b>.",
+            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
         return
 
-    await state.update_data(text=text_message, photo=photo)
+    await state.update_data(
+        text=clean_text, 
+        photo=photo, 
+        keyboard=keyboard.model_dump() if keyboard else None
+    )
     await state.set_state(AdminSender.preview)
 
     if photo:
-        await message.answer_photo(photo=photo, caption=text_message, parse_mode="HTML")
+        await message.answer_photo(
+            photo=photo, 
+            caption=clean_text, 
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
     else:
-        await message.answer(text=text_message, parse_mode="HTML")
+        await message.answer(
+            text=clean_text, 
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
 
     await message.answer(
         "👀 Это предпросмотр рассылки.\nОтправить?",
@@ -108,9 +184,17 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
     data = await state.get_data()
     text_message = data.get("text")
     photo = data.get("photo")
+    keyboard_data = data.get("keyboard")
     send_to = data.get("type", "all")
     cluster_name = data.get("cluster_name")
     now_ms = int(datetime.utcnow().timestamp() * 1000)
+
+    keyboard = None
+    if keyboard_data:
+        try:
+            keyboard = InlineKeyboardMarkup.model_validate(keyboard_data)
+        except Exception as e:
+            logger.error(f"Ошибка восстановления клавиатуры: {e}")
 
     query = None
     if send_to == "subscribed":
@@ -131,7 +215,9 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
         query = select(distinct(subquery.c.tg_id))
     elif send_to == "untrial":
         subquery = select(Key.tg_id)
-        query = select(distinct(User.tg_id)).where(~User.tg_id.in_(subquery))
+        query = select(distinct(User.tg_id)).where(
+            ~User.tg_id.in_(subquery) & User.trial.in_([0, -1])
+        )
     elif send_to == "cluster":
         query = (
             select(distinct(User.tg_id))
@@ -168,12 +254,14 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
                     photo=photo,
                     caption=text_message,
                     parse_mode="HTML",
+                    reply_markup=keyboard,
                 )
             else:
                 await callback_query.bot.send_message(
                     chat_id=tg_id,
                     text=text_message,
                     parse_mode="HTML",
+                    reply_markup=keyboard,
                 )
             success_count += 1
         except Exception as e:
