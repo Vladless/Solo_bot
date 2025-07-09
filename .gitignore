@@ -59,3 +59,4 @@ Dockerfile
 setup.py
 .ruff_cache
 .github/workflows/
+handlers/texts_en.py

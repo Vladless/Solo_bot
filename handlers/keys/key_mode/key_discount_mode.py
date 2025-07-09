@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import DISCOUNT_ACTIVE_HOURS
 from database import get_tariffs
 from database.models import Notification
+from handlers.localization import get_user_texts
 from handlers.notifications.notify_kb import build_tariffs_keyboard
-from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
 from logger import logger
 
 from .key_create import select_tariff_plan
@@ -20,6 +20,7 @@ router = Router()
 @router.callback_query(F.data == "hot_lead_discount")
 async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id
+    texts = await get_user_texts(session, tg_id)
 
     result = await session.execute(
         select(Notification.last_notification_time).where(
@@ -44,7 +45,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         return
 
     await callback.message.edit_text(
-        DISCOUNT_TARIFF,
+        texts.DISCOUNT_TARIFF,
         reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff"),
     )
 
@@ -70,6 +71,7 @@ async def handle_discount_tariff_selection(callback: CallbackQuery, session, sta
 @router.callback_query(F.data == "hot_lead_final_discount")
 async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id
+    texts = await get_user_texts(session, tg_id)
 
     result = await session.execute(
         select(Notification.last_notification_time).where(
@@ -94,6 +96,6 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         return
 
     await callback.message.edit_text(
-        DISCOUNT_TARIFF_MAX,
+        texts.DISCOUNT_TARIFF_MAX,
         reply_markup=build_tariffs_keyboard(tariffs, prefix="discount_tariff"),
     )

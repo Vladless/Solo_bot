@@ -18,13 +18,8 @@ from database import (
     mark_trial_extended,
     update_key_notified,
 )
-from handlers.buttons import MAIN_MENU
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.keys.key_utils import get_user_traffic
-from handlers.texts import (
-    TRIAL_INACTIVE_BONUS_MSG,
-    TRIAL_INACTIVE_FIRST_MSG,
-    ZERO_TRAFFIC_MSG,
-)
 from handlers.utils import format_days
 from logger import logger
 
@@ -47,29 +42,32 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         username = user["username"]
         first_name = user["first_name"]
         last_name = user["last_name"]
-        display_name = username or first_name or last_name or "Пользователь"
+        display_name = username or first_name or last_name or buttons.DEFAULT_USER
+
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
 
         builder = InlineKeyboardBuilder()
         builder.row(
             types.InlineKeyboardButton(
-                text="🚀 Активировать пробный период", callback_data="create_key"
+                text=buttons.ACTIVATE_TRIAL, callback_data="create_key"
             )
         )
-        builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder.row(types.InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
         keyboard = builder.as_markup()
 
         trial_extended = user["last_notification_time"] is not None
 
         if trial_extended:
             total_days = NOTIFY_EXTRA_DAYS + trial_days
-            message = TRIAL_INACTIVE_BONUS_MSG.format(
+            message = texts.TRIAL_INACTIVE_BONUS_MSG.format(
                 display_name=display_name,
                 extra_days_formatted=format_days(NOTIFY_EXTRA_DAYS),
                 total_days_formatted=format_days(total_days),
             )
             await mark_trial_extended(tg_id, session)
         else:
-            message = TRIAL_INACTIVE_FIRST_MSG.format(
+            message = texts.TRIAL_INACTIVE_FIRST_MSG.format(
                 display_name=display_name,
                 trial_time_formatted=format_days(trial_days),
             )
@@ -160,17 +158,21 @@ async def notify_users_no_traffic(
             logger.info(
                 f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление."
             )
+            
+            texts = await get_user_texts(session, tg_id)
+            buttons = await get_user_buttons(session, tg_id)
+            
             builder = InlineKeyboardBuilder()
             builder.row(
                 types.InlineKeyboardButton(
-                    text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL
+                    text=buttons.SUPPORT_CONTACT, url=SUPPORT_CHAT_URL
                 )
             )
             builder.row(
-                types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+                types.InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile")
             )
             keyboard = builder.as_markup()
-            message = ZERO_TRAFFIC_MSG.format(email=email)
+            message = texts.ZERO_TRAFFIC_MSG.format(email=email)
             messages.append(
                 {
                     "tg_id": tg_id,

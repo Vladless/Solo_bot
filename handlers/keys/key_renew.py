@@ -26,20 +26,13 @@ from database import (
 )
 from database.models import Server, Key
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
-from handlers.buttons import BACK, MAIN_MENU, PAYMENT
+from handlers.localization import get_user_texts, get_user_buttons, get_localized_month_for_user
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
-from handlers.texts import (
-    INSUFFICIENT_FUNDS_RENEWAL_MSG,
-    KEY_NOT_FOUND_MSG,
-    PLAN_SELECTION_MSG,
-    get_renewal_message,
-)
-from handlers.buttons import MY_SUB
-from handlers.utils import edit_or_send_message, format_days, format_months, get_russian_month
+from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
 
 router = Router()
@@ -50,6 +43,9 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     tg_id = callback_query.message.chat.id
     key_name = callback_query.data.split("|")[1]
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     try:
         record = await get_key_details(session, key_name)
@@ -129,10 +125,10 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 )
             )
 
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="renew_menu"))
+        builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="renew_menu"))
 
         balance = await get_balance(session, tg_id)
-        response_message = PLAN_SELECTION_MSG.format(
+        response_message = texts.PLAN_SELECTION_MSG.format(
             balance=balance,
             expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime(
                 "%Y-%m-%d %H:%M:%S"
@@ -154,6 +150,8 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     try:
         subgroup_hash = callback.data.split("|")[1]
+        tg_id = callback.from_user.id
+        buttons = await get_user_buttons(session, tg_id)
 
         data = await state.get_data()
         client_id = data.get("renew_client_id")
@@ -201,13 +199,8 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         tariffs = await get_tariffs(session, group_code=group_code)
         filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
 
-        if not filtered:
-            await edit_or_send_message(
-                target_message=callback.message,
-                text="❌ В этой подгруппе пока нет тарифов.",
-                reply_markup=None,
-            )
-            return
+        tariffs = await get_tariffs(session, group_code=group_code, subgroup_title=subgroup)
+        tariffs = [t for t in tariffs if t["is_active"]]
 
         builder = InlineKeyboardBuilder()
         for t in filtered:
@@ -219,12 +212,9 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             )
 
         builder.row(
-            InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data="renew_menu"
-            )
+            InlineKeyboardButton(text=buttons.BACK, callback_data="renew_menu")
         )
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
         await edit_or_send_message(
             target_message=callback.message,
@@ -242,6 +232,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
     tg_id = callback_query.from_user.id
     tariff_id = callback_query.data.split("|")[1]
     tariff_id = int(tariff_id)
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     data = await state.get_data()
     client_id = data.get("renew_client_id")
@@ -263,7 +256,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
 
         record = await get_key_by_server(session, tg_id, client_id)
         if not record:
-            await callback_query.message.answer(KEY_NOT_FOUND_MSG)
+            await callback_query.message.answer(texts.KEY_NOT_FOUND_MSG)
             logger.error(f"[RENEW] Ключ с client_id={client_id} не найден.")
             return
 
@@ -311,13 +304,13 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                 await process_custom_amount_input_yoomoney(callback_query, session)
             else:
                 builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+                builder.row(InlineKeyboardButton(text=buttons.PAYMENT, callback_data="pay"))
                 builder.row(
-                    InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+                    InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile")
                 )
                 await edit_or_send_message(
                     target_message=callback_query.message,
-                    text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(
+                    text=texts.INSUFFICIENT_FUNDS_RENEWAL_MSG.format(
                         required_amount=required_amount
                     ),
                     reply_markup=builder.as_markup(),
@@ -380,13 +373,16 @@ async def complete_key_renewal(
             f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)"
         )
 
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+
         tariff = await get_tariff_by_id(session, tariff_id)
         if not tariff:
             logger.error(f"[Error] Тариф с id={tariff_id} не найден.")
             return
 
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
+        builder.row(InlineKeyboardButton(text=buttons.MY_SUB, callback_data=f"view_key|{email}"))
         
         formatted_expiry_date = datetime.fromtimestamp(
             new_expiry_time / 1000, tz=moscow_tz
@@ -394,10 +390,10 @@ async def complete_key_renewal(
         
         formatted_expiry_date = formatted_expiry_date.replace(
             datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
-            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
+            await get_localized_month_for_user(session, tg_id, datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
         )
 
-        response_message = get_renewal_message(
+        response_message = texts.get_renewal_message(
             tariff_name=tariff["name"],
             traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
             device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,

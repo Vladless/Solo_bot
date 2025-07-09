@@ -19,25 +19,13 @@ from config import (
 )
 from database import get_last_payments
 from database.models import User
-from handlers.buttons import (
-    BALANCE_HISTORY,
-    COUPON,
-    CRYPTOBOT,
-    FREEKASSA,
-    MAIN_MENU,
-    PAYMENT,
-    ROBOKASSA,
-    STARS,
-    YOOKASSA,
-    YOOMONEY,
-)
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
 from handlers.payments.freekassa_pay import process_callback_pay_freekassa
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
 from handlers.payments.stars_pay import process_callback_pay_stars
 from handlers.payments.yookassa_pay import process_callback_pay_yookassa
 from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
-from handlers.texts import BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
 
 from .utils import edit_or_send_message
 
@@ -48,6 +36,9 @@ router = Router()
 async def handle_pay(
     callback_query: CallbackQuery, state: FSMContext, session: AsyncSession
 ):
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, callback_query.from_user.id)
+    buttons = await get_user_buttons(session, callback_query.from_user.id)
 
     payment_handlers = []
 
@@ -71,47 +62,51 @@ async def handle_pay(
     builder = InlineKeyboardBuilder()
 
     if YOOKASSA_ENABLE:
-        builder.row(InlineKeyboardButton(text=YOOKASSA, callback_data="pay_yookassa"))
+        builder.row(InlineKeyboardButton(text=buttons.YOOKASSA, callback_data="pay_yookassa"))
     if YOOMONEY_ENABLE:
-        builder.row(InlineKeyboardButton(text=YOOMONEY, callback_data="pay_yoomoney"))
+        builder.row(InlineKeyboardButton(text=buttons.YOOMONEY, callback_data="pay_yoomoney"))
     if CRYPTO_BOT_ENABLE:
-        builder.row(InlineKeyboardButton(text=CRYPTOBOT, callback_data="pay_cryptobot"))
+        builder.row(InlineKeyboardButton(text=buttons.CRYPTOBOT, callback_data="pay_cryptobot"))
     if STARS_ENABLE:
-        builder.row(InlineKeyboardButton(text=STARS, callback_data="pay_stars"))
+        builder.row(InlineKeyboardButton(text=buttons.STARS, callback_data="pay_stars"))
     if ROBOKASSA_ENABLE:
-        builder.row(InlineKeyboardButton(text=ROBOKASSA, callback_data="pay_robokassa"))
+        builder.row(InlineKeyboardButton(text=buttons.ROBOKASSA, callback_data="pay_robokassa"))
     if FREEKASSA_ENABLE:
-        builder.row(InlineKeyboardButton(text=FREEKASSA, callback_data="pay_freekassa"))
+        builder.row(InlineKeyboardButton(text=buttons.FREEKASSA, callback_data="pay_freekassa"))
     if DONATIONS_ENABLE:
         builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+            InlineKeyboardButton(text=buttons.DONATE_PROJECT, callback_data="donate")
         )
 
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=PAYMENT_METHODS_MSG,
+        text=texts.PAYMENT_METHODS_MSG,
         reply_markup=builder.as_markup(),
     )
 
 
 @router.callback_query(F.data == "balance")
 async def balance_handler(callback_query: CallbackQuery, session: AsyncSession):
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, callback_query.from_user.id)
+    buttons = await get_user_buttons(session, callback_query.from_user.id)
+    
     stmt = select(User.balance).where(User.tg_id == callback_query.from_user.id)
     result = await session.execute(stmt)
     balance = result.scalar_one_or_none() or 0.0
     balance = int(balance)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+    builder.row(InlineKeyboardButton(text=buttons.PAYMENT, callback_data="pay"))
     builder.row(
-        InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history")
+        InlineKeyboardButton(text=buttons.BALANCE_HISTORY, callback_data="balance_history")
     )
-    builder.row(InlineKeyboardButton(text=COUPON, callback_data="activate_coupon"))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.COUPON, callback_data="activate_coupon"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
-    text = BALANCE_MANAGEMENT_TEXT.format(balance=balance)
+    text = texts.BALANCE_MANAGEMENT_TEXT.format(balance=balance)
     image_path = os.path.join("img", "pay.jpg")
 
     await edit_or_send_message(
@@ -125,23 +120,32 @@ async def balance_handler(callback_query: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "balance_history")
 async def balance_history_handler(callback_query: CallbackQuery, session: Any):
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, callback_query.from_user.id)
+    buttons = await get_user_buttons(session, callback_query.from_user.id)
+    
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.PAYMENT, callback_data="pay"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     records = await get_last_payments(session, callback_query.from_user.id)
 
     if records:
-        history_text = "<b>💳 История операций:</b>\n\n<blockquote>"
+        history_text = texts.BALANCE_HISTORY_HEADER
         for record in records:
             amount = record["amount"]
             payment_system = record["payment_system"]
             status = record["status"]
             date = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-            history_text += f"Сумма: {amount}₽\nОплата: {payment_system}\nСтатус: {status}\nДата: {date}\n\n"
+            history_text += texts.BALANCE_HISTORY_ITEM.format(
+                amount=amount,
+                payment_system=payment_system,
+                status=status,
+                date=date
+            )
         history_text += "</blockquote>"
     else:
-        history_text = "❌ У вас пока нет операций с балансом."
+        history_text = texts.NO_BALANCE_OPERATIONS
 
     await edit_or_send_message(
         target_message=callback_query.message,

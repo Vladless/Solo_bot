@@ -290,25 +290,65 @@ def sanitize_key_name(key_name: str) -> str:
     return re.sub(r"[^a-z0-9@._-]", "", key_name.lower())
 
 
-RUSSIAN_MONTHS = {
-    "January": "Января",
-    "February": "Февраля",
-    "March": "Марта",
-    "April": "Апреля",
-    "May": "Мая",
-    "June": "Июня",
-    "July": "Июля",
-    "August": "Августа",
-    "September": "Сентября",
-    "October": "Октября",
-    "November": "Ноября",
-    "December": "Декабря",
+# Локализованные словари месяцев (для обратной совместимости)
+# Основная логика локализации теперь в handlers.localization
+MONTHS_LOCALIZED = {
+    "ru": {
+        "January": "Января",
+        "February": "Февраля",
+        "March": "Марта",
+        "April": "Апреля",
+        "May": "Мая",
+        "June": "Июня",
+        "July": "Июля",
+        "August": "Августа",
+        "September": "Сентября",
+        "October": "Октября",
+        "November": "Ноября",
+        "December": "Декабря",
+    },
+    "en": {
+        "January": "January",
+        "February": "February",
+        "March": "March",
+        "April": "April",
+        "May": "May",
+        "June": "June",
+        "July": "July",
+        "August": "August",
+        "September": "September",
+        "October": "October",
+        "November": "November",
+        "December": "December",
+    }
 }
+
+# Оставляем старый словарь для обратной совместимости
+RUSSIAN_MONTHS = MONTHS_LOCALIZED["ru"]
+
+
+def get_localized_month(date: datetime, language: str = "ru") -> str:
+    """
+    Преобразует английское название месяца в локализованное.
+
+    Args:
+        date: Объект datetime, из которого извлекается месяц.
+        language: Код языка для локализации ('ru' или 'en').
+
+    Returns:
+        Название месяца на указанном языке.
+    """
+    english_month = date.strftime("%B")
+    months_dict = MONTHS_LOCALIZED.get(language, MONTHS_LOCALIZED["ru"])
+    return months_dict.get(english_month, english_month)
 
 
 def get_russian_month(date: datetime) -> str:
     """
     Преобразует английское название месяца в русское.
+    
+    DEPRECATED: Используйте get_localized_month() вместо этой функции
+    или get_localized_month_for_user() из handlers.localization для полной локализации.
 
     Args:
         date: Объект datetime, из которого извлекается месяц.
@@ -316,5 +356,4 @@ def get_russian_month(date: datetime) -> str:
     Returns:
         Название месяца на русском языке.
     """
-    english_month = date.strftime("%B")
-    return RUSSIAN_MONTHS.get(english_month, english_month)
+    return get_localized_month(date, "ru")

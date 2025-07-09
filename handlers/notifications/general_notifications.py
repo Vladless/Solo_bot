@@ -36,15 +36,8 @@ from handlers.notifications.notify_kb import (
     build_notification_expired_kb,
     build_notification_kb,
 )
-from handlers.texts import (
-    KEY_DELETED_MSG,
-    KEY_EXPIRED_DELAY_MSG,
-    KEY_EXPIRED_NO_DELAY_MSG,
-    KEY_EXPIRY_10H,
-    KEY_EXPIRY_24H,
-    get_renewal_message,
-)
-from handlers.utils import format_hours, format_minutes, get_russian_month, format_months, format_days
+from handlers.localization import get_user_texts, get_user_buttons, get_localized_month_for_user
+from handlers.utils import format_hours, format_minutes, format_months, format_days
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
@@ -175,18 +168,22 @@ async def notify_24h_keys(
         if not user:
             continue
 
+        # Получаем локализованные тексты для пользователя
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+
         expiry_timestamp = key.expiry_time
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
         hours_left_formatted = (
             f"⏳ Осталось времени: {format_hours(hours_left)}"
             if hours_left > 0
-            else "⏳ Последний день подписки!"
+            else texts.LAST_DAY_SUBSCRIPTION
         )
 
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
         formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
-        notification_text = KEY_EXPIRY_24H.format(
+        notification_text = texts.KEY_EXPIRY_24H.format(
             email=email,
             hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
@@ -209,7 +206,7 @@ async def notify_24h_keys(
                 )
                 continue
         else:
-            keyboard = build_notification_kb(email)
+            keyboard = build_notification_kb(email, buttons.MAIN_MENU, buttons.RENEW_KEY_NOTIFICATION)
             messages.append(
                 {
                     "tg_id": tg_id,
@@ -285,18 +282,22 @@ async def notify_10h_keys(
         if not user:
             continue
 
+        # Получаем локализованные тексты для пользователя
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+
         expiry_timestamp = key.expiry_time
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
         hours_left_formatted = (
             f"⏳ Осталось времени: {format_hours(hours_left)}"
             if hours_left > 0
-            else "⏳ Последний день подписки!"
+            else texts.LAST_DAY_SUBSCRIPTION
         )
 
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
         formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
-        notification_text = KEY_EXPIRY_10H.format(
+        notification_text = texts.KEY_EXPIRY_10H.format(
             email=email,
             hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
@@ -319,7 +320,7 @@ async def notify_10h_keys(
                 )
                 continue
         else:
-            keyboard = build_notification_kb(email)
+            keyboard = build_notification_kb(email, buttons.MAIN_MENU, buttons.RENEW_KEY_NOTIFICATION)
             messages.append(
                 {
                     "tg_id": tg_id,
@@ -382,6 +383,10 @@ async def handle_expired_keys(
         server_id = key.server_id
         notification_id = f"{email}_key_expired"
 
+        # Получаем локализованные тексты для пользователя
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+
         last_notification_time = await get_last_notification_time(
             session, tg_id, notification_id
         )
@@ -393,6 +398,13 @@ async def handle_expired_keys(
                 tariff = tariffs[0] if tariffs else None
 
                 if tariff and balance >= tariff["price_rub"]:
+                    renewal_message = texts.get_renewal_message(
+                        tariff_name=tariff.get("name", ""),
+                        traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
+                        device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
+                        subgroup_title=tariff.get("subgroup_title", "")
+                    )
+                    
                     await process_auto_renew_or_notify(
                         bot,
                         session,
@@ -400,12 +412,7 @@ async def handle_expired_keys(
                         notification_id,
                         1,
                         "notify_expired.jpg",
-                        get_renewal_message(
-                            tariff_name=tariff.get("name", ""),
-                            traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
-                            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
-                            subgroup_title=tariff.get("subgroup_title", "")
-                        ),
+                        renewal_message,
                     )
                     continue
             except Exception as e:
@@ -433,11 +440,11 @@ async def handle_expired_keys(
                         f"🗑 Ключ {client_id} для пользователя {tg_id} успешно удалён."
                     )
 
-                    keyboard = build_notification_expired_kb()
+                    keyboard = build_notification_expired_kb(buttons.MAIN_MENU)
                     messages.append(
                         {
                             "tg_id": tg_id,
-                            "text": KEY_DELETED_MSG.format(email=email),
+                            "text": texts.KEY_DELETED_MSG.format(email=email),
                             "photo": "notify_expired.jpg",
                             "keyboard": keyboard,
                             "notification_id": notification_id,
@@ -453,7 +460,7 @@ async def handle_expired_keys(
         if last_notification_time is None and any(
             u["tg_id"] == tg_id and u["email"] == email for u in users
         ):
-            keyboard = build_notification_kb(email)
+            keyboard = build_notification_kb(email, buttons.MAIN_MENU, buttons.RENEW_KEY_NOTIFICATION)
 
             if NOTIFY_DELETE_DELAY > 0:
                 hours = NOTIFY_DELETE_DELAY // 60
@@ -465,12 +472,12 @@ async def handle_expired_keys(
                 else:
                     time_formatted = format_minutes(minutes)
                 
-                delay_message = KEY_EXPIRED_DELAY_MSG.format(
+                delay_message = texts.KEY_EXPIRED_DELAY_MSG.format(
                     email=email,
                     time_formatted=time_formatted
                 )
             else:
-                delay_message = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
+                delay_message = texts.KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
 
             messages.append(
                 {
@@ -571,7 +578,8 @@ async def process_auto_renew_or_notify(
                         selected_tariff = None
 
         if not selected_tariff:
-            keyboard = build_notification_kb(email)
+            buttons_temp = await get_user_buttons(conn, tg_id)
+            keyboard = build_notification_kb(email, buttons_temp.MAIN_MENU, buttons_temp.RENEW_KEY_NOTIFICATION)
             await add_notification(conn, tg_id, notification_id)
             await send_notification(
                 bot, tg_id, standard_photo, standard_caption, keyboard
@@ -599,7 +607,7 @@ async def process_auto_renew_or_notify(
 
         formatted_expiry_date = formatted_expiry_date.replace(
             datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
-            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
+            await get_localized_month_for_user(conn, tg_id, datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
         )
 
         logger.info(
@@ -621,7 +629,10 @@ async def process_auto_renew_or_notify(
         await add_notification(conn, tg_id, renew_notification_id)
         await delete_notification(conn, tg_id, notification_id)
 
-        renewed_message = get_renewal_message(
+        # Получаем локализованные тексты для пользователя
+        texts = await get_user_texts(conn, tg_id)
+        
+        renewed_message = texts.get_renewal_message(
             tariff_name=selected_tariff["name"],
             traffic_limit=selected_tariff.get("traffic_limit") if selected_tariff.get("traffic_limit") is not None else 0,
             device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
@@ -629,7 +640,8 @@ async def process_auto_renew_or_notify(
             subgroup_title=selected_tariff.get("subgroup_title", "")
         )
 
-        keyboard = build_notification_expired_kb()
+        buttons_temp = await get_user_buttons(conn, tg_id)
+        keyboard = build_notification_expired_kb(buttons_temp.MAIN_MENU)
         result = await send_notification(
             bot, tg_id, "notify_expired.jpg", renewed_message, keyboard
         )

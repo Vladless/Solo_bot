@@ -34,18 +34,8 @@ from database import (
     update_trial,
 )
 from database.models import Key, Server, Tariff
-from handlers.buttons import (
-    BACK,
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    MAIN_MENU,
-    PC_BUTTON,
-    SUPPORT,
-    TV_BUTTON,
-    MY_SUB
-)
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.keys.key_utils import create_client_on_server
-from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
     edit_or_send_message,
     generate_random_email,
@@ -74,6 +64,9 @@ async def key_country_mode(
 ):
     target_message = None
     safe_to_edit = False
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     if state and plan:
         await state.update_data(tariff_id=plan)
@@ -156,18 +149,18 @@ async def key_country_mode(
             callback_data = f"select_country|{server_name}|{ts}"
         builder.row(InlineKeyboardButton(text=server_name, callback_data=callback_data))
 
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     if safe_to_edit:
         await edit_or_send_message(
             target_message=target_message,
-            text=SELECT_COUNTRY_MSG,
+            text=texts.SELECT_COUNTRY_MSG,
             reply_markup=builder.as_markup(),
         )
     else:
         await bot.send_message(
             chat_id=tg_id,
-            text=SELECT_COUNTRY_MSG,
+            text=texts.SELECT_COUNTRY_MSG,
             reply_markup=builder.as_markup(),
         )
 
@@ -328,6 +321,9 @@ async def finalize_key_creation(
     tariff_id: int | None = None,
 ):
     from_user = callback_query.from_user
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     if not await check_user_exists(session, tg_id):
         await add_user(
@@ -524,29 +520,29 @@ async def finalize_key_creation(
     if (panel_type == "remnawave" or is_full_remnawave) and (public_link or remnawave_link):
         builder.row(
             InlineKeyboardButton(
-                text=CONNECT_DEVICE,
+                text=buttons.CONNECT_DEVICE,
                 web_app=WebAppInfo(url=public_link or remnawave_link),
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
+            InlineKeyboardButton(text=buttons.TV_BUTTON, callback_data=f"connect_tv|{email}")
         )
     elif CONNECT_PHONE_BUTTON:
         builder.row(
-            InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}")
+            InlineKeyboardButton(text=buttons.CONNECT_PHONE, callback_data=f"connect_phone|{key_name}")
         )
         builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+            InlineKeyboardButton(text=buttons.PC_BUTTON, callback_data=f"connect_pc|{email}"),
+            InlineKeyboardButton(text=buttons.TV_BUTTON, callback_data=f"connect_tv|{email}"),
         )
     else:
         builder.row(
-            InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}")
+            InlineKeyboardButton(text=buttons.CONNECT_DEVICE, callback_data=f"connect_device|{key_name}")
         )
 
-    builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MY_SUB, callback_data=f"view_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     link_to_show = public_link or remnawave_link or "Ссылка не найдена"
 
@@ -562,7 +558,7 @@ async def finalize_key_creation(
             tariff_duration = format_months(months)
         else:
             tariff_duration = format_days(trial_days)
-        key_message_text = key_message_success(
+        key_message_text = texts.key_message_success(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
@@ -572,7 +568,7 @@ async def finalize_key_creation(
         tariff_duration = tariff_info["name"] if tariff_info else None
         subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
         
-        key_message_text = key_message_success(
+        key_message_text = texts.key_message_success(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,

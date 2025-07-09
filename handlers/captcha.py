@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
+from handlers.localization import get_user_texts, get_user_buttons
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -15,10 +15,21 @@ from .utils import edit_or_send_message
 router = Router()
 
 
-async def generate_captcha(message: Message, state: FSMContext):
-    correct_emoji, correct_text = secrets.choice(list(CAPTCHA_EMOJIS.items()))
+async def generate_captcha(message: Message, state: FSMContext, session=None):
+    # Получаем локализованные тексты для пользователя
+    if session:
+        texts = await get_user_texts(session, message.chat.id)
+        captcha_emojis = texts.CAPTCHA_EMOJIS
+        captcha_prompt_msg = texts.CAPTCHA_PROMPT_MSG
+    else:
+        # Fallback на русский язык если сессия недоступна
+        from handlers.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
+        captcha_emojis = CAPTCHA_EMOJIS
+        captcha_prompt_msg = CAPTCHA_PROMPT_MSG
+
+    correct_emoji, correct_text = secrets.choice(list(captcha_emojis.items()))
     wrong_emojis = random.sample(
-        [e for e in CAPTCHA_EMOJIS.keys() if e != correct_emoji], 3
+        [e for e in captcha_emojis.keys() if e != correct_emoji], 3
     )
 
     all_emojis = [correct_emoji] + wrong_emojis
@@ -63,7 +74,7 @@ async def generate_captcha(message: Message, state: FSMContext):
     builder.adjust(2, 2)
 
     return {
-        "text": CAPTCHA_PROMPT_MSG.format(correct_text=correct_text),
+        "text": captcha_prompt_msg.format(correct_text=correct_text),
         "markup": builder.as_markup(),
     }
 
@@ -95,7 +106,7 @@ async def check_captcha(
         )
     else:
         logger.warning(f"Пользователь {callback.from_user.id} неверно ответил на капчу")
-        captcha = await generate_captcha(target_message, state)
+        captcha = await generate_captcha(target_message, state, session)
         if captcha:
             await edit_or_send_message(
                 target_message=target_message,

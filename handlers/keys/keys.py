@@ -6,10 +6,9 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import delete_key, get_key_details, get_servers
-from handlers.buttons import APPLY, BACK, CANCEL
+from handlers.localization import get_user_texts, get_user_buttons
 from handlers.keys.key_utils import delete_key_from_cluster, update_subscription
 from handlers.keys.key_view import process_callback_view_key
-from handlers.texts import DELETE_KEY_CONFIRM_MSG, KEY_DELETED_MSG_SIMPLE
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
 
@@ -40,27 +39,31 @@ async def process_callback_update_subscription(
 
 
 @router.callback_query(F.data.startswith("delete_key|"))
-async def process_callback_delete_key(callback_query: CallbackQuery):
+async def process_callback_delete_key(callback_query: CallbackQuery, session: AsyncSession):
+    user_id = callback_query.from_user.id
+    texts = await get_user_texts(session, user_id)
+    buttons = await get_user_buttons(session, user_id)
+
     client_id = callback_query.data.split("|")[1]
     try:
         confirmation_keyboard = types.InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     types.InlineKeyboardButton(
-                        text=APPLY, callback_data=f"confirm_delete|{client_id}"
+                        text=buttons.APPLY, callback_data=f"confirm_delete|{client_id}"
                     )
                 ],
-                [types.InlineKeyboardButton(text=CANCEL, callback_data="view_keys")],
+                [types.InlineKeyboardButton(text=buttons.CANCEL, callback_data="view_keys")],
             ]
         )
 
         if callback_query.message.caption:
             await callback_query.message.edit_caption(
-                caption=DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard
+                caption=texts.DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard
             )
         else:
             await callback_query.message.edit_text(
-                text=DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard
+                text=texts.DELETE_KEY_CONFIRM_MSG, reply_markup=confirmation_keyboard
             )
 
     except Exception as e:
@@ -71,15 +74,19 @@ async def process_callback_delete_key(callback_query: CallbackQuery):
 async def process_callback_confirm_delete(
     callback_query: CallbackQuery, session: AsyncSession
 ):
+    user_id = callback_query.from_user.id
+    texts = await get_user_texts(session, user_id)
+    buttons = await get_user_buttons(session, user_id)
+
     email = callback_query.data.split("|")[1]
     try:
         record = await get_key_details(session, email)
         if record:
             client_id = record["client_id"]
             server_id = record["server_id"]
-            response_message = KEY_DELETED_MSG_SIMPLE
+            response_message = texts.KEY_DELETED_MSG_SIMPLE
             back_button = types.InlineKeyboardButton(
-                text=BACK, callback_data="view_keys"
+                text=buttons.BACK, callback_data="view_keys"
             )
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
 
@@ -99,9 +106,9 @@ async def process_callback_confirm_delete(
                 )
 
         else:
-            response_message = "Ключ не найден или уже удален."
+            response_message = texts.KEY_NOT_FOUND_OR_DELETED
             back_button = types.InlineKeyboardButton(
-                text=BACK, callback_data="view_keys"
+                text=buttons.BACK, callback_data="view_keys"
             )
             keyboard = types.InlineKeyboardMarkup(inline_keyboard=[[back_button]])
             await edit_or_send_message(

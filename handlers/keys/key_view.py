@@ -24,32 +24,13 @@ from config import (
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
-from handlers.buttons import (
-    ADD_SUB,
-    ALIAS,
-    BACK,
-    CHANGE_LOCATION,
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    DELETE,
-    FREEZE,
-    HWID_BUTTON,
-    MAIN_MENU,
-    PC_BUTTON,
-    QR,
-    RENEW,
-    RENEW_FULL,
-    TV_BUTTON,
-    UNFREEZE,
-)
-from handlers.texts import FROZEN_SUBSCRIPTION_MSG, NO_SUBSCRIPTIONS_MSG, key_message
+from handlers.localization import get_user_texts, get_user_buttons, get_localized_month_for_user
 from handlers.utils import (
     edit_or_send_message,
     format_days,
     format_hours,
     format_minutes,
     format_months,
-    get_russian_month,
     is_full_remnawave_cluster,
 )
 from logger import logger
@@ -75,7 +56,9 @@ async def process_callback_or_message_view_keys(
 
     try:
         records = await get_keys(session, tg_id)
-        inline_keyboard, response_message = build_keys_response(records)
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
+        inline_keyboard, response_message = build_keys_response(records, texts, buttons)
         image_path = os.path.join("img", "pic_keys.jpg")
 
         await edit_or_send_message(
@@ -85,11 +68,11 @@ async def process_callback_or_message_view_keys(
             media_path=image_path,
         )
     except Exception as e:
-        error_message = f"Ошибка при получении ключей: {e}"
+        error_message = texts.ERROR_GETTING_KEYS.format(error=e)
         await target_message.answer(text=error_message)
 
 
-def build_keys_response(records):
+def build_keys_response(records, texts, buttons):
     """
     Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
     """
@@ -97,7 +80,7 @@ def build_keys_response(records):
     moscow_tz = pytz.timezone("Europe/Moscow")
 
     if records:
-        response_message = "<b>🔑 Список ваших подписок:</b>\n\n<blockquote>"
+        response_message = texts.SUBSCRIPTION_LIST_HEADER
         for record in records:
             alias = record.alias
             email = record.email
@@ -110,46 +93,47 @@ def build_keys_response(records):
                 expiry_date_full = datetime.fromtimestamp(
                     expiry_time / 1000, tz=moscow_tz
                 )
-                formatted_date_full = expiry_date_full.strftime("до %d.%m.%y, %H:%M")
+                formatted_date_full = expiry_date_full.strftime(texts.EXPIRY_DATE_FORMAT)
             else:
-                formatted_date_full = "без срока действия"
+                formatted_date_full = texts.SUBSCRIPTION_NO_EXPIRY
 
             key_button = InlineKeyboardButton(
                 text=f"🔑 {key_display}", callback_data=f"view_key|{email}"
             )
             rename_button = InlineKeyboardButton(
-                text=ALIAS, callback_data=f"rename_key|{client_id}"
+                text=buttons.ALIAS, callback_data=f"rename_key|{client_id}"
             )
             builder.row(key_button, rename_button)
 
             response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
 
-        response_message += (
-            "</blockquote>\n\n<i>Нажмите на ✏️, чтобы переименовать подписку.</i>"
-        )
+        response_message += texts.SUBSCRIPTION_RENAME_HINT
     else:
-        response_message = NO_SUBSCRIPTIONS_MSG
+        response_message = texts.NO_SUBSCRIPTIONS_MSG
 
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     inline_keyboard = builder.as_markup()
     return inline_keyboard, response_message
 
 
 @router.callback_query(F.data.startswith("rename_key|"))
-async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
+async def handle_rename_key(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     client_id = callback.data.split("|")[1]
+    tg_id = callback.from_user.id
     await state.set_state(RenameKeyState.waiting_for_new_alias)
     await state.update_data(client_id=client_id, target_message=callback.message)
 
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text=BACK, callback_data="cancel_and_back_to_view_keys")
+        InlineKeyboardButton(text=buttons.BACK, callback_data="cancel_and_back_to_view_keys")
     )
 
     await edit_or_send_message(
         target_message=callback.message,
-        text="✏️ Введите новое имя подписки (до 10 символов):",
+        text=texts.ENTER_NEW_SUBSCRIPTION_NAME,
         reply_markup=builder.as_markup(),
     )
 
@@ -167,18 +151,16 @@ async def cancel_and_back(
 async def handle_new_alias_input(
     message: Message, state: FSMContext, session: AsyncSession
 ):
+    tg_id = message.from_user.id
+    texts = await get_user_texts(session, tg_id)
     alias = message.text.strip()
 
     if len(alias) > 10:
-        await message.answer(
-            "❌ Имя слишком длинное. Введите до 10 символов.\nПовторите ввод."
-        )
+        await message.answer(texts.SUBSCRIPTION_NAME_TOO_LONG)
         return
 
     if not alias or not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
-        await message.answer(
-            "❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод."
-        )
+        await message.answer(texts.SUBSCRIPTION_INVALID_CHARACTERS)
         return
 
     data = await state.get_data()
@@ -193,8 +175,8 @@ async def handle_new_alias_input(
         await session.commit()
 
     except Exception as e:
-        await message.answer("❌ Не удалось переименовать подписку.")
-        logger.error(f"Ошибка при обновлении alias: {e}")
+        await message.answer(texts.SUBSCRIPTION_RENAME_ERROR)
+        logger.error(texts.ERROR_UPDATING_ALIAS.format(error=e))
     finally:
         await state.clear()
 
@@ -204,20 +186,24 @@ async def handle_new_alias_input(
 @router.callback_query(F.data.startswith("view_key|"))
 async def process_callback_view_key(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
+    tg_id = callback_query.from_user.id
     image_path = os.path.join("img", "pic_view.jpg")
-    await render_key_info(callback_query.message, session, key_name, image_path)
+    await render_key_info(callback_query.message, session, key_name, image_path, tg_id)
 
 
 async def render_key_info(
-    message: Message, session: Any, key_name: str, image_path: str
+    message: Message, session: Any, key_name: str, image_path: str, tg_id: int
 ):
     from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
     from panels.remnawave import RemnawaveAPI
 
     record = await get_key_details(session, key_name)
     if not record:
-        await message.answer("<b>Информация о подписке не найдена.</b>")
+        await message.answer(texts.SUBSCRIPTION_INFO_NOT_FOUND)
         return
+
+    texts = await get_user_texts(session, tg_id)
+    buttons = await get_user_buttons(session, tg_id)
 
     is_frozen = record["is_frozen"]
     record["email"]
@@ -231,14 +217,14 @@ async def render_key_info(
     if is_frozen:
         builder.row(
             InlineKeyboardButton(
-                text=UNFREEZE, callback_data=f"unfreeze_subscription|{key_name}"
+                text=buttons.UNFREEZE, callback_data=f"unfreeze_subscription|{key_name}"
             )
         )
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="view_keys"))
+        builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
         await edit_or_send_message(
             target_message=message,
-            text=FROZEN_SUBSCRIPTION_MSG,
+            text=texts.FROZEN_SUBSCRIPTION_MSG,
             reply_markup=builder.as_markup(),
             media_path=image_path,
         )
@@ -250,15 +236,23 @@ async def render_key_info(
     time_left = expiry_date - datetime.utcnow()
 
     if time_left.total_seconds() <= 0:
-        days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла"
+        days_left_message = texts.SUBSCRIPTION_STATUS_EXPIRED
     else:
         total_seconds = int(time_left.total_seconds())
         days = total_seconds // 86400
         hours = (total_seconds % 86400) // 3600
         minutes = (total_seconds % 3600) // 60
-        days_left_message = f"⏳ Осталось: <b>{format_days(days)}</b>, <b>{format_hours(hours)}</b>, <b>{format_minutes(minutes)}</b>"
+        days_left_message = texts.SUBSCRIPTION_TIME_LEFT.format(
+            days=format_days(days), 
+            hours=format_hours(hours), 
+            minutes=format_minutes(minutes)
+        )
 
-    formatted_expiry_date = f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
+    formatted_expiry_date = texts.SUBSCRIPTION_EXPIRY_DATE_FORMAT.format(
+        day=expiry_date.strftime('%d'),
+        month=await get_localized_month_for_user(session, tg_id, expiry_date),
+        year=expiry_date.strftime('%Y')
+    )
 
     hwid_count = 0
     is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
@@ -280,7 +274,7 @@ async def render_key_info(
                     devices = await api.get_user_hwid_devices(client_id)
                     hwid_count = len(devices or [])
         except Exception as e:
-            logger.error(f"Ошибка при получении HWID для {client_id}: {e}")
+            logger.error(texts.ERROR_GETTING_HWID.format(client_id=client_id, error=e))
 
     tariff_name = ""
     traffic_limit = 0
@@ -297,7 +291,7 @@ async def render_key_info(
 
     tariff_duration = tariff_name
 
-    response_message = key_message(
+    response_message = texts.key_message(
         final_link,
         formatted_expiry_date,
         days_left_message,
@@ -313,7 +307,7 @@ async def render_key_info(
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
         builder.row(
             InlineKeyboardButton(
-                text="🔄 Обновить подписку",
+                text=texts.UPDATE_SUBSCRIPTION_BUTTON,
                 callback_data=f"update_subscription|{key_name}",
             )
         )
@@ -321,66 +315,66 @@ async def render_key_info(
     if is_full_remnawave and final_link:
         builder.row(
             InlineKeyboardButton(
-                text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
+                text=buttons.CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
             )
         )
         builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}")
+            InlineKeyboardButton(text=buttons.TV_BUTTON, callback_data=f"connect_tv|{key_name}")
         )
     else:
         if CONNECT_PHONE_BUTTON:
             builder.row(
                 InlineKeyboardButton(
-                    text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
+                    text=buttons.CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
                 )
             )
             builder.row(
                 InlineKeyboardButton(
-                    text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"
+                    text=buttons.PC_BUTTON, callback_data=f"connect_pc|{key_name}"
                 ),
                 InlineKeyboardButton(
-                    text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"
+                    text=buttons.TV_BUTTON, callback_data=f"connect_tv|{key_name}"
                 ),
             )
         else:
             builder.row(
                 InlineKeyboardButton(
-                    text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
+                    text=buttons.CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
                 )
             )
 
     if HWID_RESET_BUTTON and hwid_count > 0:
         builder.row(
             InlineKeyboardButton(
-                text=HWID_BUTTON,
+                text=buttons.HWID_BUTTON,
                 callback_data=f"reset_hwid|{key_name}",
             )
         )
 
     if QRCODE:
-        builder.row(InlineKeyboardButton(text=QR, callback_data=f"show_qr|{key_name}"))
+        builder.row(InlineKeyboardButton(text=buttons.QR, callback_data=f"show_qr|{key_name}"))
 
     if ENABLE_DELETE_KEY_BUTTON:
         builder.row(
-            InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
+            InlineKeyboardButton(text=buttons.DELETE, callback_data=f"delete_key|{key_name}"),
         )
 
     if USE_COUNTRY_SELECTION:
         builder.row(
             InlineKeyboardButton(
-                text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"
+                text=buttons.CHANGE_LOCATION, callback_data=f"change_location|{key_name}"
             )
         )
 
     if TOGGLE_CLIENT:
         builder.row(
             InlineKeyboardButton(
-                text=FREEZE, callback_data=f"freeze_subscription|{key_name}"
+                text=buttons.FREEZE, callback_data=f"freeze_subscription|{key_name}"
             )
         )
 
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data="view_keys"))
+    builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(
         target_message=message,
@@ -396,15 +390,18 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
     from panels.remnawave import RemnawaveAPI
 
     key_name = callback_query.data.split("|")[1]
+    tg_id = callback_query.from_user.id
+    texts = await get_user_texts(session, tg_id)
+    
     record = await get_key_details(session, key_name)
     if not record:
-        await callback_query.answer("❌ Ключ не найден.", show_alert=True)
+        await callback_query.answer(texts.KEY_NOT_FOUND_ALERT, show_alert=True)
         return
 
     client_id = record.get("client_id")
     if not client_id:
         await callback_query.answer(
-            "❌ У ключа отсутствует client_id.", show_alert=True
+            texts.KEY_NO_CLIENT_ID_ALERT, show_alert=True
         )
         return
 
@@ -419,30 +416,31 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
         None,
     )
     if not remna_server:
-        await callback_query.answer("❌ Remnawave-сервер не найден.", show_alert=True)
+        await callback_query.answer(texts.REMNAWAVE_SERVER_NOT_FOUND, show_alert=True)
         return
 
     api = RemnawaveAPI(remna_server["api_url"])
     if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         await callback_query.answer(
-            "❌ Авторизация в Remnawave не удалась.", show_alert=True
+            texts.REMNAWAVE_AUTH_FAILED, show_alert=True
         )
         return
 
     devices = await api.get_user_hwid_devices(client_id)
     if not devices:
-        await callback_query.answer("✅ Устройства не были привязаны.", show_alert=True)
+        await callback_query.answer(texts.DEVICES_NOT_BOUND, show_alert=True)
     else:
         deleted = 0
         for device in devices:
             if await api.delete_user_hwid_device(client_id, device["hwid"]):
                 deleted += 1
         await callback_query.answer(
-            f"✅ Устройства сброшены ({deleted})", show_alert=True
+            texts.DEVICES_RESET_SUCCESS.format(deleted=deleted), show_alert=True
         )
 
     image_path = os.path.join("img", "pic_view.jpg")
-    await render_key_info(callback_query.message, session, key_name, image_path)
+    tg_id = callback_query.from_user.id
+    await render_key_info(callback_query.message, session, key_name, image_path, tg_id)
 
 
 @router.callback_query(F.data == "renew_menu")
@@ -456,6 +454,8 @@ async def process_renew_menu(callback_query_or_message: CallbackQuery | Message,
             target_message = callback_query_or_message
             tg_id = callback_query_or_message.from_user.id
             
+        texts = await get_user_texts(session, tg_id)
+        buttons = await get_user_buttons(session, tg_id)
         records = await get_keys(session, tg_id)
         servers_dict = await get_servers(session)
         all_server_names = set()
@@ -479,17 +479,17 @@ async def process_renew_menu(callback_query_or_message: CallbackQuery | Message,
                     now = datetime.now(moscow_tz)
                     days_left = (expiry_date_full - now).days
                     if (expiry_date_full - now).total_seconds() <= 0:
-                        days_text = "🔴 Истекла"
+                        days_text = texts.SUBSCRIPTION_EXPIRED_SHORT
                     else:
                         days_text = format_days(days_left)
                 else:
-                    days_text = "истекла"
+                    days_text = texts.SUBSCRIPTION_EXPIRED
                 server_info = f" ({server_id})" if server_id in all_server_names else ""
                 btn_text = f"🔑 {key_display} (⏳{days_text}) {server_info}"
                 builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"renew_key|{email}"))
-        text = "Выберите подписку для продления или купите новую"
-        builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        text = texts.SELECT_SUBSCRIPTION_FOR_RENEWAL_OR_BUY
+        builder.row(InlineKeyboardButton(text=buttons.ADD_SUB, callback_data="create_key"))
+        builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
         image_path = os.path.join("img", "pic_view.jpg")
         await edit_or_send_message(
             target_message=target_message,
@@ -498,5 +498,5 @@ async def process_renew_menu(callback_query_or_message: CallbackQuery | Message,
             media_path=image_path,
         )
     except Exception as e:
-        error_message = f"Ошибка при получении подписок для продления: {e}"
+        error_message = texts.ERROR_GETTING_SUBSCRIPTIONS_FOR_RENEWAL.format(error=e)
         await target_message.answer(text=error_message)

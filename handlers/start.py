@@ -28,27 +28,14 @@ from database import (
     get_coupon_by_code,
 )
 from database.models import TrackingSource, User
-from handlers.buttons import (
-    ABOUT_VPN,
-    BACK,
-    CHANNEL,
-    MAIN_MENU,
-    SUB_CHANELL,
-    SUB_CHANELL_DONE,
-    SUPPORT,
-    TRIAL_SUB,
-)
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
-from handlers.texts import (
-    NOT_SUBSCRIBED_YET_MSG,
-    SUBSCRIPTION_CHECK_ERROR_MSG,
-    SUBSCRIPTION_CONFIRMED_MSG,
-    SUBSCRIPTION_REQUIRED_MSG,
-    WELCOME_TEXT,
-    get_about_vpn,
+from handlers.localization import (
+    LanguageManager,
+    get_user_texts,
+    get_user_buttons
 )
 from logger import logger
 
@@ -81,7 +68,7 @@ async def start_command(
     if CAPTCHA_ENABLE and captcha:
         user_exists = await check_user_exists(session, message.chat.id)
         if not user_exists:
-            captcha_data = await generate_captcha(message, state)
+            captcha_data = await generate_captcha(message, state, session)
             await edit_or_send_message(
                 target_message=message,
                 text=captcha_data["text"],
@@ -102,6 +89,11 @@ async def check_subscription_callback(
     logger.info(
         f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}"
     )
+    
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, user_id)
+    buttons = await get_user_buttons(session, user_id)
+    
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
         logger.info(
@@ -109,20 +101,20 @@ async def check_subscription_callback(
         )
 
         if member.status not in ["member", "administrator", "creator"]:
-            await callback_query.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
+            await callback_query.answer(texts.NOT_SUBSCRIBED_YET_MSG, show_alert=True)
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
+            builder.row(InlineKeyboardButton(text=buttons.SUB_CHANELL, url=CHANNEL_URL))
             builder.row(
                 InlineKeyboardButton(
-                    text=SUB_CHANELL_DONE, callback_data="check_subscription"
+                    text=buttons.SUB_CHANELL_DONE, callback_data="check_subscription"
                 )
             )
             await callback_query.message.edit_text(
-                SUBSCRIPTION_REQUIRED_MSG,
+                texts.SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
             )
         else:
-            await callback_query.answer(SUBSCRIPTION_CONFIRMED_MSG)
+            await callback_query.answer(texts.SUBSCRIPTION_CONFIRMED_MSG)
             data = await state.get_data()
             original_text = data.get("original_text") or callback_query.message.text
             user_data = data.get("user_data")
@@ -142,7 +134,7 @@ async def check_subscription_callback(
             f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}",
             exc_info=True,
         )
-        await callback_query.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
+        await callback_query.answer(texts.SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
 async def process_start_logic(
@@ -310,6 +302,10 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     """Функция для отображения стандартного меню через редактирование сообщения."""
     logger.info(f"Показываю главное меню для пользователя {message.chat.id}")
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, message.chat.id)
+    buttons = await get_user_buttons(session, message.chat.id)
+
     image_path = os.path.join("img", "pic.jpg")
     builder = InlineKeyboardBuilder()
 
@@ -324,17 +320,17 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     show_profile_button = not SHOW_START_MENU_ONCE or trial_status != 0 or TRIAL_TIME_DISABLE
 
     if show_trial_button:
-        builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
+        builder.row(InlineKeyboardButton(text=buttons.TRIAL_SUB, callback_data="create_key"))
     if show_profile_button:
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder.row(InlineKeyboardButton(text=buttons.MAIN_MENU, callback_data="profile"))
 
     if CHANNEL_EXISTS:
         builder.row(
-            InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
-            InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL),
+            InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL),
+            InlineKeyboardButton(text=buttons.CHANNEL, url=CHANNEL_URL),
         )
     else:
-        builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+        builder.row(InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL))
 
     if admin:
         builder.row(
@@ -344,11 +340,11 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
             )
         )
 
-    builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
+    builder.row(InlineKeyboardButton(text=buttons.ABOUT_VPN, callback_data="about_vpn"))
 
     await edit_or_send_message(
         target_message=message,
-        text=WELCOME_TEXT,
+        text=texts.WELCOME_TEXT,
         reply_markup=builder.as_markup(),
         media_path=image_path,
     )
@@ -359,24 +355,28 @@ async def handle_about_vpn(callback_query: CallbackQuery, session: AsyncSession)
     user_id = callback_query.from_user.id
     trial = await get_trial(session, user_id)
 
+    # Получаем локализованные тексты и кнопки для пользователя
+    texts = await get_user_texts(session, user_id)
+    buttons = await get_user_buttons(session, user_id)
+
     back_target = "profile" if SHOW_START_MENU_ONCE and trial > 0 else "start"
 
     builder = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
         builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
+            InlineKeyboardButton(text=buttons.DONATE_PROJECT, callback_data="donate")
         )
 
-    support_btn = InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL)
+    support_btn = InlineKeyboardButton(text=buttons.SUPPORT, url=SUPPORT_CHAT_URL)
     if CHANNEL_EXISTS:
-        channel_btn = InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL)
+        channel_btn = InlineKeyboardButton(text=buttons.CHANNEL, url=CHANNEL_URL)
         builder.row(support_btn, channel_btn)
     else:
         builder.row(support_btn)
 
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=back_target))
+    builder.row(InlineKeyboardButton(text=buttons.BACK, callback_data=back_target))
 
-    text = get_about_vpn("3.2.3-minor")
+    text = texts.get_about_vpn("3.2.3-minor")
     image_path = os.path.join("img", "pic.jpg")
 
     await edit_or_send_message(

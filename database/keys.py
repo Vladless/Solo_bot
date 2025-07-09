@@ -117,11 +117,13 @@ async def get_key_count(session: AsyncSession, tg_id: int) -> int:
 
 
 async def delete_key(session: AsyncSession, identifier: int | str):
-    stmt = delete(Key).where(
-        Key.tg_id == identifier
-        if str(identifier).isdigit()
-        else Key.client_id == identifier
-    )
+    if str(identifier).isdigit():
+        # Если identifier - это число (tg_id), преобразуем его в int
+        stmt = delete(Key).where(Key.tg_id == int(identifier))
+    else:
+        # Если identifier - это строка (client_id), используем как есть
+        stmt = delete(Key).where(Key.client_id == identifier)
+    
     await session.execute(stmt)
     await session.commit()
     logger.info(f"Ключ с идентификатором {identifier} удалён")
