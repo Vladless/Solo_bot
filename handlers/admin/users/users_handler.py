@@ -1202,7 +1202,7 @@ async def process_user_search(
         select(1)
         .where(
             (ManualBan.tg_id == tg_id)
-            & (or_(ManualBan.until is None, ManualBan.until > func.now()))
+            & (or_(ManualBan.until.is_(None), ManualBan.until > func.now()))
         )
         .limit(1)
     )

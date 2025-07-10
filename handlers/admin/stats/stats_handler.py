@@ -53,8 +53,14 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         total_users = await count_total_users(session)
         users_updated_today = await count_users_updated_today(session, today)
         registrations_today = await count_users_registered_since(session, today)
+        yesterday_date = today - timedelta(days=1)
+        yesterday_start = moscow_tz.localize(datetime.combine(yesterday_date, datetime.min.time()))
+        yesterday_end = moscow_tz.localize(datetime.combine(today, datetime.min.time()))
+        yesterday_start_utc = yesterday_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        yesterday_end_utc = yesterday_end.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         registrations_yesterday = await count_users_registered_between(
-            session, today - timedelta(days=1), today
+            session, yesterday_start_utc, yesterday_end_utc
         )
         registrations_week = await count_users_registered_since(
             session, today - timedelta(days=today.weekday())
@@ -62,9 +68,16 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         registrations_month = await count_users_registered_since(
             session, today.replace(day=1)
         )
-        last_month_start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        last_month_start_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        this_month_start_date = today.replace(day=1)
+        
+        last_month_start = moscow_tz.localize(datetime.combine(last_month_start_date, datetime.min.time()))
+        last_month_end = moscow_tz.localize(datetime.combine(this_month_start_date, datetime.min.time()))
+        last_month_start_utc = last_month_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        last_month_end_utc = last_month_end.astimezone(pytz.UTC).replace(tzinfo=None)
+        
         registrations_last_month = await count_users_registered_between(
-            session, last_month_start, today.replace(day=1)
+            session, last_month_start_utc, last_month_end_utc
         )
 
         total_keys = await count_total_keys(session)
@@ -137,14 +150,14 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         total_payments_today = await sum_payments_since(session, today)
         total_payments_yesterday = await sum_payments_between(
-            session, today - timedelta(days=1), today
+            session, yesterday_start_utc, yesterday_end_utc
         )
         total_payments_week = await sum_payments_since(
             session, today - timedelta(days=today.weekday())
         )
         total_payments_month = await sum_payments_since(session, today.replace(day=1))
         total_payments_last_month = await sum_payments_between(
-            session, last_month_start, today.replace(day=1)
+            session, last_month_start_utc, last_month_end_utc
         )
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
