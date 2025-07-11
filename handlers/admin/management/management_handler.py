@@ -254,6 +254,13 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
         await callback.message.edit_text("❌ Неверный формат.")
         return
 
+    if tg_id == callback.from_user.id:
+        await callback.message.edit_text(
+            "🚫 <b>Нельзя изменить свою собственную роль!</b>",
+            reply_markup=build_single_admin_menu(tg_id)
+        )
+        return
+
     result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     admin = result.scalar_one_or_none()
     if not admin:

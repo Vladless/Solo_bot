@@ -3,8 +3,10 @@ from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, TelegramObject
+from sqlalchemy import select
 
 from config import ADMIN_ID
+from database.models import Admin
 
 
 class AdminMiddleware(BaseMiddleware):
@@ -25,18 +27,30 @@ class AdminMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         """Обрабатывает событие и добавляет флаг администратора в data."""
-        data["admin"] = self._check_admin_access(event)
+        data["admin"] = await self._check_admin_access(event, data.get("session"))
         return await handler(event, data)
 
-    def _check_admin_access(self, event: TelegramObject) -> bool:
+    async def _check_admin_access(self, event: TelegramObject, session) -> bool:
         """Проверяет, имеет ли пользователь права администратора."""
         try:
+            user_id = None
             if isinstance(event, Message):
-                return event.from_user and event.from_user.id in self._admin_ids
+                user_id = event.from_user.id if event.from_user else None
             elif isinstance(event, CallbackQuery):
-                return event.from_user and event.from_user.id in self._admin_ids
+                user_id = event.from_user.id if event.from_user else None
+            else:
+                user_id = getattr(getattr(event, "from_user", None), "id", None)
 
-            user_id = getattr(getattr(event, "from_user", None), "id", None)
-            return user_id in self._admin_ids if user_id else False
+            if not user_id:
+                return False
+
+            if user_id in self._admin_ids:
+                return True
+
+            if session:
+                result = await session.execute(select(Admin).where(Admin.tg_id == user_id))
+                return result.scalar_one_or_none() is not None
+
+            return False
         except Exception:
             return False

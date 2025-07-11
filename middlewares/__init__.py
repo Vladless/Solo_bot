@@ -25,10 +25,10 @@ def register_middleware(
     """Регистрирует middleware в диспетчере."""
     if middlewares is None:
         available_middlewares = {
-            "admin": AdminMiddleware(),
             "session": (
                 SessionMiddleware(sessionmaker) if sessionmaker else SessionMiddleware()
             ),
+            "admin": AdminMiddleware(),
             "maintenance": MaintenanceModeMiddleware(),
             "logging": LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
