@@ -160,7 +160,9 @@ async def count_hot_leads(session: AsyncSession) -> int:
 
     stmt = (
         select(Payment.tg_id)
+        .where(Payment.amount > 0)
         .where(Payment.status == "success")
+        .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
         .where(not_(exists(subquery_active_keys.where(Key.tg_id == Payment.tg_id))))
         .distinct()
     )

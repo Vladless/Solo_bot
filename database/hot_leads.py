@@ -18,6 +18,8 @@ async def get_hot_leads(session: AsyncSession):
         select(Payment.tg_id)
         .distinct()
         .where(Payment.amount > 0)
+        .where(Payment.status == "success")
+        .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
         .where(~Payment.tg_id.in_(subquery))
     )
 

@@ -965,6 +965,33 @@ async def confirm_admin_key_reissue(
         servers = await get_servers(session)
         cluster_servers = servers.get(cluster_id, [])
 
+        tariffs = await get_tariffs_for_cluster(session, cluster_id)
+        if not tariffs:
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔗 Привязать тариф",
+                    callback_data=AdminPanelCallback(action="clusters").pack()
+                )
+            )
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔙 Назад",
+                    callback_data=AdminUserEditorCallback(
+                        action="users_key_edit", tg_id=tg_id, data=email
+                    ).pack()
+                )
+            )
+            await callback_query.message.edit_text(
+                f"🚫 <b>Невозможно пересоздать подписку</b>\n\n"
+                f"📊 <b>Информация о кластере:</b>\n<blockquote>"
+                f"🌐 <b>Кластер:</b> <code>{cluster_id}</code>\n"
+                f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
+                f"💡 <b>Привяжите тариф к кластеру</b>",
+                reply_markup=builder.as_markup()
+            )
+            return
+
         if USE_COUNTRY_SELECTION:
             unique_countries = {srv["server_name"] for srv in cluster_servers}
             await state.update_data(tg_id=tg_id, email=email, cluster_id=cluster_id)
@@ -1005,11 +1032,42 @@ async def confirm_admin_key_reissue(
 
 
 @router.callback_query(F.data.startswith("admin_reissue_country|"), IsAdminFilter())
-async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSession):
+async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSession, state: FSMContext):
     _, tg_id, email, country = callback_query.data.split("|")
     tg_id = int(tg_id)
 
     try:
+        data = await state.get_data()
+        cluster_id = data.get("cluster_id")
+        
+        if cluster_id:
+            tariffs = await get_tariffs_for_cluster(session, cluster_id)
+            if not tariffs:
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🔗 Привязать тариф",
+                        callback_data=AdminPanelCallback(action="clusters").pack()
+                    )
+                )
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🔙 Назад",
+                        callback_data=AdminUserEditorCallback(
+                            action="users_key_edit", tg_id=tg_id, data=email
+                        ).pack()
+                    )
+                )
+                await callback_query.message.edit_text(
+                    f"🚫 <b>Невозможно пересоздать подписку</b>\n\n"
+                    f"📊 <b>Информация о кластере:</b>\n<blockquote>"
+                    f"🌐 <b>Кластер:</b> <code>{cluster_id}</code>\n"
+                    f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
+                    f"💡 <b>Привяжите тариф к кластеру</b>",
+                    reply_markup=builder.as_markup()
+                )
+                return
+
         result = await session.execute(
             select(Key.remnawave_link, Key.tariff_id).where(Key.email == email)
         )

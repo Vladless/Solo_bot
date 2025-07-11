@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 import pytz
 from aiogram import F, Router
@@ -26,7 +27,9 @@ from database import (
     get_tariffs_for_cluster,
     get_trial,
 )
+from database.models import Admin
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
+from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
@@ -103,14 +106,39 @@ async def handle_key_creation(
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
     if not tariffs:
+        result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
+        is_admin = result.scalar_one_or_none() is not None
+        
+        if is_admin:
+            builder = InlineKeyboardBuilder()
+            builder.row(
+                InlineKeyboardButton(
+                    text="🔗 Привязать тариф",
+                    callback_data=AdminPanelCallback(action="clusters").pack()
+                )
+            )
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+            
+            text = (
+                f"🚫 <b>Невозможно создать подписку</b>\n\n"
+                f"📊 <b>Информация о кластере:</b>\n<blockquote>"
+                f"🌐 <b>Кластер:</b> <code>{cluster_name}</code>\n"
+                f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
+                f"💡 <b>Привяжите тариф к кластеру</b>"
+            )
+        else:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+            text = "❌ Нет доступных тарифов для выбора."
+        
         await edit_or_send_message(
             target_message=(
                 message_or_query.message
                 if isinstance(message_or_query, CallbackQuery)
                 else message_or_query
             ),
-            text="❌ Нет доступных тарифов для выбора.",
-            reply_markup=None,
+            text=text,
+            reply_markup=builder.as_markup(),
         )
         return
 
