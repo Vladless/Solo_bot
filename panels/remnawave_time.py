@@ -41,6 +41,69 @@ async def login_remnawave(api_url: str, username: str, password: str) -> str | N
             return None
 
 
+async def get_all_nodes_with_online(api_url: str, username: str, password: str, inbound_id: str) -> Dict[str, Any]:
+    token = await login_remnawave(api_url, username, password)
+    if not token:
+        logger.error("[Remnawave API] Не удалось получить токен авторизации")
+        return {"total_online": 0, "nodes": [], "error": "Не удалось авторизоваться"}
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            nodes_response = await session.get(f"{api_url}/nodes", headers=headers)
+            
+            if nodes_response.status != 200:
+                logger.error(f"[Remnawave API] Ошибка получения нод: {nodes_response.status}")
+                return {"total_online": 0, "nodes": [], "error": f"HTTP {nodes_response.status}"}
+            
+            nodes_result = await nodes_response.json()
+
+            all_nodes = []
+            if nodes_result.get("success") and "data" in nodes_result:
+                all_nodes = nodes_result["data"]
+            elif nodes_result.get("response"):
+                all_nodes = nodes_result["response"]
+            elif isinstance(nodes_result, list):
+                all_nodes = nodes_result
+            
+            if not all_nodes:
+                logger.warning("[Remnawave API] Список нод пуст")
+                return {"total_online": 0, "nodes": [], "error": "Список нод пуст"}
+
+            matching_nodes = []
+            total_online = 0
+            
+
+
+            for node in all_nodes:
+                excluded_inbounds = node.get("excludedInbounds", [])
+                if inbound_id not in excluded_inbounds:
+                    node_online = node.get("usersOnline", 0)
+                    node_name = node.get("name", "Unknown Node")
+                    node_id = node.get("id", "Unknown ID")
+                    
+                    matching_nodes.append({
+                        "name": node_name,
+                        "online_users": node_online,
+                        "country_code": node.get("countryCode", "Unknown")
+                    })
+                    
+                    total_online += node_online
+
+            logger.info(f"[Remnawave API] Найдено {len(matching_nodes)} нод для inbound {inbound_id}, общий онлайн: {total_online}")
+
+            return {
+                "total_online": total_online,
+                "nodes": matching_nodes,
+                "inbound_id": inbound_id
+            }
+            
+        except Exception as e:
+            logger.error(f"[Remnawave API] Ошибка при получении нод: {e}")
+            return {"total_online": 0, "nodes": [], "error": str(e)}
+
+
 async def get_all_users_time(api_url: str, username: str, password: str) -> List[Dict[str, Any]]:
     all_users = []
     page_size = 250
