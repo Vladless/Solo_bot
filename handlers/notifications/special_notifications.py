@@ -1,15 +1,16 @@
-from datetime import datetime, timedelta
-
 import pytz
 from aiogram import Bot, Router, types
+from aiogram.types import InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timedelta
 
 from config import (
     NOTIFY_EXTRA_DAYS,
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     SUPPORT_CHAT_URL,
+    CONNECT_PHONE_BUTTON,
     TRIAL_CONFIG,
 )
 from database import (
@@ -18,17 +19,18 @@ from database import (
     mark_trial_extended,
     update_key_notified,
 )
-from handlers.buttons import MAIN_MENU
+from database.models import Key
+from handlers.buttons import MAIN_MENU, CONNECT_DEVICE, CONNECT_PHONE, PC_BUTTON, TV_BUTTON
 from handlers.keys.key_utils import get_user_traffic
+from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
     TRIAL_INACTIVE_BONUS_MSG,
     TRIAL_INACTIVE_FIRST_MSG,
     ZERO_TRAFFIC_MSG,
 )
-from handlers.utils import format_days
+from handlers.utils import format_days, is_full_remnawave_cluster
 from logger import logger
 
-from .notify_utils import send_messages_with_limit
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -161,13 +163,54 @@ async def notify_users_no_traffic(
                 f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление."
             )
             builder = InlineKeyboardBuilder()
+
+            server_id = key.server_id
+            try:
+                is_full_remnawave = await is_full_remnawave_cluster(server_id, session)
+                final_link = key.key or key.remnawave_link
+                
+                if is_full_remnawave and final_link:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
+                        )
+                    )
+                else:
+                    if CONNECT_PHONE_BUTTON:
+                        builder.row(
+                            InlineKeyboardButton(
+                                text=CONNECT_PHONE, callback_data=f"connect_phone|{email}"
+                            )
+                        )
+                        builder.row(
+                            InlineKeyboardButton(
+                                text=PC_BUTTON, callback_data=f"connect_pc|{email}"
+                            ),
+                            InlineKeyboardButton(
+                                text=TV_BUTTON, callback_data=f"connect_tv|{email}"
+                            ),
+                        )
+                    else:
+                        builder.row(
+                            InlineKeyboardButton(
+                                text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"
+                            )
+                        )
+            except Exception as e:
+                logger.error(f"Ошибка при определении типа панели для {email}: {e}")
+                builder.row(
+                    InlineKeyboardButton(
+                        text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"
+                    )
+                )
+            
             builder.row(
-                types.InlineKeyboardButton(
+                InlineKeyboardButton(
                     text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL
                 )
             )
             builder.row(
-                types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+                InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
             )
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)

@@ -85,10 +85,11 @@ async def key_country_mode(
         target_message = message_or_query
         safe_to_edit = True
 
-    least_loaded_cluster = await get_least_loaded_cluster(session)
-    if not least_loaded_cluster:
-        logger.error("❌ Не удалось определить наименее загруженный кластер")
-        text = "❌ Нет доступных кластеров для создания ключа."
+    try:
+        least_loaded_cluster = await get_least_loaded_cluster(session)
+    except ValueError as e:
+        logger.error(f"Нет доступных кластеров: {e}")
+        text = str(e)
         if safe_to_edit:
             await edit_or_send_message(
                 target_message=target_message, text=text, reply_markup=None

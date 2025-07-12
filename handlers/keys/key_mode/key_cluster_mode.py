@@ -92,7 +92,22 @@ async def key_cluster_mode(
                 if tariff.get("traffic_limit") is not None:
                     traffic_limit_gb = int(tariff["traffic_limit"])
 
-        least_loaded_cluster = await get_least_loaded_cluster(session)
+        try:
+            least_loaded_cluster = await get_least_loaded_cluster(session)
+        except ValueError as e:
+            logger.error(f"Нет доступных кластеров: {e}")
+            error_message = str(e)
+            
+            if safe_to_edit:
+                await edit_or_send_message(
+                    target_message=target_message,
+                    text=error_message,
+                    reply_markup=None,
+                )
+            else:
+                await bot.send_message(chat_id=tg_id, text=error_message)
+            return
+
         await create_key_on_cluster(
             cluster_id=least_loaded_cluster,
             tg_id=tg_id,

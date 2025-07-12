@@ -56,22 +56,33 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
 
     available_clusters = {}
     for cluster_name, cluster_servers in servers.items():
-        for server in cluster_servers:
-            if server.get("enabled", True) and await check_server_key_limit(
-                server, session
-            ):
-                available_clusters[cluster_name] = cluster_loads[cluster_name]
-                break
+        enabled_servers = [
+            server for server in cluster_servers 
+            if server.get("enabled", True)
+        ]
+        
+        if not enabled_servers:
+            continue
+
+        available_servers = []
+        for server in enabled_servers:
+            if await check_server_key_limit(server, session):
+                available_servers.append(server)
+
+        if available_servers:
+            available_clusters[cluster_name] = cluster_loads[cluster_name]
+        else:
+            continue
 
     if not available_clusters:
         logger.warning("❌ Нет доступных кластеров с лимитом ключей!")
-        return "cluster1"
+        raise ValueError("⚠️ Сервисы временно недоступны. Попробуйте позже.")
 
     least_loaded_cluster = min(
         available_clusters, key=lambda k: (available_clusters[k], k)
     )
     logger.info(
-        f"✅ Выбран наименее загруженный кластер с лимитом: {least_loaded_cluster}"
+        f"✅ Выбран наименее загруженный кластер: {least_loaded_cluster} (загрузка: {available_clusters[least_loaded_cluster]})"
     )
     return least_loaded_cluster
 

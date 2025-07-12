@@ -36,7 +36,7 @@ async def create_key_on_cluster(
     is_trial: bool = False,
 ):
     try:
-        servers = await get_servers(session, include_enabled=True)
+        servers = await get_servers(session)
         cluster = servers.get(cluster_id)
         server_id_to_store = cluster_id
 
@@ -768,9 +768,14 @@ async def update_subscription(
     await session.execute(delete(Key).where(Key.tg_id == tg_id, Key.email == email))
     await session.commit()
 
-    new_cluster_id = (
-        country_override or cluster_override or await get_least_loaded_cluster(session)
-    )
+    if country_override or cluster_override:
+        new_cluster_id = country_override or cluster_override
+    else:
+        try:
+            new_cluster_id = await get_least_loaded_cluster(session)
+        except ValueError:
+            logger.warning("[Update] Нет доступных кластеров, оставляем на старом")
+            new_cluster_id = old_cluster_id
 
     new_client_id, remnawave_key = await update_key_on_cluster(
         tg_id=tg_id,
@@ -834,7 +839,8 @@ async def get_user_traffic(
 
     result = await session.execute(
         select(Server).where(
-            Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)
+            (Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)),
+            Server.enabled == True
         )
     )
     server_rows = result.scalars().all()

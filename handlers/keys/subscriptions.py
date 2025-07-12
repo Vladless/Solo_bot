@@ -77,7 +77,7 @@ async def get_subscription_urls(
     urls = []
     if USE_COUNTRY_SELECTION:
         result = await session.execute(
-            select(Server.subscription_url).where(Server.server_name == server_id)
+            select(Server.subscription_url).where(Server.server_name == server_id, Server.enabled == True)
         )
         server_data = result.scalar()
         if server_data:

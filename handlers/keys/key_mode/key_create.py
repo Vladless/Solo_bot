@@ -102,7 +102,23 @@ async def handle_key_creation(
             await create_key(tg_id, expiry_time, state, session, message_or_query)
             return
 
-    cluster_name = await get_least_loaded_cluster(session)
+    try:
+        cluster_name = await get_least_loaded_cluster(session)
+    except ValueError as e:
+        logger.error(f"Нет доступных кластеров: {e}")
+        await edit_or_send_message(
+            target_message=(
+                message_or_query.message
+                if isinstance(message_or_query, CallbackQuery)
+                else message_or_query
+            ),
+            text=str(e),
+            reply_markup=InlineKeyboardBuilder().row(
+                InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
+            ).as_markup(),
+        )
+        return
+
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
     if not tariffs:
