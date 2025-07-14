@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot import bot
 from config import ADMIN_ID
 from database import get_servers
-from database.models import Key, Server
+from database.models import Key, Server, Notification
 from logger import logger
 
 
@@ -88,8 +88,6 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
 
 
 async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bool:
-    from database.models import Key, Notification
-
     server_name = server_info.get("server_name")
     cluster_name = server_info.get("cluster_name")
     max_keys = server_info.get("max_keys")

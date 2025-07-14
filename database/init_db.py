@@ -1,5 +1,5 @@
 from database.db import engine, async_session_maker
-from database.models import Base, Admin
+from database.models import Base, Admin, User
 from sqlalchemy import select
 from config import ADMIN_ID
 from datetime import datetime
@@ -9,6 +9,17 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
     async with async_session_maker() as session:
+        result = await session.execute(select(User).where(User.tg_id == 0))
+        if not result.scalar_one_or_none():
+            session.add(User(
+                tg_id=0,
+                username="system",
+                first_name="System",
+                is_bot=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            ))
+        
         for tg_id in ADMIN_ID:
             result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
             if not result.scalar_one_or_none():
