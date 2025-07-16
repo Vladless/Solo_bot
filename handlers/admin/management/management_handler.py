@@ -98,8 +98,14 @@ async def process_new_domain(
     try:
         stmt = (
             update(Key)
-            .where(~Key.key.startswith(new_domain_url))
-            .values(key=func.regexp_replace(Key.key, r"^https://[^/]+", new_domain_url))
+            .values(
+                key=func.regexp_replace(Key.key, r"^https://[^/]+", new_domain_url),
+                remnawave_link=func.regexp_replace(Key.remnawave_link, r"^https://[^/]+", new_domain_url),
+            )
+            .where(
+                (Key.key.startswith("https://") & ~Key.key.startswith(new_domain_url)) |
+                (Key.remnawave_link.startswith("https://") & ~Key.remnawave_link.startswith(new_domain_url))
+            )
         )
         await session.execute(stmt)
         await session.commit()
@@ -113,8 +119,8 @@ async def process_new_domain(
         return
 
     try:
-        sample = await session.execute(select(Key.key).limit(1))
-        example = sample.scalar()
+        sample = await session.execute(select(Key.key, Key.remnawave_link).limit(1))
+        example = sample.fetchone()
         logger.info(f"[DomainChange] Пример обновленной записи: {example}")
     except Exception as e:
         logger.error(f"[DomainChange] Ошибка при выборке обновленной записи: {e}")
