@@ -70,7 +70,6 @@ async def handle_pay(
         payment_handlers.append(process_callback_pay_robokassa)
     if FREEKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_freekassa)
-    # WATA
     if WATA_RU_ENABLE or WATA_SBP_ENABLE or WATA_INT_ENABLE:
         payment_handlers.append(process_callback_pay_wata)
 

@@ -39,7 +39,7 @@ class ReplenishBalanceWataState(StatesGroup):
     choosing_cassa = State()
     choosing_amount = State()
     waiting_for_payment_confirmation = State()
-    entering_custom_amount = State()  # новое состояние для ввода суммы
+    entering_custom_amount = State()  
 
 WATA_CASSA_CONFIG = [
     {"enable": WATA_RU_ENABLE, "token": WATA_RU_TOKEN, "name": "ru", "button": WATA_RU, "desc": WATA_RU_DESCRIPTION},
@@ -81,7 +81,6 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
                         callback_data=f'wata_amount|{cassa_name}|{PAYMENT_OPTIONS[i]["callback_data"]}',
                     )
                 )
-        # Кнопка для ввода произвольной суммы
         builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"wata_custom_amount|{cassa_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
         await callback_query.message.delete()
@@ -92,7 +91,6 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
         await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id, wata_cassa=cassa_name)
         await state.set_state(ReplenishBalanceWataState.choosing_amount)
         return
-    # Если cassa_name не передан — обычное меню выбора кассы
     builder = InlineKeyboardBuilder()
     for cassa in WATA_CASSA_CONFIG:
         if cassa["enable"]:
@@ -148,7 +146,6 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
     await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
     await state.set_state(ReplenishBalanceWataState.choosing_amount)
 
-# Обработчик нажатия на "Ввести сумму"
 @router.callback_query(F.data.startswith("wata_custom_amount|"))
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext):
     cassa_name = callback_query.data.split("|")[1]
@@ -163,7 +160,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     )
     await state.set_state(ReplenishBalanceWataState.entering_custom_amount)
 
-# Обработчик ввода суммы пользователем
+
 @router.message(ReplenishBalanceWataState.entering_custom_amount)
 async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -270,8 +267,7 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
         "successUrl": f"{REDIRECT_LINK}",
         "failUrl": f"{FAIL_REDIRECT_LINK}",
     }
-    #if cassa["name"] == "sbp":
-    #    data["paymentMethod"] = "SBP"
+
     if cassa["name"] == "int":
         import json
         async def get_usd_rate():
@@ -302,7 +298,7 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
                     logger.error(f"Ответ WATA без url: {resp_json}")
                     return "https://wata.pro/"
             else:
-                # Ошибка: логируем тело ответа
+
                 try:
                     error_json = await resp.json()
                     logger.error(f"Ошибка WATA API: статус={resp.status}, ответ={error_json}")

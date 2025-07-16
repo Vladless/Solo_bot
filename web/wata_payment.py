@@ -46,11 +46,9 @@ async def wata_payment_webhook(request: web.Request):
         if not await verify_signature(raw_json, signature, public_key_pem):
             logger.error("Подпись WATA не прошла проверку!")
             return web.Response(status=400)
-        # Логируем всю транзакцию для аудита
+
         logger.info(f"WATA webhook: {json.dumps(data, ensure_ascii=False)}")
-        # Логируем ключевые поля
         logger.info(f"transactionId={data.get('transactionId')}, status={data.get('transactionStatus')}, orderId={data.get('orderId')}, amount={data.get('amount')}, currency={data.get('currency')}, errorCode={data.get('errorCode')}, errorDescription={data.get('errorDescription')}")
-        # Проверяем статус оплаты
         if data.get("transactionStatus") == "Paid":
             tg_id = data.get("orderId")
             amount = data.get("amount")
