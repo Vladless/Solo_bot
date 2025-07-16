@@ -46,20 +46,26 @@ async def wata_payment_webhook(request: web.Request):
         if not await verify_signature(raw_json, signature, public_key_pem):
             logger.error("Подпись WATA не прошла проверку!")
             return web.Response(status=400)
+        # Логируем всю транзакцию для аудита
+        logger.info(f"WATA webhook: {json.dumps(data, ensure_ascii=False)}")
+        # Логируем ключевые поля
+        logger.info(f"transactionId={data.get('transactionId')}, status={data.get('transactionStatus')}, orderId={data.get('orderId')}, amount={data.get('amount')}, currency={data.get('currency')}, errorCode={data.get('errorCode')}, errorDescription={data.get('errorDescription')}")
         # Проверяем статус оплаты
-        if data.get("transactionStatus") != "Paid":
-            logger.warning(f"WATA: транзакция не оплачена: {data}")
-            return web.Response(status=200)
-        tg_id = data.get("orderId")
-        amount = data.get("amount")
-        if not tg_id or not amount:
-            logger.error(f"WATA: отсутствует orderId или amount: {data}")
-            return web.Response(status=400)
-        async with async_session_maker() as session:
-            await update_balance(session, int(tg_id), float(amount))
-            await send_payment_success_notification(tg_id, float(amount), session)
-            await add_payment(session, int(tg_id), float(amount), "wata")
-        logger.info(f"✅ WATA: баланс пополнен для пользователя {tg_id} на {amount}")
+        if data.get("transactionStatus") == "Paid":
+            tg_id = data.get("orderId")
+            amount = data.get("amount")
+            if not tg_id or not amount:
+                logger.error(f"WATA: отсутствует orderId или amount: {data}")
+                return web.Response(status=400)
+            async with async_session_maker() as session:
+                await update_balance(session, int(tg_id), float(amount))
+                await send_payment_success_notification(tg_id, float(amount), session)
+                await add_payment(session, int(tg_id), float(amount), "wata")
+            logger.info(f"✅ WATA: баланс пополнен для пользователя {tg_id} на {amount}")
+        elif data.get("transactionStatus") == "Declined":
+            logger.warning(f"WATA: транзакция отклонена: {data}")
+        else:
+            logger.warning(f"WATA: неизвестный статус транзакции: {data.get('transactionStatus')}")
         return web.Response(status=200)
     except Exception as e:
         logger.error(f"Ошибка в webhook WATA: {e}")

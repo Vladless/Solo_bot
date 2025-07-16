@@ -39,6 +39,7 @@ class ReplenishBalanceWataState(StatesGroup):
     choosing_cassa = State()
     choosing_amount = State()
     waiting_for_payment_confirmation = State()
+    entering_custom_amount = State()  # новое состояние для ввода суммы
 
 WATA_CASSA_CONFIG = [
     {"enable": WATA_RU_ENABLE, "token": WATA_RU_TOKEN, "name": "ru", "button": WATA_RU, "desc": WATA_RU_DESCRIPTION},
@@ -51,7 +52,6 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
     tg_id = callback_query.message.chat.id
     logger.info(f"User {tg_id} initiated WATA payment.")
     if cassa_name:
-        # Сразу открываем выбор суммы для нужной кассы
         cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name and c["enable"]), None)
         if not cassa:
             await edit_or_send_message(
@@ -81,13 +81,15 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
                         callback_data=f'wata_amount|{cassa_name}|{PAYMENT_OPTIONS[i]["callback_data"]}',
                     )
                 )
+        # Кнопка для ввода произвольной суммы
+        builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"wata_custom_amount|{cassa_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
         await callback_query.message.delete()
         new_message = await callback_query.message.answer(
             text=cassa["desc"],
             reply_markup=builder.as_markup(),
         )
-        await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
+        await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id, wata_cassa=cassa_name)
         await state.set_state(ReplenishBalanceWataState.choosing_amount)
         return
     # Если cassa_name не передан — обычное меню выбора кассы
@@ -146,9 +148,77 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
     await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
     await state.set_state(ReplenishBalanceWataState.choosing_amount)
 
+# Обработчик нажатия на "Ввести сумму"
+@router.callback_query(F.data.startswith("wata_custom_amount|"))
+async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext):
+    cassa_name = callback_query.data.split("|")[1]
+    await state.update_data(wata_cassa=cassa_name)
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"pay_wata_{cassa_name}"))
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=ENTER_SUM,
+        reply_markup=builder.as_markup(),
+        force_text=True,
+    )
+    await state.set_state(ReplenishBalanceWataState.entering_custom_amount)
+
+# Обработчик ввода суммы пользователем
+@router.message(ReplenishBalanceWataState.entering_custom_amount)
+async def handle_custom_amount_input(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    cassa_name = data.get("wata_cassa")
+    cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name), None)
+    if not cassa or not cassa["enable"]:
+        await edit_or_send_message(
+            target_message=message,
+            text="Ошибка: выбранная касса недоступна.",
+            reply_markup=types.InlineKeyboardMarkup(),
+            force_text=True,
+        )
+        return
+    try:
+        amount = int(message.text.strip())
+        if amount <= 0:
+            raise ValueError
+        # Проверка для SBP: минимум 50 рублей
+        if cassa_name == "sbp" and amount < 50:
+            await edit_or_send_message(
+                target_message=message,
+                text="Минимальная сумма для оплаты через СБП — 50 рублей.",
+                reply_markup=types.InlineKeyboardMarkup(),
+                force_text=True,
+            )
+            return
+    except Exception:
+        await edit_or_send_message(
+            target_message=message,
+            text="Некорректная сумма. Введите целое число больше 0.",
+            reply_markup=types.InlineKeyboardMarkup(),
+            force_text=True,
+        )
+        return
+    await state.update_data(amount=amount)
+    payment_url = await generate_wata_payment_link(amount, message.chat.id, cassa)
+    confirm_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
+            [InlineKeyboardButton(text=BACK, callback_data="pay_wata")],
+        ]
+    )
+    await edit_or_send_message(
+        target_message=message,
+        text=WATA_PAYMENT_MESSAGE.format(amount=amount),
+        reply_markup=confirm_keyboard,
+        force_text=True,
+    )
+    await state.set_state(ReplenishBalanceWataState.waiting_for_payment_confirmation)
+
 @router.callback_query(F.data.startswith("wata_amount|"))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    _, cassa_name, amount_str = callback_query.data.split("|")
+    parts = callback_query.data.split("|")
+    cassa_name = parts[1]
+    amount_str = parts[-1]  # всегда последняя часть — сумма
     cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name), None)
     if not cassa or not cassa["enable"]:
         await edit_or_send_message(
@@ -187,7 +257,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceWataState.waiting_for_payment_confirmation)
 
 async def generate_wata_payment_link(amount, tg_id, cassa):
-    url = "https://api.wata.pro/api/h2h/payment-link"
+    url = "https://api.wata.pro/api/h2h/links"
     headers = {
         "Authorization": f"Bearer {cassa['token']}",
         "Content-Type": "application/json",
@@ -201,34 +271,42 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
         "failUrl": f"{FAIL_REDIRECT_LINK}",
     }
     #if cassa["name"] == "sbp":
-        #data["paymentMethod"] = "SBP"
+    #    data["paymentMethod"] = "SBP"
     if cassa["name"] == "int":
-        # Здесь конвертируем сумму из рублей в USD по курсу гугла + 5 рублей к курсу
         import json
-
         async def get_usd_rate():
-            # Получаем курс доллара с помощью публичного API (например, exchangerate.host)
             url = "https://api.exchangerate.host/latest?base=RUB&symbols=USD"
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=10) as resp:
                     data = await resp.json()
                     return data["rates"]["USD"]
-
         usd_rate = await get_usd_rate()
-        # Прибавляем 5 рублей к курсу (то есть к 1 USD в рублях)
-        # 1 USD = 1 / usd_rate RUB, значит RUB за 1 USD = 1 / usd_rate
         rub_per_usd = 1 / usd_rate
         rub_per_usd_plus_5 = rub_per_usd + 5
-        # Новый курс USD = 1 / (RUB за 1 USD + 5)
         new_usd_rate = 1 / rub_per_usd_plus_5
         amount_usd = round(float(amount) * new_usd_rate, 2)
         data["amount"] = amount_usd
-        data["currency"] = "USD"  # или другую валюту, если нужно
+        data["currency"] = "USD"
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data, timeout=60) as resp:
-            resp_json = await resp.json()
-            if resp.status == 200 and "paymentLink" in resp_json:
-                return resp_json["paymentLink"]
+            if resp.status == 200:
+                try:
+                    resp_json = await resp.json()
+                except Exception:
+                    text = await resp.text()
+                    logger.error(f"Ошибка при разборе JSON ответа WATA: статус={resp.status}, ответ={text}")
+                    return "https://wata.pro/"
+                if "url" in resp_json:
+                    return resp_json["url"]
+                else:
+                    logger.error(f"Ответ WATA без url: {resp_json}")
+                    return "https://wata.pro/"
             else:
-                logger.error(f"Ошибка при создании ссылки WATA: {resp_json}")
-                return "https://wata.pro/"  # fallback
+                # Ошибка: логируем тело ответа
+                try:
+                    error_json = await resp.json()
+                    logger.error(f"Ошибка WATA API: статус={resp.status}, ответ={error_json}")
+                except Exception:
+                    text = await resp.text()
+                    logger.error(f"Ошибка WATA API: статус={resp.status}, не-JSON ответ: {text}")
+                return "https://wata.pro/"

@@ -18,6 +18,7 @@ from .robokassa_pay import router as robokassa_router
 from .stars_pay import router as stars_router
 from .yookassa_pay import router as yookassa_router
 from .yoomoney_pay import router as yoomoney_router
+from .wata import router as wata_router
 
 router = Router(name="payments_main_router")
 
@@ -34,4 +35,5 @@ if CRYPTO_BOT_ENABLE:
 if STARS_ENABLE:
     router.include_router(stars_router)
 
+router.include_router(wata_router)
 router.include_router(gift_router)
