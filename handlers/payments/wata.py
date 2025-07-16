@@ -12,7 +12,7 @@ from config import (
     WATA_RU_ENABLE, WATA_RU_TOKEN,
     WATA_SBP_ENABLE, WATA_SBP_TOKEN,
     WATA_INT_ENABLE, WATA_INT_TOKEN,
-    SUCCESS_REDIRECT_LINK,
+    REDIRECT_LINK,
     FAIL_REDIRECT_LINK,
 )
 from database import (
@@ -197,7 +197,7 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
         "currency": "RUB",
         "orderId": str(tg_id),
         "orderDescription": WATA_PAYMENT_TITLE,
-        "successUrl": f"{SUCCESS_REDIRECT_LINK}",
+        "successUrl": f"{REDIRECT_LINK}",
         "failUrl": f"{FAIL_REDIRECT_LINK}",
     }
     #if cassa["name"] == "sbp":
