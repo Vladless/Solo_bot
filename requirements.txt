@@ -53,3 +53,5 @@ psutil
 uvicorn
 fastapi
 python-dateutil
+aiohttp>=3.8.0
+cryptography>=41.0.0
