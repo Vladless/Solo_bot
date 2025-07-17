@@ -37,18 +37,16 @@ from handlers.buttons import (
     MAIN_MENU,
     PC_BUTTON,
     QR,
-    RENEW,
-    RENEW_FULL,
     TV_BUTTON,
     UNFREEZE,
+    RENEW_SUB
 )
-from handlers.texts import FROZEN_SUBSCRIPTION_MSG, NO_SUBSCRIPTIONS_MSG, key_message
+from handlers.texts import FROZEN_SUBSCRIPTION_MSG, NO_SUBSCRIPTIONS_MSG, key_message, KEYS_HEADER, KEYS_FOOTER, RENAME_KEY_PROMPT, DAYS_LEFT_MESSAGE, SELECT_SUBS
 from handlers.utils import (
     edit_or_send_message,
     format_days,
     format_hours,
     format_minutes,
-    format_months,
     get_russian_month,
     is_full_remnawave_cluster,
 )
@@ -97,7 +95,7 @@ def build_keys_response(records):
     moscow_tz = pytz.timezone("Europe/Moscow")
 
     if records:
-        response_message = "<b>🔑 Список ваших подписок:</b>\n\n<blockquote>"
+        response_message = KEYS_HEADER
         for record in records:
             alias = record.alias
             email = record.email
@@ -124,9 +122,7 @@ def build_keys_response(records):
 
             response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
 
-        response_message += (
-            "</blockquote>\n\n<i>Нажмите на ✏️, чтобы переименовать подписку.</i>"
-        )
+        response_message += KEYS_FOOTER
     else:
         response_message = NO_SUBSCRIPTIONS_MSG
 
@@ -149,7 +145,7 @@ async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
 
     await edit_or_send_message(
         target_message=callback.message,
-        text="✏️ Введите новое имя подписки (до 10 символов):",
+        text=RENAME_KEY_PROMPT,
         reply_markup=builder.as_markup(),
     )
 
@@ -250,7 +246,7 @@ async def render_key_info(
     time_left = expiry_date - datetime.utcnow()
 
     if time_left.total_seconds() <= 0:
-        days_left_message = "<b>🕒 Статус подписки:</b>\n🔴 Истекла"
+        days_left_message = DAYS_LEFT_MESSAGE
     else:
         total_seconds = int(time_left.total_seconds())
         days = total_seconds // 86400
@@ -313,7 +309,7 @@ async def render_key_info(
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
         builder.row(
             InlineKeyboardButton(
-                text="🔄 Обновить подписку",
+                text=RENEW_SUB,
                 callback_data=f"update_subscription|{key_name}",
             )
         )
@@ -487,7 +483,7 @@ async def process_renew_menu(callback_query_or_message: CallbackQuery | Message,
                 server_info = f" ({server_id})" if server_id in all_server_names else ""
                 btn_text = f"🔑 {key_display} (⏳{days_text}) {server_info}"
                 builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"renew_key|{email}"))
-        text = "Выберите подписку для продления или купите новую"
+        text = SELECT_SUBS
         builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         image_path = os.path.join("img", "pic_view.jpg")

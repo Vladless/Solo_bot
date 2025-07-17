@@ -32,6 +32,8 @@ from handlers.texts import (
     COUPON_ALREADY_USED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
+    COUPONS_DAYS_MESSAGE,
+    COUPON_DAYS_ACTIVATED_MSG
 )
 from handlers.utils import edit_or_send_message, format_days
 from logger import logger
@@ -154,9 +156,7 @@ async def activate_coupon(
 
             builder = InlineKeyboardBuilder()
             moscow_tz = pytz.timezone("Europe/Moscow")
-            response_message = (
-                "<b>🔑 Выберите подписку для продления:</b>\n\n<blockquote>"
-            )
+            response_message = COUPONS_DAYS_MESSAGE
 
             for key in active_keys:
                 key_display = html.escape((key.alias or key.email).strip())
@@ -256,7 +256,11 @@ async def handle_key_extension(
             new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")
         ).strftime("%d.%m.%y, %H:%M")
         await callback_query.message.answer(
-            f"✅ Купон активирован, подписка <b>{alias}</b> продлена на {format_days(coupon.days)}⏳ до {expiry_date}📆."
+            COUPON_DAYS_ACTIVATED_MSG.format(
+                alias=alias,
+                days=format_days(coupon.days),
+                expiry=expiry_date
+            )
         )
         await process_callback_view_profile(
             callback_query.message, state, admin, session

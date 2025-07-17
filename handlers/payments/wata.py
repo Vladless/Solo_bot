@@ -5,8 +5,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
-from sqlalchemy import select, and_
 
 from config import (
     WATA_RU_ENABLE, WATA_RU_TOKEN,
@@ -15,16 +13,7 @@ from config import (
     REDIRECT_LINK,
     FAIL_REDIRECT_LINK,
 )
-from database import (
-    add_payment,
-    add_user,
-    async_session_maker,
-    check_user_exists,
-    get_key_count,
-    get_temporary_data,
-    update_balance,
-    Payment
-)
+
 from handlers.buttons import BACK, PAY_2, WATA_RU, WATA_SBP, WATA_INT
 from handlers.texts import (
     WATA_RU_DESCRIPTION, WATA_SBP_DESCRIPTION, WATA_INT_DESCRIPTION,
@@ -33,7 +22,9 @@ from handlers.texts import (
 from handlers.utils import edit_or_send_message
 from logger import logger
 
+
 router = Router()
+
 
 class ReplenishBalanceWataState(StatesGroup):
     choosing_cassa = State()
@@ -41,11 +32,13 @@ class ReplenishBalanceWataState(StatesGroup):
     waiting_for_payment_confirmation = State()
     entering_custom_amount = State()  
 
+
 WATA_CASSA_CONFIG = [
     {"enable": WATA_RU_ENABLE, "token": WATA_RU_TOKEN, "name": "ru", "button": WATA_RU, "desc": WATA_RU_DESCRIPTION},
     {"enable": WATA_SBP_ENABLE, "token": WATA_SBP_TOKEN, "name": "sbp", "button": WATA_SBP, "desc": WATA_SBP_DESCRIPTION},
     {"enable": WATA_INT_ENABLE, "token": WATA_INT_TOKEN, "name": "int", "button": WATA_INT, "desc": WATA_INT_DESCRIPTION},
 ]
+
 
 @router.callback_query(F.data == "pay_wata")
 async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession, cassa_name: str = None):
@@ -104,6 +97,7 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
     await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
     await state.set_state(ReplenishBalanceWataState.choosing_cassa)
 
+
 @router.callback_query(F.data.startswith("wata_cassa|"))
 async def process_cassa_selection(callback_query: types.CallbackQuery, state: FSMContext):
     cassa_name = callback_query.data.split("|")[1]
@@ -146,6 +140,7 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
     await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
     await state.set_state(ReplenishBalanceWataState.choosing_amount)
 
+
 @router.callback_query(F.data.startswith("wata_custom_amount|"))
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext):
     cassa_name = callback_query.data.split("|")[1]
@@ -178,7 +173,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         amount = int(message.text.strip())
         if amount <= 0:
             raise ValueError
-        # Проверка для SBP: минимум 50 рублей
         if cassa_name == "sbp" and amount < 50:
             await edit_or_send_message(
                 target_message=message,
@@ -211,11 +205,12 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     )
     await state.set_state(ReplenishBalanceWataState.waiting_for_payment_confirmation)
 
+
 @router.callback_query(F.data.startswith("wata_amount|"))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     parts = callback_query.data.split("|")
     cassa_name = parts[1]
-    amount_str = parts[-1]  # всегда последняя часть — сумма
+    amount_str = parts[-1]
     cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name), None)
     if not cassa or not cassa["enable"]:
         await edit_or_send_message(
@@ -252,6 +247,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         force_text=True,
     )
     await state.set_state(ReplenishBalanceWataState.waiting_for_payment_confirmation)
+
 
 async def generate_wata_payment_link(amount, tg_id, cassa):
     url = "https://api.wata.pro/api/h2h/links"

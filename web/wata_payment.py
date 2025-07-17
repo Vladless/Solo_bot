@@ -2,22 +2,23 @@ import base64
 import aiohttp
 from aiohttp import web
 import json
-import logging
 from database import async_session_maker, update_balance, add_payment
 from handlers.payments.utils import send_payment_success_notification
-from config import WATA_RU_TOKEN, WATA_SBP_TOKEN, WATA_INT_TOKEN
 from logger import logger
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 
+
 PUBLIC_KEY_URL = "https://api.wata.pro/api/h2h/public-key"
+
 
 async def get_wata_public_key():
     async with aiohttp.ClientSession() as session:
         async with session.get(PUBLIC_KEY_URL) as resp:
             data = await resp.json()
             return data["value"].encode()
+
 
 async def verify_signature(raw_json: bytes, signature: str, public_key_pem: bytes) -> bool:
     try:
@@ -33,6 +34,7 @@ async def verify_signature(raw_json: bytes, signature: str, public_key_pem: byte
     except Exception as e:
         logger.error(f"Ошибка проверки подписи WATA: {e}")
         return False
+
 
 async def wata_payment_webhook(request: web.Request):
     try:

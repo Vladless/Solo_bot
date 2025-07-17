@@ -63,7 +63,7 @@ def generate_payment_link(amount, inv_id, description, tg_id):
     payment_link = robokassa._payment.link.generate_by_script(
         out_sum=amount,
         inv_id=inv_id,
-        description="пополнение баланса",
+        description=f"Пополнение баланса (tg_id: {tg_id})",
         id=f"{tg_id}",
     )
     logger.info(f"Generated payment link: {payment_link}")

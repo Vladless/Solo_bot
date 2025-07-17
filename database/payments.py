@@ -3,21 +3,26 @@ from datetime import datetime
 from sqlalchemy import insert, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from pytz import timezone
 
 from database.models import Payment
 from logger import logger
+
+
+MOSCOW_TZ = timezone("Europe/Moscow")
 
 
 async def add_payment(
     session: AsyncSession, tg_id: int, amount: float, payment_system: str
 ):
     try:
+        now_moscow = datetime.now(MOSCOW_TZ).replace(tzinfo=None)
         stmt = insert(Payment).values(
             tg_id=tg_id,
             amount=amount,
             payment_system=payment_system,
             status="success",
-            created_at=datetime.utcnow(),
+            created_at=now_moscow,
         )
         await session.execute(stmt)
         await session.commit()

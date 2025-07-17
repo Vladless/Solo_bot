@@ -21,6 +21,7 @@ from config import (
 from database import get_key_details, get_servers
 from database.models import Server
 from handlers.utils import convert_to_bytes
+from handlers.texts import SUBSCRIPTION_INFO_TEXT, HAPP_ANNOUNCE, V2RAYTUN_ANNOUNCE, HIDDIFY_PROFILE_TITLE
 from logger import logger
 
 
@@ -195,7 +196,7 @@ def prepare_headers(
 ) -> dict[str, str]:
     if "Happ" in user_agent:
         encoded_project_name = f"{project_name}"
-        announce_str = f"↖️Бот | {subscription_info} | Поддержка↗️"
+        announce_str = HAPP_ANNOUNCE.format(subscription_info=subscription_info)
         return {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
@@ -211,7 +212,7 @@ def prepare_headers(
     elif "Hiddify" in user_agent:
         parts = subscription_info.split(" - ")[0].split(": ")
         key_info = parts[1] if len(parts) > 1 else parts[0]
-        encoded_project_name = f"{project_name}\n📄 Подписка: {key_info}"
+        encoded_project_name = HIDDIFY_PROFILE_TITLE.format(project_name=project_name, key_info=key_info)
         return {
             "profile-update-interval": "3",
             "profile-title": "base64:"
@@ -220,7 +221,7 @@ def prepare_headers(
         }
     elif "v2raytun" in user_agent:
         encoded_project_name = f"{project_name}\n{subscription_info}"
-        announce_str = "🔑 Выберите сервер ⬇️ | 💬 Поддержка ➡️"
+        announce_str = V2RAYTUN_ANNOUNCE
         return {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
@@ -291,7 +292,7 @@ async def handle_subscription(request: web.Request) -> web.Response:
             base64_encoded = base64.b64encode(
                 "\n".join(cleaned_subscriptions).encode("utf-8")
             ).decode("utf-8")
-            subscription_info = f"📄 Подписка: {email} — {time_left}"
+            subscription_info = SUBSCRIPTION_INFO_TEXT.format(email=email, time_left=time_left)
 
             user_agent = request.headers.get("User-Agent", "")
             subscription_userinfo = calculate_traffic(

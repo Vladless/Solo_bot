@@ -12,7 +12,6 @@ import os, subprocess, sys
 import json
 from aiogram import Bot
 from panels.remnawave import RemnawaveAPI
-from panels.remnawave_time import get_all_users_time, login_remnawave
 from tempfile import NamedTemporaryFile
 import traceback
 from datetime import datetime
@@ -440,32 +439,14 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
         return
 
     server = servers[0]
-#    api = RemnawaveAPI(base_url=server.api_url)
-#
-#    if not await api.login(username=REMNAWAVE_LOGIN, password=REMNAWAVE_PASSWORD):
-#        await callback.message.edit_text(
-#            "❌ Не удалось авторизоваться на Remnawave панели.",
-#            reply_markup=build_back_to_db_menu(),
-#        )
-#        return
-#
-#    users = await api.get_all_users()
-#    if not users:
-#        await callback.message.edit_text(
-#            "📭 На панели нет клиентов.",
-#            reply_markup=build_back_to_db_menu(),
-#        )
-#        return
 
-    token = await login_remnawave(server.api_url, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-    if not token:
-        await callback.message.edit_text(
-            "❌ Не удалось авторизоваться на Remnawave панели.",
-            reply_markup=build_back_to_db_menu(),
-        )
-        return
+    api = RemnawaveAPI(base_url=server.api_url)
 
-    users = await get_all_users_time(server.api_url, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+    users = await api.get_all_users_time(
+        username=REMNAWAVE_LOGIN,
+        password=REMNAWAVE_PASSWORD,
+    )
+
     if not users:
         await callback.message.edit_text(
             "📭 На панели нет клиентов.",

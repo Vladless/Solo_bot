@@ -75,22 +75,25 @@ async def handle_server_manage(
         subscription_count = result.scalar() or 0
 
         text = (
-            f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
-            f"<b>🗂 Кластер:</b> {cluster_name}\n"
-            f"<b>📡 API URL:</b> {api_url}\n"
+            f"<b>🔧 Информация о сервере {server_name}:</b>\n"
+            f"<blockquote>"
+            f"🗂 Кластер: <b>{cluster_name}</b>\n"
+            f"📡 API URL: <b>{api_url}</b>\n"
         )
 
         if subscription_url:
-            text += f"<b>🌐 Subscription URL:</b> {subscription_url}\n"
-            
+            text += f"🌐 Subscription URL: <b>{subscription_url}</b>\n"
+
         text += (
-            f"<b>🔑 Inbound ID:</b> {inbound_id}\n"
-            f"<b>⚙️ Тип панели:</b> {panel_type}\n"
-            f"<b>📈 Лимит ключей:</b> {limit_display}"
+            f"🔑 Inbound ID: <b>{inbound_id}</b>\n"
+            f"⚙️ Тип панели: <b>{panel_type}</b>\n"
+            f"📈 Лимит ключей: <b>{limit_display}</b>\n"
         )
 
         if subscription_count > 0:
-            text += f"\n<b>🔑 Подписок на сервере:</b> {subscription_count}"
+            text += f"🔑 Подписок на сервере: <b>{subscription_count}</b>\n"
+
+        text += "</blockquote>"
 
         await callback_query.message.edit_text(
             text=text,

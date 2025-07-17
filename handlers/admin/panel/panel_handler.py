@@ -6,6 +6,9 @@ from aiogram.types import CallbackQuery, Message
 
 from bot import version
 from filters.admin import IsAdminFilter
+from database.models import Admin 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from logger import logger
 
 from .keyboard import AdminPanelCallback, build_panel_kb
@@ -14,16 +17,23 @@ router = Router()
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "admin"), IsAdminFilter())
-async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMContext):
-    text = f"🤖 Панель администратора\n\n📌 Версия бота: {version}"
+async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    text = f"🤖 Панель администратора\n\nВерсия бота:\n<blockquote>{version}</blockquote>"
 
     await state.clear()
+
+    result = await session.execute(
+        select(Admin.role).where(Admin.tg_id == callback_query.from_user.id)
+    )
+    role = result.scalar_one_or_none() or "admin"
+
+    markup = build_panel_kb(admin_role=role)
 
     if callback_query.message.text:
         try:
             await callback_query.message.edit_text(
                 text=text,
-                reply_markup=build_panel_kb(),
+                reply_markup=markup,
                 disable_web_page_preview=True,
             )
         except TelegramBadRequest as e:
@@ -41,19 +51,30 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
 
         await callback_query.message.answer(
             text=text,
-            reply_markup=build_panel_kb(),
+            reply_markup=markup,
             disable_web_page_preview=True,
         )
 
 
 @router.callback_query(F.data == "admin", IsAdminFilter())
-async def handle_admin_callback_query_simple(callback_query: CallbackQuery, state: FSMContext):
-    await handle_admin_callback_query(callback_query, state)
+async def handle_admin_callback_query_simple(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await handle_admin_callback_query(callback_query, state, session)
 
 
 @router.message(Command("admin"), IsAdminFilter())
-async def handle_admin_message(message: Message, state: FSMContext):
-    text = f"🤖 Панель администратора\n\n📌 Версия бота: {version}"
+async def handle_admin_message(message: Message, state: FSMContext, session: AsyncSession):
+    text = f"🤖 Панель администратора\n\nВерсия бота:\n<blockquote>{version}</blockquote>"
+
 
     await state.clear()
-    await message.answer(text=text, reply_markup=build_panel_kb())
+
+    result = await session.execute(
+        select(Admin.role).where(Admin.tg_id == message.from_user.id)
+    )
+    role = result.scalar_one_or_none() or "admin"
+
+    await message.answer(
+        text=text,
+        reply_markup=build_panel_kb(admin_role=role),
+        disable_web_page_preview=True,
+    )

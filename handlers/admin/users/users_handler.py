@@ -1241,8 +1241,8 @@ async def process_user_search(
 
     username, balance, created_at, updated_at = user_data
     balance = int(balance or 0)
-    created_at_str = created_at.astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
-    updated_at_str = updated_at.astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+    created_at_str = created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+    updated_at_str = updated_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
 
     stmt_ref_count = (
         select(func.count())
@@ -1266,15 +1266,19 @@ async def process_user_search(
     )
     result_ban = await session.execute(stmt_ban)
     is_banned = result_ban.scalar_one_or_none() is not None
+    user_obj = await session.get(User, tg_id)
+    full_name = user_obj.first_name if user_obj else None
 
     text = (
-        f"<b>📊 Информация о пользователе</b>"
-        f"\n\n🆔 ID: <b>{tg_id}</b>"
-        f"\n📄 Логин: <b>@{username}</b>"
-        f"\n📅 Дата регистрации: <b>{created_at_str}</b>"
-        f"\n🏃 Дата активности: <b>{updated_at_str}</b>"
-        f"\n💰 Баланс: <b>{balance}</b>"
-        f"\n👥 Количество рефералов: <b>{referral_count}</b>"
+        f"<b>📊 Информация о пользователе</b>\n"
+        f"<blockquote>"
+        f"🆔 ID: <b>{tg_id}</b>\n"
+        f"📄 Логин: <b>@{username}</b>{f' ({full_name})' if full_name else ''}\n"
+        f"📅 Дата регистрации: <b>{created_at_str}</b>\n"
+        f"🏃 Дата активности: <b>{updated_at_str}</b>\n"
+        f"💰 Баланс: <b>{balance}</b>\n"
+        f"👥 Количество рефералов: <b>{referral_count}</b>"
+        f"</blockquote>"
     )
 
     kb = build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
