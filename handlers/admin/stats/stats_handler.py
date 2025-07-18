@@ -46,13 +46,17 @@ router = Router()
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats"), IsAdminFilter())
 async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
     try:
-        now = datetime.utcnow()
         moscow_tz = pytz.timezone("Europe/Moscow")
-        today = now.astimezone(moscow_tz).date()
+        now = datetime.now(moscow_tz)
+        today = now.date()
 
         total_users = await count_total_users(session)
-        users_updated_today = await count_users_updated_today(session, today)
-        registrations_today = await count_users_registered_since(session, today)
+        today_start = moscow_tz.localize(datetime.combine(today, datetime.min.time()))
+        today_start_utc = today_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        users_updated_today = await count_users_updated_today(session, today_start_utc)
+        registrations_today = await count_users_registered_since(session, today_start_utc)
+        
         yesterday_date = today - timedelta(days=1)
         yesterday_start = moscow_tz.localize(datetime.combine(yesterday_date, datetime.min.time()))
         yesterday_end = moscow_tz.localize(datetime.combine(today, datetime.min.time()))
@@ -62,12 +66,18 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         registrations_yesterday = await count_users_registered_between(
             session, yesterday_start_utc, yesterday_end_utc
         )
-        registrations_week = await count_users_registered_since(
-            session, today - timedelta(days=today.weekday())
-        )
-        registrations_month = await count_users_registered_since(
-            session, today.replace(day=1)
-        )
+
+        week_start_date = today - timedelta(days=today.weekday())
+        week_start = moscow_tz.localize(datetime.combine(week_start_date, datetime.min.time()))
+        week_start_utc = week_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        month_start_date = today.replace(day=1)
+        month_start = moscow_tz.localize(datetime.combine(month_start_date, datetime.min.time()))
+        month_start_utc = month_start.astimezone(pytz.UTC).replace(tzinfo=None)
+        
+        registrations_week = await count_users_registered_since(session, week_start_utc)
+        registrations_month = await count_users_registered_since(session, month_start_utc)
+        
         last_month_start_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
         this_month_start_date = today.replace(day=1)
         
@@ -99,7 +109,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         tariff_stats_text = ""
         duration_buckets = Counter()
-        now_ts = int(datetime.utcnow().timestamp() * 1000)
+        now_ts = int(now.timestamp() * 1000)
 
         for key in no_tariff_keys:
             duration_days = round((key["expiry_time"] - now_ts) / (1000 * 60 * 60 * 24))
@@ -148,21 +158,19 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         total_referrals = await count_total_referrals(session)
 
-        total_payments_today = await sum_payments_since(session, today)
+        total_payments_today = await sum_payments_since(session, today_start_utc)
         total_payments_yesterday = await sum_payments_between(
             session, yesterday_start_utc, yesterday_end_utc
         )
-        total_payments_week = await sum_payments_since(
-            session, today - timedelta(days=today.weekday())
-        )
-        total_payments_month = await sum_payments_since(session, today.replace(day=1))
+        total_payments_week = await sum_payments_since(session, week_start_utc)
+        total_payments_month = await sum_payments_since(session, month_start_utc)
         total_payments_last_month = await sum_payments_between(
             session, last_month_start_utc, last_month_end_utc
         )
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
 
-        update_time = datetime.now(moscow_tz).strftime("%d.%m.%y %H:%M:%S")
+        update_time = now.strftime("%d.%m.%y %H:%M:%S")
 
         stats_message = (
             f"📊 <b>Статистика проекта</b>\n\n"
