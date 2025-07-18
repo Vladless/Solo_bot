@@ -58,18 +58,20 @@ class SubscriptionMiddleware(BaseMiddleware):
                     if from_user.is_bot:
                         logger.warning(f"[SubMiddleware] Пропуск сохранения is_bot=True для {from_user.id}")
                     else:
-                        user_data = {
-                            "tg_id": from_user.id,
-                            "username": from_user.username,
-                            "first_name": from_user.first_name,
-                            "last_name": from_user.last_name,
-                            "language_code": from_user.language_code,
-                            "is_bot": from_user.is_bot,
-                        }
-                        await state.update_data(
-                            original_text=original_text,
-                            user_data=user_data,
-                        )
+                        state_data = await state.get_data()
+                        if "original_text" not in state_data or "user_data" not in state_data:
+                            user_data = {
+                                "tg_id": from_user.id,
+                                "username": from_user.username,
+                                "first_name": from_user.first_name,
+                                "last_name": from_user.last_name,
+                                "language_code": from_user.language_code,
+                                "is_bot": from_user.is_bot,
+                            }
+                            await state.update_data(
+                                original_text=original_text,
+                                user_data=user_data,
+                            )
 
                 return await self._ask_to_subscribe(message)
         except Exception as e:
