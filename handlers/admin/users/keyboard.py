@@ -36,63 +36,79 @@ def build_user_edit_kb(
     builder = InlineKeyboardBuilder()
     current_time = datetime.now(tz=timezone.utc)
 
-    builder.button(
-        text="➕ Создать ключ",
-        callback_data=AdminUserEditorCallback(
-            action="users_create_key", tg_id=tg_id
-        ).pack(),
+    builder.row(
+        InlineKeyboardButton(
+            text="➕ Создать подписку",
+            callback_data=AdminUserEditorCallback(
+                action="users_create_key", tg_id=tg_id
+            ).pack(),
+        )
     )
 
     for record in key_records:
         email = record.email
         expiry = datetime.fromtimestamp(record.expiry_time / 1000, tz=timezone.utc)
         days = (expiry - current_time).days
-        builder.button(
-            text=f"🔑 {email} ({'<1' if days < 1 else days} дн.)",
-            callback_data=AdminUserEditorCallback(
-                action="users_key_edit", tg_id=tg_id, data=str(email)
-            ).pack(),
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🔑 {email} ({'<1' if days < 1 else days} дн.)",
+                callback_data=AdminUserEditorCallback(
+                    action="users_key_edit", tg_id=tg_id, data=str(email)
+                ).pack(),
+            )
         )
 
-    builder.button(
-        text="✉️ Сообщение",
-        callback_data=AdminUserEditorCallback(
-            action="users_send_message", tg_id=tg_id
-        ).pack(),
+    builder.row(
+        InlineKeyboardButton(
+            text="✉️ Сообщение",
+            callback_data=AdminUserEditorCallback(
+                action="users_send_message", tg_id=tg_id
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="💸 Баланс",
+            callback_data=AdminUserEditorCallback(
+                action="users_balance_edit", tg_id=tg_id
+            ).pack(),
+        ),
     )
-    builder.button(
-        text="💸 Изменить баланс",
-        callback_data=AdminUserEditorCallback(
-            action="users_balance_edit", tg_id=tg_id
-        ).pack(),
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🤝 Выгрузить рефералов",
+            callback_data=AdminUserEditorCallback(
+                action="users_export_referrals", tg_id=tg_id
+            ).pack(),
+        )
     )
-    builder.button(
-        text="🤝 Выгрузить рефералов",
-        callback_data=AdminUserEditorCallback(
-            action="users_export_referrals", tg_id=tg_id
-        ).pack(),
+
+    builder.row(
+        InlineKeyboardButton(
+            text="♻️ Восстановить триал",
+            callback_data=AdminUserEditorCallback(
+                action="users_trial_restore", tg_id=tg_id
+            ).pack(),
+        )
     )
-    builder.button(
-        text="♻️ Восстановить триал",
-        callback_data=AdminUserEditorCallback(
-            action="users_trial_restore", tg_id=tg_id
-        ).pack(),
+
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Удалить",
+            callback_data=AdminUserEditorCallback(
+                action="users_delete_user", tg_id=tg_id
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="✅ Разблокировать" if is_banned else "🚫 Заблокировать",
+            callback_data=AdminUserEditorCallback(
+                action="users_unban" if is_banned else "users_ban", tg_id=tg_id
+            ).pack(),
+        ),
     )
-    builder.button(
-        text="❌ Удалить клиента",
-        callback_data=AdminUserEditorCallback(
-            action="users_delete_user", tg_id=tg_id
-        ).pack(),
-    )
-    builder.button(
-        text="✅ Разблокировать" if is_banned else "🚫 Заблокировать",
-        callback_data=AdminUserEditorCallback(
-            action="users_unban" if is_banned else "users_ban", tg_id=tg_id
-        ).pack(),
-    )
+
     builder.row(build_editor_btn("🔄 Обновить данные", tg_id, edit=True))
     builder.row(build_admin_back_btn())
-    builder.adjust(1)
+
     return builder.as_markup()
 
 

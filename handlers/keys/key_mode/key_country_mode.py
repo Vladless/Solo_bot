@@ -372,7 +372,7 @@ async def finalize_key_creation(
 
     if is_trial:
         traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100)) * 1024**3
-        device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
+        device_limit = TRIAL_CONFIG.get("hwid_limit", 0)
     elif data.get("tariff_id") or tariff_id:
         tariff_id = data.get("tariff_id") or tariff_id
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
@@ -567,7 +567,7 @@ async def finalize_key_creation(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 0)
         )
     else:
         tariff_duration = tariff_info["name"] if tariff_info else None

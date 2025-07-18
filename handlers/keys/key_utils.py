@@ -31,7 +31,7 @@ async def create_key_on_cluster(
     plan: int = None,
     session: AsyncSession = None,
     remnawave_link: str = None,
-    hwid_limit: int = None,
+    hwid_limit: int = 0,
     traffic_limit_bytes: int = None,
     is_trial: bool = False,
 ):
@@ -286,7 +286,7 @@ async def renew_key_in_cluster(
     new_expiry_time: int,
     total_gb: int,
     session: AsyncSession,
-    hwid_device_limit: int = None,
+    hwid_device_limit: int = 0,
     reset_traffic: bool = True,
 ):
     try:

@@ -24,7 +24,7 @@ def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="search_user").pack(),
     )
     builder.button(
-        text="🔑 Поиск по ключу",
+        text="🔑 Поиск по подписке",
         callback_data=AdminPanelCallback(action="search_key").pack(),
     )
 

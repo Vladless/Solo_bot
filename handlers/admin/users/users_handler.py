@@ -595,7 +595,15 @@ async def handle_key_edit(
 
     key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
     alias = key_details.get("alias")
+    utc_tz = pytz.utc
+    created_at_raw = key_details.get("created_at")
+    if created_at_raw:
+        created_at_dt = datetime.fromtimestamp(int(created_at_raw) / 1000, tz=utc_tz).astimezone(MOSCOW_TZ)
+        created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
+    else:
+        created_at = "—"
 
+    expiry_date = key_details.get("expiry_date") or "—"
     tariff_name = "—"
     if key_details.get("tariff_id"):
         result = await session.execute(
@@ -606,16 +614,18 @@ async def handle_key_edit(
             tariff_name = f"{row[0]} ({row[1]})"
 
     text = (
-        f"<b>🔑 Информация о ключе</b>"
-        f"\n\n<code>{key_value}</code>"
-        f"\n\n⏰ Дата истечения: <b>{key_details['expiry_date']} (UTC)</b>"
-        f"\n🌐 Кластер: <b>{key_details['cluster_name']}</b>"
-        f"\n🆔 ID клиента: <b>{key_details['tg_id']}</b>"
-        f"\n📦 Тариф: <b>{tariff_name}</b>"
+        "<b>🔑 Информация о подписке</b>\n\n"
+        "<blockquote>"
+        f"🔗 <b>Ключ:</b> {key_value}\n"
+        f"📆 <b>Создан:</b> {created_at} (МСК)\n"
+        f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
+        f"🌐 <b>Кластер:</b> {key_details.get('cluster_name', '—')}\n"
+        f"🆔 <b>ID клиента:</b> {key_details.get('tg_id', '—')}\n"
+        f"📦 <b>Тариф:</b> {tariff_name}\n"
     )
-
     if alias:
-        text += f"\n🏷️ Имя ключа: <b>{alias}</b>"
+        text += f"🏷️ <b>Имя подписки:</b> {alias}\n"
+    text += "</blockquote>"
 
     if not update or not callback_data.edit:
         await callback_query.message.edit_text(
@@ -1252,6 +1262,23 @@ async def process_user_search(
     result_ref = await session.execute(stmt_ref_count)
     referral_count = result_ref.scalar_one()
 
+    stmt_ref_by = (
+        select(Referral.referrer_tg_id)
+        .where(Referral.referred_tg_id == tg_id)
+        .limit(1)
+    )
+    result_ref_by = await session.execute(stmt_ref_by)
+    referrer_tg_id = result_ref_by.scalar_one_or_none()
+
+    referrer_text = ""
+    if referrer_tg_id:
+        stmt_referrer = select(User.username).where(User.tg_id == referrer_tg_id)
+        result_referrer = await session.execute(stmt_referrer)
+        ref_username = result_referrer.scalar_one_or_none()
+        if ref_username:
+            referrer_text = f"\n🤝 Пригласил: <b>@{ref_username}</b>"
+        else:
+            referrer_text = f"\n🤝 Пригласил: <b>{referrer_tg_id}</b>"
     stmt_keys = select(Key).where(Key.tg_id == tg_id)
     result_keys = await session.execute(stmt_keys)
     key_records = result_keys.scalars().all()
@@ -1270,14 +1297,14 @@ async def process_user_search(
     full_name = user_obj.first_name if user_obj else None
 
     text = (
-        f"<b>📊 Информация о пользователе</b>\n"
+        f"<b>📊 Информация о пользователе</b>\n\n"
         f"<blockquote>"
         f"🆔 ID: <b>{tg_id}</b>\n"
         f"📄 Логин: <b>@{username}</b>{f' ({full_name})' if full_name else ''}\n"
         f"📅 Дата регистрации: <b>{created_at_str}</b>\n"
         f"🏃 Дата активности: <b>{updated_at_str}</b>\n"
         f"💰 Баланс: <b>{balance}</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>"
+        f"👥 Количество рефералов: <b>{referral_count}</b>{referrer_text}"
         f"</blockquote>"
     )
 

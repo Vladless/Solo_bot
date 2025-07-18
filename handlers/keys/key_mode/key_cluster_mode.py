@@ -82,7 +82,7 @@ async def key_cluster_mode(
         traffic_limit_gb = None
 
         if is_trial:
-            device_limit = TRIAL_CONFIG.get("hwid_limit", 1)
+            device_limit = TRIAL_CONFIG.get("hwid_limit", 0)
             traffic_limit_gb = TRIAL_CONFIG.get("traffic_limit_gb", 100)
         elif plan:
             tariff = await get_tariff_by_id(session, plan)
@@ -209,7 +209,7 @@ async def key_cluster_mode(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 1)
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 0)
         )
     else:
         tariff_duration = tariff_info["name"]

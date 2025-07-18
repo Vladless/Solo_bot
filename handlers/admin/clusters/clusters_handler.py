@@ -620,7 +620,7 @@ async def handle_sync_cluster(
                         raise Exception("Не удалось авторизоваться в Remnawave")
 
                     traffic_limit_bytes = 0
-                    hwid_limit = None
+                    hwid_limit = 0
                     if key["tariff_id"]:
                         tariff = await session.get(Tariff, key["tariff_id"])
                         if tariff:
