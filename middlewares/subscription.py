@@ -46,18 +46,30 @@ class SubscriptionMiddleware(BaseMiddleware):
                 state: FSMContext = data.get("state")
                 if state:
                     original_text = message.text or message.caption
-                    user_data = {
-                        "tg_id": message.from_user.id,
-                        "username": message.from_user.username,
-                        "first_name": message.from_user.first_name,
-                        "last_name": message.from_user.last_name,
-                        "language_code": message.from_user.language_code,
-                        "is_bot": message.from_user.is_bot,
-                    }
-                    await state.update_data(
-                        original_text=original_text,
-                        user_data=user_data,
-                    )
+
+                    if event.message:
+                        from_user = event.message.from_user
+                    elif event.callback_query:
+                        from_user = event.callback_query.from_user
+                    else:
+                        logger.warning(f"[SubMiddleware] Не удалось определить пользователя из события: {event}")
+                        return await handler(event, data)
+
+                    if from_user.is_bot:
+                        logger.warning(f"[SubMiddleware] Пропуск сохранения is_bot=True для {from_user.id}")
+                    else:
+                        user_data = {
+                            "tg_id": from_user.id,
+                            "username": from_user.username,
+                            "first_name": from_user.first_name,
+                            "last_name": from_user.last_name,
+                            "language_code": from_user.language_code,
+                            "is_bot": from_user.is_bot,
+                        }
+                        await state.update_data(
+                            original_text=original_text,
+                            user_data=user_data,
+                        )
 
                 return await self._ask_to_subscribe(message)
         except Exception as e:

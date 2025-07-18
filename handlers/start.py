@@ -96,17 +96,17 @@ async def start_command(
 
 @router.callback_query(F.data == "check_subscription")
 async def check_subscription_callback(
-    callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool
+    callback_query: CallbackQuery,
+    state: FSMContext,
+    session: Any,
+    admin: bool
 ):
     user_id = callback_query.from_user.id
-    logger.info(
-        f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}"
-    )
+    logger.info(f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}")
+
     try:
         member = await bot.get_chat_member(CHANNEL_ID, user_id)
-        logger.info(
-            f"[CALLBACK] Статус подписки пользователя {user_id}: {member.status}"
-        )
+        logger.info(f"[CALLBACK] Статус подписки пользователя {user_id}: {member.status}")
 
         if member.status not in ["member", "administrator", "creator"]:
             await callback_query.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
@@ -121,27 +121,40 @@ async def check_subscription_callback(
                 SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
             )
-        else:
-            await callback_query.answer(SUBSCRIPTION_CONFIRMED_MSG)
-            data = await state.get_data()
-            original_text = data.get("original_text") or callback_query.message.text
-            user_data = data.get("user_data")
-            await process_start_logic(
-                message=callback_query.message,
-                state=state,
-                session=session,
-                admin=admin,
-                text_to_process=original_text,
-                user_data=user_data,
-            )
-            logger.info(
-                f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}"
-            )
-    except Exception as e:
-        logger.error(
-            f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}",
-            exc_info=True,
+            return
+        await callback_query.answer(SUBSCRIPTION_CONFIRMED_MSG)
+        data = await state.get_data()
+        original_text = data.get("original_text") or callback_query.message.text
+        user_data = data.get("user_data")
+
+        if not user_data:
+            user = callback_query.from_user
+            user_data = {
+                "tg_id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "language_code": user.language_code,
+                "is_bot": user.is_bot,
+            }
+            await state.update_data(user_data=user_data)
+
+        if user_data.get("is_bot"):
+            logger.warning(f"[CALLBACK] Попытка регистрации бота: {user_data}")
+            return
+
+        await process_start_logic(
+            message=callback_query.message,
+            state=state,
+            session=session,
+            admin=admin,
+            text_to_process=original_text,
+            user_data=user_data,
         )
+        logger.info(f"[CALLBACK] Завершен вызов process_start_logic для пользователя {user_id}")
+
+    except Exception as e:
+        logger.error(f"[CALLBACK] Ошибка проверки подписки для пользователя {user_id}: {e}", exc_info=True)
         await callback_query.answer(SUBSCRIPTION_CHECK_ERROR_MSG, show_alert=True)
 
 
