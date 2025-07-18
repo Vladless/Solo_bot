@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 
@@ -63,9 +63,15 @@ class KeyUpdate(BaseModel):
 
 
 class KeyCreateRequest(BaseModel):
-    tg_id: int
-    cluster_id: str
-    tariff_id: int
-    email: Optional[str] = None
-    alias: Optional[str] = None
-    remnawave_link: Optional[str] = None
+    tg_id: int = Field(..., description="Telegram ID пользователя")
+    cluster_id: str = Field(..., description="Имя кластера или сервера")
+    tariff_id: int = Field(..., description="ID тарифа из базы данных")
+    client_id: str = Field(..., description="UUID клиента (уникальный)")
+    expiry_timestamp: int = Field(..., description="Срок окончания в миллисекундах")
+    
+    email: Optional[str] = Field(None, description="Условное имя подписки")
+    alias: Optional[str] = Field(None, description="пользовательское имя")
+    remnawave_link: Optional[str] = Field(None, description="Ссылка на подписку Remnawave")
+    hwid_limit: Optional[int] = Field(None, description="Ограничение по HWID")
+    traffic_limit_bytes: Optional[int] = Field(None, description="Ограничение трафика в байтах")
+    is_trial: Optional[bool] = Field(False, description="Флаг триального ключа")

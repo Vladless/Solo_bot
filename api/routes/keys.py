@@ -1,16 +1,16 @@
-from fastapi import Depends, HTTPException, Path, Body
+from fastapi import Depends, HTTPException, Path, Body, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
 from database.models import Key, Admin, Tariff
-from api.schemas.keys import KeyBase, KeyResponse, KeyUpdate
+from api.schemas.keys import KeyBase, KeyResponse, KeyUpdate, KeyCreateRequest
 from api.routes.base_crud import generate_crud_router
 from api.depends import get_session, verify_admin_token
 from handlers.keys.key_utils import delete_key_from_cluster
 from logger import logger
 
-from handlers.keys.key_utils import renew_key_in_cluster
+from handlers.keys.key_utils import renew_key_in_cluster, create_key_on_cluster
 
 router = generate_crud_router(
     model=Key,
@@ -119,3 +119,32 @@ async def edit_key_by_email(
     except Exception as e:
         logger.error(f"[API] Ошибка при обновлении ключа: {e}")
         raise HTTPException(status_code=500, detail="Ошибка при обновлении ключа")
+
+
+@router.post("/create", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_key_api(
+    payload: KeyCreateRequest = Body(...),
+    session: AsyncSession = Depends(get_session),
+    admin: Admin = Depends(verify_admin_token),
+):
+    logger.info(f"[API] Запрос на создание ключа: {payload.dict()}")
+
+    try:
+        await create_key_on_cluster(
+            cluster_id=payload.cluster_id,
+            tg_id=payload.tg_id,
+            client_id=payload.client_id,
+            email=payload.email or f"{payload.tg_id}_key",
+            expiry_timestamp=payload.expiry_timestamp,
+            plan=payload.tariff_id,
+            session=session,
+            remnawave_link=payload.remnawave_link,
+            hwid_limit=payload.hwid_limit,
+            traffic_limit_bytes=payload.traffic_limit_bytes,
+            is_trial=payload.is_trial or False,
+        )
+        return {"message": "Ключ успешно создан"}
+
+    except Exception as e:
+        logger.error(f"[API] Ошибка при создании ключа: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка при создании ключа")

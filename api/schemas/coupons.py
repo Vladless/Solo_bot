@@ -13,10 +13,12 @@ class CouponBase(BaseModel):
 
     @model_validator(mode="after")
     def check_exactly_one_of_amount_or_days(self) -> "CouponBase":
-        has_amount = getattr(self, "amount", None) is not None
-        has_days = getattr(self, "days", None) is not None
+        has_amount = self.amount not in (None, 0)
+        has_days = self.days is not None
 
-        if has_amount == has_days:
+        if has_amount and has_days:
+            raise ValueError("Coupon must have exactly one of: 'amount' or 'days'")
+        if not has_amount and not has_days:
             raise ValueError("Coupon must have exactly one of: 'amount' or 'days'")
         return self
 

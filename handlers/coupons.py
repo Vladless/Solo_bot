@@ -235,7 +235,7 @@ async def handle_key_extension(
         if key.tariff_id:
             tariff = await get_tariff_by_id(session, key.tariff_id)
         total_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
-        device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else None
+        device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
         await renew_key_in_cluster(
             cluster_id=key.server_id,

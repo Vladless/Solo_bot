@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,10 +85,16 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
     IsAdminFilter(),
 )
 async def handle_sender(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="✍️ Выберите группу пользователей для рассылки:",
-        reply_markup=build_sender_kb(),
-    )
+    try:
+        await callback_query.message.edit_text(
+            text="✍️ Выберите группу пользователей для рассылки:",
+            reply_markup=build_sender_kb(),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            logger.debug("[Sender] Сообщение не изменено, Telegram отклонил редактирование")
+        else:
+            raise
 
 
 @router.callback_query(

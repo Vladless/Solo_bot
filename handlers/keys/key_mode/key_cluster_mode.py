@@ -79,7 +79,7 @@ async def key_cluster_mode(
         is_trial = data.get("is_trial", False)
 
         device_limit = 0
-        traffic_limit_gb = None
+        traffic_limit_gb = 0
 
         if is_trial:
             device_limit = TRIAL_CONFIG.get("hwid_limit", 0)

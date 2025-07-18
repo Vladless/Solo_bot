@@ -132,6 +132,7 @@ async def create_key_on_cluster(
                         user_data["shortUuid"] = short_uuid
                     if hwid_limit is not None:
                         user_data["hwidDeviceLimit"] = hwid_limit
+                    logger.info(f"[Key Creation] Данные для создания клиента в Remnawave: {user_data}")
 
                     result = await remna.create_user(user_data)
                     if not result:
@@ -236,7 +237,7 @@ async def create_client_on_server(
             sub_id = unique_email
 
         total_gb_value = 0
-        device_limit_value = None
+        device_limit_value = 0
 
         if is_trial:
             total_gb_value = TRIAL_CONFIG.get("traffic_limit_gb", 0)

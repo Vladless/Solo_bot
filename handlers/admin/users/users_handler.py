@@ -1341,7 +1341,7 @@ async def change_expiry_time(
         tariff = result.first()
         if tariff:
             traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
-            device_limit = int(tariff[1]) if tariff[1] is not None else None
+            device_limit = int(tariff[1]) if tariff[1] is not None else 0
 
     servers = await get_servers(session=session)
 
