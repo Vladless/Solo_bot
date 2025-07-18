@@ -442,6 +442,7 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
 
 
 @router.callback_query(F.data == "renew_menu")
+@router.callback_query(F.data == "extend")
 @router.message(F.text == "/extend")
 async def process_renew_menu(callback_query_or_message: CallbackQuery | Message, session: Any):
     try:

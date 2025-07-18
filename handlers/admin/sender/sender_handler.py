@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime
 
 from aiogram import F, Router
@@ -39,7 +40,9 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
     
     for line in button_lines:
         try:
-            button_data = json.loads(line)
+            cleaned_line = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r'\1', line)
+            
+            button_data = json.loads(cleaned_line)
 
             if not isinstance(button_data, dict) or "text" not in button_data:
                 logger.warning(f"Неверный формат кнопки: {line}")
@@ -107,6 +110,7 @@ async def handle_sender_callback_text(
             "<code>Ваше сообщение</code>\n\n"
             "<code>BUTTONS:</code>\n"
             '<code>{"text": "👤 Личный кабинет", "callback": "profile"}</code>\n'
+            '<code>{"text": "➕ Купить подписку", "callback": "buy"}</code>\n'
             '<code>{"text": "🎁 Забрать купон", "url": "https://t.me/cupons"}</code>\n'
             '<code>{"text": "📢 Канал", "url": "https://t.me/channel"}</code>'
         ),

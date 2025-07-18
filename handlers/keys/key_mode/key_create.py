@@ -56,6 +56,7 @@ class Form(FSMContext):
 
 
 @router.callback_query(F.data == "create_key")
+@router.callback_query(F.data == "buy")
 @router.message(F.text == "/buy")
 async def confirm_create_new_key(
     callback_query_or_message: CallbackQuery | Message, state: FSMContext, session: Any
