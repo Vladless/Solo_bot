@@ -1,14 +1,16 @@
+import asyncio
+
 from fastapi import Depends, HTTPException, Path
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.depends import get_session, verify_admin_token
 from api.routes.base_crud import generate_crud_router
 from api.schemas.users import UserBase, UserResponse, UserUpdate
-from database.models import User, Key
-from api.depends import get_session, verify_admin_token
+from database import delete_user_data, get_servers
+from database.models import Key, User
 from handlers.keys.key_utils import delete_key_from_cluster
-from database import get_servers, delete_user_data
 from logger import logger
-import asyncio
 
 
 router = generate_crud_router(
@@ -17,7 +19,7 @@ router = generate_crud_router(
     schema_create=UserBase,
     schema_update=UserUpdate,
     identifier_field="tg_id",
-    enabled_methods=["get_all", "get_one", "get_by_email", "create", "update"]
+    enabled_methods=["get_all", "get_one", "get_by_email", "create", "update"],
 )
 
 
@@ -28,9 +30,7 @@ async def delete_user(
     session: AsyncSession = Depends(get_session),
 ):
     try:
-        result = await session.execute(
-            select(Key.email, Key.client_id).where(Key.tg_id == tg_id)
-        )
+        result = await session.execute(select(Key.email, Key.client_id).where(Key.tg_id == tg_id))
         key_records = result.all()
 
         async def delete_keys_from_servers():

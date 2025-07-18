@@ -12,20 +12,14 @@ class AdminAdsCallback(CallbackData, prefix="admin_ads"):
 
 def build_ads_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="➕ Новая ссылка", callback_data=AdminAdsCallback(action="create").pack()
-    )
-    builder.button(
-        text="📊 Список", callback_data=AdminAdsCallback(action="list").pack()
-    )
+    builder.button(text="➕ Новая ссылка", callback_data=AdminAdsCallback(action="create").pack())
+    builder.button(text="📊 Список", callback_data=AdminAdsCallback(action="list").pack())
     builder.row(build_admin_back_btn())
     builder.adjust(1)
     return builder.as_markup()
 
 
-def build_ads_list_kb(
-    ads: list, current_page: int, total_pages: int
-) -> InlineKeyboardMarkup:
+def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     items_per_page = 6
 
@@ -50,18 +44,14 @@ def build_ads_list_kb(
         pagination_buttons.append(
             InlineKeyboardButton(
                 text="⬅️ Назад",
-                callback_data=AdminAdsCallback(
-                    action="list", code=f"{current_page - 1}"
-                ).pack(),
+                callback_data=AdminAdsCallback(action="list", code=f"{current_page - 1}").pack(),
             )
         )
     if current_page < total_pages:
         pagination_buttons.append(
             InlineKeyboardButton(
                 text="Вперед ➡️",
-                callback_data=AdminAdsCallback(
-                    action="list", code=f"{current_page + 1}"
-                ).pack(),
+                callback_data=AdminAdsCallback(action="list", code=f"{current_page + 1}").pack(),
             )
         )
     if pagination_buttons:

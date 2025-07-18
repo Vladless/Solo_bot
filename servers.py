@@ -1,7 +1,8 @@
 import asyncio
 import re
-from datetime import datetime, timedelta
 import ssl
+
+from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -13,6 +14,7 @@ from config import ADMIN_ID, PING_TIME
 from database import get_servers
 from handlers.admin.servers.keyboard import AdminServerCallback
 from logger import logger
+
 
 last_ping_times = {}
 last_down_times = {}
@@ -36,7 +38,7 @@ async def check_tcp_connection(host: str, port: int) -> bool:
     """Проверяет доступность сервера через TCP с попыткой SSL-соединения."""
     try:
         ssl_context = ssl.create_default_context()
-        reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context)
+        _reader, writer = await asyncio.open_connection(host, port, ssl=ssl_context)
         writer.close()
         await writer.wait_closed()
         return True
@@ -81,9 +83,7 @@ async def notify_admin(server_name: str, status: str, down_duration: timedelta =
         message = f"✅ <b>Сервер '{server_name}' снова в сети!</b>\n\n⏳ Время простоя: {downtime}."
 
     for admin_id in ADMIN_ID:
-        logger.info(
-            f"📨 Отправляем уведомление '{status}' администратору {admin_id} о сервере {server_name}"
-        )
+        logger.info(f"📨 Отправляем уведомление '{status}' администратору {admin_id} о сервере {server_name}")
         await bot.send_message(admin_id, message, reply_markup=builder.as_markup())
 
 
@@ -116,9 +116,7 @@ async def check_servers(session: AsyncSession):
         restored_servers = set()
         online_servers = set()
 
-        for (server_name, server_host), result in zip(
-            server_info_list, results, strict=False
-        ):
+        for (server_name, server_host), result in zip(server_info_list, results, strict=False):
             is_online = bool(result) if not isinstance(result, Exception) else False
 
             if is_online:
@@ -140,9 +138,7 @@ async def check_servers(session: AsyncSession):
                     last_ping_times[server_name] = current_time
                     last_down_times[server_name] = current_time
 
-                if last_ping_time and (
-                    current_time - last_ping_time > timedelta(seconds=PING_TIME * 3)
-                ):
+                if last_ping_time and (current_time - last_ping_time > timedelta(seconds=PING_TIME * 3)):
                     if server_name not in notified_servers:
                         logger.warning(
                             f"🚨 Уведомление: сервер {server_name} не отвечает более {PING_TIME * 3} секунд!"
@@ -155,18 +151,12 @@ async def check_servers(session: AsyncSession):
         all_servers = {name for name, _ in server_info_list}
         true_offline_servers = all_servers - online_servers
 
-        logger.info(
-            f"✅ Доступно серверов: {len(online_servers)}, ❌ Недоступно: {len(true_offline_servers)}"
-        )
+        logger.info(f"✅ Доступно серверов: {len(online_servers)}, ❌ Недоступно: {len(true_offline_servers)}")
 
         if true_offline_servers:
-            logger.warning(
-                f"🚨 Не отвечает {len(true_offline_servers)} серверов: {', '.join(true_offline_servers)}"
-            )
+            logger.warning(f"🚨 Не отвечает {len(true_offline_servers)} серверов: {', '.join(true_offline_servers)}")
         if restored_servers:
-            logger.info(
-                f"✅ Восстановились {len(restored_servers)} серверов: {', '.join(restored_servers)}"
-            )
+            logger.info(f"✅ Восстановились {len(restored_servers)} серверов: {', '.join(restored_servers)}")
 
         await asyncio.sleep(PING_TIME)
 

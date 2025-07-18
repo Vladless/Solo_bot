@@ -1,9 +1,10 @@
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiogram import BaseMiddleware
+from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, Message, Update
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.fsm.context import FSMContext
 
 from bot import bot
 from config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
@@ -75,9 +76,7 @@ class SubscriptionMiddleware(BaseMiddleware):
 
                 return await self._ask_to_subscribe(message)
         except Exception as e:
-            logger.warning(
-                f"[SubMiddleware] Ошибка при проверке подписки для {tg_id}: {e}"
-            )
+            logger.warning(f"[SubMiddleware] Ошибка при проверке подписки для {tg_id}: {e}")
             return await self._ask_to_subscribe(message)
 
         return await handler(event, data)
@@ -85,11 +84,7 @@ class SubscriptionMiddleware(BaseMiddleware):
     async def _ask_to_subscribe(self, message: Message):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
-        builder.row(
-            InlineKeyboardButton(
-                text=SUB_CHANELL_DONE, callback_data="check_subscription"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
 
         await edit_or_send_message(
             target_message=message,

@@ -1,3 +1,6 @@
+import secrets
+import uuid
+
 from datetime import datetime
 
 from sqlalchemy import (
@@ -12,9 +15,8 @@ from sqlalchemy import (
     String,
     Text,
 )
-import secrets
-import uuid
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
+
 
 Base = declarative_base()
 
@@ -27,9 +29,7 @@ class DictLikeMixin:
         return getattr(self, key, default)
 
     def to_dict(self):
-        return {
-            column.name: getattr(self, column.name) for column in self.__table__.columns
-        }
+        return {column.name: getattr(self, column.name) for column in self.__table__.columns}
 
 
 class User(DictLikeMixin, Base):
@@ -139,11 +139,7 @@ class Referral(DictLikeMixin, Base):
 class Notification(DictLikeMixin, Base):
     __tablename__ = "notifications"
 
-    tg_id = Column(
-        BigInteger,
-        ForeignKey("users.tg_id", ondelete="CASCADE"),
-        primary_key=True
-    )
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
     notification_type = Column(String, primary_key=True)
     last_notification_time = Column(DateTime, default=datetime.utcnow)
 

@@ -1,15 +1,16 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class CouponBase(BaseModel):
     code: str
-    amount: Optional[int] = Field(default=None)
+    amount: int | None = Field(default=None)
     usage_limit: int
     usage_count: int = 0
     is_used: bool = False
-    days: Optional[int] = Field(default=None)
+    days: int | None = Field(default=None)
 
     @model_validator(mode="after")
     def check_exactly_one_of_amount_or_days(self) -> "CouponBase":
@@ -31,12 +32,12 @@ class CouponResponse(CouponBase):
 
 
 class CouponUpdate(BaseModel):
-    code: Optional[str] = None
-    amount: Optional[int] = None
-    usage_limit: Optional[int] = None
-    usage_count: Optional[int] = None
-    is_used: Optional[bool] = None
-    days: Optional[int] = Field(default=None)
+    code: str | None = None
+    amount: int | None = None
+    usage_limit: int | None = None
+    usage_count: int | None = None
+    is_used: bool | None = None
+    days: int | None = Field(default=None)
 
     @model_validator(mode="after")
     def validate_amount_or_days(self) -> "CouponUpdate":

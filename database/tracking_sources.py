@@ -1,4 +1,4 @@
-from sqlalchemy import func, insert, select, not_
+from sqlalchemy import func, insert, not_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,9 +6,7 @@ from database.models import Payment, TrackingSource, User
 from logger import logger
 
 
-async def create_tracking_source(
-    session: AsyncSession, name: str, code: str, type_: str, created_by: int
-):
+async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):
     try:
         stmt = insert(TrackingSource).values(
             name=name,
@@ -42,9 +40,7 @@ async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
     payments_subq = (
         select(func.count(func.distinct(Payment.tg_id)))
         .join(User, Payment.tg_id == User.tg_id)
-        .where(
-            (User.source_code == TrackingSource.code) & (Payment.status == "success")
-        )
+        .where((User.source_code == TrackingSource.code) & (Payment.status == "success"))
         .correlate(TrackingSource)
         .scalar_subquery()
     )
@@ -74,9 +70,7 @@ async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
 
 
 async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | None:
-    source_result = await session.execute(
-        select(TrackingSource.created_at).where(TrackingSource.code == code)
-    )
+    source_result = await session.execute(select(TrackingSource.created_at).where(TrackingSource.code == code))
     created_at_row = source_result.first()
     if not created_at_row:
         return None
@@ -85,20 +79,13 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
 
     reg_subq = (
         select(func.count(func.distinct(User.tg_id)))
-        .where(
-            (User.source_code == code) &
-            (User.created_at >= created_at)
-        )
+        .where((User.source_code == code) & (User.created_at >= created_at))
         .scalar_subquery()
     )
 
     trial_subq = (
         select(func.count(func.distinct(User.tg_id)))
-        .where(
-            (User.source_code == code) &
-            (User.trial == 1) &
-            (User.created_at >= created_at)
-        )
+        .where((User.source_code == code) & (User.trial == 1) & (User.created_at >= created_at))
         .scalar_subquery()
     )
 
@@ -106,10 +93,10 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         select(func.count(func.distinct(Payment.tg_id)))
         .join(User, Payment.tg_id == User.tg_id)
         .where(
-            (User.source_code == code) &
-            (Payment.status == "success") &
-            not_(Payment.payment_system.in_(["coupon", "referral", "cashback"])) &
-            (Payment.created_at >= created_at)
+            (User.source_code == code)
+            & (Payment.status == "success")
+            & not_(Payment.payment_system.in_(["coupon", "referral", "cashback"]))
+            & (Payment.created_at >= created_at)
         )
         .scalar_subquery()
     )
@@ -118,10 +105,10 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         select(func.coalesce(func.sum(Payment.amount), 0))
         .join(User, Payment.tg_id == User.tg_id)
         .where(
-            (User.source_code == code) &
-            (Payment.status == "success") &
-            not_(Payment.payment_system.in_(["coupon", "referral", "cashback"])) &
-            (Payment.created_at >= created_at)
+            (User.source_code == code)
+            & (Payment.status == "success")
+            & not_(Payment.payment_system.in_(["coupon", "referral", "cashback"]))
+            & (Payment.created_at >= created_at)
         )
         .scalar_subquery()
     )

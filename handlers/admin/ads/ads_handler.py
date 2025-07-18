@@ -1,10 +1,11 @@
+import re
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-import re
 
 from config import USERNAME_BOT
 from database import create_tracking_source, get_tracking_source_stats
@@ -22,6 +23,7 @@ from .keyboard import (
     build_cancel_input_kb,
 )
 
+
 router = Router()
 
 
@@ -32,9 +34,7 @@ class AdminAdsState(StatesGroup):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "ads"), IsAdminFilter())
 async def handle_ads_menu(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb()
-    )
+    await callback_query.message.edit_text(text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb())
 
 
 @router.callback_query(AdminAdsCallback.filter(F.action == "create"), IsAdminFilter())
@@ -51,28 +51,24 @@ async def handle_ads_name_input(message: Message, state: FSMContext):
     await state.update_data(name=name)
     await state.set_state(AdminAdsState.waiting_for_new_code)
     await message.answer(
-        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.\n\n"
-        f"💡 <b>Правила:</b> только латинские буквы и цифры",
+        f"🔗 Введите <b>код ссылки</b> для: <code>{name}</code>.\n\n💡 <b>Правила:</b> только латинские буквы и цифры",
         reply_markup=build_cancel_input_kb(),
     )
 
 
 @router.message(AdminAdsState.waiting_for_new_code, IsAdminFilter())
-async def handle_ads_code_input(
-    message: Message, state: FSMContext, session: AsyncSession
-):
+async def handle_ads_code_input(message: Message, state: FSMContext, session: AsyncSession):
     code = message.text.strip()
     data = await state.get_data()
     name = data["name"]
 
-    if not re.match(r'^[a-zA-Z0-9]+$', code):
+    if not re.match(r"^[a-zA-Z0-9]+$", code):
         await message.answer(
-            "❌ Код может содержать только латинские буквы и цифры\n"
-            "Введите код заново:",
+            "❌ Код может содержать только латинские буквы и цифры\nВведите код заново:",
             reply_markup=build_cancel_input_kb(),
         )
         return
-    
+
     code_with_prefix = f"utm_{code}"
 
     try:
@@ -103,9 +99,7 @@ async def handle_ads_code_input(
 @router.callback_query(AdminAdsCallback.filter(F.action == "list"), IsAdminFilter())
 async def handle_ads_list(callback_query: CallbackQuery, session: AsyncSession, callback_data: AdminAdsCallback):
     try:
-        result = await session.execute(
-            select(TrackingSource).order_by(TrackingSource.created_at.desc())
-        )
+        result = await session.execute(select(TrackingSource).order_by(TrackingSource.created_at.desc()))
         ads = result.scalars().all()
         items_per_page = 6
         if callback_data.code and callback_data.code.isdigit():
@@ -119,9 +113,7 @@ async def handle_ads_list(callback_query: CallbackQuery, session: AsyncSession, 
         )
     except Exception as e:
         logger.error(f"Ошибка при получении списка UTM: {e}", exc_info=True)
-        await callback_query.message.edit_text(
-            "❌ Произошла ошибка при получении списка."
-        )
+        await callback_query.message.edit_text("❌ Произошла ошибка при получении списка.")
 
 
 @router.callback_query(AdminAdsCallback.filter(F.action == "view"), IsAdminFilter())
@@ -134,25 +126,17 @@ async def handle_ads_view(
     try:
         stats = await get_tracking_source_stats(session, code)
         if not stats:
-            await callback_query.message.edit_text(
-                "❌ Источник не найден или не содержит данных."
-            )
+            await callback_query.message.edit_text("❌ Источник не найден или не содержит данных.")
             return
         msg = format_ads_stats(stats, USERNAME_BOT)
-        await callback_query.message.edit_text(
-            text=msg, reply_markup=build_ads_stats_kb(code)
-        )
+        await callback_query.message.edit_text(text=msg, reply_markup=build_ads_stats_kb(code))
     except Exception as e:
         logger.error(f"Ошибка при просмотре статистики: {e}", exc_info=True)
         await callback_query.message.edit_text("❌ Ошибка при получении статистики.")
 
 
-@router.callback_query(
-    AdminAdsCallback.filter(F.action == "delete_confirm"), IsAdminFilter()
-)
-async def handle_ads_delete_confirm(
-    callback_query: CallbackQuery, callback_data: AdminAdsCallback
-):
+@router.callback_query(AdminAdsCallback.filter(F.action == "delete_confirm"), IsAdminFilter())
+async def handle_ads_delete_confirm(callback_query: CallbackQuery, callback_data: AdminAdsCallback):
     code = callback_data.code
     await callback_query.message.edit_text(
         text=f"Вы уверены, что хотите удалить ссылку <code>{code}</code>?",
@@ -168,9 +152,7 @@ async def handle_ads_delete(
 ):
     code = callback_data.code
     try:
-        await session.execute(
-            update(User).where(User.source_code == code).values(source_code=None)
-        )
+        await session.execute(update(User).where(User.source_code == code).values(source_code=None))
         await session.execute(delete(TrackingSource).where(TrackingSource.code == code))
         await session.commit()
         await callback_query.message.edit_text(
@@ -182,14 +164,10 @@ async def handle_ads_delete(
         await callback_query.message.edit_text("❌ Не удалось удалить ссылку.")
 
 
-@router.callback_query(
-    AdminAdsCallback.filter(F.action == "cancel_input"), IsAdminFilter()
-)
+@router.callback_query(AdminAdsCallback.filter(F.action == "cancel_input"), IsAdminFilter())
 async def handle_ads_cancel_input(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback_query.message.edit_text(
-        text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb()
-    )
+    await callback_query.message.edit_text(text="📊 <b>Аналитика рекламы:</b>", reply_markup=build_ads_kb())
 
 
 def format_ads_stats(stats: dict, username_bot: str) -> str:

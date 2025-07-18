@@ -1,9 +1,11 @@
 import time
+
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 import py3xui
+
 from py3xui import AsyncApi
 
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
@@ -82,9 +84,7 @@ async def add_client(xui: py3xui.AsyncApi, config: ClientConfig) -> dict[str, An
     except Exception as e:
         error_message = str(e)
         if "Duplicate email" in error_message:
-            logger.warning(
-                f"Дублированный email: {config.email}. Пропуск. Сообщение: {error_message}"
-            )
+            logger.warning(f"Дублированный email: {config.email}. Пропуск. Сообщение: {error_message}")
             return {"status": "duplicate", "email": config.email}
 
         logger.error(f"Ошибка при добавлении клиента {config.email}: {error_message}")
@@ -108,9 +108,7 @@ async def extend_client_key(
             logger.warning(f"Клиент с email {email} не найден или не имеет ID.")
             return None
 
-        logger.info(
-            f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}"
-        )
+        logger.info(f"Обновление ключа клиента {email} с ID {client.id} до {new_expiry_time}")
 
         client.id = client_id
         client.expiry_time = new_expiry_time
@@ -216,14 +214,10 @@ async def toggle_client(
 
     except httpx.ConnectTimeout as e:
         status = "включении" if enable else "отключении"
-        logger.error(
-            f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}"
-        )
+        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
         return False
 
     except Exception as e:
         status = "включении" if enable else "отключении"
-        logger.error(
-            f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}"
-        )
+        logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
         return False

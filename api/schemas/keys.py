@@ -1,21 +1,22 @@
-from pydantic import BaseModel, Field
 from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class KeyBase(BaseModel):
     tg_id: int
     client_id: str
-    email: Optional[str] = None
-    created_at: Optional[int] = None
+    email: str | None = None
+    created_at: int | None = None
     expiry_time: int
-    key: Optional[str] = None
-    server_id: Optional[str] = None
-    remnawave_link: Optional[str] = None
-    tariff_id: Optional[int] = None
-    is_frozen: Optional[bool] = False
-    alias: Optional[str] = None
-    notified: Optional[bool] = False
-    notified_24h: Optional[bool] = False
+    key: str | None = None
+    server_id: str | None = None
+    remnawave_link: str | None = None
+    tariff_id: int | None = None
+    is_frozen: bool | None = False
+    alias: str | None = None
+    notified: bool | None = False
+    notified_24h: bool | None = False
 
 
 class KeyResponse(KeyBase):
@@ -24,39 +25,39 @@ class KeyResponse(KeyBase):
 
 
 class KeyDetailsResponse(BaseModel):
-    key: Optional[str]
-    remnawave_link: Optional[str]
-    server_id: Optional[str]
-    created_at: Optional[int]
-    expiry_time: Optional[int]
+    key: str | None
+    remnawave_link: str | None
+    server_id: str | None
+    created_at: int | None
+    expiry_time: int | None
     client_id: str
     tg_id: int
-    email: Optional[str]
+    email: str | None
     is_frozen: bool
     balance: float
-    alias: Optional[str]
+    alias: str | None
     expiry_date: str
     days_left_message: str
-    link: Optional[str]
-    cluster_name: Optional[str]
-    location_name: Optional[str]
-    tariff_id: Optional[int]
+    link: str | None
+    cluster_name: str | None
+    location_name: str | None
+    tariff_id: int | None
 
     class Config:
         from_attributes = True
 
 
 class KeyUpdate(BaseModel):
-    email: Optional[str] = None
-    expiry_time: Optional[int] = None
-    key: Optional[str] = None
-    server_id: Optional[str] = None
-    remnawave_link: Optional[str] = None
-    tariff_id: Optional[int] = None
-    is_frozen: Optional[bool] = None
-    alias: Optional[str] = None
-    notified: Optional[bool] = None
-    notified_24h: Optional[bool] = None
+    email: str | None = None
+    expiry_time: int | None = None
+    key: str | None = None
+    server_id: str | None = None
+    remnawave_link: str | None = None
+    tariff_id: int | None = None
+    is_frozen: bool | None = None
+    alias: str | None = None
+    notified: bool | None = None
+    notified_24h: bool | None = None
 
     class Config:
         from_attributes = True
@@ -68,10 +69,10 @@ class KeyCreateRequest(BaseModel):
     tariff_id: int = Field(..., description="ID тарифа из базы данных")
     client_id: str = Field(..., description="UUID клиента (уникальный)")
     expiry_timestamp: int = Field(..., description="Срок окончания в миллисекундах")
-    
-    email: Optional[str] = Field(None, description="Условное имя подписки")
-    alias: Optional[str] = Field(None, description="пользовательское имя")
-    remnawave_link: Optional[str] = Field(None, description="Ссылка на подписку Remnawave")
-    hwid_limit: Optional[int] = Field(None, description="Ограничение по HWID")
-    traffic_limit_bytes: Optional[int] = Field(None, description="Ограничение трафика в байтах")
-    is_trial: Optional[bool] = Field(False, description="Флаг триального ключа")
+
+    email: str | None = Field(None, description="Условное имя подписки")
+    alias: str | None = Field(None, description="пользовательское имя")
+    remnawave_link: str | None = Field(None, description="Ссылка на подписку Remnawave")
+    hwid_limit: int | None = Field(None, description="Ограничение по HWID")
+    traffic_limit_bytes: int | None = Field(None, description="Ограничение трафика в байтах")
+    is_trial: bool | None = Field(False, description="Флаг триального ключа")

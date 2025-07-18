@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -29,13 +30,14 @@ from handlers.buttons import (
 from handlers.texts import (
     CHOOSE_DEVICE_TEXT,
     CONNECT_TV_TEXT,
+    INSTRUCTIONS,
     INSTRUCTION_MACOS,
     INSTRUCTION_PC,
-    INSTRUCTIONS,
     KEY_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
+
 
 router = Router()
 
@@ -79,12 +81,8 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
         return
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}")
-    )
-    builder.row(
-        InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}")
-    )
+    builder.row(InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}"))
+    builder.row(InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
     await edit_or_send_message(
@@ -105,9 +103,7 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
-    builder.row(
-        InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}")
-    )
+    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -129,9 +125,7 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
-    builder.row(
-        InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}")
-    )
+    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -148,9 +142,7 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}")
-    )
+    builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

@@ -1,16 +1,28 @@
 import os
 import subprocess
+
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import aiofiles
-from aiogram.types import BufferedInputFile
+
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 
 from bot import bot
 from config import (
-    ADMIN_ID, BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT,
-    BACKUP_SEND_MODE, BACKUP_CHANNEL_ID, BACKUP_CHANNEL_THREAD_ID, BACKUP_OTHER_BOT_TOKEN, BACKUP_CAPTION
+    ADMIN_ID,
+    BACKUP_CAPTION,
+    BACKUP_CHANNEL_ID,
+    BACKUP_CHANNEL_THREAD_ID,
+    BACKUP_OTHER_BOT_TOKEN,
+    BACKUP_SEND_MODE,
+    BACK_DIR,
+    DB_NAME,
+    DB_PASSWORD,
+    DB_USER,
+    PG_HOST,
+    PG_PORT,
 )
 from logger import logger
 
@@ -146,9 +158,7 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
     async def send_default():
         for admin_id in ADMIN_ID:
             try:
-                await bot.send_document(
-                    chat_id=admin_id, document=backup_input_file
-                )
+                await bot.send_document(chat_id=admin_id, document=backup_input_file)
                 logger.info(f"Бэкап базы данных отправлен админу: {admin_id}")
             except Exception as e:
                 logger.error(f"Не удалось отправить бэкап админу {admin_id}: {e}")
@@ -169,7 +179,7 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
                     logger.error("BACKUP_CHANNEL_ID не задан для режима 'channel', fallback на default")
                     await send_default()
                     return
-                send_kwargs = dict(chat_id=channel_id, document=backup_input_file)
+                send_kwargs = {"chat_id": channel_id, "document": backup_input_file}
                 if thread_id:
                     send_kwargs["message_thread_id"] = int(thread_id)
                 if BACKUP_CAPTION:
@@ -190,7 +200,7 @@ async def _send_backup_to_admins(backup_file_path: str) -> None:
                 try:
                     for admin_id in ADMIN_ID:
                         try:
-                            send_kwargs = dict(chat_id=admin_id, document=backup_input_file)
+                            send_kwargs = {"chat_id": admin_id, "document": backup_input_file}
                             if BACKUP_CAPTION:
                                 send_kwargs["caption"] = BACKUP_CAPTION
                             await other_bot.send_document(**send_kwargs)

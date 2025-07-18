@@ -1,8 +1,15 @@
-from .users import UserBase, UserResponse, UserUpdate
-from .keys import KeyResponse, KeyDetailsResponse
-from .tariffs import TariffResponse, TariffUpdate, TariffBase
-from .servers import ServerResponse, ServerBase, ServerUpdate
-from .coupons import CouponResponse, CouponUsageResponse, CouponBase, CouponUpdate
+from .coupons import CouponBase, CouponResponse, CouponUpdate, CouponUsageResponse
+from .gifts import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
+from .keys import KeyDetailsResponse, KeyResponse
+from .misc import (
+    BlockedUserResponse,
+    ManualBanResponse,
+    NotificationResponse,
+    PaymentResponse,
+    TemporaryDataResponse,
+    TrackingSourceResponse,
+)
 from .referrals import ReferralResponse
-from .gifts import GiftResponse, GiftUsageResponse, GiftUpdate, GiftBase
-from .misc import ManualBanResponse, TemporaryDataResponse, BlockedUserResponse, TrackingSourceResponse, PaymentResponse, NotificationResponse
+from .servers import ServerBase, ServerResponse, ServerUpdate
+from .tariffs import TariffBase, TariffResponse, TariffUpdate
+from .users import UserBase, UserResponse, UserUpdate

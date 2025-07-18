@@ -1,13 +1,16 @@
 import base64
-import aiohttp
-from aiohttp import web
 import json
-from database import async_session_maker, update_balance, add_payment
-from handlers.payments.utils import send_payment_success_notification
-from logger import logger
+
+import aiohttp
+
+from aiohttp import web
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
+
+from database import add_payment, async_session_maker, update_balance
+from handlers.payments.utils import send_payment_success_notification
+from logger import logger
 
 
 PUBLIC_KEY_URL = "https://api.wata.pro/api/h2h/public-key"
@@ -24,12 +27,7 @@ async def verify_signature(raw_json: bytes, signature: str, public_key_pem: byte
     try:
         public_key = serialization.load_pem_public_key(public_key_pem, backend=default_backend())
         signature_bytes = base64.b64decode(signature)
-        public_key.verify(
-            signature_bytes,
-            raw_json,
-            padding.PKCS1v15(),
-            hashes.SHA512()
-        )
+        public_key.verify(signature_bytes, raw_json, padding.PKCS1v15(), hashes.SHA512())
         return True
     except Exception as e:
         logger.error(f"Ошибка проверки подписи WATA: {e}")
@@ -50,7 +48,9 @@ async def wata_payment_webhook(request: web.Request):
             return web.Response(status=400)
 
         logger.info(f"WATA webhook: {json.dumps(data, ensure_ascii=False)}")
-        logger.info(f"transactionId={data.get('transactionId')}, status={data.get('transactionStatus')}, orderId={data.get('orderId')}, amount={data.get('amount')}, currency={data.get('currency')}, errorCode={data.get('errorCode')}, errorDescription={data.get('errorDescription')}")
+        logger.info(
+            f"transactionId={data.get('transactionId')}, status={data.get('transactionStatus')}, orderId={data.get('orderId')}, amount={data.get('amount')}, currency={data.get('currency')}, errorCode={data.get('errorCode')}, errorDescription={data.get('errorDescription')}"
+        )
         if data.get("transactionStatus") == "Paid":
             tg_id = data.get("orderId")
             amount = data.get("amount")

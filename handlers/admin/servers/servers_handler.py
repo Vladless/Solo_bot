@@ -9,24 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_servers
 from database.models import Key, Server
 from database.servers import (
+    get_available_clusters,
     get_server_by_name,
+    update_server_cluster,
     update_server_field,
     update_server_name_with_keys,
-    get_available_clusters,
-    update_server_cluster,
 )
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
-    AdminServerCallback, 
-    build_manage_server_kb,
-    build_edit_server_fields_kb,
-    build_panel_type_selection_kb,
-    build_cluster_selection_kb,
+    AdminServerCallback,
     build_cancel_edit_kb,
+    build_cluster_selection_kb,
+    build_edit_server_fields_kb,
+    build_manage_server_kb,
+    build_panel_type_selection_kb,
 )
+
 
 router = Router()
 
@@ -40,9 +41,7 @@ class ServerEditState(StatesGroup):
     editing_value = State()
 
 
-@router.callback_query(
-    AdminServerCallback.filter(F.action == "manage"), IsAdminFilter()
-)
+@router.callback_query(AdminServerCallback.filter(F.action == "manage"), IsAdminFilter())
 async def handle_server_manage(
     callback_query: CallbackQuery,
     callback_data: AdminServerCallback,
@@ -52,12 +51,7 @@ async def handle_server_manage(
     servers = await get_servers(session=session, include_enabled=True)
 
     cluster_name, server = next(
-        (
-            (c, s)
-            for c, cs in servers.items()
-            for s in cs
-            if s["server_name"] == server_name
-        ),
+        ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name),
         (None, None),
     )
 
@@ -69,9 +63,7 @@ async def handle_server_manage(
         max_keys = server.get("max_keys")
         limit_display = f"{max_keys}" if max_keys else "не задан"
 
-        result = await session.execute(
-            select(func.count()).where(Key.server_id == server_name)
-        )
+        result = await session.execute(select(func.count()).where(Key.server_id == server_name))
         subscription_count = result.scalar() or 0
 
         text = (
@@ -97,17 +89,13 @@ async def handle_server_manage(
 
         await callback_query.message.edit_text(
             text=text,
-            reply_markup=build_manage_server_kb(
-                server_name, cluster_name, enabled=server.get("enabled", True)
-            ),
+            reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
         )
     else:
         await callback_query.message.edit_text(text="❌ Сервер не найден.")
 
 
-@router.callback_query(
-    AdminServerCallback.filter(F.action == "delete"), IsAdminFilter()
-)
+@router.callback_query(AdminServerCallback.filter(F.action == "delete"), IsAdminFilter())
 async def process_callback_delete_server(
     callback_query: CallbackQuery,
     callback_data: AdminServerCallback,
@@ -139,16 +127,9 @@ async def process_callback_delete_server(
     if keys_count > 0:
         await state.update_data(server_name=server_name, cluster_name=cluster_name)
 
-        subq = (
-            select(func.count())
-            .where(Key.server_id == Server.server_name)
-            .correlate(Server)
-            .scalar_subquery()
-        )
+        subq = select(func.count()).where(Key.server_id == Server.server_name).correlate(Server).scalar_subquery()
 
-        stmt_all_servers = select(Server.server_name, subq.label("key_count")).where(
-            Server.server_name != server_name
-        )
+        stmt_all_servers = select(Server.server_name, subq.label("key_count")).where(Server.server_name != server_name)
         result = await session.execute(stmt_all_servers)
         all_servers = result.all()
 
@@ -164,9 +145,7 @@ async def process_callback_delete_server(
             builder.row(
                 InlineKeyboardButton(
                     text=BACK,
-                    callback_data=AdminServerCallback(
-                        action="manage", data=server_name
-                    ).pack(),
+                    callback_data=AdminServerCallback(action="manage", data=server_name).pack(),
                 )
             )
 
@@ -184,31 +163,20 @@ async def process_callback_delete_server(
     remaining_servers = result.scalar_one()
 
     if remaining_servers == 0:
-        stmt_other_clusters = (
-            select(Server.cluster_name)
-            .distinct()
-            .where(Server.cluster_name != cluster_name)
-        )
+        stmt_other_clusters = select(Server.cluster_name).distinct().where(Server.cluster_name != cluster_name)
         result = await session.execute(stmt_other_clusters)
         other_clusters = result.scalars().all()
 
         if other_clusters:
-            stmt_cluster_keys = select(func.count()).where(
-                Key.server_id == cluster_name
-            )
+            stmt_cluster_keys = select(func.count()).where(Key.server_id == cluster_name)
             result = await session.execute(stmt_cluster_keys)
             cluster_keys_count = result.scalar_one()
 
             if cluster_keys_count > 0:
-                await state.update_data(
-                    server_name=server_name, cluster_name=cluster_name
-                )
+                await state.update_data(server_name=server_name, cluster_name=cluster_name)
 
                 subq_cluster = (
-                    select(func.count())
-                    .where(Key.server_id == Server.cluster_name)
-                    .correlate(Server)
-                    .scalar_subquery()
+                    select(func.count()).where(Key.server_id == Server.cluster_name).correlate(Server).scalar_subquery()
                 )
 
                 stmt_all_clusters = (
@@ -230,9 +198,7 @@ async def process_callback_delete_server(
                 builder.row(
                     InlineKeyboardButton(
                         text=BACK,
-                        callback_data=AdminServerCallback(
-                            action="manage", data=server_name
-                        ).pack(),
+                        callback_data=AdminServerCallback(action="manage", data=server_name).pack(),
                     )
                 )
 
@@ -243,9 +209,7 @@ async def process_callback_delete_server(
                 await state.set_state(AdminClusterStates.waiting_for_cluster_transfer)
                 return
 
-        stmt_delete = delete(Server).where(
-            (Server.cluster_name == cluster_name) & (Server.server_name == server_name)
-        )
+        stmt_delete = delete(Server).where((Server.cluster_name == cluster_name) & (Server.server_name == server_name))
         await session.execute(stmt_delete)
         await session.commit()
         await callback_query.message.edit_text(
@@ -253,9 +217,7 @@ async def process_callback_delete_server(
             reply_markup=build_admin_back_kb("clusters"),
         )
     else:
-        stmt_delete = delete(Server).where(
-            (Server.cluster_name == cluster_name) & (Server.server_name == server_name)
-        )
+        stmt_delete = delete(Server).where((Server.cluster_name == cluster_name) & (Server.server_name == server_name))
         await session.execute(stmt_delete)
         await session.commit()
         await callback_query.message.edit_text(
@@ -264,9 +226,7 @@ async def process_callback_delete_server(
         )
 
 
-@router.callback_query(
-    AdminServerCallback.filter(F.action.in_(["enable", "disable"])), IsAdminFilter()
-)
+@router.callback_query(AdminServerCallback.filter(F.action.in_(["enable", "disable"])), IsAdminFilter())
 async def toggle_server_enabled(
     callback_query: CallbackQuery,
     callback_data: AdminServerCallback,
@@ -277,22 +237,13 @@ async def toggle_server_enabled(
 
     new_status = action == "enable"
 
-    await session.execute(
-        update(Server)
-        .where(Server.server_name == server_name)
-        .values(enabled=new_status)
-    )
+    await session.execute(update(Server).where(Server.server_name == server_name).values(enabled=new_status))
     await session.commit()
 
     servers = await get_servers(session=session, include_enabled=True)
 
     cluster_name, server = next(
-        (
-            (c, s)
-            for c, cs in servers.items()
-            for s in cs
-            if s["server_name"] == server_name
-        ),
+        ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name),
         (None, None),
     )
 
@@ -313,18 +264,12 @@ async def toggle_server_enabled(
 
     await callback_query.message.edit_text(
         text=text,
-        reply_markup=build_manage_server_kb(
-            server_name, cluster_name, enabled=new_status
-        ),
+        reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=new_status),
     )
 
 
-@router.callback_query(
-    AdminServerCallback.filter(F.action == "set_limit"), IsAdminFilter()
-)
-async def ask_server_limit(
-    callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext
-):
+@router.callback_query(AdminServerCallback.filter(F.action == "set_limit"), IsAdminFilter())
+async def ask_server_limit(callback_query: CallbackQuery, callback_data: AdminServerCallback, state: FSMContext):
     server_name = callback_data.data
     await state.set_state(ServerLimitState.waiting_for_limit)
     await state.update_data(server_name=server_name)
@@ -334,9 +279,7 @@ async def ask_server_limit(
 
 
 @router.message(ServerLimitState.waiting_for_limit, IsAdminFilter())
-async def save_server_limit(
-    message: types.Message, state: FSMContext, session: AsyncSession
-):
+async def save_server_limit(message: types.Message, state: FSMContext, session: AsyncSession):
     try:
         limit = int(message.text.strip())
         if limit < 0:
@@ -347,21 +290,12 @@ async def save_server_limit(
 
         new_value = limit if limit > 0 else None
 
-        await session.execute(
-            update(Server)
-            .where(Server.server_name == server_name)
-            .values(max_keys=new_value)
-        )
+        await session.execute(update(Server).where(Server.server_name == server_name).values(max_keys=new_value))
         await session.commit()
 
         servers = await get_servers(session=session, include_enabled=True)
         cluster_name, server = next(
-            (
-                (c, s)
-                for c, cs in servers.items()
-                for s in cs
-                if s["server_name"] == server_name
-            ),
+            ((c, s) for c, cs in servers.items() for s in cs if s["server_name"] == server_name),
             (None, None),
         )
 
@@ -383,9 +317,7 @@ async def save_server_limit(
 
         await message.answer(
             text,
-            reply_markup=build_manage_server_kb(
-                server_name, cluster_name, enabled=server.get("enabled", True)
-            ),
+            reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
         )
         await state.clear()
 
@@ -398,69 +330,69 @@ async def start_edit_server(callback: CallbackQuery, state: FSMContext, session:
     server_name = callback.data.split("|")[1]
 
     await state.clear()
-    
+
     server_data = await get_server_by_name(session, server_name)
     if not server_data:
         await callback.message.edit_text("❌ Сервер не найден.")
         return
-    
+
     await callback.message.edit_text(
-        f"<b>✏️ Редактирование сервера: {server_name}</b>\n\n"
-        "Выберите поле для редактирования:",
-        reply_markup=build_edit_server_fields_kb(server_name, server_data)
+        f"<b>✏️ Редактирование сервера: {server_name}</b>\n\nВыберите поле для редактирования:",
+        reply_markup=build_edit_server_fields_kb(server_name, server_data),
     )
 
 
 @router.callback_query(F.data.startswith("edit_server_field|"), IsAdminFilter())
 async def ask_new_field_value(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     _, server_name, field = callback.data.split("|")
-    
+
     if field == "cluster_name":
         clusters = await get_available_clusters(session)
         await callback.message.edit_text(
             f"<b>🗂 Выберите кластер для сервера {server_name}:</b>",
-            reply_markup=build_cluster_selection_kb(server_name, clusters)
+            reply_markup=build_cluster_selection_kb(server_name, clusters),
         )
         return
-    
+
     await state.update_data(server_name=server_name, field=field)
     await state.set_state(ServerEditState.editing_value)
-    
+
     field_names = {
         "server_name": "имя сервера",
         "api_url": "API URL",
         "subscription_url": "Subscription URL",
         "inbound_id": "Inbound ID",
     }
-    
+
     await callback.message.edit_text(
         f"✏️ Введите новое значение для <b>{field_names.get(field, field)}</b>:",
-        reply_markup=build_cancel_edit_kb(server_name)
+        reply_markup=build_cancel_edit_kb(server_name),
     )
 
 
 @router.callback_query(F.data.startswith("select_panel_type|"), IsAdminFilter())
 async def select_panel_type(callback: CallbackQuery):
     server_name = callback.data.split("|")[1]
-    
+
     await callback.message.edit_text(
         f"<b>⚙️ Выберите тип панели для сервера {server_name}:</b>",
-        reply_markup=build_panel_type_selection_kb(server_name)
+        reply_markup=build_panel_type_selection_kb(server_name),
     )
 
 
 @router.callback_query(F.data.startswith("set_panel_type|"), IsAdminFilter())
 async def set_panel_type(callback: CallbackQuery, session: AsyncSession):
     _, server_name, panel_type = callback.data.split("|")
-    
+
     success = await update_server_field(session, server_name, "panel_type", panel_type)
     if success:
         await callback.message.edit_text(
             f"✅ Тип панели сервера {server_name} изменен на {panel_type}",
-            reply_markup=InlineKeyboardBuilder().button(
-                text="⬅️ Назад к серверу",
-                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
-            ).as_markup()
+            reply_markup=InlineKeyboardBuilder()
+            .button(
+                text="⬅️ Назад к серверу", callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            )
+            .as_markup(),
         )
     else:
         await callback.message.edit_text("❌ Ошибка при изменении типа панели")
@@ -469,15 +401,16 @@ async def set_panel_type(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data.startswith("set_cluster|"), IsAdminFilter())
 async def set_cluster(callback: CallbackQuery, session: AsyncSession):
     _, server_name, new_cluster = callback.data.split("|")
-    
+
     success = await update_server_cluster(session, server_name, new_cluster)
     if success:
         await callback.message.edit_text(
             f"✅ Кластер сервера {server_name} изменен на {new_cluster}",
-            reply_markup=InlineKeyboardBuilder().button(
-                text="⬅️ Назад к серверу",
-                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
-            ).as_markup()
+            reply_markup=InlineKeyboardBuilder()
+            .button(
+                text="⬅️ Назад к серверу", callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            )
+            .as_markup(),
         )
     else:
         await callback.message.edit_text("❌ Ошибка при изменении кластера")
@@ -499,7 +432,7 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
             return
     else:
         success = await update_server_field(session, server_name, field, value)
-    
+
     if success:
         field_names = {
             "server_name": "имя сервера",
@@ -507,15 +440,16 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
             "subscription_url": "Subscription URL",
             "inbound_id": "Inbound ID",
         }
-        
+
         await message.answer(
             f"✅ {field_names.get(field, field).capitalize()} изменено",
-            reply_markup=InlineKeyboardBuilder().button(
-                text="⬅️ Назад к серверу",
-                callback_data=AdminServerCallback(action="manage", data=server_name).pack()
-            ).as_markup()
+            reply_markup=InlineKeyboardBuilder()
+            .button(
+                text="⬅️ Назад к серверу", callback_data=AdminServerCallback(action="manage", data=server_name).pack()
+            )
+            .as_markup(),
         )
     else:
         await message.answer("❌ Ошибка при изменении поля")
-        
+
     await state.clear()

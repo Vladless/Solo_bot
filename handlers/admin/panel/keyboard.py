@@ -33,20 +33,12 @@ def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="clusters").pack(),
     )
     builder.row(
-        InlineKeyboardButton(
-            text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()
-        ),
-        InlineKeyboardButton(
-            text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()
-        ),
+        InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
+        InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )
     builder.row(
-        InlineKeyboardButton(
-            text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()
-        ),
-        InlineKeyboardButton(
-            text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()
-        ),
+        InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
+        InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
     )
 
     if admin_role == "superadmin":
@@ -99,6 +91,4 @@ def build_admin_back_btn(action: str = "admin") -> InlineKeyboardButton:
 
 
 def build_admin_btn(text: str, action: str) -> InlineKeyboardButton:
-    return InlineKeyboardButton(
-        text=text, callback_data=AdminPanelCallback(action=action).pack()
-    )
+    return InlineKeyboardButton(text=text, callback_data=AdminPanelCallback(action=action).pack())

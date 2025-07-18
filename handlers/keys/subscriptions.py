@@ -6,6 +6,7 @@ import time
 import urllib.parse
 
 import aiohttp
+
 from aiohttp import web
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,19 +16,17 @@ from config import (
     RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
     SUPPORT_CHAT_URL,
-    USE_COUNTRY_SELECTION,
     USERNAME_BOT,
+    USE_COUNTRY_SELECTION,
 )
 from database import get_key_details, get_servers
 from database.models import Server
+from handlers.texts import HAPP_ANNOUNCE, HIDDIFY_PROFILE_TITLE, SUBSCRIPTION_INFO_TEXT, V2RAYTUN_ANNOUNCE
 from handlers.utils import convert_to_bytes
-from handlers.texts import SUBSCRIPTION_INFO_TEXT, HAPP_ANNOUNCE, V2RAYTUN_ANNOUNCE, HIDDIFY_PROFILE_TITLE
 from logger import logger
 
 
-async def fetch_url_content(
-    url: str, identifier: str
-) -> tuple[list[str], dict[str, str]]:
+async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[str, str]]:
     try:
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -36,9 +35,7 @@ async def fetch_url_content(
                     content = await response.text()
                     lines = base64.b64decode(content).decode("utf-8").split("\n")
                     headers = {k.lower(): v for k, v in response.headers.items()}
-                    logger.debug(
-                        f"Fetched {url}: {len(lines)} lines, headers: {headers}"
-                    )
+                    logger.debug(f"Fetched {url}: {len(lines)} lines, headers: {headers}")
                     return lines, headers
                 return [], {}
     except Exception as e:
@@ -50,9 +47,7 @@ async def combine_unique_lines(
     urls: list[str], identifier: str, query_string: str
 ) -> tuple[list[str], list[dict[str, str]]]:
     if SUPERNODE:
-        logger.info(
-            f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}"
-        )
+        logger.info(f"Режим SUPERNODE активен. Возвращаем первую ссылку для идентификатора: {identifier}")
         if not urls:
             return [], []
         url_with_query = f"{urls[0]}?{query_string}" if query_string else urls[0]
@@ -78,7 +73,7 @@ async def get_subscription_urls(
     urls = []
     if USE_COUNTRY_SELECTION:
         result = await session.execute(
-            select(Server.subscription_url).where(Server.server_name == server_id, Server.enabled == True)
+            select(Server.subscription_url).where(Server.server_name == server_id, Server.enabled is True)
         )
         server_data = result.scalar()
         if server_data:
@@ -101,9 +96,7 @@ def calculate_traffic(
     expiry_time_ms: int | None,
     headers_list: list[dict[str, str]],
 ) -> str:
-    logger.debug(
-        f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}"
-    )
+    logger.debug(f"Calculating traffic with subscriptions: {cleaned_subscriptions}, headers: {headers_list}")
     expire_timestamp = int(expiry_time_ms / 1000) if expiry_time_ms else 0
 
     upload = 0
@@ -144,9 +137,7 @@ def calculate_traffic(
                 country_remaining[country] = remaining_bytes
                 logger.debug(f"Found traffic: {value}{unit} for {country}")
 
-    consumed_traffic_bytes = (
-        total - sum(country_remaining.values()) if country_remaining else download
-    )
+    consumed_traffic_bytes = total - sum(country_remaining.values()) if country_remaining else download
     if consumed_traffic_bytes < 0:
         consumed_traffic_bytes = 0
     download = max(download, consumed_traffic_bytes)
@@ -201,11 +192,9 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "3",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "support-url": SUPPORT_CHAT_URL,
-            "announce": "base64:"
-            + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
             "subscription-userinfo": subscription_userinfo,
         }
@@ -215,8 +204,7 @@ def prepare_headers(
         encoded_project_name = HIDDIFY_PROFILE_TITLE.format(project_name=project_name, key_info=key_info)
         return {
             "profile-update-interval": "3",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
     elif "v2raytun" in user_agent:
@@ -226,11 +214,9 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "update-always": "true",
-            "announce": "base64:"
-            + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
+            "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "announce-url": f"{SUPPORT_CHAT_URL}",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "subscription-userinfo": subscription_userinfo,
         }
     else:
@@ -239,8 +225,7 @@ def prepare_headers(
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": "inline",
             "profile-update-interval": "3",
-            "profile-title": "base64:"
-            + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
+            "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
         }
 
 
@@ -257,14 +242,10 @@ async def handle_subscription(request: web.Request) -> web.Response:
         try:
             key = await get_key_details(session, email)
             if not key:
-                return web.Response(
-                    text="❌ Клиент с таким email не найден.", status=404
-                )
+                return web.Response(text="❌ Клиент с таким email не найден.", status=404)
 
             if int(tg_id) != int(key["tg_id"]):
-                return web.Response(
-                    text="❌ Неверные данные. Получите свой ключ в боте.", status=403
-                )
+                return web.Response(text="❌ Неверные данные. Получите свой ключ в боте.", status=403)
 
             expiry_time_ms = key["expiry_time"]
             server_id = key["server_id"]
@@ -272,35 +253,23 @@ async def handle_subscription(request: web.Request) -> web.Response:
 
             time_left = format_time_left(expiry_time_ms)
 
-            urls = await get_subscription_urls(
-                server_id, email, session, include_remnawave_key=remnawave_link
-            )
+            urls = await get_subscription_urls(server_id, email, session, include_remnawave_key=remnawave_link)
             if not urls:
                 return web.Response(text="❌ Сервер не найден.", status=404)
 
             query_string = request.query_string
-            combined_subscriptions, headers_list = await combine_unique_lines(
-                urls, tg_id or email, query_string
-            )
+            combined_subscriptions, headers_list = await combine_unique_lines(urls, tg_id or email, query_string)
             if RANDOM_SUBSCRIPTIONS:
                 random.shuffle(combined_subscriptions)
 
-            cleaned_subscriptions = [
-                clean_subscription_line(line) for line in combined_subscriptions
-            ]
+            cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 
-            base64_encoded = base64.b64encode(
-                "\n".join(cleaned_subscriptions).encode("utf-8")
-            ).decode("utf-8")
+            base64_encoded = base64.b64encode("\n".join(cleaned_subscriptions).encode("utf-8")).decode("utf-8")
             subscription_info = SUBSCRIPTION_INFO_TEXT.format(email=email, time_left=time_left)
 
             user_agent = request.headers.get("User-Agent", "")
-            subscription_userinfo = calculate_traffic(
-                cleaned_subscriptions, expiry_time_ms, headers_list
-            )
-            headers = prepare_headers(
-                user_agent, PROJECT_NAME, subscription_info, subscription_userinfo
-            )
+            subscription_userinfo = calculate_traffic(cleaned_subscriptions, expiry_time_ms, headers_list)
+            headers = prepare_headers(user_agent, PROJECT_NAME, subscription_info, subscription_userinfo)
 
             return web.Response(text=base64_encoded, headers=headers)
 

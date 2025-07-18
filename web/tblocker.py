@@ -1,4 +1,5 @@
 import datetime
+
 from datetime import datetime
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -12,6 +13,7 @@ from database import get_key_details
 from handlers.buttons import MAIN_MENU
 from handlers.texts import TORRENT_BLOCKED_MSG, TORRENT_UNBLOCKED_MSG
 from logger import logger
+
 
 last_unblock_data = {}
 
@@ -50,27 +52,19 @@ def handle_telegram_errors(func):
 
 
 @handle_telegram_errors
-async def send_notification(
-    tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str
-):
+async def send_notification(tg_id: int, username: str, ip: str, server: str, action: str, timestamp: str):
     country = get_country_from_server(server)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if action == "block":
-        message = TORRENT_BLOCKED_MSG.format(
-            username=username, country=country, duration=BLOCK_DURATION
-        )
+        message = TORRENT_BLOCKED_MSG.format(username=username, country=country, duration=BLOCK_DURATION)
     else:
         message = TORRENT_UNBLOCKED_MSG.format(username=username, country=country)
 
-    await bot.send_message(
-        chat_id=tg_id, text=message, parse_mode="HTML", reply_markup=builder.as_markup()
-    )
-    logger.info(
-        f"Отправлено уведомление пользователю {tg_id} о {action} для подписки {username}"
-    )
+    await bot.send_message(chat_id=tg_id, text=message, parse_mode="HTML", reply_markup=builder.as_markup())
+    logger.info(f"Отправлено уведомление пользователю {tg_id} о {action} для подписки {username}")
     return True
 
 
@@ -93,17 +87,13 @@ async def tblocker_webhook(request: web.Request):
         current_time = datetime.now().timestamp()
 
         last_unblock_data = {
-            k: v
-            for k, v in last_unblock_data.items()
-            if current_time - v["received_at"] <= TIMESTAMP_TTL
+            k: v for k, v in last_unblock_data.items() if current_time - v["received_at"] <= TIMESTAMP_TTL
         }
 
         cache_key = f"{username}:{server}"
         if action == "unblock" and cache_key in last_unblock_data:
             if timestamp == last_unblock_data[cache_key]["timestamp"]:
-                return web.json_response(
-                    {"status": "ok", "message": "duplicate unblock skipped"}
-                )
+                return web.json_response({"status": "ok", "message": "duplicate unblock skipped"})
 
         if action == "unblock":
             last_unblock_data[cache_key] = {
@@ -129,9 +119,7 @@ async def tblocker_webhook(request: web.Request):
             )
 
             if not success:
-                logger.warning(
-                    f"Не удалось отправить уведомление пользователю {key_info['tg_id']}"
-                )
+                logger.warning(f"Не удалось отправить уведомление пользователю {key_info['tg_id']}")
 
         return web.json_response({"status": "ok"})
 

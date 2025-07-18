@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -14,11 +15,11 @@ from config import (
     FREEKASSA_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
-    YOOKASSA_ENABLE,
-    YOOMONEY_ENABLE,
+    WATA_INT_ENABLE,
     WATA_RU_ENABLE,
     WATA_SBP_ENABLE,
-    WATA_INT_ENABLE,
+    YOOKASSA_ENABLE,
+    YOOMONEY_ENABLE,
 )
 from database import get_last_payments
 from database.models import User
@@ -31,31 +32,29 @@ from handlers.buttons import (
     PAYMENT,
     ROBOKASSA,
     STARS,
-    YOOKASSA,
-    YOOMONEY,
+    WATA_INT,
     WATA_RU,
     WATA_SBP,
-    WATA_INT,
+    YOOKASSA,
+    YOOMONEY,
 )
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
 from handlers.payments.freekassa_pay import process_callback_pay_freekassa
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
 from handlers.payments.stars_pay import process_callback_pay_stars
+from handlers.payments.wata import process_callback_pay_wata
 from handlers.payments.yookassa_pay import process_callback_pay_yookassa
 from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
-from handlers.payments.wata import process_callback_pay_wata
 from handlers.texts import BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
 
 from .utils import edit_or_send_message
+
 
 router = Router()
 
 
 @router.callback_query(F.data == "pay")
-async def handle_pay(
-    callback_query: CallbackQuery, state: FSMContext, session: AsyncSession
-):
-
+async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     payment_handlers = []
 
     if YOOKASSA_ENABLE:
@@ -98,9 +97,7 @@ async def handle_pay(
     if WATA_INT_ENABLE:
         builder.row(InlineKeyboardButton(text=WATA_INT, callback_data="pay_wata_int"))
     if DONATIONS_ENABLE:
-        builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
-        )
+        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -120,9 +117,7 @@ async def balance_handler(callback_query: CallbackQuery, session: AsyncSession):
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-    builder.row(
-        InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history")
-    )
+    builder.row(InlineKeyboardButton(text=BALANCE_HISTORY, callback_data="balance_history"))
     builder.row(InlineKeyboardButton(text=COUPON, callback_data="activate_coupon"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -166,13 +161,16 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
         disable_web_page_preview=False,
     )
 
+
 @router.callback_query(F.data == "pay_wata_ru")
 async def handle_pay_wata_ru(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_wata(callback_query, state, session, cassa_name="ru")
 
+
 @router.callback_query(F.data == "pay_wata_sbp")
 async def handle_pay_wata_sbp(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_wata(callback_query, state, session, cassa_name="sbp")
+
 
 @router.callback_query(F.data == "pay_wata_int")
 async def handle_pay_wata_int(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):

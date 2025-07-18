@@ -31,11 +31,7 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
 
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url="https://t.me/PremiumBot"))
     builder.row(
         InlineKeyboardButton(
             text="💰 Ввести сумму доната",
@@ -77,9 +73,7 @@ async def process_donate_amount_input(message: Message, state: FSMContext):
     if message.text.isdigit():
         amount = int(message.text)
         if amount // RUB_TO_XTR <= 0:
-            await message.answer(
-                f"Сумма доната должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:"
-            )
+            await message.answer(f"Сумма доната должна быть больше {RUB_TO_XTR}. Пожалуйста, введите сумму еще раз:")
             return
 
         await state.update_data(amount=amount)

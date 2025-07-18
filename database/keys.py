@@ -20,13 +20,9 @@ async def store_key(
     tariff_id: int = None,
 ):
     try:
-        exists = await session.execute(
-            select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id)
-        )
+        exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         if exists.scalar_one_or_none():
-            logger.info(
-                f"[Store Key] Ключ уже существует — пропускаем: tg_id={tg_id}, client_id={client_id}"
-            )
+            logger.info(f"[Store Key] Ключ уже существует — пропускаем: tg_id={tg_id}, client_id={client_id}")
             return
 
         new_key = Key(
@@ -42,9 +38,7 @@ async def store_key(
         )
         session.add(new_key)
         await session.commit()
-        logger.info(
-            f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}"
-        )
+        logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
         await session.rollback()
@@ -67,9 +61,7 @@ async def get_key_by_server(session: AsyncSession, tg_id: int, client_id: str):
 
 
 async def get_key_details(session: AsyncSession, email: str) -> dict | None:
-    stmt = (
-        select(Key, User).join(User, Key.tg_id == User.tg_id).where(Key.email == email)
-    )
+    stmt = select(Key, User).join(User, Key.tg_id == User.tg_id).where(Key.email == email)
     result = await session.execute(stmt)
     row = result.first()
     if not row:
@@ -110,26 +102,18 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
 
 
 async def get_key_count(session: AsyncSession, tg_id: int) -> int:
-    result = await session.execute(
-        select(func.count()).select_from(Key).where(Key.tg_id == tg_id)
-    )
+    result = await session.execute(select(func.count()).select_from(Key).where(Key.tg_id == tg_id))
     return result.scalar() or 0
 
 
 async def delete_key(session: AsyncSession, identifier: int | str):
-    stmt = delete(Key).where(
-        Key.tg_id == identifier
-        if str(identifier).isdigit()
-        else Key.client_id == identifier
-    )
+    stmt = delete(Key).where(Key.tg_id == identifier if str(identifier).isdigit() else Key.client_id == identifier)
     await session.execute(stmt)
     await session.commit()
     logger.info(f"Ключ с идентификатором {identifier} удалён")
 
 
-async def update_key_expiry(
-    session: AsyncSession, client_id: str, new_expiry_time: int
-):
+async def update_key_expiry(session: AsyncSession, client_id: str, new_expiry_time: int):
     await session.execute(
         update(Key)
         .where(Key.client_id == client_id)
@@ -145,17 +129,11 @@ async def get_client_id_by_email(session: AsyncSession, email: str):
 
 
 async def update_key_notified(session: AsyncSession, tg_id: int, client_id: str):
-    await session.execute(
-        update(Key)
-        .where(Key.tg_id == tg_id, Key.client_id == client_id)
-        .values(notified=True)
-    )
+    await session.execute(update(Key).where(Key.tg_id == tg_id, Key.client_id == client_id).values(notified=True))
     await session.commit()
 
 
-async def mark_key_as_frozen(
-    session: AsyncSession, tg_id: int, client_id: str, time_left: int
-):
+async def mark_key_as_frozen(session: AsyncSession, tg_id: int, client_id: str, time_left: int):
     await session.execute(
         text(
             """
@@ -170,9 +148,7 @@ async def mark_key_as_frozen(
     )
 
 
-async def mark_key_as_unfrozen(
-    session: AsyncSession, tg_id: int, client_id: str, new_expiry_time: int
-):
+async def mark_key_as_unfrozen(session: AsyncSession, tg_id: int, client_id: str, new_expiry_time: int):
     await session.execute(
         text(
             """
@@ -188,10 +164,6 @@ async def mark_key_as_unfrozen(
 
 
 async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: int):
-    await session.execute(
-        update(Key)
-        .where(Key.client_id == client_id)
-        .values(tariff_id=tariff_id)
-    )
+    await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
     await session.commit()
     logger.info(f"Тариф ключа {client_id} обновлён на {tariff_id}")

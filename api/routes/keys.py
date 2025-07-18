@@ -1,16 +1,16 @@
-from fastapi import Depends, HTTPException, Path, Body, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import datetime
 
-from database.models import Key, Admin, Tariff
-from api.schemas.keys import KeyBase, KeyResponse, KeyUpdate, KeyCreateRequest
-from api.routes.base_crud import generate_crud_router
+from fastapi import Body, Depends, HTTPException, Path, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from api.depends import get_session, verify_admin_token
-from handlers.keys.key_utils import delete_key_from_cluster
+from api.routes.base_crud import generate_crud_router
+from api.schemas.keys import KeyBase, KeyCreateRequest, KeyResponse, KeyUpdate
+from database.models import Admin, Key, Tariff
+from handlers.keys.key_utils import create_key_on_cluster, delete_key_from_cluster, renew_key_in_cluster
 from logger import logger
 
-from handlers.keys.key_utils import renew_key_in_cluster, create_key_on_cluster
 
 router = generate_crud_router(
     model=Key,
@@ -19,7 +19,7 @@ router = generate_crud_router(
     schema_update=KeyUpdate,
     identifier_field="tg_id",
     extra_get_by_email=True,
-    enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"]
+    enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"],
 )
 
 
@@ -58,16 +58,12 @@ async def get_router_keys_by_tg_id(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
-    tariffs_result = await session.execute(
-        select(Tariff.id).where(Tariff.group_code == "routers")
-    )
+    tariffs_result = await session.execute(select(Tariff.id).where(Tariff.group_code == "routers"))
     tariff_ids = [row[0] for row in tariffs_result.all()]
     if not tariff_ids:
         return []
 
-    keys_result = await session.execute(
-        select(Key).where(Key.tg_id == tg_id, Key.tariff_id.in_(tariff_ids))
-    )
+    keys_result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.tariff_id.in_(tariff_ids)))
     keys = keys_result.scalars().all()
     return keys
 
@@ -109,7 +105,7 @@ async def edit_key_by_email(
             total_gb=getattr(db_key, "traffic_limit", None),
             session=session,
             hwid_device_limit=getattr(db_key, "device_limit", None),
-            reset_traffic=True
+            reset_traffic=True,
         )
         await session.commit()
 

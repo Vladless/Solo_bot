@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -23,9 +24,9 @@ from config import (
 from database import (
     add_user,
     check_user_exists,
-    get_trial,
-    get_key_count,
     get_coupon_by_code,
+    get_key_count,
+    get_trial,
 )
 from database.models import TrackingSource, User
 from handlers.buttons import (
@@ -56,6 +57,7 @@ from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
 from .utils import edit_or_send_message
 
+
 router = Router()
 
 processing_gifts = set()
@@ -73,9 +75,7 @@ async def handle_start_callback_query(
 
 
 @router.message(Command("start"))
-async def start_command(
-    message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True
-):
+async def start_command(message: Message, state: FSMContext, session: Any, admin: bool, captcha: bool = True):
     logger.info(f"Вызвана функция start_command для пользователя {message.chat.id}")
 
     if CAPTCHA_ENABLE and captcha:
@@ -95,12 +95,7 @@ async def start_command(
 
 
 @router.callback_query(F.data == "check_subscription")
-async def check_subscription_callback(
-    callback_query: CallbackQuery,
-    state: FSMContext,
-    session: Any,
-    admin: bool
-):
+async def check_subscription_callback(callback_query: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback_query.from_user.id
     logger.info(f"[CALLBACK] Получен callback 'check_subscription' от пользователя {user_id}")
 
@@ -112,11 +107,7 @@ async def check_subscription_callback(
             await callback_query.answer(NOT_SUBSCRIBED_YET_MSG, show_alert=True)
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text=SUB_CHANELL, url=CHANNEL_URL))
-            builder.row(
-                InlineKeyboardButton(
-                    text=SUB_CHANELL_DONE, callback_data="check_subscription"
-                )
-            )
+            builder.row(InlineKeyboardButton(text=SUB_CHANELL_DONE, callback_data="check_subscription"))
             await callback_query.message.edit_text(
                 SUBSCRIPTION_REQUIRED_MSG,
                 reply_markup=builder.as_markup(),
@@ -178,9 +169,7 @@ async def process_start_logic(
     text = text_to_process or message.text or message.caption
 
     if not text:
-        logger.info(
-            f"[StartLogic] Текста нет — вызываю стартовое меню для {user_data['tg_id']}"
-        )
+        logger.info(f"[StartLogic] Текста нет — вызываю стартовое меню для {user_data['tg_id']}")
         await show_start_menu(message, admin, session)
         return
 
@@ -200,7 +189,7 @@ async def process_start_logic(
                 coupon = await get_coupon_by_code(session, coupon_code)
                 if not coupon:
                     continue
-                    
+
                 await activate_coupon(
                     message,
                     state,
@@ -209,7 +198,7 @@ async def process_start_logic(
                     admin=admin,
                     user_data=user_data,
                 )
-                
+
                 if coupon.days:
                     return
                 continue
@@ -229,25 +218,21 @@ async def process_start_logic(
                     return await process_callback_view_profile(message, state, admin, session)
 
                 processing_gifts.add(gift_id)
-                
+
                 try:
                     logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
-                    await handle_gift_link(
-                        gift_id, message, state, session, user_data=user_data
-                    )
+                    await handle_gift_link(gift_id, message, state, session, user_data=user_data)
                     gift_detected = True
                 finally:
                     processing_gifts.discard(gift_id)
-                
+
                 break
 
             if "referral" in part:
                 referrer_tg_id = part.split("referral")[1].strip("_")
                 try:
                     referrer_tg_id = int(referrer_tg_id)
-                    await handle_referral_link(
-                        referrer_tg_id, message, state, session, user_data=user_data
-                    )
+                    await handle_referral_link(referrer_tg_id, message, state, session, user_data=user_data)
                 except (ValueError, IndexError):
                     pass
                 continue
@@ -255,9 +240,7 @@ async def process_start_logic(
             if "utm" in part:
                 utm_code = part
                 logger.info(f"[UTM] Обнаружена ссылка на UTM: {utm_code}")
-                await handle_utm_link(
-                    utm_code, message, state, session, user_data=user_data
-                )
+                await handle_utm_link(utm_code, message, state, session, user_data=user_data)
                 continue
 
         await state.clear()
@@ -297,9 +280,7 @@ async def handle_utm_link(
 ):
     user_id = user_data["tg_id"]
 
-    result = await session.execute(
-        select(TrackingSource).where(TrackingSource.code == utm_code)
-    )
+    result = await session.execute(select(TrackingSource).where(TrackingSource.code == utm_code))
     utm_exists = result.scalar_one_or_none()
 
     if not utm_exists:
@@ -314,9 +295,7 @@ async def handle_utm_link(
         logger.info(f"[UTM] Привязана {utm_code} к пользователю {user_id}")
     elif not user:
         await add_user(session=session, source_code=utm_code, **user_data)
-        logger.info(
-            f"[UTM] Зарегистрирован и привязан {utm_code} к пользователю {user_id}"
-        )
+        logger.info(f"[UTM] Зарегистрирован и привязан {utm_code} к пользователю {user_id}")
 
 
 async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
@@ -376,9 +355,7 @@ async def handle_about_vpn(callback_query: CallbackQuery, session: AsyncSession)
 
     builder = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
-        builder.row(
-            InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate")
-        )
+        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
 
     support_btn = InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL)
     if CHANNEL_EXISTS:

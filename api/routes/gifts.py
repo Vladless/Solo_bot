@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, Path, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.depends import get_session, verify_admin_token
 from api.routes.base_crud import generate_crud_router
 from api.schemas import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
-from database.models import Gift, GiftUsage, Admin
-from api.depends import get_session, verify_admin_token
+from database.models import Admin, Gift, GiftUsage
+
 
 router = APIRouter()
 
@@ -17,7 +18,7 @@ gift_router = generate_crud_router(
     schema_update=GiftUpdate,
     identifier_field="gift_id",
     parameter_name="gift_id",
-    enabled_methods=["get_all", "get_one", "create", "update", "delete"]
+    enabled_methods=["get_all", "get_one", "create", "update", "delete"],
 )
 router.include_router(gift_router, prefix="", tags=["Gifts"])
 
@@ -41,7 +42,7 @@ gift_usage_router = generate_crud_router(
     schema_create=None,
     schema_update=None,
     identifier_field="gift_id",
-    enabled_methods=["get_all", "get_one", "delete"]
+    enabled_methods=["get_all", "get_one", "delete"],
 )
 router.include_router(gift_usage_router, prefix="/usages", tags=["GiftUsages"])
 router.include_router(gift_usage_router, prefix="/usages", tags=["Gifts"])

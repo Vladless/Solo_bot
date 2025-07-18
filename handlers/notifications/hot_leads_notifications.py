@@ -27,11 +27,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
 
         for tg_id in leads:
             has_step_1 = await session.scalar(
-                select(
-                    select(Notification)
-                    .filter_by(tg_id=tg_id, notification_type="hot_lead_step_1")
-                    .exists()
-                )
+                select(select(Notification).filter_by(tg_id=tg_id, notification_type="hot_lead_step_1").exists())
             )
             if not has_step_1:
                 await add_notification(session, tg_id, "hot_lead_step_1")
@@ -39,11 +35,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 continue
 
             has_step_2 = await session.scalar(
-                select(
-                    select(Notification)
-                    .filter_by(tg_id=tg_id, notification_type="hot_lead_step_2")
-                    .exists()
-                )
+                select(select(Notification).filter_by(tg_id=tg_id, notification_type="hot_lead_step_2").exists())
             )
             if not has_step_2:
                 can_send = await check_notification_time(
@@ -56,9 +48,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     continue
 
                 keyboard = build_hot_lead_kb()
-                result = await send_notification(
-                    bot, tg_id, None, HOT_LEAD_MESSAGE, keyboard
-                )
+                result = await send_notification(bot, tg_id, None, HOT_LEAD_MESSAGE, keyboard)
                 if result:
                     await add_notification(session, tg_id, "hot_lead_step_2")
                     logger.info(f"🔥 Шаг 2 — отправлено первое уведомление: {tg_id}")
@@ -66,17 +56,11 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 continue
 
             has_step_3 = await session.scalar(
-                select(
-                    select(Notification)
-                    .filter_by(tg_id=tg_id, notification_type="hot_lead_step_3")
-                    .exists()
-                )
+                select(select(Notification).filter_by(tg_id=tg_id, notification_type="hot_lead_step_3").exists())
             )
             has_expired_notification = await session.scalar(
                 select(
-                    select(Notification)
-                    .filter_by(tg_id=tg_id, notification_type="hot_lead_step_2_expired")
-                    .exists()
+                    select(Notification).filter_by(tg_id=tg_id, notification_type="hot_lead_step_2_expired").exists()
                 )
             )
             if not has_step_3 and not has_expired_notification:
@@ -88,20 +72,12 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 )
                 if expired:
                     builder = InlineKeyboardBuilder()
-                    builder.row(
-                        InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
-                    )
+                    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-                    result = await send_notification(
-                        bot, tg_id, None, HOT_LEAD_LOST_OPPORTUNITY, builder.as_markup()
-                    )
+                    result = await send_notification(bot, tg_id, None, HOT_LEAD_LOST_OPPORTUNITY, builder.as_markup())
                     if result:
-                        await add_notification(
-                            session, tg_id, "hot_lead_step_2_expired"
-                        )
-                        logger.info(
-                            f"📭 Скидка упущена — отправлено уведомление: {tg_id}"
-                        )
+                        await add_notification(session, tg_id, "hot_lead_step_2_expired")
+                        logger.info(f"📭 Скидка упущена — отправлено уведомление: {tg_id}")
                     continue
 
             if not has_step_3:
@@ -115,9 +91,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     continue
 
                 keyboard = build_hot_lead_kb(final=True)
-                result = await send_notification(
-                    bot, tg_id, None, HOT_LEAD_FINAL_MESSAGE, keyboard
-                )
+                result = await send_notification(bot, tg_id, None, HOT_LEAD_FINAL_MESSAGE, keyboard)
                 if result:
                     await add_notification(session, tg_id, "hot_lead_step_3")
                     logger.info(f"⚡ Шаг 3 — отправлено финальное уведомление: {tg_id}")

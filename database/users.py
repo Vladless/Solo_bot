@@ -10,12 +10,12 @@ from database.models import (
     BlockedUser,
     CouponUsage,
     Gift,
+    GiftUsage,
     Notification,
     Payment,
     Referral,
     TemporaryData,
     User,
-    GiftUsage
 )
 from logger import logger
 
@@ -47,9 +47,7 @@ async def add_user(
 
         await session.execute(stmt)
         await session.commit()
-        logger.info(
-            f"[DB] Новый пользователь добавлен: {tg_id} (source: {source_code})"
-        )
+        logger.info(f"[DB] Новый пользователь добавлен: {tg_id} (source: {source_code})")
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при добавлении пользователя {tg_id}: {e}")
         await session.rollback()
@@ -61,13 +59,9 @@ async def update_balance(session: AsyncSession, tg_id: int, amount: float) -> No
         result = await session.execute(select(User.balance).where(User.tg_id == tg_id))
         current = result.scalar_one_or_none() or 0
         new_balance = current + amount
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(balance=new_balance)
-        )
+        await session.execute(update(User).where(User.tg_id == tg_id).values(balance=new_balance))
         await session.commit()
-        logger.info(
-            f"[DB] Баланс пользователя {tg_id} обновлён: {current} → {new_balance}"
-        )
+        logger.info(f"[DB] Баланс пользователя {tg_id} обновлён: {current} → {new_balance}")
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при обновлении баланса пользователя {tg_id}: {e}")
         await session.rollback()
@@ -87,9 +81,7 @@ async def get_balance(session: AsyncSession, tg_id: int) -> float:
 
 async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) -> None:
     try:
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(balance=balance)
-        )
+        await session.execute(update(User).where(User.tg_id == tg_id).values(balance=balance))
         await session.commit()
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
@@ -98,9 +90,7 @@ async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) ->
 
 async def update_trial(session: AsyncSession, tg_id: int, status: int):
     try:
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(trial=status)
-        )
+        await session.execute(update(User).where(User.tg_id == tg_id).values(trial=status))
         await session.commit()
         logger.info(f"[DB] Триал статус обновлён для пользователя {tg_id}: {status}")
     except SQLAlchemyError as e:
@@ -181,29 +171,18 @@ async def delete_user_data(session: AsyncSession, tg_id: int):
     try:
         await session.execute(delete(Notification).where(Notification.tg_id == tg_id))
 
-        result = await session.execute(
-            select(Gift.gift_id).where(Gift.sender_tg_id == tg_id)
-        )
+        result = await session.execute(select(Gift.gift_id).where(Gift.sender_tg_id == tg_id))
         gift_ids = [row[0] for row in result.all()]
         if gift_ids:
             await session.execute(delete(GiftUsage).where(GiftUsage.gift_id.in_(gift_ids)))
 
         await session.execute(delete(Gift).where(Gift.sender_tg_id == tg_id))
 
-        await session.execute(
-            update(Gift)
-            .where(Gift.recipient_tg_id == tg_id)
-            .values(recipient_tg_id=None)
-        )
+        await session.execute(update(Gift).where(Gift.recipient_tg_id == tg_id).values(recipient_tg_id=None))
 
         await session.execute(delete(Payment).where(Payment.tg_id == tg_id))
         await session.execute(
-            delete(Referral).where(
-                or_(
-                    Referral.referrer_tg_id == tg_id,
-                    Referral.referred_tg_id == tg_id
-                )
-            )
+            delete(Referral).where(or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id))
         )
         await session.execute(delete(CouponUsage).where(CouponUsage.user_id == tg_id))
         await delete_key(session, tg_id)

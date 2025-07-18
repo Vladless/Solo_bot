@@ -28,6 +28,7 @@ from .keyboard import (
     format_coupons_list,
 )
 
+
 router = Router()
 
 
@@ -42,9 +43,7 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb()
-    )
+    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
 
 
 @router.callback_query(
@@ -64,9 +63,7 @@ async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext
 
 
 @router.callback_query(F.data == "coupon_type_balance")
-async def handle_balance_coupon_selection(
-    callback_query: CallbackQuery, state: FSMContext
-):
+async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
@@ -80,9 +77,7 @@ async def handle_balance_coupon_selection(
 
 
 @router.callback_query(F.data == "coupon_type_days")
-async def handle_days_coupon_selection(
-    callback_query: CallbackQuery, state: FSMContext
-):
+async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
@@ -96,9 +91,7 @@ async def handle_days_coupon_selection(
 
 
 @router.message(AdminCouponsState.waiting_for_balance_data, IsAdminFilter())
-async def handle_balance_coupon_input(
-    message: Message, state: FSMContext, session: Any
-):
+async def handle_balance_coupon_input(message: Message, state: FSMContext, session: Any):
     text = message.text.strip()
     parts = text.split()
 
@@ -147,9 +140,7 @@ async def handle_balance_coupon_input(
 
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer(
-            "❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup()
-        )
+        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
 
 
 @router.message(AdminCouponsState.waiting_for_days_data, IsAdminFilter())
@@ -202,9 +193,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
 
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer(
-            "❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup()
-        )
+        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
 
 
 @router.callback_query(
@@ -218,14 +207,10 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
         await update_coupons_list(callback_query.message, session, page)
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
-        await callback_query.message.edit_text(
-            "Произошла ошибка при получении списка купонов."
-        )
+        await callback_query.message.edit_text("Произошла ошибка при получении списка купонов.")
 
 
-@router.callback_query(
-    AdminCouponDeleteCallback.filter(F.confirm.is_(None)), IsAdminFilter()
-)
+@router.callback_query(AdminCouponDeleteCallback.filter(F.confirm.is_(None)), IsAdminFilter())
 async def handle_coupon_delete(
     callback_query: CallbackQuery,
     callback_data: AdminCouponDeleteCallback,
@@ -235,15 +220,11 @@ async def handle_coupon_delete(
     kb = InlineKeyboardBuilder()
     kb.button(
         text="✅ Да, удалить",
-        callback_data=AdminCouponDeleteCallback(
-            coupon_code=coupon_code, confirm=True
-        ).pack(),
+        callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=True).pack(),
     )
     kb.button(
         text="❌ Нет, отменить",
-        callback_data=AdminCouponDeleteCallback(
-            coupon_code=coupon_code, confirm=False
-        ).pack(),
+        callback_data=AdminCouponDeleteCallback(coupon_code=coupon_code, confirm=False).pack(),
     )
     kb.adjust(1)
 
@@ -253,9 +234,7 @@ async def handle_coupon_delete(
     )
 
 
-@router.callback_query(
-    AdminCouponDeleteCallback.filter(F.confirm.is_not(None)), IsAdminFilter()
-)
+@router.callback_query(AdminCouponDeleteCallback.filter(F.confirm.is_not(None)), IsAdminFilter())
 async def confirm_coupon_delete(
     callback_query: CallbackQuery,
     callback_data: AdminCouponDeleteCallback,
@@ -340,9 +319,7 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         id=coupon_code,
         title=title,
         description=description,
-        input_message_content=InputTextMessageContent(
-            message_text=message_text, parse_mode=ParseMode.HTML
-        ),
+        input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
         reply_markup=builder.as_markup(),
     )
 

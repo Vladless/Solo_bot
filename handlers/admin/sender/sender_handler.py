@@ -1,12 +1,13 @@
 import json
 import re
+
 from datetime import datetime
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +17,7 @@ from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
+
 
 router = Router()
 
@@ -32,23 +34,23 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
     parts = text.split("BUTTONS:", 1)
     clean_text = parts[0].strip()
     buttons_text = parts[1].strip()
-    
+
     if not buttons_text:
         return clean_text, None
 
     buttons = []
-    button_lines = [line.strip() for line in buttons_text.split('\n') if line.strip()]
-    
+    button_lines = [line.strip() for line in buttons_text.split("\n") if line.strip()]
+
     for line in button_lines:
         try:
-            cleaned_line = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r'\1', line)
-            
+            cleaned_line = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r"\1", line)
+
             button_data = json.loads(cleaned_line)
 
             if not isinstance(button_data, dict) or "text" not in button_data:
                 logger.warning(f"Неверный формат кнопки: {line}")
                 continue
-                
+
             text_btn = button_data["text"]
 
             if "callback" in button_data:
@@ -63,19 +65,19 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
             else:
                 logger.warning(f"Кнопка без действия: {line}")
                 continue
-                
+
             buttons.append([button])
-            
+
         except json.JSONDecodeError as e:
             logger.warning(f"Ошибка парсинга JSON кнопки: {line} - {e}")
             continue
         except Exception as e:
             logger.error(f"Ошибка создания кнопки: {line} - {e}")
             continue
-    
+
     if not buttons:
         return clean_text, None
-        
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     return clean_text, keyboard
 
@@ -151,42 +153,30 @@ async def handle_message_input(message: Message, state: FSMContext):
     max_len = 1024 if photo else 4096
     if len(clean_text) > max_len:
         await message.answer(
-            f"⚠️ Сообщение слишком длинное.\n"
-            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
+            f"⚠️ Сообщение слишком длинное.\nМаксимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
         return
 
-    await state.update_data(
-        text=clean_text, 
-        photo=photo, 
-        keyboard=keyboard.model_dump() if keyboard else None
-    )
+    await state.update_data(text=clean_text, photo=photo, keyboard=keyboard.model_dump() if keyboard else None)
     await state.set_state(AdminSender.preview)
 
     if photo:
-        await message.answer_photo(
-            photo=photo, 
-            caption=clean_text, 
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
+        await message.answer_photo(photo=photo, caption=clean_text, parse_mode="HTML", reply_markup=keyboard)
     else:
-        await message.answer(
-            text=clean_text, 
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
+        await message.answer(text=clean_text, parse_mode="HTML", reply_markup=keyboard)
 
     await message.answer(
         "👀 Это предпросмотр рассылки.\nОтправить?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📤 Отправить", callback_data="send_message"),
-                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📤 Отправить", callback_data="send_message"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_message"),
+                ]
             ]
-        ]),
+        ),
     )
 
 
@@ -226,9 +216,7 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
         query = select(distinct(subquery.c.tg_id))
     elif send_to == "untrial":
         subquery = select(Key.tg_id)
-        query = select(distinct(User.tg_id)).where(
-            ~User.tg_id.in_(subquery) & User.trial.in_([0, -1])
-        )
+        query = select(distinct(User.tg_id)).where(~User.tg_id.in_(subquery) & User.trial.in_([0, -1]))
     elif send_to == "cluster":
         query = (
             select(distinct(User.tg_id))
@@ -253,9 +241,7 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
     total_users = len(tg_ids)
     success_count = 0
 
-    await callback_query.message.edit_text(
-        f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}"
-    )
+    await callback_query.message.edit_text(f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}")
 
     for tg_id in tg_ids:
         try:

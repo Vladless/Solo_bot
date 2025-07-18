@@ -1,19 +1,21 @@
-from datetime import datetime, timedelta
-from typing import Any
-from aiogram.fsm.context import FSMContext
 from collections import defaultdict
+from datetime import datetime, timedelta
+from math import ceil
+from typing import Any
+
+import pytz
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from math import ceil
-import pytz
 
 from bot import bot
 from config import USE_NEW_PAYMENT_FLOW
 from database import (
+    check_tariff_exists,
     create_temporary_data,
     get_balance,
     get_key_by_server,
@@ -22,11 +24,10 @@ from database import (
     get_tariffs,
     update_balance,
     update_key_expiry,
-    check_tariff_exists,
 )
-from database.models import Server, Key
+from database.models import Key, Server
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
-from handlers.buttons import BACK, MAIN_MENU, PAYMENT
+from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
@@ -38,9 +39,9 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     get_renewal_message,
 )
-from handlers.buttons import MY_SUB
 from handlers.utils import edit_or_send_message, format_days, format_months, get_russian_month
 from logger import logger
+
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -62,10 +63,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         server_id = record["server_id"]
         tariff_id = record.get("tariff_id")
 
-        await state.update_data(
-            renew_key_name=key_name,
-            renew_client_id=client_id
-        )
+        await state.update_data(renew_key_name=key_name, renew_client_id=client_id)
 
         logger.info(f"[RENEW] Получение тарифов для server_id={server_id}")
 
@@ -82,9 +80,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 Server.cluster_name == server_id,
             )
 
-        row = await session.execute(
-            select(Server.tariff_group).where(filter_condition).limit(1)
-        )
+        row = await session.execute(select(Server.tariff_group).where(filter_condition).limit(1))
         row = row.first()
         if not row or not row[0]:
             logger.warning(f"[RENEW] Тарифная группа не найдена для server_id={server_id}")
@@ -134,9 +130,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
             balance=balance,
-            expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+            expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         await edit_or_send_message(
@@ -182,9 +176,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                 Server.cluster_name == server_id,
             )
 
-        row = await session.execute(
-            select(Server.tariff_group).where(filter_condition).limit(1)
-        )
+        row = await session.execute(select(Server.tariff_group).where(filter_condition).limit(1))
         row = row.first()
         if not row or not row[0]:
             logger.warning(f"[RENEW_SUBGROUP] Тарифная группа не найдена для server_id={server_id}")
@@ -197,7 +189,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         if not subgroup:
             await callback.message.answer("❌ Подгруппа не найдена.")
             return
-            
+
         tariffs = await get_tariffs(session, group_code=group_code)
         filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
 
@@ -218,12 +210,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                 )
             )
 
-        builder.row(
-            InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data="renew_menu"
-            )
-        )
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="renew_menu"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         await edit_or_send_message(
@@ -272,13 +259,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
         current_time = datetime.utcnow().timestamp() * 1000
 
         if expiry_time <= current_time:
-            new_expiry_time = int(
-                current_time + timedelta(days=duration_days).total_seconds() * 1000
-            )
+            new_expiry_time = int(current_time + timedelta(days=duration_days).total_seconds() * 1000)
         else:
-            new_expiry_time = int(
-                expiry_time + timedelta(days=duration_days).total_seconds() * 1000
-            )
+            new_expiry_time = int(expiry_time + timedelta(days=duration_days).total_seconds() * 1000)
 
         balance = round(await get_balance(session, tg_id), 2)
         cost = round(cost, 2)
@@ -312,21 +295,15 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             else:
                 builder = InlineKeyboardBuilder()
                 builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-                builder.row(
-                    InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
-                )
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
                 await edit_or_send_message(
                     target_message=callback_query.message,
-                    text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(
-                        required_amount=required_amount
-                    ),
+                    text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(required_amount=required_amount),
                     reply_markup=builder.as_markup(),
                 )
             return
 
-        logger.info(
-            f"[RENEW] Продление ключа для пользователя {tg_id} на {duration_days} дней"
-        )
+        logger.info(f"[RENEW] Продление ключа для пользователя {tg_id} на {duration_days} дней")
         await complete_key_renewal(
             session,
             tg_id,
@@ -340,26 +317,16 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
         )
 
     except Exception as e:
-        logger.error(
-            f"[RENEW] Ошибка при продлении ключа для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"[RENEW] Ошибка при продлении ключа для пользователя {tg_id}: {e}")
 
 
-async def resolve_cluster_name(
-    session: AsyncSession, server_or_cluster: str
-) -> str | None:
-    result = await session.execute(
-        select(Server).where(Server.cluster_name == server_or_cluster).limit(1)
-    )
+async def resolve_cluster_name(session: AsyncSession, server_or_cluster: str) -> str | None:
+    result = await session.execute(select(Server).where(Server.cluster_name == server_or_cluster).limit(1))
     server = result.scalars().first()
     if server:
         return server_or_cluster
 
-    result = await session.execute(
-        select(Server.cluster_name)
-        .where(Server.server_name == server_or_cluster)
-        .limit(1)
-    )
+    result = await session.execute(select(Server.cluster_name).where(Server.server_name == server_or_cluster).limit(1))
     row = result.scalar()
     return row
 
@@ -376,9 +343,7 @@ async def complete_key_renewal(
     tariff_id: int,
 ):
     try:
-        logger.info(
-            f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)"
-        )
+        logger.info(f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)")
 
         tariff = await get_tariff_by_id(session, tariff_id)
         if not tariff:
@@ -387,14 +352,12 @@ async def complete_key_renewal(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
-        
-        formatted_expiry_date = datetime.fromtimestamp(
-            new_expiry_time / 1000, tz=moscow_tz
-        ).strftime("%d %B %Y, %H:%M")
-        
+
+        formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
+
         formatted_expiry_date = formatted_expiry_date.replace(
             datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
-            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz))
+            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
         )
 
         response_message = get_renewal_message(
@@ -402,7 +365,7 @@ async def complete_key_renewal(
             traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
             device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
             expiry_date=formatted_expiry_date,
-            subgroup_title=tariff.get("subgroup_title", "")
+            subgroup_title=tariff.get("subgroup_title", ""),
         )
 
         if callback_query:
@@ -414,13 +377,9 @@ async def complete_key_renewal(
                 )
             except Exception as e:
                 logger.error(f"[Error] Ошибка при редактировании сообщения: {e}")
-                await callback_query.message.answer(
-                    response_message, reply_markup=builder.as_markup()
-                )
+                await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
         else:
-            await bot.send_message(
-                tg_id, response_message, reply_markup=builder.as_markup()
-            )
+            await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
 
         key_info = await get_key_details(session, email)
         if not key_info:
@@ -445,16 +404,10 @@ async def complete_key_renewal(
         )
 
         await update_key_expiry(session, client_id, new_expiry_time)
-        await session.execute(
-            update(Key)
-            .where(Key.client_id == client_id)
-            .values(tariff_id=tariff_id)
-        )
+        await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
         await update_balance(session, tg_id, -cost)
 
-        logger.info(
-            f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})"
-        )
+        logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")
 
     except Exception as e:
         logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")

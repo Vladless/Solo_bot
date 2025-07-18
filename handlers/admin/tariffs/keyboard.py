@@ -1,9 +1,11 @@
+from collections import defaultdict
+
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from collections import defaultdict
 
 from database.tariffs import create_subgroup_hash
+
 from ..panel.keyboard import AdminPanelCallback
 
 
@@ -25,23 +27,13 @@ def build_tariff_menu_kb() -> InlineKeyboardMarkup:
             callback_data=AdminTariffCallback(action="list").pack(),
         )
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="⬅️ Назад", callback_data=AdminPanelCallback(action="admin").pack()
-        )
-    )
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminPanelCallback(action="admin").pack()))
     return builder.as_markup()
 
 
 def build_cancel_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="❌ Отменить", callback_data="cancel_tariff_creation"
-                )
-            ]
-        ]
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_tariff_creation")]]
     )
 
 
@@ -81,13 +73,12 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
         subgroup = t.get("subgroup_title")
         grouped[subgroup].append(t)
 
-    for subgroup_title, items in grouped.items():
+    for subgroup_title, _items in grouped.items():
         if subgroup_title:
             subgroup_hash = create_subgroup_hash(subgroup_title, group_code)
             builder.row(
                 InlineKeyboardButton(
-                    text=f"{subgroup_title}",
-                    callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
+                    text=f"{subgroup_title}", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
                 )
             )
 
@@ -107,12 +98,7 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
         )
     )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="Сгруппировать в подгруппу",
-            callback_data=f"start_subgrouping|{group_code}"
-        )
-    )
+    builder.row(InlineKeyboardButton(text="Сгруппировать в подгруппу", callback_data=f"start_subgrouping|{group_code}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -130,15 +116,11 @@ def build_single_tariff_kb(tariff_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="✏️ Редактировать",
-                    callback_data=AdminTariffCallback(
-                        action=f"edit|{tariff_id}"
-                    ).pack(),
+                    callback_data=AdminTariffCallback(action=f"edit|{tariff_id}").pack(),
                 ),
                 InlineKeyboardButton(
                     text="🗑 Удалить",
-                    callback_data=AdminTariffCallback(
-                        action=f"delete|{tariff_id}"
-                    ).pack(),
+                    callback_data=AdminTariffCallback(action=f"delete|{tariff_id}").pack(),
                 ),
             ],
             [
@@ -154,22 +136,14 @@ def build_single_tariff_kb(tariff_id: int) -> InlineKeyboardMarkup:
 def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📝 Название", callback_data=f"edit_field|{tariff_id}|name"
-                )
-            ],
+            [InlineKeyboardButton(text="📝 Название", callback_data=f"edit_field|{tariff_id}|name")],
             [
                 InlineKeyboardButton(
                     text="📅 Длительность",
                     callback_data=f"edit_field|{tariff_id}|duration_days",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="💰 Цена", callback_data=f"edit_field|{tariff_id}|price_rub"
-                )
-            ],
+            [InlineKeyboardButton(text="💰 Цена", callback_data=f"edit_field|{tariff_id}|price_rub")],
             [
                 InlineKeyboardButton(
                     text="📦 Трафик (ГБ или 0)",
@@ -182,14 +156,11 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"edit_field|{tariff_id}|device_limit",
                 )
             ],
+            [InlineKeyboardButton(text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}")],
             [
                 InlineKeyboardButton(
-                    text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}"
+                    text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
                 )
             ],
-            [InlineKeyboardButton(
-                text="⬅️ Назад", 
-                callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
-            )]
         ]
     )

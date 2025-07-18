@@ -1,6 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional, Union, Literal
 from datetime import datetime
+from typing import Literal, Optional, Union
+
+from pydantic import BaseModel
 
 
 class PaymentBase(BaseModel):
@@ -38,14 +39,14 @@ class NotificationResponse(BaseModel):
 
 class GiftBase(BaseModel):
     sender_tg_id: int
-    recipient_tg_id: Optional[int] = None
+    recipient_tg_id: int | None = None
     selected_months: int
     expiry_time: datetime
     gift_link: str
     is_used: bool = False
     is_unlimited: bool = False
-    max_usages: Optional[int] = None
-    tariff_id: Optional[int] = None
+    max_usages: int | None = None
+    tariff_id: int | None = None
 
 
 class GiftResponse(GiftBase):
@@ -70,7 +71,7 @@ class ManualBanResponse(BaseModel):
     banned_at: datetime
     reason: str
     banned_by: int
-    until: Optional[datetime] = None
+    until: datetime | None = None
 
     class Config:
         from_attributes = True

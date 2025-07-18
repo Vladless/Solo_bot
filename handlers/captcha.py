@@ -1,5 +1,6 @@
 import random
 import secrets
+
 from typing import Any
 
 from aiogram import F, Router
@@ -12,14 +13,13 @@ from logger import logger
 
 from .utils import edit_or_send_message
 
+
 router = Router()
 
 
 async def generate_captcha(message: Message, state: FSMContext):
     correct_emoji, correct_text = secrets.choice(list(CAPTCHA_EMOJIS.items()))
-    wrong_emojis = random.sample(
-        [e for e in CAPTCHA_EMOJIS.keys() if e != correct_emoji], 3
-    )
+    wrong_emojis = random.sample([e for e in CAPTCHA_EMOJIS.keys() if e != correct_emoji], 3)
 
     all_emojis = [correct_emoji] + wrong_emojis
     random.shuffle(all_emojis)
@@ -29,9 +29,7 @@ async def generate_captcha(message: Message, state: FSMContext):
     if "user_data" not in state_data:
         from_user = message.from_user
         if not from_user:
-            logger.warning(
-                "[CAPTCHA] ❗ from_user отсутствует — невозможно сохранить user_data"
-            )
+            logger.warning("[CAPTCHA] ❗ from_user отсутствует — невозможно сохранить user_data")
             return None
 
         await state.update_data(
@@ -69,9 +67,7 @@ async def generate_captcha(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("captcha_"))
-async def check_captcha(
-    callback: CallbackQuery, state: FSMContext, session: Any, admin: bool
-):
+async def check_captcha(callback: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     from handlers.start import process_start_logic
 
     selected_emoji = callback.data.split("captcha_")[1]

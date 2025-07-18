@@ -1,17 +1,29 @@
-from fastapi import APIRouter, Path, HTTPException, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy import select
-from api.routes.base_crud import generate_crud_router
-from database.models import (
-    Payment, Referral, Notification,
-    ManualBan, TemporaryData, BlockedUser, TrackingSource, Admin
-)
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from api.depends import get_session, verify_admin_token
+from api.routes.base_crud import generate_crud_router
 from api.schemas import (
-    PaymentResponse, ReferralResponse, NotificationResponse,
-    ManualBanResponse, TemporaryDataResponse, BlockedUserResponse,
-    TrackingSourceResponse
+    BlockedUserResponse,
+    ManualBanResponse,
+    NotificationResponse,
+    PaymentResponse,
+    ReferralResponse,
+    TemporaryDataResponse,
+    TrackingSourceResponse,
 )
+from database.models import (
+    Admin,
+    BlockedUser,
+    ManualBan,
+    Notification,
+    Payment,
+    Referral,
+    TemporaryData,
+    TrackingSource,
+)
+
 
 router = APIRouter()
 
@@ -22,11 +34,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/payments",
     tags=["Payments"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 
@@ -50,11 +62,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="referred_tg_id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/referrals",
     tags=["Referrals"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 router.include_router(
@@ -64,11 +76,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="tg_id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/notifications",
     tags=["Notifications"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 
@@ -79,11 +91,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="tg_id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/manual-bans",
     tags=["Bans"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 router.include_router(
@@ -93,11 +105,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="tg_id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/blocked-users",
     tags=["Bans"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 router.include_router(
@@ -107,11 +119,11 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="tg_id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/temporary-data",
     tags=["TemporaryData"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )
 
 router.include_router(
@@ -121,9 +133,9 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="id",
-        enabled_methods=["get_all", "get_one", "delete"]
+        enabled_methods=["get_all", "get_one", "delete"],
     ),
     prefix="/tracking-sources",
     tags=["TrackingSources"],
-    dependencies=[Depends(verify_admin_token)]
+    dependencies=[Depends(verify_admin_token)],
 )

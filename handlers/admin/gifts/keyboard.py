@@ -1,23 +1,21 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from database.models import Tariff, Gift
-from ..panel.keyboard import AdminPanelCallback
-from handlers.utils import get_plural_form, format_months, format_days
 
+from database.models import Gift, Tariff
 from handlers.buttons import BACK
+from handlers.utils import format_days, format_months, get_plural_form
+
+from ..panel.keyboard import AdminPanelCallback
+
 
 def build_admin_gifts_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    
-    builder.row(
-        InlineKeyboardButton(text="🎁 Создать подарок", callback_data="admin_gift_create")
-    )
+
+    builder.row(InlineKeyboardButton(text="🎁 Создать подарок", callback_data="admin_gift_create"))
     builder.row(
         InlineKeyboardButton(text="📦 Все подарки", callback_data="admin_gifts_all"),
     )
-    builder.row(
-        InlineKeyboardButton(text=BACK, callback_data="admin")
-    )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="admin"))
 
     return builder.as_markup()
 
@@ -66,8 +64,6 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
     if nav:
         builder.row(*nav)
 
-    builder.row(
-        InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
-    )
+    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
 
     return builder.as_markup()

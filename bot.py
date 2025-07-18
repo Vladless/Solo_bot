@@ -1,5 +1,6 @@
-import traceback
 import os
+import subprocess
+import traceback
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -9,11 +10,11 @@ from aiogram.filters import ExceptionTypeFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
-import subprocess
 
 from config import ADMIN_ID, API_TOKEN
 from filters.private import IsPrivateFilter
 from logger import logger
+
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
@@ -32,32 +33,25 @@ def get_git_commit_number() -> str:
     env["GIT_WORK_TREE"] = cwd
 
     try:
-        local_number = subprocess.check_output(
-            ["git", "rev-list", "--count", "HEAD"],
-            cwd=cwd,
-            env=env
-        ).decode().strip()
+        local_number = (
+            subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=cwd, env=env).decode().strip()
+        )
 
-        local_hash = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            cwd=cwd,
-            env=env
-        ).decode().strip()
+        local_hash = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd, env=env).decode().strip()
 
         try:
-            branch = subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                cwd=cwd,
-                env=env
-            ).decode().strip()
+            branch = (
+                subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, env=env).decode().strip()
+            )
 
             if branch == "HEAD":
-                describe = subprocess.check_output(
-                    ["git", "describe", "--tags", "--exact-match"],
-                    cwd=cwd,
-                    env=env,
-                    stderr=subprocess.DEVNULL
-                ).decode().strip()
+                describe = (
+                    subprocess.check_output(
+                        ["git", "describe", "--tags", "--exact-match"], cwd=cwd, env=env, stderr=subprocess.DEVNULL
+                    )
+                    .decode()
+                    .strip()
+                )
 
                 if describe.startswith("v") or "release" in describe.lower():
                     branch = "main"
@@ -71,29 +65,25 @@ def get_git_commit_number() -> str:
 
     try:
         remote_commit = subprocess.check_output(
-            ["git", "ls-remote", "origin", f"refs/heads/{branch}"],
-            cwd=cwd,
-            env=env
+            ["git", "ls-remote", "origin", f"refs/heads/{branch}"], cwd=cwd, env=env
         ).decode()
         remote_hash = remote_commit.split()[0]
 
-        remote_number = subprocess.check_output(
-            ["git", "rev-list", "--count", remote_hash],
-            cwd=cwd,
-            env=env
-        ).decode().strip()
+        remote_number = (
+            subprocess.check_output(["git", "rev-list", "--count", remote_hash], cwd=cwd, env=env).decode().strip()
+        )
 
         if local_hash == remote_hash:
             return "\n(Актуальная версия)"
 
         return (
-            f"\n(commit <a href=\"{repo_url}/commit/{local_hash}\">"
+            f'\n(commit <a href="{repo_url}/commit/{local_hash}">'
             f"#{local_number}</a> / actual commit "
-            f"<a href=\"{repo_url}/commit/{remote_hash}\">#{remote_number}</a>)"
+            f'<a href="{repo_url}/commit/{remote_hash}">#{remote_number}</a>)'
         )
 
     except Exception:
-        return f"\n(Требуется обновление через CLI, команда <code>sudo solobot</code>)"
+        return "\n(Требуется обновление через CLI, команда <code>sudo solobot</code>)"
 
 
 version = f"v4.4-b030735{get_git_commit_number()}"
@@ -113,8 +103,7 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
         error_message = str(event.exception)
 
         if (
-            "query is too old and response timeout expired or query ID is invalid"
-            in error_message
+            "query is too old and response timeout expired or query ID is invalid" in error_message
             or "message can't be deleted for everyone" in error_message
             or "message to delete not found" in error_message
         ):

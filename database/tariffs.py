@@ -1,5 +1,6 @@
-from datetime import datetime
 import hashlib
+
+from datetime import datetime
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +15,7 @@ def create_subgroup_hash(subgroup_title: str, group_code: str) -> str:
         return ""
 
     unique_key = f"{subgroup_title}:{group_code}"
-    hash_object = hashlib.md5(unique_key.encode('utf-8'))
+    hash_object = hashlib.md5(unique_key.encode("utf-8"))
     return hash_object.hexdigest()[:8]
 
 
@@ -25,24 +26,20 @@ async def find_subgroup_by_hash(session: AsyncSession, subgroup_hash: str, group
         .distinct()
     )
     subgroups = [row[0] for row in result.fetchall()]
-    
+
     for subgroup_title in subgroups:
         if create_subgroup_hash(subgroup_title, group_code) == subgroup_hash:
             return subgroup_title
-    
+
     return None
 
 
-async def get_tariffs(
-    session: AsyncSession, tariff_id: int = None, group_code: str = None
-):
+async def get_tariffs(session: AsyncSession, tariff_id: int = None, group_code: str = None):
     try:
         if tariff_id:
             result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         elif group_code:
-            result = await session.execute(
-                select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id)
-            )
+            result = await session.execute(select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id))
         else:
             result = await session.execute(select(Tariff))
 
@@ -65,34 +62,26 @@ async def get_tariff_by_id(session: AsyncSession, tariff_id: int):
 async def get_tariffs_for_cluster(session: AsyncSession, cluster_name: str):
     try:
         server_row = await session.execute(
-            select(Server.tariff_group)
-            .where(Server.cluster_name == cluster_name)
-            .limit(1)
+            select(Server.tariff_group).where(Server.cluster_name == cluster_name).limit(1)
         )
         row = server_row.first()
-        
+
         if not row:
             server_row = await session.execute(
-                select(Server.tariff_group)
-                .where(Server.server_name == cluster_name)
-                .limit(1)
+                select(Server.tariff_group).where(Server.server_name == cluster_name).limit(1)
             )
             row = server_row.first()
-            
+
         if not row or not row[0]:
             return []
 
         group_code = row[0]
         result = await session.execute(
-            select(Tariff)
-            .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
-            .order_by(Tariff.id)
+            select(Tariff).where(Tariff.group_code == group_code, Tariff.is_active.is_(True)).order_by(Tariff.id)
         )
         return [dict(r.__dict__) for r in result.scalars().all()]
     except SQLAlchemyError as e:
-        logger.error(
-            f"[TARIFF] Ошибка при получении тарифов для кластера {cluster_name}: {e}"
-        )
+        logger.error(f"[TARIFF] Ошибка при получении тарифов для кластера {cluster_name}: {e}")
         return []
 
 
@@ -116,9 +105,7 @@ async def update_tariff(session: AsyncSession, tariff_id: int, updates: dict):
         return False
     try:
         updates["updated_at"] = datetime.utcnow()
-        await session.execute(
-            update(Tariff).where(Tariff.id == tariff_id).values(**updates)
-        )
+        await session.execute(update(Tariff).where(Tariff.id == tariff_id).values(**updates))
         await session.commit()
         return True
     except SQLAlchemyError as e:
@@ -140,10 +127,7 @@ async def delete_tariff(session: AsyncSession, tariff_id: int):
 
 async def check_tariff_exists(session: AsyncSession, tariff_id: int):
     try:
-        result = await session.execute(
-            select(Tariff)
-            .where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
-        )
+        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True)))
         tariff = result.scalar_one_or_none()
         if tariff:
             logger.info(f"[TARIFF] Тариф {tariff_id} найден в БД: {tariff.group_code}")

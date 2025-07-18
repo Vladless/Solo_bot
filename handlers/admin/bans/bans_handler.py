@@ -14,6 +14,7 @@ from logger import logger
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_bans_kb
 
+
 router = Router()
 
 
@@ -28,9 +29,7 @@ async def handle_bans(callback_query: CallbackQuery):
     await callback_query.message.edit_text(text=text_, reply_markup=build_bans_kb())
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "bans_export"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "bans_export"), IsAdminFilter())
 async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("management")
     try:
@@ -45,9 +44,7 @@ async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSessio
             writer.writerow([user.tg_id])
 
         csv_output.seek(0)
-        document = BufferedInputFile(
-            file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv"
-        )
+        document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="banned_users.csv")
 
         await callback_query.message.answer_document(
             document=document,
@@ -60,12 +57,8 @@ async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSessio
         )
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "bans_delete_banned"), IsAdminFilter()
-)
-async def handle_bans_delete_banned(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "bans_delete_banned"), IsAdminFilter())
+async def handle_bans_delete_banned(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("bans")
     try:
         result = await session.execute(text("SELECT tg_id FROM blocked_users"))
@@ -99,17 +92,11 @@ async def handle_bans_delete_banned(
         )
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "manual_bans_export"), IsAdminFilter()
-)
-async def handle_manual_bans_export(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "manual_bans_export"), IsAdminFilter())
+async def handle_manual_bans_export(callback_query: CallbackQuery, session: AsyncSession):
     build_admin_back_kb("bans")
     try:
-        result = await session.execute(
-            text("SELECT tg_id, banned_at, reason, until FROM manual_bans")
-        )
+        result = await session.execute(text("SELECT tg_id, banned_at, reason, until FROM manual_bans"))
         rows = result.all()
 
         csv_output = io.StringIO()
@@ -120,9 +107,7 @@ async def handle_manual_bans_export(
             writer.writerow([user.tg_id, user.banned_at, user.reason, user.until])
 
         csv_output.seek(0)
-        document = BufferedInputFile(
-            file=csv_output.getvalue().encode("utf-8"), filename="manual_bans.csv"
-        )
+        document = BufferedInputFile(file=csv_output.getvalue().encode("utf-8"), filename="manual_bans.csv")
 
         await callback_query.message.answer_document(
             document=document,
@@ -135,12 +120,8 @@ async def handle_manual_bans_export(
         )
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "bans_delete_manual"), IsAdminFilter()
-)
-async def handle_delete_manual_banned(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "bans_delete_manual"), IsAdminFilter())
+async def handle_delete_manual_banned(callback_query: CallbackQuery, session: AsyncSession):
     try:
         await session.execute(delete(ManualBan))
         await session.commit()
@@ -151,6 +132,4 @@ async def handle_delete_manual_banned(
         logger.info("[BANS] Очищены записи из manual_bans")
     except Exception as e:
         logger.error(f"[BANS] Ошибка при очистке manual_bans: {e}")
-        await callback_query.message.edit_text(
-            "❌ Ошибка при удалении вручную забаненных пользователей."
-        )
+        await callback_query.message.edit_text("❌ Ошибка при удалении вручную забаненных пользователей.")

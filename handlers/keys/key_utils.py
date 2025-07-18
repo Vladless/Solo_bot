@@ -1,4 +1,5 @@
 import asyncio
+
 from datetime import datetime, timezone
 from typing import Any
 
@@ -50,44 +51,34 @@ async def create_key_on_cluster(
                 cluster = found_servers
                 server_id_to_store = found_servers[0].get("server_name")
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем {cluster_id} не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         enabled_servers = [s for s in cluster if s.get("enabled", True)]
         if not enabled_servers:
-            logger.warning(
-                f"[Key Creation] Нет доступных серверов в кластере {cluster_id}"
-            )
+            logger.warning(f"[Key Creation] Нет доступных серверов в кластере {cluster_id}")
             return
 
         if plan is not None and traffic_limit_bytes is None:
             tariff = await get_tariff_by_id(session, plan)
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
-            traffic_limit_bytes = (
-                int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
-            )
+            traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
             if hwid_limit is None and tariff.get("device_limit") is not None:
                 hwid_limit = int(tariff["device_limit"])
 
         remnawave_servers = [
             s
             for s in enabled_servers
-            if s.get("panel_type", "3x-ui").lower() == "remnawave"
-            and await check_server_key_limit(s, session)
+            if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, session)
         ]
         xui_servers = [
             s
             for s in enabled_servers
-            if s.get("panel_type", "3x-ui").lower() == "3x-ui"
-            and await check_server_key_limit(s, session)
+            if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
         ]
 
         if not remnawave_servers and not xui_servers:
-            logger.warning(
-                f"[Key Creation] Нет серверов с доступным лимитом в кластере {cluster_id}"
-            )
+            logger.warning(f"[Key Creation] Нет серверов с доступным лимитом в кластере {cluster_id}")
             return
 
         semaphore = asyncio.Semaphore(2)
@@ -101,14 +92,8 @@ async def create_key_on_cluster(
             if not logged_in:
                 logger.error("Не удалось войти в Remnawave API")
             else:
-                expire_at = (
-                    datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
-                )
-                inbound_ids = [
-                    s.get("inbound_id")
-                    for s in remnawave_servers
-                    if s.get("inbound_id")
-                ]
+                expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
+                inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
 
                 if not inbound_ids:
                     logger.warning("Нет inbound_id у серверов Remnawave")
@@ -141,15 +126,11 @@ async def create_key_on_cluster(
                         remnawave_created = True
                         remnawave_key = result.get("subscriptionUrl")
                         remnawave_client_id = result.get("uuid")
-                        logger.info(
-                            f"[Key Creation] Пользователь создан в Remnawave: {result}"
-                        )
+                        logger.info(f"[Key Creation] Пользователь создан в Remnawave: {result}")
 
         public_link = f"{PUBLIC_LINK}{email}/{tg_id}" if xui_servers else None
         final_client_id = remnawave_client_id or client_id
-        logger.info(
-            f"[Debug] 3x-ui servers для кластера {cluster_id}: {[s['server_name'] for s in xui_servers]}"
-        )
+        logger.info(f"[Debug] 3x-ui servers для кластера {cluster_id}: {[s['server_name'] for s in xui_servers]}")
 
         if xui_servers:
             if SUPERNODE:
@@ -303,25 +284,17 @@ async def renew_key_in_cluster(
             if found_servers:
                 cluster = found_servers
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем {cluster_id} не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
-        result = await session.execute(
-            select(Key.tg_id, Key.server_id).where(Key.client_id == client_id).limit(1)
-        )
+        result = await session.execute(select(Key.tg_id, Key.server_id).where(Key.client_id == client_id).limit(1))
         row = result.first()
         if not row:
-            logger.error(
-                f"Не найден пользователь с client_id={client_id} в таблице keys."
-            )
+            logger.error(f"Не найден пользователь с client_id={client_id} в таблице keys.")
             return False
 
         tg_id, server_id = row
 
-        result = await session.execute(
-            select(Server.tariff_group).where(Server.server_name == server_id)
-        )
+        result = await session.execute(select(Server.tariff_group).where(Server.server_name == server_id))
         tariff_group_row = result.scalar_one_or_none()
 
         if tariff_group_row:
@@ -348,18 +321,14 @@ async def renew_key_in_cluster(
                 (
                     s
                     for s in cluster
-                    if s.get("panel_type", "").lower() == "remnawave"
-                    and s.get("inbound_id") in remnawave_inbound_ids
+                    if s.get("panel_type", "").lower() == "remnawave" and s.get("inbound_id") in remnawave_inbound_ids
                 ),
                 None,
             )
             if remnawave_server:
                 remna = RemnawaveAPI(remnawave_server["api_url"])
                 if await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    expire_iso = (
-                        datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat()
-                        + "Z"
-                    )
+                    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
                     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
                     updated = await remna.update_user(
                         uuid=client_id,
@@ -379,8 +348,8 @@ async def renew_key_in_cluster(
                         )
                         row = result.one_or_none()
                         remnawave_link = row[0] if row else None
-                        old_key = row[1] if row else None
-                        
+                        row[1] if row else None
+
                         user_data = {
                             "username": email,
                             "trafficLimitStrategy": "NO_RESET",
@@ -400,14 +369,11 @@ async def renew_key_in_cluster(
                             new_client_id = result.get("uuid")
                             new_remnawave_link = result.get("subscriptionUrl")
                             logger.info(f"Пользователь Remnawave {client_id} успешно создан")
-                            
+
                             await session.execute(
                                 update(Key)
                                 .where(Key.client_id == client_id)
-                                .values(
-                                    client_id=new_client_id,
-                                    remnawave_link=new_remnawave_link
-                                )
+                                .values(client_id=new_client_id, remnawave_link=new_remnawave_link)
                             )
                             await session.commit()
                         else:
@@ -424,9 +390,7 @@ async def renew_key_in_cluster(
             server_name = server_info.get("server_name", "unknown")
 
             if not inbound_id:
-                logger.warning(
-                    f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-                )
+                logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
             if SUPERNODE:
@@ -450,7 +414,7 @@ async def renew_key_in_cluster(
                     tg_id=tg_id,
                     limit_ip=hwid_device_limit,
                 )
-                
+
                 if not updated:
                     logger.warning(f"Не удалось обновить клиента {unique_email}, пробуем создать")
                     config = ClientConfig(
@@ -478,15 +442,11 @@ async def renew_key_in_cluster(
         logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
 
     except Exception as e:
-        logger.error(
-            f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}"
-        )
+        logger.error(f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
         raise
 
 
-async def delete_key_from_cluster(
-    cluster_id: str, email: str, client_id: str, session: AsyncSession
-):
+async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, session: AsyncSession):
     """Удаление ключа с серверов в кластере или с конкретного сервера"""
     try:
         servers = await get_servers(session)
@@ -502,9 +462,7 @@ async def delete_key_from_cluster(
             if found_servers:
                 cluster = found_servers
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем {cluster_id} не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         for server_info in cluster:
             panel_type = server_info.get("panel_type", "3x-ui").lower()
@@ -513,29 +471,21 @@ async def delete_key_from_cluster(
             if panel_type == "remnawave":
                 remna = RemnawaveAPI(server_info["api_url"])
                 if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    logger.error(
-                        f"[Remnawave] Не удалось войти на сервер {server_name}"
-                    )
+                    logger.error(f"[Remnawave] Не удалось войти на сервер {server_name}")
                     continue
 
                 success = await remna.delete_user(client_id)
                 if success:
-                    logger.info(
-                        f"[Remnawave] Клиент {client_id} успешно удалён с {server_name}"
-                    )
+                    logger.info(f"[Remnawave] Клиент {client_id} успешно удалён с {server_name}")
                 else:
-                    logger.warning(
-                        f"[Remnawave] Не удалось удалить клиента {client_id} с {server_name}"
-                    )
+                    logger.warning(f"[Remnawave] Не удалось удалить клиента {client_id} с {server_name}")
 
             elif panel_type == "3x-ui":
                 xui = await get_xui_instance(server_info["api_url"])
                 inbound_id = server_info.get("inbound_id")
 
                 if not inbound_id:
-                    logger.warning(
-                        f"[3x-ui] INBOUND_ID отсутствует на сервере {server_name}. Пропуск."
-                    )
+                    logger.warning(f"[3x-ui] INBOUND_ID отсутствует на сервере {server_name}. Пропуск.")
                     continue
 
                 await delete_client(
@@ -544,19 +494,13 @@ async def delete_key_from_cluster(
                     email=email,
                     client_id=client_id,
                 )
-                logger.info(
-                    f"[3x-ui] Клиент {client_id} удалён с сервера {server_name}"
-                )
+                logger.info(f"[3x-ui] Клиент {client_id} удалён с сервера {server_name}")
 
             else:
-                logger.warning(
-                    f"[Unknown] Неизвестный тип панели '{panel_type}' для сервера {server_name}"
-                )
+                logger.warning(f"[Unknown] Неизвестный тип панели '{panel_type}' для сервера {server_name}")
 
     except Exception as e:
-        logger.error(
-            f"❌ Ошибка при удалении ключа {client_id} из кластера/сервера {cluster_id}: {e}"
-        )
+        logger.error(f"❌ Ошибка при удалении ключа {client_id} из кластера/сервера {cluster_id}: {e}")
         raise
 
 
@@ -588,30 +532,18 @@ async def update_key_on_cluster(
             if found_servers:
                 cluster = found_servers
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем {cluster_id} не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
-        expire_iso = (
-            datetime.utcfromtimestamp(expiry_time / 1000)
-            .replace(tzinfo=timezone.utc)
-            .isoformat()
-        )
+        expire_iso = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=timezone.utc).isoformat()
 
-        remnawave_servers = [
-            s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"
-        ]
-        xui_servers = [
-            s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"
-        ]
+        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
+        xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
 
         remnawave_client_id = None
         remnawave_key = None
 
         if remnawave_servers:
-            inbound_ids = [
-                s["inbound_id"] for s in remnawave_servers if s.get("inbound_id")
-            ]
+            inbound_ids = [s["inbound_id"] for s in remnawave_servers if s.get("inbound_id")]
             remna = RemnawaveAPI(remnawave_servers[0]["api_url"])
             if await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 await remna.delete_user(client_id)
@@ -626,7 +558,7 @@ async def update_key_on_cluster(
                     .order_by(Tariff.duration_days.desc())
                     .limit(1)
                 )
-                tariff = result.scalar_one_or_none()
+                result.scalar_one_or_none()
 
                 short_uuid = None
                 if remnawave_link and "/" in remnawave_link:
@@ -641,7 +573,7 @@ async def update_key_on_cluster(
                     "activeUserInbounds": inbound_ids,
                 }
                 if traffic_limit is not None:
-                    user_data["trafficLimitBytes"] = traffic_limit * 1024 ** 3
+                    user_data["trafficLimitBytes"] = traffic_limit * 1024**3
                 if device_limit is not None:
                     user_data["hwidDeviceLimit"] = device_limit
                 if short_uuid:
@@ -652,18 +584,14 @@ async def update_key_on_cluster(
                 if result:
                     remnawave_client_id = result.get("uuid")
                     remnawave_key = result.get("subscriptionUrl")
-                    logger.info(
-                        f"[Update] Remnawave: клиент заново создан, новый UUID: {remnawave_client_id}"
-                    )
+                    logger.info(f"[Update] Remnawave: клиент заново создан, новый UUID: {remnawave_client_id}")
                 else:
                     logger.error("[Update] Ошибка создания Remnawave клиента")
             else:
                 logger.error("[Update] Не удалось авторизоваться в Remnawave")
 
         if not remnawave_client_id:
-            logger.warning(
-                f"[Update] Remnawave client_id не получен. Используется исходный: {client_id}"
-            )
+            logger.warning(f"[Update] Remnawave client_id не получен. Используется исходный: {client_id}")
             remnawave_client_id = client_id
 
         tasks = []
@@ -672,9 +600,7 @@ async def update_key_on_cluster(
             inbound_id = server_info.get("inbound_id")
 
             if not inbound_id:
-                logger.warning(
-                    f"[Update] INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-                )
+                logger.warning(f"[Update] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
             xui = await get_xui_instance(server_info["api_url"])
@@ -692,9 +618,9 @@ async def update_key_on_cluster(
                 .order_by(Tariff.duration_days.desc())
                 .limit(1)
             )
-            tariff = result.scalar_one_or_none()
+            result.scalar_one_or_none()
 
-            total_gb_bytes = int(traffic_limit * 1024 ** 3) if traffic_limit else 0
+            total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit else 0
             device_limit_value = device_limit if device_limit is not None else None
 
             config = ClientConfig(
@@ -715,15 +641,11 @@ async def update_key_on_cluster(
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        logger.info(
-            f"[Update] Ключ {remnawave_client_id} обновлён на всех серверах кластера {cluster_id}"
-        )
+        logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на всех серверах кластера {cluster_id}")
         return remnawave_client_id, remnawave_key
 
     except Exception as e:
-        logger.error(
-            f"[Update Error] Ошибка при обновлении ключа {client_id} на {cluster_id}: {e}"
-        )
+        logger.error(f"[Update Error] Ошибка при обновлении ключа {client_id} на {cluster_id}: {e}")
         raise
 
 
@@ -735,9 +657,7 @@ async def update_subscription(
     country_override: str = None,
     remnawave_link: str = None,
 ) -> None:
-    result = await session.execute(
-        select(Key).where(Key.tg_id == tg_id, Key.email == email)
-    )
+    result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.email == email))
     record = result.scalar_one_or_none()
 
     if not record:
@@ -753,9 +673,7 @@ async def update_subscription(
     traffic_limit = None
     device_limit = None
     if tariff_id:
-        result = await session.execute(
-            select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
-        )
+        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True)))
         tariff = result.scalar_one_or_none()
         if tariff:
             traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
@@ -763,7 +681,7 @@ async def update_subscription(
         else:
             logger.warning(f"[LOG] update_subscription: тариф с id={tariff_id} не найден!")
     else:
-        logger.warning(f"[LOG] update_subscription: tariff_id отсутствует!")
+        logger.warning("[LOG] update_subscription: tariff_id отсутствует!")
 
     await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
     await session.execute(delete(Key).where(Key.tg_id == tg_id, Key.email == email))
@@ -787,7 +705,7 @@ async def update_subscription(
         session=session,
         traffic_limit=traffic_limit,
         device_limit=device_limit,
-        remnawave_link=remnawave_link
+        remnawave_link=remnawave_link,
     )
 
     servers = await get_servers(session)
@@ -820,18 +738,12 @@ async def update_subscription(
     )
 
 
-async def get_user_traffic(
-    session: AsyncSession, tg_id: int, email: str
-) -> dict[str, Any]:
+async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dict[str, Any]:
     """
     Получает трафик пользователя на всех серверах, где у него есть ключ (3x-ui и Remnawave).
     Для Remnawave трафик считается один раз и отображается как "Remnawave (общий):".
     """
-    result = await session.execute(
-        select(Key.client_id, Key.server_id).where(
-            Key.tg_id == tg_id, Key.email == email
-        )
-    )
+    result = await session.execute(select(Key.client_id, Key.server_id).where(Key.tg_id == tg_id, Key.email == email))
     rows = result.all()
     if not rows:
         return {"status": "error", "message": "У пользователя нет активных ключей."}
@@ -840,8 +752,7 @@ async def get_user_traffic(
 
     result = await session.execute(
         select(Server).where(
-            (Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)),
-            Server.enabled == True
+            (Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)), Server.enabled is True
         )
     )
     server_rows = result.scalars().all()
@@ -894,9 +805,7 @@ async def get_user_traffic(
         server_id = row.server_id
 
         matched_servers = [
-            s
-            for s in servers_map.values()
-            if s["server_name"] == server_id or s["cluster_name"] == server_id
+            s for s in servers_map.values() if s["server_name"] == server_id or s["cluster_name"] == server_id
         ]
         for server_info in matched_servers:
             panel_type = server_info.get("panel_type", "3x-ui").lower()
@@ -940,9 +849,7 @@ async def toggle_client_on_cluster(
 ) -> dict[str, Any]:
     try:
         if session is None:
-            raise ValueError(
-                "[Cluster Toggle] Не передан объект сессии для toggle_client_on_cluster"
-            )
+            raise ValueError("[Cluster Toggle] Не передан объект сессии для toggle_client_on_cluster")
         servers = await get_servers(session)
         cluster = servers.get(cluster_id)
 
@@ -955,9 +862,7 @@ async def toggle_client_on_cluster(
             if found_servers:
                 cluster = found_servers
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем '{cluster_id}' не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем '{cluster_id}' не найден.")
 
         results = {}
         tasks = []
@@ -969,25 +874,19 @@ async def toggle_client_on_cluster(
             if panel_type == "3x-ui":
                 inbound_id = server_info.get("inbound_id")
                 if not inbound_id:
-                    logger.warning(
-                        f"[3x-ui] INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-                    )
+                    logger.warning(f"[3x-ui] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                     results[server_name] = False
                     continue
 
                 xui = await get_xui_instance(server_info["api_url"])
                 unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
 
-                tasks.append(
-                    toggle_client(xui, int(inbound_id), unique_email, client_id, enable)
-                )
+                tasks.append(toggle_client(xui, int(inbound_id), unique_email, client_id, enable))
 
             elif panel_type == "remnawave":
                 remna = RemnawaveAPI(server_info["api_url"])
                 if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    logger.error(
-                        f"[Remnawave] Авторизация не удалась на сервере {server_name}"
-                    )
+                    logger.error(f"[Remnawave] Авторизация не удалась на сервере {server_name}")
                     results[server_name] = False
                     continue
 
@@ -1005,17 +904,13 @@ async def toggle_client_on_cluster(
         for server_info, result in zip(cluster, task_results, strict=False):
             server_name = server_info.get("server_name", "unknown")
             if isinstance(result, Exception):
-                logger.error(
-                    f"[Cluster Toggle] Ошибка на сервере {server_name}: {result}"
-                )
+                logger.error(f"[Cluster Toggle] Ошибка на сервере {server_name}: {result}")
                 results[server_name] = False
             else:
                 results[server_name] = result
 
         status = "включен" if enable else "отключен"
-        logger.info(
-            f"[Cluster Toggle] Клиент {email} {status} на серверах кластера {cluster_id}"
-        )
+        logger.info(f"[Cluster Toggle] Клиент {email} {status} на серверах кластера {cluster_id}")
         logger.info(f"[Cluster Toggle DEBUG] Результаты: {results}")
 
         return {
@@ -1024,15 +919,11 @@ async def toggle_client_on_cluster(
         }
 
     except Exception as e:
-        logger.error(
-            f"[Cluster Toggle] Ошибка при изменении состояния клиента {email} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"[Cluster Toggle] Ошибка при изменении состояния клиента {email} в кластере {cluster_id}: {e}")
         return {"status": "error", "error": str(e)}
 
 
-async def reset_traffic_in_cluster(
-    cluster_id: str, email: str, session: AsyncSession
-) -> None:
+async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSession) -> None:
     try:
         servers = await get_servers(session)
         cluster = servers.get(cluster_id)
@@ -1046,9 +937,7 @@ async def reset_traffic_in_cluster(
             if found_servers:
                 cluster = found_servers
             else:
-                raise ValueError(
-                    f"Кластер или сервер с ID/именем {cluster_id} не найден."
-                )
+                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         tasks = []
         remnawave_done = False
@@ -1061,25 +950,19 @@ async def reset_traffic_in_cluster(
 
             if panel_type == "remnawave" and not remnawave_done:
                 result = await session.execute(
-                    select(Key.client_id)
-                    .where(Key.email == email, Key.server_id == cluster_id)
-                    .limit(1)
+                    select(Key.client_id).where(Key.email == email, Key.server_id == cluster_id).limit(1)
                 )
                 row = result.first()
 
                 if not row:
-                    logger.warning(
-                        f"[Remnawave Reset] client_id не найден для {email} на {server_name}"
-                    )
+                    logger.warning(f"[Remnawave Reset] client_id не найден для {email} на {server_name}")
                     continue
 
                 client_id = row[0]
 
                 remna = RemnawaveAPI(api_url)
                 if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    logger.warning(
-                        f"[Reset Traffic] Не удалось авторизоваться в Remnawave ({server_name})"
-                    )
+                    logger.warning(f"[Reset Traffic] Не удалось авторизоваться в Remnawave ({server_name})")
                     continue
 
                 tasks.append(remna.reset_user_traffic(client_id))
@@ -1088,26 +971,18 @@ async def reset_traffic_in_cluster(
 
             if panel_type == "3x-ui":
                 if not inbound_id:
-                    logger.warning(
-                        f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск."
-                    )
+                    logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                     continue
 
                 xui = await get_xui_instance(api_url)
                 unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
                 tasks.append(xui.client.reset_stats(int(inbound_id), unique_email))
             else:
-                logger.warning(
-                    f"[Reset Traffic] Неизвестный тип панели '{panel_type}' на {server_name}"
-                )
+                logger.warning(f"[Reset Traffic] Неизвестный тип панели '{panel_type}' на {server_name}")
 
         await asyncio.gather(*tasks, return_exceptions=True)
-        logger.info(
-            f"[Reset Traffic] Трафик клиента {email} успешно сброшен в кластере {cluster_id}"
-        )
+        logger.info(f"[Reset Traffic] Трафик клиента {email} успешно сброшен в кластере {cluster_id}")
 
     except Exception as e:
-        logger.error(
-            f"[Reset Traffic] Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}"
-        )
+        logger.error(f"[Reset Traffic] Ошибка при сбросе трафика клиента {email} в кластере {cluster_id}: {e}")
         raise

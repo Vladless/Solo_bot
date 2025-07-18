@@ -1,17 +1,18 @@
+from collections import Counter
 from datetime import datetime, timedelta
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
-from collections import Counter
-
 
 from bot import bot
 from config import ADMIN_ID
 from database import (
     count_active_keys,
+    count_hot_leads,
     count_total_keys,
     count_total_referrals,
     count_total_users,
@@ -20,13 +21,12 @@ from database import (
     count_users_registered_since,
     count_users_updated_today,
     get_tariff_distribution,
-    get_tariff_names,
-    get_tariff_groups,
     get_tariff_durations,
+    get_tariff_groups,
+    get_tariff_names,
     sum_payments_between,
     sum_payments_since,
     sum_total_payments,
-    count_hot_leads
 )
 from filters.admin import IsAdminFilter
 from logger import logger
@@ -39,6 +39,7 @@ from utils.csv_export import (
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_stats_kb
+
 
 router = Router()
 
@@ -53,39 +54,37 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         total_users = await count_total_users(session)
         today_start = moscow_tz.localize(datetime.combine(today, datetime.min.time()))
         today_start_utc = today_start.astimezone(pytz.UTC).replace(tzinfo=None)
-        
+
         users_updated_today = await count_users_updated_today(session, today_start_utc)
         registrations_today = await count_users_registered_since(session, today_start_utc)
-        
+
         yesterday_date = today - timedelta(days=1)
         yesterday_start = moscow_tz.localize(datetime.combine(yesterday_date, datetime.min.time()))
         yesterday_end = moscow_tz.localize(datetime.combine(today, datetime.min.time()))
         yesterday_start_utc = yesterday_start.astimezone(pytz.UTC).replace(tzinfo=None)
         yesterday_end_utc = yesterday_end.astimezone(pytz.UTC).replace(tzinfo=None)
-        
-        registrations_yesterday = await count_users_registered_between(
-            session, yesterday_start_utc, yesterday_end_utc
-        )
+
+        registrations_yesterday = await count_users_registered_between(session, yesterday_start_utc, yesterday_end_utc)
 
         week_start_date = today - timedelta(days=today.weekday())
         week_start = moscow_tz.localize(datetime.combine(week_start_date, datetime.min.time()))
         week_start_utc = week_start.astimezone(pytz.UTC).replace(tzinfo=None)
-        
+
         month_start_date = today.replace(day=1)
         month_start = moscow_tz.localize(datetime.combine(month_start_date, datetime.min.time()))
         month_start_utc = month_start.astimezone(pytz.UTC).replace(tzinfo=None)
-        
+
         registrations_week = await count_users_registered_since(session, week_start_utc)
         registrations_month = await count_users_registered_since(session, month_start_utc)
-        
+
         last_month_start_date = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
         this_month_start_date = today.replace(day=1)
-        
+
         last_month_start = moscow_tz.localize(datetime.combine(last_month_start_date, datetime.min.time()))
         last_month_end = moscow_tz.localize(datetime.combine(this_month_start_date, datetime.min.time()))
         last_month_start_utc = last_month_start.astimezone(pytz.UTC).replace(tzinfo=None)
         last_month_end_utc = last_month_end.astimezone(pytz.UTC).replace(tzinfo=None)
-        
+
         registrations_last_month = await count_users_registered_between(
             session, last_month_start_utc, last_month_end_utc
         )
@@ -130,43 +129,31 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             "Без тарифа: 3 мес": 2,
             "Без тарифа: 6 мес": 3,
             "Без тарифа: 12 мес": 4,
-            "Без тарифа: прочее": 5
+            "Без тарифа: прочее": 5,
         }
-        sorted_buckets = sorted(
-            duration_buckets.items(),
-            key=lambda x: bucket_order.get(x[0], 999)
-        )
+        sorted_buckets = sorted(duration_buckets.items(), key=lambda x: bucket_order.get(x[0], 999))
 
         for name, count in sorted_buckets:
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
 
         for group, tariffs in grouped_tariffs.items():
             tariff_stats_text += f"Тариф {group}\n"
-            sorted_tariffs = sorted(
-                tariffs,
-                key=lambda x: tariff_durations.get(x[0], 0)
-            )
+            sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
             for tid, count in sorted_tariffs:
                 name = tariff_names.get(tid, f"ID {tid}")
                 tariff_stats_text += f" ├ {name}: <b>{count}</b>\n"
 
         tariff_stats_text = (
-            "└ По тарифам и срокам:\n" + tariff_stats_text
-            if tariff_stats_text
-            else "└ Нет данных по тарифам\n"
+            "└ По тарифам и срокам:\n" + tariff_stats_text if tariff_stats_text else "└ Нет данных по тарифам\n"
         )
 
         total_referrals = await count_total_referrals(session)
 
         total_payments_today = await sum_payments_since(session, today_start_utc)
-        total_payments_yesterday = await sum_payments_between(
-            session, yesterday_start_utc, yesterday_end_utc
-        )
+        total_payments_yesterday = await sum_payments_between(session, yesterday_start_utc, yesterday_end_utc)
         total_payments_week = await sum_payments_since(session, week_start_utc)
         total_payments_month = await sum_payments_since(session, month_start_utc)
-        total_payments_last_month = await sum_payments_between(
-            session, last_month_start_utc, last_month_end_utc
-        )
+        total_payments_last_month = await sum_payments_between(session, last_month_start_utc, last_month_end_utc)
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
 
@@ -208,79 +195,55 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
 
-        await callback_query.message.edit_text(
-            text=stats_message, reply_markup=build_stats_kb()
-        )
+        await callback_query.message.edit_text(text=stats_message, reply_markup=build_stats_kb())
 
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             logger.error(f"Error in user_stats_menu: {e}")
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
-        await callback_query.answer(
-            "Произошла ошибка при получении статистики", show_alert=True
-        )
+        await callback_query.answer("Произошла ошибка при получении статистики", show_alert=True)
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "stats_export_users_csv"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_users_csv"), IsAdminFilter())
 async def handle_export_users_csv(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("stats")
     try:
         export = await export_users_csv(session)
-        await callback_query.message.answer_document(
-            document=export, caption="📅 Экспорт пользователей в CSV"
-        )
+        await callback_query.message.answer_document(document=export, caption="📅 Экспорт пользователей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей: {e}")
         await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "stats_export_payments_csv"), IsAdminFilter()
-)
-async def handle_export_payments_csv(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_payments_csv"), IsAdminFilter())
+async def handle_export_payments_csv(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("stats")
     try:
         export = await export_payments_csv(session)
-        await callback_query.message.answer_document(
-            document=export, caption="📅 Экспорт платежей в CSV"
-        )
+        await callback_query.message.answer_document(document=export, caption="📅 Экспорт платежей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей: {e}")
         await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "stats_export_hot_leads_csv"), IsAdminFilter()
-)
-async def handle_export_hot_leads_csv(
-    callback_query: CallbackQuery, session: AsyncSession
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_hot_leads_csv"), IsAdminFilter())
+async def handle_export_hot_leads_csv(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("stats")
     try:
         export = await export_hot_leads_csv(session)
-        await callback_query.message.answer_document(
-            document=export, caption="📅 Экспорт горящих лидов"
-        )
+        await callback_query.message.answer_document(document=export, caption="📅 Экспорт горящих лидов")
     except Exception as e:
         logger.error(f"Ошибка при экспорте горящих лидов: {e}")
         await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "stats_export_keys_csv"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_keys_csv"), IsAdminFilter())
 async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_admin_back_kb("stats")
     try:
         export = await export_keys_csv(session)
-        await callback_query.message.answer_document(
-            document=export, caption="📅 Экспорт подписок в CSV"
-        )
+        await callback_query.message.answer_document(document=export, caption="📅 Экспорт подписок в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте подписок: {e}")
         await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)

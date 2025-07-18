@@ -12,6 +12,7 @@ from config import SUPPORT_CHAT_URL
 from database.models import ManualBan
 from logger import logger
 
+
 TZ = timezone("Europe/Moscow")
 
 
@@ -56,9 +57,7 @@ class BanCheckerMiddleware(BaseMiddleware):
                 reason = ban.reason or "не указана"
                 until = ban.until
 
-                logger.warning(
-                    f"[BanChecker] Пользователь {tg_id} заблокирован (до: {until}, причина: {reason})"
-                )
+                logger.warning(f"[BanChecker] Пользователь {tg_id} заблокирован (до: {until}, причина: {reason})")
 
                 if until:
                     until_local = until.astimezone(TZ).strftime("%Y-%m-%d %H:%M")

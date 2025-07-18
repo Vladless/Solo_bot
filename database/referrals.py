@@ -13,23 +13,17 @@ async def add_referral(session: AsyncSession, referred_tg_id: int, referrer_tg_i
             logger.warning(f"⚠️ Попытка самореферала: {referred_tg_id}")
             return
 
-        stmt = insert(Referral).values(
-            referred_tg_id=referred_tg_id, referrer_tg_id=referrer_tg_id
-        )
+        stmt = insert(Referral).values(referred_tg_id=referred_tg_id, referrer_tg_id=referrer_tg_id)
         await session.execute(stmt)
         await session.commit()
-        logger.info(
-            f"✅ Добавлена реферальная связь: {referred_tg_id} → {referrer_tg_id}"
-        )
+        logger.info(f"✅ Добавлена реферальная связь: {referred_tg_id} → {referrer_tg_id}")
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при добавлении реферала: {e}")
         await session.rollback()
         raise
 
 
-async def get_referral_by_referred_id(
-    session: AsyncSession, referred_tg_id: int
-) -> dict | None:
+async def get_referral_by_referred_id(session: AsyncSession, referred_tg_id: int) -> dict | None:
     stmt = select(Referral).where(Referral.referred_tg_id == referred_tg_id)
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()
@@ -37,11 +31,7 @@ async def get_referral_by_referred_id(
 
 
 async def get_total_referrals(session: AsyncSession, referrer_tg_id: int) -> int:
-    stmt = (
-        select(func.count())
-        .select_from(Referral)
-        .where(Referral.referrer_tg_id == referrer_tg_id)
-    )
+    stmt = select(func.count()).select_from(Referral).where(Referral.referrer_tg_id == referrer_tg_id)
     result = await session.execute(stmt)
     return result.scalar()
 
@@ -62,17 +52,11 @@ async def get_active_referrals(session: AsyncSession, referrer_tg_id: int) -> in
 
 
 async def mark_referral_reward_issued(session: AsyncSession, referred_tg_id: int):
-    await session.execute(
-        update(Referral)
-        .where(Referral.referred_tg_id == referred_tg_id)
-        .values(reward_issued=True)
-    )
+    await session.execute(update(Referral).where(Referral.referred_tg_id == referred_tg_id).values(reward_issued=True))
     await session.commit()
 
 
-async def get_total_referral_bonus(
-    session: AsyncSession, referrer_tg_id: int, max_levels: int
-) -> float:
+async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, max_levels: int) -> float:
     if CHECK_REFERRAL_REWARD_ISSUED:
         bonus_cte = """
             WITH RECURSIVE
@@ -168,9 +152,7 @@ async def get_total_referral_bonus(
         """
         )
 
-    result = await session.execute(
-        text(bonus_query), {"tg_id": referrer_tg_id, "max_levels": max_levels}
-    )
+    result = await session.execute(text(bonus_query), {"tg_id": referrer_tg_id, "max_levels": max_levels})
     total_bonus_raw = result.scalar()
     total_bonus = round(float(total_bonus_raw or 0), 2)
 
@@ -178,9 +160,7 @@ async def get_total_referral_bonus(
     return total_bonus
 
 
-async def get_referrals_by_level(
-    session: AsyncSession, referrer_tg_id: int, max_levels: int
-) -> dict:
+async def get_referrals_by_level(session: AsyncSession, referrer_tg_id: int, max_levels: int) -> dict:
     query = """
         WITH RECURSIVE referral_levels AS (
             SELECT referred_tg_id, referrer_tg_id, 1 AS level 
@@ -200,9 +180,7 @@ async def get_referrals_by_level(
         GROUP BY level
         ORDER BY level
     """
-    result = await session.execute(
-        text(query), {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels}
-    )
+    result = await session.execute(text(query), {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels})
     return {
         row["level"]: {
             "total": row["level_count"],
@@ -214,19 +192,13 @@ async def get_referrals_by_level(
 
 async def get_referral_stats(session: AsyncSession, referrer_tg_id: int):
     try:
-        logger.info(
-            f"[ReferralStats] Получение статистики для пользователя {referrer_tg_id}"
-        )
+        logger.info(f"[ReferralStats] Получение статистики для пользователя {referrer_tg_id}")
 
         total_referrals = await get_total_referrals(session, referrer_tg_id)
         active_referrals = await get_active_referrals(session, referrer_tg_id)
         max_levels = len(REFERRAL_BONUS_PERCENTAGES)
-        referrals_by_level = await get_referrals_by_level(
-            session, referrer_tg_id, max_levels
-        )
-        total_referral_bonus = await get_total_referral_bonus(
-            session, referrer_tg_id, max_levels
-        )
+        referrals_by_level = await get_referrals_by_level(session, referrer_tg_id, max_levels)
+        total_referral_bonus = await get_total_referral_bonus(session, referrer_tg_id, max_levels)
 
         return {
             "total_referrals": total_referrals,
@@ -236,18 +208,12 @@ async def get_referral_stats(session: AsyncSession, referrer_tg_id: int):
         }
 
     except Exception as e:
-        logger.error(
-            f"[ReferralStats] Ошибка при получении статистики для пользователя {referrer_tg_id}: {e}"
-        )
+        logger.error(f"[ReferralStats] Ошибка при получении статистики для пользователя {referrer_tg_id}: {e}")
         raise
 
 
 async def get_user_referral_count(session: AsyncSession, tg_id: int) -> int:
-    result = await session.execute(
-        select(func.count())
-        .select_from(Referral)
-        .where(Referral.referrer_tg_id == tg_id)
-    )
+    result = await session.execute(select(func.count()).select_from(Referral).where(Referral.referrer_tg_id == tg_id))
     return result.scalar_one() or 0
 
 
@@ -272,7 +238,4 @@ async def get_top_referrals(session: AsyncSession, limit: int = 5):
         .limit(limit)
     )
     result = await session.execute(query)
-    return [
-        {"referrer_tg_id": row.referrer_tg_id, "referral_count": row.referral_count}
-        for row in result.all()
-    ]
+    return [{"referrer_tg_id": row.referrer_tg_id, "referral_count": row.referral_count} for row in result.all()]

@@ -25,9 +25,7 @@ def register_middleware(
     """Регистрирует middleware в диспетчере."""
     if middlewares is None:
         available_middlewares = {
-            "session": (
-                SessionMiddleware(sessionmaker) if sessionmaker else SessionMiddleware()
-            ),
+            "session": (SessionMiddleware(sessionmaker) if sessionmaker else SessionMiddleware()),
             "admin": AdminMiddleware(),
             "maintenance": MaintenanceModeMiddleware(),
             "logging": LoggingMiddleware(),
@@ -40,11 +38,7 @@ def register_middleware(
             dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
 
         exclude_set = set(exclude or [])
-        middlewares = [
-            middleware
-            for name, middleware in available_middlewares.items()
-            if name not in exclude_set
-        ]
+        middlewares = [middleware for name, middleware in available_middlewares.items() if name not in exclude_set]
 
     handlers = [
         dispatcher.message,

@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Type, Union
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
-from typing import Type, Union, Any
 
 from api.depends import get_session, verify_admin_token
 from database.models import Admin
 
 
-def _cast_identifier_type(field: InstrumentedAttribute, value: Union[int, str]):
+def _cast_identifier_type(field: InstrumentedAttribute, value: int | str):
     column_type = type(field.property.columns[0].type).__name__
     if column_type in ("Integer", "BigInteger"):
         return int(value)
@@ -17,18 +18,19 @@ def _cast_identifier_type(field: InstrumentedAttribute, value: Union[int, str]):
 
 def generate_crud_router(
     *,
-    model: Type,
-    schema_response: Type,
-    schema_create: Type,
-    schema_update: Type,
-    identifier_field: str = "tg_id",     
-    parameter_name: str = "tg_id",        
+    model: type,
+    schema_response: type,
+    schema_create: type,
+    schema_update: type,
+    identifier_field: str = "tg_id",
+    parameter_name: str = "tg_id",
     extra_get_by_email: bool = False,
-    enabled_methods: list[str] = ("get_all", "get_one", "get_by_email", "create", "update", "delete")
+    enabled_methods: list[str] = ("get_all", "get_one", "get_by_email", "create", "update", "delete"),
 ) -> APIRouter:
     router = APIRouter()
 
     if "get_all" in enabled_methods:
+
         @router.get("/", response_model=list[schema_response])
         async def get_all(
             admin: Admin = Depends(verify_admin_token),
@@ -38,6 +40,7 @@ def generate_crud_router(
             return result.scalars().all()
 
     if "get_by_email" in enabled_methods and extra_get_by_email:
+
         @router.get("/by_email", response_model=schema_response)
         async def get_by_email(
             email: str = Query(...),
@@ -51,9 +54,10 @@ def generate_crud_router(
             return obj
 
     if "get_one" in enabled_methods:
+
         @router.get(f"/{{{parameter_name}}}", response_model=schema_response)
         async def get_one(
-            value: Union[int, str] = Path(..., alias=parameter_name),
+            value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
@@ -66,9 +70,10 @@ def generate_crud_router(
             return obj
 
     if "get_all_by_field" in enabled_methods:
+
         @router.get(f"/all/{{{parameter_name}}}", response_model=list[schema_response])
         async def get_all_by_field(
-            value: Union[int, str] = Path(..., alias=parameter_name),
+            value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
@@ -81,9 +86,10 @@ def generate_crud_router(
             return objs
 
     if "create" in enabled_methods:
+
         @router.post("/", response_model=schema_response)
         async def create(
-            payload: schema_create, # type: ignore
+            payload: schema_create,  # type: ignore
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
@@ -97,10 +103,11 @@ def generate_crud_router(
             return obj
 
     if "update" in enabled_methods:
+
         @router.patch(f"/{{{parameter_name}}}", response_model=schema_response)
         async def update(
-            payload: schema_update, # type: ignore
-            value: Union[int, str] = Path(..., alias=parameter_name),
+            payload: schema_update,  # type: ignore
+            value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
@@ -119,9 +126,10 @@ def generate_crud_router(
             return obj
 
     if "delete" in enabled_methods:
+
         @router.delete(f"/{{{parameter_name}}}", response_model=dict)
         async def delete(
-            value: Union[int, str] = Path(..., alias=parameter_name),
+            value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):

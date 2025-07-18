@@ -1,7 +1,7 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 
+from pydantic import BaseModel
 
 
 class TariffBase(BaseModel):
@@ -9,30 +9,30 @@ class TariffBase(BaseModel):
     group_code: str
     duration_days: int
     price_rub: int
-    traffic_limit: Optional[int] = None
-    device_limit: Optional[int] = None
+    traffic_limit: int | None = None
+    device_limit: int | None = None
     is_active: bool = True
-    subgroup_title: Optional[str] = None
+    subgroup_title: str | None = None
 
 
 class TariffResponse(TariffBase):
     id: int
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
 
 
 class TariffUpdate(BaseModel):
-    name: Optional[str] = None
-    group_code: Optional[str] = None
-    duration_days: Optional[int] = None
-    price_rub: Optional[int] = None
-    traffic_limit: Optional[int] = None
-    device_limit: Optional[int] = None
-    is_active: Optional[bool] = None
-    subgroup_title: Optional[str] = None
+    name: str | None = None
+    group_code: str | None = None
+    duration_days: int | None = None
+    price_rub: int | None = None
+    traffic_limit: int | None = None
+    device_limit: int | None = None
+    is_active: bool | None = None
+    subgroup_title: str | None = None
 
     class Config:
         from_attributes = True

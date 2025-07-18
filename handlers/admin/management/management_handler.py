@@ -1,31 +1,46 @@
-from aiogram import F, Router
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+import traceback
+
+from asyncio import sleep
+from datetime import datetime
+from tempfile import NamedTemporaryFile
+
+from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import func, select, update, delete
-from sqlalchemy.ext.asyncio import AsyncSession
-import hashlib
-import time
 from dateutil import parser
-
-import os, subprocess, sys
-import json
-from aiogram import Bot
-from panels.remnawave import RemnawaveAPI
-from tempfile import NamedTemporaryFile
-import traceback
-from datetime import datetime
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Admin, Server, User
+from config import DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from database.models import Admin, Key, Server, User
 from filters.admin import IsAdminFilter
+from handlers.keys.key_utils import update_subscription
 from logger import logger
 from middlewares import maintenance
+from panels.remnawave import RemnawaveAPI
 
 from ..panel.keyboard import build_admin_back_kb
-from .keyboard import AdminPanelCallback, build_management_kb, build_export_db_sources_kb, build_admins_kb, build_back_to_db_menu, build_single_admin_menu, build_role_selection_kb, build_database_kb, build_admin_back_kb_to_admins, build_token_result_kb
-from asyncio import sleep
-from config import DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from .keyboard import (
+    AdminPanelCallback,
+    build_admin_back_kb_to_admins,
+    build_admins_kb,
+    build_back_to_db_menu,
+    build_database_kb,
+    build_export_db_sources_kb,
+    build_management_kb,
+    build_post_import_kb,
+    build_role_selection_kb,
+    build_single_admin_menu,
+    build_token_result_kb,
+)
 
 
 router = Router()
@@ -33,6 +48,10 @@ router = Router()
 
 class AdminManagementStates(StatesGroup):
     waiting_for_new_domain = State()
+
+
+class Import3xuiStates(StatesGroup):
+    waiting_for_file = State()
 
 
 class DatabaseState(StatesGroup):
@@ -43,9 +62,7 @@ class AdminState(StatesGroup):
     waiting_for_tg_id = State()
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "management"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "management"), IsAdminFilter())
 async def handle_management(callback_query: CallbackQuery, session: AsyncSession):
     tg_id = callback_query.from_user.id
 
@@ -62,9 +79,7 @@ async def handle_management(callback_query: CallbackQuery, session: AsyncSession
     )
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "change_domain"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "change_domain"), IsAdminFilter())
 async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
     """Запрашивает у администратора новый домен."""
     await state.set_state(AdminManagementStates.waiting_for_new_domain)
@@ -74,14 +89,10 @@ async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminManagementStates.waiting_for_new_domain)
-async def process_new_domain(
-    message: Message, state: FSMContext, session: AsyncSession
-):
+async def process_new_domain(message: Message, state: FSMContext, session: AsyncSession):
     """Обновляет домен в таблице keys."""
     new_domain = message.text.strip()
-    logger.info(
-        f"[DomainChange] Новый домен, введённый администратором: '{new_domain}'"
-    )
+    logger.info(f"[DomainChange] Новый домен, введённый администратором: '{new_domain}'")
 
     if not new_domain or " " in new_domain or not new_domain.replace(".", "").isalnum():
         logger.warning("[DomainChange] Некорректный домен")
@@ -102,8 +113,8 @@ async def process_new_domain(
                 remnawave_link=func.regexp_replace(Key.remnawave_link, r"^https://[^/]+", new_domain_url),
             )
             .where(
-                (Key.key.startswith("https://") & ~Key.key.startswith(new_domain_url)) |
-                (Key.remnawave_link.startswith("https://") & ~Key.remnawave_link.startswith(new_domain_url))
+                (Key.key.startswith("https://") & ~Key.key.startswith(new_domain_url))
+                | (Key.remnawave_link.startswith("https://") & ~Key.remnawave_link.startswith(new_domain_url))
             )
         )
         await session.execute(stmt)
@@ -146,26 +157,20 @@ async def toggle_maintenance_mode(callback: CallbackQuery, session: AsyncSession
     new_status = "включён" if maintenance.maintenance_mode else "выключен"
     await callback.answer(f"🛠️ Режим обслуживания {new_status}.", show_alert=True)
 
-    await callback.message.edit_reply_markup(
-        reply_markup=build_management_kb(admin.role)
-    )
+    await callback.message.edit_reply_markup(reply_markup=build_management_kb(admin.role))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "admins"))
 async def show_admins(callback: CallbackQuery, session: AsyncSession):
     result = await session.execute(select(Admin.tg_id, Admin.role))
     admins = result.all()
-    await callback.message.edit_text(
-        "👑 <b>Список админов</b>",
-        reply_markup=build_admins_kb(admins)
-    )
+    await callback.message.edit_text("👑 <b>Список админов</b>", reply_markup=build_admins_kb(admins))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "add_admin"))
 async def prompt_new_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "Введите <code>tg_id</code> нового админа:",
-        reply_markup=build_admin_back_kb_to_admins()
+        "Введите <code>tg_id</code> нового админа:", reply_markup=build_admin_back_kb_to_admins()
     )
     await state.set_state(AdminState.waiting_for_tg_id)
 
@@ -182,16 +187,9 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
     if result.scalar_one_or_none():
         await message.answer("⚠️ Такой админ уже существует.")
     else:
-        session.add(Admin(
-            tg_id=tg_id,
-            role="moderator",
-            description="Добавлен вручную"
-        ))
+        session.add(Admin(tg_id=tg_id, role="moderator", description="Добавлен вручную"))
         await session.commit()
-        await message.answer(
-            f"✅ Админ <code>{tg_id}</code> добавлен.",
-            reply_markup=build_admin_back_kb_to_admins()
-        )
+        await message.answer(f"✅ Админ <code>{tg_id}</code> добавлен.", reply_markup=build_admin_back_kb_to_admins())
 
     await state.clear()
 
@@ -205,8 +203,7 @@ async def open_admin_menu(callback: CallbackQuery, callback_data: AdminPanelCall
     role = admin or "moderator"
 
     await callback.message.edit_text(
-        f"👤 <b>Управление админом</b> <code>{tg_id}</code>",
-        reply_markup=build_single_admin_menu(tg_id, role)
+        f"👤 <b>Управление админом</b> <code>{tg_id}</code>", reply_markup=build_single_admin_menu(tg_id, role)
     )
 
 
@@ -229,7 +226,7 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
         f"🎟 <b>Новый токен для</b> <code>{tg_id}</code>:\n\n"
         f"<code>{token}</code>\n\n"
         f"⚠️ Это сообщение исчезнет через 5 минут.",
-        reply_markup=build_token_result_kb(token)
+        reply_markup=build_token_result_kb(token),
     )
 
     await sleep(300)
@@ -243,8 +240,7 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
 async def edit_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallback):
     tg_id = int(callback_data.action.split("|")[1])
     await callback.message.edit_text(
-        f"✏ <b>Выберите новую роль для</b> <code>{tg_id}</code>:",
-        reply_markup=build_role_selection_kb(tg_id)
+        f"✏ <b>Выберите новую роль для</b> <code>{tg_id}</code>:", reply_markup=build_role_selection_kb(tg_id)
     )
 
 
@@ -261,8 +257,7 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
 
     if tg_id == callback.from_user.id:
         await callback.message.edit_text(
-            "🚫 <b>Нельзя изменить свою собственную роль!</b>",
-            reply_markup=build_single_admin_menu(tg_id)
+            "🚫 <b>Нельзя изменить свою собственную роль!</b>", reply_markup=build_single_admin_menu(tg_id)
         )
         return
 
@@ -276,8 +271,7 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
     await session.commit()
 
     await callback.message.edit_text(
-        f"✅ Роль админа <code>{tg_id}</code> изменена на <b>{role}</b>.",
-        reply_markup=build_single_admin_menu(tg_id)
+        f"✅ Роль админа <code>{tg_id}</code> изменена на <b>{role}</b>.", reply_markup=build_single_admin_menu(tg_id)
     )
 
 
@@ -289,8 +283,7 @@ async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallbac
     await session.commit()
 
     await callback.message.edit_text(
-        f"🗑 Админ <code>{tg_id}</code> удалён.",
-        reply_markup=build_admin_back_kb_to_admins()
+        f"🗑 Админ <code>{tg_id}</code> удалён.", reply_markup=build_admin_back_kb_to_admins()
     )
 
 
@@ -314,7 +307,6 @@ async def prompt_restore_db(callback: CallbackQuery, state: FSMContext):
 
 @router.message(DatabaseState.waiting_for_backup_file)
 async def restore_database(message: Message, state: FSMContext, bot: Bot):
-
     document = message.document
 
     if not document or not document.file_name.endswith(".sql"):
@@ -336,45 +328,70 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
 
         logger.info(f"[Restore] Определён формат: {'custom' if is_custom_dump else 'plain'}")
 
-        subprocess.run([
-            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
-            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{DB_NAME}' AND pid <> pg_backend_pid();"
-        ], check=True)
+        subprocess.run(
+            [
+                "sudo",
+                "-u",
+                "postgres",
+                "psql",
+                "-d",
+                "postgres",
+                "-c",
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{DB_NAME}' AND pid <> pg_backend_pid();",
+            ],
+            check=True,
+        )
 
-        subprocess.run([
-            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
-            f"DROP DATABASE IF EXISTS {DB_NAME};"
-        ], check=True)
+        subprocess.run(
+            ["sudo", "-u", "postgres", "psql", "-d", "postgres", "-c", f"DROP DATABASE IF EXISTS {DB_NAME};"],
+            check=True,
+        )
 
-        subprocess.run([
-            "sudo", "-u", "postgres", "psql", "-d", "postgres", "-c",
-            f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};"
-        ], check=True)
+        subprocess.run(
+            ["sudo", "-u", "postgres", "psql", "-d", "postgres", "-c", f"CREATE DATABASE {DB_NAME} OWNER {DB_USER};"],
+            check=True,
+        )
 
         logger.info("[Restore] База данных пересоздана")
 
         os.environ["PGPASSWORD"] = DB_PASSWORD
 
         if is_custom_dump:
-            result = subprocess.run([
-                "pg_restore",
-                f"--dbname={DB_NAME}",
-                "-U", DB_USER,
-                "-h", PG_HOST,
-                "-p", PG_PORT,
-                "--no-owner",
-                "--exit-on-error",
-                tmp_path,
-            ], capture_output=True, text=True)
+            result = subprocess.run(
+                [
+                    "pg_restore",
+                    f"--dbname={DB_NAME}",
+                    "-U",
+                    DB_USER,
+                    "-h",
+                    PG_HOST,
+                    "-p",
+                    PG_PORT,
+                    "--no-owner",
+                    "--exit-on-error",
+                    tmp_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
         else:
-            result = subprocess.run([
-                "psql",
-                "-U", DB_USER,
-                "-h", PG_HOST,
-                "-p", PG_PORT,
-                "-d", DB_NAME,
-                "-f", tmp_path,
-            ], capture_output=True, text=True)
+            result = subprocess.run(
+                [
+                    "psql",
+                    "-U",
+                    DB_USER,
+                    "-h",
+                    PG_HOST,
+                    "-p",
+                    PG_PORT,
+                    "-d",
+                    DB_NAME,
+                    "-f",
+                    tmp_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
 
         del os.environ["PGPASSWORD"]
 
@@ -416,19 +433,14 @@ async def handle_export_db(callback: CallbackQuery):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "back_to_db_menu"))
 async def back_to_database_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "📦 Управление базой данных:",
-        reply_markup=build_database_kb()
-    )
+    await callback.message.edit_text("📦 Управление базой данных:", reply_markup=build_database_kb())
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
     await callback.answer()
 
-    result = await session.execute(
-        select(Server).where(Server.panel_type == "remnawave", Server.enabled == True)
-    )
+    result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled is True))
     servers = result.scalars().all()
 
     if not servers:
@@ -529,22 +541,14 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
             logger.warning(f"[SKIP] Пропущен клиент: tg_id={tg_id}, client_id={client_id}")
             continue
 
-        exists_stmt = await session.execute(
-            select(Key).where(Key.client_id == client_id)
-        )
+        exists_stmt = await session.execute(select(Key).where(Key.client_id == client_id))
         if exists_stmt.scalar():
             logger.info(f"[SKIP] Ключ уже существует: {client_id}")
             continue
 
         try:
-            created_ts = (
-                int(parser.isoparse(created_at).timestamp() * 1000)
-                if created_at else int(time.time() * 1000)
-            )
-            expire_ts = (
-                int(parser.isoparse(expire_at).timestamp() * 1000)
-                if expire_at else int(time.time() * 1000)
-            )
+            created_ts = int(parser.isoparse(created_at).timestamp() * 1000) if created_at else int(time.time() * 1000)
+            expire_ts = int(parser.isoparse(expire_at).timestamp() * 1000) if expire_at else int(time.time() * 1000)
 
             new_key = Key(
                 tg_id=tg_id,
@@ -572,3 +576,75 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
     await session.commit()
     logger.info(f"[IMPORT] Всего добавлено ключей: {added}")
     return added
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "request_3xui_file"))
+async def prompt_for_3xui_file(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📂 Пришлите файл базы данных <code>x-ui.db</code> для восстановления подписок и клиентов.\n\n"
+        "Формат: SQLite-файл с таблицей <code>inbounds</code>.\n\n"
+        "<b>⚠️ Важно!</b> Убедитесь, что у всех подписок в панели прописан <code>telegram_id</code>.\n"
+        "После восстановления обязательно выполните <b>синхронизацию</b> с текущими серверами!",
+        reply_markup=build_back_to_db_menu(),
+    )
+    await state.set_state(Import3xuiStates.waiting_for_file)
+
+
+@router.message(Import3xuiStates.waiting_for_file, F.document)
+async def handle_3xui_db_upload(message: Message, state: FSMContext, session: AsyncSession):
+    file = message.document
+
+    if not file.file_name.endswith(".db"):
+        await message.reply("❌ Пожалуйста, пришли файл с расширением .db")
+        return
+
+    file_path = f"/tmp/{file.file_name}"
+    await message.bot.download(file, destination=file_path)
+
+    processing_message = await message.reply("📥 Файл получен. Начинаю восстановление...")
+
+    try:
+        from database.importer import import_keys_from_3xui_db
+
+        imported, skipped = await import_keys_from_3xui_db(file_path, session)
+
+        await processing_message.edit_text(
+            f"✅ Восстановление завершено:\n"
+            f"🔐 Импортировано подписок: <b>{imported}</b>\n"
+            f"⏭ Пропущено (уже есть): <b>{skipped}</b>",
+            reply_markup=build_post_import_kb(),
+        )
+
+    except Exception as e:
+        logger.error(f"[Import 3x-ui] Ошибка: {e}")
+        await processing_message.edit_text(
+            "❌ Произошла ошибка при импорте. Убедись, что это валидный файл <code>x-ui.db</code>",
+            reply_markup=build_back_to_db_menu(),
+        )
+
+    await state.clear()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "resync_after_import"))
+async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSession):
+    await callback.answer("🔁 Начинаю перевыпуск подписок...")
+
+    result = await session.execute(select(Key.tg_id, Key.email))
+    keys = result.all()
+
+    success = 0
+    failed = 0
+
+    for tg_id, email in keys:
+        try:
+            await update_subscription(tg_id=tg_id, email=email, session=session)
+            success += 1
+        except Exception as e:
+            logger.error(f"[Resync] Ошибка при перевыпуске {email}: {e}")
+            failed += 1
+
+    await callback.message.edit_text(
+        f"🔁 Перевыпуск завершён:\n✅ Успешно: <b>{success}</b>\n❌ Ошибки: <b>{failed}</b>",
+        parse_mode="HTML",
+        reply_markup=build_back_to_db_menu(),
+    )

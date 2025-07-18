@@ -2,9 +2,11 @@ import os
 import re
 import secrets
 import string
+
 from datetime import datetime
 
 import aiofiles
+
 from aiogram.types import (
     BufferedInputFile,
     InlineKeyboardMarkup,
@@ -17,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot import bot
 from config import ADMIN_ID
 from database import get_servers
-from database.models import Key, Server, Notification
+from database.models import Key, Notification, Server
 from logger import logger
 
 
@@ -25,14 +27,7 @@ def generate_random_email(length: int = 8) -> str:
     """
     Генерирует случайный email с заданной длиной.
     """
-    return (
-        "".join(
-            secrets.choice(string.ascii_lowercase + string.digits)
-            for _ in range(length)
-        )
-        if length > 0
-        else ""
-    )
+    return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)) if length > 0 else ""
 
 
 async def get_least_loaded_cluster(session: AsyncSession) -> str:
@@ -56,11 +51,8 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
 
     available_clusters = {}
     for cluster_name, cluster_servers in servers.items():
-        enabled_servers = [
-            server for server in cluster_servers 
-            if server.get("enabled", True)
-        ]
-        
+        enabled_servers = [server for server in cluster_servers if server.get("enabled", True)]
+
         if not enabled_servers:
             continue
 
@@ -78,9 +70,7 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
         logger.warning("❌ Нет доступных кластеров с лимитом ключей!")
         raise ValueError("⚠️ Сервисы временно недоступны. Попробуйте позже.")
 
-    least_loaded_cluster = min(
-        available_clusters, key=lambda k: (available_clusters[k], k)
-    )
+    least_loaded_cluster = min(available_clusters, key=lambda k: (available_clusters[k], k))
     logger.info(
         f"✅ Выбран наименее загруженный кластер: {least_loaded_cluster} (загрузка: {available_clusters[least_loaded_cluster]})"
     )
@@ -97,15 +87,11 @@ async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bo
 
     identifier = cluster_name if cluster_name else server_name
 
-    result = await session.execute(
-        select(func.count()).select_from(Key).where(Key.server_id == identifier)
-    )
+    result = await session.execute(select(func.count()).select_from(Key).where(Key.server_id == identifier))
     total_keys = result.scalar() or 0
 
     if total_keys >= max_keys:
-        logger.warning(
-            f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}"
-        )
+        logger.warning(f"[Key Limit] Сервер {server_name} достиг лимита: {total_keys}/{max_keys}")
         return False
 
     usage_percent = total_keys / max_keys
@@ -114,9 +100,7 @@ async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bo
         notif_key = f"server_warn_{server_name}"
 
         result = await session.execute(
-            select(Notification).where(
-                Notification.tg_id == 0, Notification.notification_type == notif_key
-            )
+            select(Notification).where(Notification.tg_id == 0, Notification.notification_type == notif_key)
         )
         already_sent = result.scalar_one_or_none()
 
@@ -137,18 +121,14 @@ async def check_server_key_limit(server_info: dict, session: AsyncSession) -> bo
     return True
 
 
-async def handle_error(
-    tg_id: int, callback_query: object | None = None, message: str = ""
-) -> None:
+async def handle_error(tg_id: int, callback_query: object | None = None, message: str = "") -> None:
     """
     Обрабатывает ошибку, отправляя сообщение пользователю.
     """
     try:
         if callback_query and hasattr(callback_query, "message"):
             try:
-                await bot.delete_message(
-                    chat_id=tg_id, message_id=callback_query.message.message_id
-                )
+                await bot.delete_message(chat_id=tg_id, message_id=callback_query.message.message_id)
             except Exception as delete_error:
                 logger.warning(f"Не удалось удалить сообщение: {delete_error}")
 
@@ -226,9 +206,7 @@ async def edit_or_send_message(
             return
         except Exception:
             await target_message.answer_photo(
-                photo=BufferedInputFile(
-                    image_data, filename=os.path.basename(media_path)
-                ),
+                photo=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
                 caption=text,
                 reply_markup=reply_markup,
                 disable_web_page_preview=disable_web_page_preview,
@@ -237,9 +215,7 @@ async def edit_or_send_message(
     else:
         if not force_text and target_message.caption is not None:
             try:
-                await target_message.edit_caption(
-                    caption=text, reply_markup=reply_markup
-                )
+                await target_message.edit_caption(caption=text, reply_markup=reply_markup)
                 return
             except Exception as e:
                 logger.error(f"Ошибка редактирования подписи: {e}")
@@ -271,17 +247,13 @@ def convert_to_bytes(value: float, unit: str) -> int:
 
 
 async def is_full_remnawave_cluster(cluster_id: str, session: AsyncSession) -> bool:
-    result = await session.execute(
-        select(Server.panel_type).where(Server.cluster_name == cluster_id)
-    )
+    result = await session.execute(select(Server.panel_type).where(Server.cluster_name == cluster_id))
     panel_types = result.scalars().all()
 
     if panel_types:
         return all(pt.lower() == "remnawave" for pt in panel_types)
 
-    result = await session.execute(
-        select(Server.panel_type).where(Server.server_name == cluster_id)
-    )
+    result = await session.execute(select(Server.panel_type).where(Server.server_name == cluster_id))
     panel_type = result.scalar_one_or_none()
     return panel_type and panel_type.lower() == "remnawave"
 

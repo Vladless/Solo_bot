@@ -9,9 +9,7 @@ from database.models import TemporaryData
 from logger import logger
 
 
-async def create_temporary_data(
-    session: AsyncSession, tg_id: int, state: str, data: dict
-):
+async def create_temporary_data(session: AsyncSession, tg_id: int, state: str, data: dict):
     try:
         stmt = (
             insert(TemporaryData)

@@ -1,16 +1,18 @@
+from datetime import datetime, timedelta
+
 import pytz
+
 from aiogram import Bot, Router, types
 from aiogram.types import InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
 
 from config import (
+    CONNECT_PHONE_BUTTON,
     NOTIFY_EXTRA_DAYS,
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     SUPPORT_CHAT_URL,
-    CONNECT_PHONE_BUTTON,
     TRIAL_CONFIG,
 )
 from database import (
@@ -20,7 +22,7 @@ from database import (
     update_key_notified,
 )
 from database.models import Key
-from handlers.buttons import MAIN_MENU, CONNECT_DEVICE, CONNECT_PHONE, PC_BUTTON, TV_BUTTON
+from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
 from handlers.keys.key_utils import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
@@ -52,11 +54,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         display_name = username or first_name or last_name or "Пользователь"
 
         builder = InlineKeyboardBuilder()
-        builder.row(
-            types.InlineKeyboardButton(
-                text="🚀 Активировать пробный период", callback_data="create_key"
-            )
-        )
+        builder.row(types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key"))
         builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         keyboard = builder.as_markup()
 
@@ -76,14 +74,12 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
                 trial_time_formatted=format_days(trial_days),
             )
 
-        messages.append(
-            {
-                "tg_id": tg_id,
-                "text": message,
-                "keyboard": keyboard,
-                "notification_id": "inactive_trial",
-            }
-        )
+        messages.append({
+            "tg_id": tg_id,
+            "text": message,
+            "keyboard": keyboard,
+            "notification_id": "inactive_trial",
+        })
 
     if messages:
         results = await send_messages_with_limit(
@@ -102,9 +98,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
 
 
-async def notify_users_no_traffic(
-    bot: Bot, session: AsyncSession, current_time: int, keys: list
-):
+async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time: int, keys: list):
     logger.info("Проверка пользователей с нулевым трафиком...")
     current_dt = datetime.fromtimestamp(current_time / 1000, tz=moscow_tz)
     messages = []
@@ -120,19 +114,13 @@ async def notify_users_no_traffic(
         if created_at is None or notified:
             continue
 
-        created_at_dt = pytz.utc.localize(
-            datetime.fromtimestamp(created_at / 1000)
-        ).astimezone(moscow_tz)
+        created_at_dt = pytz.utc.localize(datetime.fromtimestamp(created_at / 1000)).astimezone(moscow_tz)
         if current_dt < created_at_dt + timedelta(hours=NOTIFY_INACTIVE_TRAFFIC):
             continue
 
         if expiry_time:
-            expiry_dt = pytz.utc.localize(
-                datetime.fromtimestamp(expiry_time / 1000)
-            ).astimezone(moscow_tz)
-            if (current_dt - (expiry_dt - timedelta(days=30))) < timedelta(
-                hours=NOTIFY_INACTIVE_TRAFFIC
-            ):
+            expiry_dt = pytz.utc.localize(datetime.fromtimestamp(expiry_time / 1000)).astimezone(moscow_tz)
+            if (current_dt - (expiry_dt - timedelta(days=30))) < timedelta(hours=NOTIFY_INACTIVE_TRAFFIC):
                 continue
 
         try:
@@ -142,14 +130,11 @@ async def notify_users_no_traffic(
             continue
 
         if traffic_data.get("status") != "success":
-            logger.warning(
-                f"⚠ Ошибка при получении трафика для {email}: {traffic_data.get('message')}"
-            )
+            logger.warning(f"⚠ Ошибка при получении трафика для {email}: {traffic_data.get('message')}")
             continue
 
         total_traffic = sum(
-            value if isinstance(value, int | float) else 0
-            for value in traffic_data.get("traffic", {}).values()
+            value if isinstance(value, int | float) else 0 for value in traffic_data.get("traffic", {}).values()
         )
 
         try:
@@ -159,69 +144,39 @@ async def notify_users_no_traffic(
             continue
 
         if total_traffic == 0:
-            logger.info(
-                f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление."
-            )
+            logger.info(f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление.")
             builder = InlineKeyboardBuilder()
 
             server_id = key.server_id
             try:
                 is_full_remnawave = await is_full_remnawave_cluster(server_id, session)
                 final_link = key.key or key.remnawave_link
-                
+
                 if is_full_remnawave and final_link:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
-                        )
-                    )
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 else:
                     if CONNECT_PHONE_BUTTON:
+                        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{email}"))
                         builder.row(
-                            InlineKeyboardButton(
-                                text=CONNECT_PHONE, callback_data=f"connect_phone|{email}"
-                            )
-                        )
-                        builder.row(
-                            InlineKeyboardButton(
-                                text=PC_BUTTON, callback_data=f"connect_pc|{email}"
-                            ),
-                            InlineKeyboardButton(
-                                text=TV_BUTTON, callback_data=f"connect_tv|{email}"
-                            ),
+                            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+                            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
                         )
                     else:
-                        builder.row(
-                            InlineKeyboardButton(
-                                text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"
-                            )
-                        )
+                        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
             except Exception as e:
                 logger.error(f"Ошибка при определении типа панели для {email}: {e}")
-                builder.row(
-                    InlineKeyboardButton(
-                        text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"
-                    )
-                )
-            
-            builder.row(
-                InlineKeyboardButton(
-                    text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL
-                )
-            )
-            builder.row(
-                InlineKeyboardButton(text=MAIN_MENU, callback_data="profile")
-            )
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
+
+            builder.row(InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)
-            messages.append(
-                {
-                    "tg_id": tg_id,
-                    "text": message,
-                    "keyboard": keyboard,
-                    "client_id": client_id,
-                }
-            )
+            messages.append({
+                "tg_id": tg_id,
+                "text": message,
+                "keyboard": keyboard,
+                "client_id": client_id,
+            })
 
     if messages:
         results = await send_messages_with_limit(

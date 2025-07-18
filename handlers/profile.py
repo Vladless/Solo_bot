@@ -21,11 +21,11 @@ from handlers.buttons import (
     ADD_SUB,
     BACK,
     BALANCE,
-    RENEW_KEY,
     GIFTS,
     INSTRUCTIONS,
     INVITE,
     MY_SUBS,
+    RENEW_KEY,
     TRIAL_SUB,
 )
 from handlers.texts import ADD_SUBSCRIPTION_HINT
@@ -34,6 +34,7 @@ from logger import logger
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import profile_message_send
 from .utils import edit_or_send_message
+
 
 router = Router()
 
@@ -102,9 +103,7 @@ async def process_callback_view_profile(
         builder.row(*row_buttons)
 
     if INSTRUCTIONS_BUTTON:
-        builder.row(
-            InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions")
-        )
+        builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
     if admin:
         builder.row(
             InlineKeyboardButton(

@@ -1,7 +1,9 @@
 import os
+
 from io import BytesIO
 
 import qrcode
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -18,7 +20,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT, REFERRAL_BONUS_PERCENTAGES
+from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT
 from database import (
     add_referral,
     add_user,
@@ -29,26 +31,25 @@ from database import (
 from database.models import Referral
 from handlers.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
 from handlers.texts import (
+    INVITE_MESSAGE_TEMPLATE,
     INVITE_TEXT_NON_INLINE,
     NEW_REFERRAL_NOTIFICATION,
     REFERRAL_OFFERS,
     REFERRAL_SUCCESS_MSG,
     TOP_REFERRALS_TEXT,
-    INVITE_MESSAGE_TEMPLATE,
 )
 from logger import logger
 
 from .texts import get_referral_link
 from .utils import edit_or_send_message, format_days
 
+
 router = Router()
 
 
 @router.callback_query(F.data == "invite")
 @router.message(F.text == "/invite")
-async def invite_handler(
-    callback_query_or_message: Message | CallbackQuery, session: AsyncSession
-):
+async def invite_handler(callback_query_or_message: Message | CallbackQuery, session: AsyncSession):
     if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
         target_message = callback_query_or_message.message
@@ -68,7 +69,7 @@ async def invite_handler(
     bonuses_block = "\n".join(bonuses_lines)
 
     details_lines = []
-    for level, stats in referral_stats['referrals_by_level'].items():
+    for level, stats in referral_stats["referrals_by_level"].items():
         bonus_value = REFERRAL_BONUS_PERCENTAGES.get(level)
         if isinstance(bonus_value, float):
             bonus_str = f"{int(bonus_value * 100)}%"
@@ -80,9 +81,9 @@ async def invite_handler(
     invite_message = INVITE_MESSAGE_TEMPLATE.format(
         referral_link=referral_link,
         bonuses_block=bonuses_block,
-        total_referrals=referral_stats['total_referrals'],
+        total_referrals=referral_stats["total_referrals"],
         details_block=details_block,
-        total_referral_bonus=referral_stats['total_referral_bonus'],
+        total_referral_bonus=referral_stats["total_referral_bonus"],
     )
     image_path = os.path.join("img", "pic_invite.jpg")
 
@@ -109,18 +110,14 @@ async def invite_handler(
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery):
-    referral_link = (
-        f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
-    )
+    referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
     trial_days = TRIAL_CONFIG["duration_days"]
     trial_time_formatted = format_days(trial_days)
 
     results: list[InlineQueryResultArticle] = []
 
     for index, offer in enumerate(REFERRAL_OFFERS):
-        message_text = offer["message"].format(
-            trial_time_formatted=trial_time_formatted
-        )[:4096]
+        message_text = offer["message"].format(trial_time_formatted=trial_time_formatted)[:4096]
         title = offer["title"].format(trial_time_formatted=trial_time_formatted)
         description = offer["description"]
 
@@ -132,9 +129,7 @@ async def inline_referral_handler(inline_query: InlineQuery):
                 id=str(index),
                 title=title,
                 description=description,
-                input_message_content=InputTextMessageContent(
-                    message_text=message_text, parse_mode=ParseMode.HTML
-                ),
+                input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
                 reply_markup=builder.as_markup(),
             )
         )
@@ -175,9 +170,7 @@ async def show_referral_qr(callback_query: CallbackQuery):
         os.remove(qr_path)
 
     except Exception as e:
-        logger.error(
-            f"Ошибка при генерации QR-кода для реферальной ссылки: {e}", exc_info=True
-        )
+        logger.error(f"Ошибка при генерации QR-кода для реферальной ссылки: {e}", exc_info=True)
         await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
 
 
@@ -185,11 +178,7 @@ async def show_referral_qr(callback_query: CallbackQuery):
 async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSession):
     user_id = callback_query.from_user.id
 
-    result = await session.execute(
-        select(func.count())
-        .select_from(Referral)
-        .where(Referral.referrer_tg_id == user_id)
-    )
+    result = await session.execute(select(func.count()).select_from(Referral).where(Referral.referrer_tg_id == user_id))
     user_referral_count = result.scalar_one() or 0
 
     personal_block = "Твоё место в рейтинге:\n"
@@ -254,9 +243,7 @@ async def handle_referral_link(
         user_id = user["tg_id"] if isinstance(user, dict) else user.id
 
         if referrer_tg_id == user_id:
-            await message.answer(
-                "❌ Вы не можете быть реферальной ссылкой самого себя."
-            )
+            await message.answer("❌ Вы не можете быть реферальной ссылкой самого себя.")
             return
 
         existing_referral = await get_referral_by_referred_id(session, user_id)
@@ -290,9 +277,7 @@ async def handle_referral_link(
                 NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
             )
         except Exception as e:
-            logger.error(
-                f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}"
-            )
+            logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
 
         await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
 

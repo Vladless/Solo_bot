@@ -25,17 +25,13 @@ async def add_notification(session: AsyncSession, tg_id: int, notification_type:
         )
         await session.execute(stmt)
         await session.commit()
-        logger.info(
-            f"✅ Добавлено уведомление {notification_type} для пользователя {tg_id}"
-        )
+        logger.info(f"✅ Добавлено уведомление {notification_type} для пользователя {tg_id}")
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при добавлении уведомления: {e}")
         await session.rollback()
 
 
-async def delete_notification(
-    session: AsyncSession, tg_id: int, notification_type: str
-):
+async def delete_notification(session: AsyncSession, tg_id: int, notification_type: str):
     await session.execute(
         delete(Notification).where(
             Notification.tg_id == tg_id,
@@ -46,9 +42,7 @@ async def delete_notification(
     logger.info(f"🗑 Уведомление {notification_type} для пользователя {tg_id} удалено")
 
 
-async def check_notification_time(
-    session: AsyncSession, tg_id: int, notification_type: str, hours: int = 12
-) -> bool:
+async def check_notification_time(session: AsyncSession, tg_id: int, notification_type: str, hours: int = 12) -> bool:
     stmt = select(Notification.last_notification_time).where(
         Notification.tg_id == tg_id, Notification.notification_type == notification_type
     )
@@ -59,9 +53,7 @@ async def check_notification_time(
     return datetime.utcnow() - last_time > timedelta(hours=hours)
 
 
-async def get_last_notification_time(
-    session: AsyncSession, tg_id: int, notification_type: str
-) -> int | None:
+async def get_last_notification_time(session: AsyncSession, tg_id: int, notification_type: str) -> int | None:
     stmt = select(Notification.last_notification_time).where(
         Notification.tg_id == tg_id, Notification.notification_type == notification_type
     )
@@ -79,16 +71,14 @@ async def check_notifications_bulk(
     tg_ids: list[int] = None,
     emails: list[str] = None,
 ) -> list[dict]:
-    from sqlalchemy import and_, func, select
-    from database.models import User, Key, Notification, BlockedUser
+    from sqlalchemy import select
+
+    from database.models import BlockedUser, Notification
 
     try:
         now = datetime.utcnow()
         subq_last_notification = (
-            select(
-                Notification.tg_id,
-                func.max(Notification.last_notification_time).label("last_notification_time")
-            )
+            select(Notification.tg_id, func.max(Notification.last_notification_time).label("last_notification_time"))
             .where(Notification.notification_type == notification_type)
             .group_by(Notification.tg_id)
             .subquery()
@@ -112,7 +102,7 @@ async def check_notifications_bulk(
                 and_(
                     User.trial.in_([0, -1]),
                     ~User.tg_id.in_(select(BlockedUser.tg_id)),
-                    ~User.tg_id.in_(select(Key.tg_id.distinct()))
+                    ~User.tg_id.in_(select(Key.tg_id.distinct())),
                 )
             )
 
@@ -135,9 +125,7 @@ async def check_notifications_bulk(
                     "username": row.username,
                     "first_name": row.first_name,
                     "last_name": row.last_name,
-                    "last_notification_time": (
-                        int(last_time.timestamp() * 1000) if last_time else None
-                    )
+                    "last_notification_time": (int(last_time.timestamp() * 1000) if last_time else None),
                 })
 
         logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")

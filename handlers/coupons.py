@@ -1,8 +1,10 @@
 import html
+
 from datetime import datetime
 from typing import Any
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -13,27 +15,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import ADMIN_ID
 from database import (
+    add_payment,
     add_user,
     check_coupon_usage,
     check_user_exists,
     create_coupon_usage,
     get_coupon_by_code,
     get_keys,
+    get_tariff_by_id,
     update_balance,
     update_coupon_usage_count,
     update_key_expiry,
-    add_payment,
-    get_tariff_by_id,
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
+    COUPONS_DAYS_MESSAGE,
     COUPON_ALREADY_USED_MSG,
+    COUPON_DAYS_ACTIVATED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
-    COUPONS_DAYS_MESSAGE,
-    COUPON_DAYS_ACTIVATED_MSG
 )
 from handlers.utils import edit_or_send_message, format_days
 from logger import logger
@@ -49,9 +51,7 @@ router = Router()
 
 @router.callback_query(F.data == "activate_coupon")
 @router.message(F.text == "/activate_coupon")
-async def handle_activate_coupon(
-    callback_query_or_message: Message | CallbackQuery, state: FSMContext
-):
+async def handle_activate_coupon(callback_query_or_message: Message | CallbackQuery, state: FSMContext):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -88,9 +88,7 @@ async def activate_coupon(
 
     if not coupon:
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text=MAIN_MENU, callback_data="exit_coupon_input")
-        )
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="exit_coupon_input"))
         await message.answer(COUPON_NOT_FOUND_MSG, reply_markup=builder.as_markup())
         return
 
@@ -128,15 +126,8 @@ async def activate_coupon(
             await update_balance(session, user_id, coupon.amount)
             await update_coupon_usage_count(session, coupon.id)
             await create_coupon_usage(session, coupon.id, user_id)
-            await add_payment(
-                session,
-                tg_id=user_id,
-                amount=coupon.amount,
-                payment_system="coupon"
-            )
-            await message.answer(
-                f"✅ Купон активирован, на баланс начислено {coupon.amount} рублей."
-            )
+            await add_payment(session, tg_id=user_id, amount=coupon.amount, payment_system="coupon")
+            await message.answer(f"✅ Купон активирован, на баланс начислено {coupon.amount} рублей.")
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при активации купона на баланс: {e}")
@@ -160,9 +151,9 @@ async def activate_coupon(
 
             for key in active_keys:
                 key_display = html.escape((key.alias or key.email).strip())
-                expiry_date = datetime.fromtimestamp(
-                    key.expiry_time / 1000, tz=moscow_tz
-                ).strftime("до %d.%m.%y, %H:%M")
+                expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, tz=moscow_tz).strftime(
+                    "до %d.%m.%y, %H:%M"
+                )
                 response_message += f"• <b>{key_display}</b> ({expiry_date})\n"
                 builder.button(
                     text=key_display,
@@ -204,9 +195,7 @@ async def handle_key_extension(
         result = await session.execute(select(Coupon).where(Coupon.id == coupon_id))
         coupon = result.scalar_one_or_none()
         if not coupon or coupon.usage_count >= coupon.usage_limit:
-            await callback_query.message.edit_text(
-                "❌ Купон недействителен или лимит исчерпан."
-            )
+            await callback_query.message.edit_text("❌ Купон недействителен или лимит исчерпан.")
             await state.clear()
             return
 
@@ -216,14 +205,10 @@ async def handle_key_extension(
             await state.clear()
             return
 
-        result = await session.execute(
-            select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id)
-        )
+        result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         key = result.scalar_one_or_none()
         if not key or key.is_frozen:
-            await callback_query.message.edit_text(
-                "❌ Выбранная подписка не найдена или заморожена."
-            )
+            await callback_query.message.edit_text("❌ Выбранная подписка не найдена или заморожена.")
             await state.clear()
             return
 
@@ -252,19 +237,13 @@ async def handle_key_extension(
         await create_coupon_usage(session, coupon.id, tg_id)
 
         alias = key.alias or key.email
-        expiry_date = datetime.fromtimestamp(
-            new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")
-        ).strftime("%d.%m.%y, %H:%M")
+        expiry_date = datetime.fromtimestamp(new_expiry / 1000, tz=pytz.timezone("Europe/Moscow")).strftime(
+            "%d.%m.%y, %H:%M"
+        )
         await callback_query.message.answer(
-            COUPON_DAYS_ACTIVATED_MSG.format(
-                alias=alias,
-                days=format_days(coupon.days),
-                expiry=expiry_date
-            )
+            COUPON_DAYS_ACTIVATED_MSG.format(alias=alias, days=format_days(coupon.days), expiry=expiry_date)
         )
-        await process_callback_view_profile(
-            callback_query.message, state, admin, session
-        )
+        await process_callback_view_profile(callback_query.message, state, admin, session)
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при продлении ключа: {e}")
@@ -292,6 +271,4 @@ async def handle_exit_coupon_input(
 ):
     await state.clear()
     is_admin = callback_query.from_user.id in ADMIN_ID
-    await process_callback_view_profile(
-        callback_query.message, state, admin=is_admin, session=session
-    )
+    await process_callback_view_profile(callback_query.message, state, admin=is_admin, session=session)

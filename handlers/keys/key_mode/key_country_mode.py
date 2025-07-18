@@ -1,9 +1,11 @@
 import asyncio
 import uuid
+
 from datetime import datetime
 from typing import Any
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
@@ -34,29 +36,21 @@ from database import (
     update_trial,
 )
 from database.models import Key, Server, Tariff
-from handlers.buttons import (
-    BACK,
-    CONNECT_DEVICE,
-    CONNECT_PHONE,
-    MAIN_MENU,
-    PC_BUTTON,
-    SUPPORT,
-    TV_BUTTON,
-    MY_SUB
-)
+from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_client_on_server
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
     edit_or_send_message,
+    format_days,
+    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
-    format_days,
-    format_months,
 )
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance
+
 
 router = Router()
 
@@ -91,9 +85,7 @@ async def key_country_mode(
         logger.error(f"Нет доступных кластеров: {e}")
         text = str(e)
         if safe_to_edit:
-            await edit_or_send_message(
-                target_message=target_message, text=text, reply_markup=None
-            )
+            await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
         else:
             await bot.send_message(chat_id=tg_id, text=text)
         return
@@ -113,18 +105,13 @@ async def key_country_mode(
         logger.error(f"❌ Нет серверов в кластере {least_loaded_cluster}")
         text = "❌ Нет доступных серверов в выбранном кластере."
         if safe_to_edit:
-            await edit_or_send_message(
-                target_message=target_message, text=text, reply_markup=None
-            )
+            await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
         else:
             await bot.send_message(chat_id=tg_id, text=text)
         return
 
     available_servers = []
-    tasks = [
-        asyncio.create_task(check_server_availability(server, session))
-        for server in servers
-    ]
+    tasks = [asyncio.create_task(check_server_availability(server, session)) for server in servers]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for server, result in zip(servers, results, strict=False):
@@ -132,21 +119,15 @@ async def key_country_mode(
             available_servers.append(server["server_name"])
 
     if not available_servers:
-        logger.warning(
-            f"[Country Selection] Нет доступных серверов в кластере {least_loaded_cluster}"
-        )
+        logger.warning(f"[Country Selection] Нет доступных серверов в кластере {least_loaded_cluster}")
         text = "❌ Нет доступных серверов в выбранном кластере."
         if safe_to_edit:
-            await edit_or_send_message(
-                target_message=target_message, text=text, reply_markup=None
-            )
+            await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
         else:
             await bot.send_message(chat_id=tg_id, text=text)
         return
 
-    logger.info(
-        f"[Country Selection] Доступные сервера в кластере {least_loaded_cluster}: {available_servers}"
-    )
+    logger.info(f"[Country Selection] Доступные сервера в кластере {least_loaded_cluster}: {available_servers}")
 
     builder = InlineKeyboardBuilder()
     ts = int(expiry_time.timestamp())
@@ -194,9 +175,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
 
         cluster_info = await check_server_name_by_cluster(session, current_server)
         if not cluster_info:
-            await callback_query.answer(
-                "❌ Кластер для текущего сервера не найден", show_alert=True
-            )
+            await callback_query.answer("❌ Кластер для текущего сервера не найден", show_alert=True)
             return
 
         cluster_name = cluster_info["cluster_name"]
@@ -219,9 +198,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             .all()
         )
         if not servers:
-            await callback_query.answer(
-                "❌ Доступных серверов в кластере не найдено", show_alert=True
-            )
+            await callback_query.answer("❌ Доступных серверов в кластере не найдено", show_alert=True)
             return
 
         available_servers = []
@@ -245,9 +222,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
                 available_servers.append(server["server_name"])
 
         if not available_servers:
-            await callback_query.answer(
-                "❌ Нет доступных серверов для смены локации", show_alert=True
-            )
+            await callback_query.answer("❌ Нет доступных серверов для смены локации", show_alert=True)
             return
 
         logger.info(f"Доступные страны для смены локации: {available_servers}")
@@ -256,9 +231,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         for country in available_servers:
             callback_data = f"select_country|{country}|{ts}|{old_key_name}"
             builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
-        builder.row(
-            InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}")
-        )
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -267,18 +240,12 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             media_path=None,
         )
     except Exception as e:
-        logger.error(
-            f"Ошибка при смене локации для пользователя {callback_query.from_user.id}: {e}"
-        )
-        await callback_query.answer(
-            "❌ Ошибка смены локации. Попробуйте снова.", show_alert=True
-        )
+        logger.error(f"Ошибка при смене локации для пользователя {callback_query.from_user.id}: {e}")
+        await callback_query.answer("❌ Ошибка смены локации. Попробуйте снова.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("select_country|"))
-async def handle_country_selection(
-    callback_query: CallbackQuery, session: Any, state: FSMContext
-):
+async def handle_country_selection(callback_query: CallbackQuery, session: Any, state: FSMContext):
     """
     Обрабатывает выбор страны.
     Формат callback data:
@@ -294,9 +261,7 @@ async def handle_country_selection(
     try:
         ts = int(data[2])
     except ValueError:
-        await callback_query.message.answer(
-            "❌ Некорректное время истечения. Попробуйте снова."
-        )
+        await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
         return
 
     expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
@@ -354,7 +319,7 @@ async def finalize_key_creation(
         client_id = old_key_details["client_id"]
         email = old_key_details["email"]
         expiry_timestamp = old_key_details["expiry_time"]
-        tariff_id = old_key_details.get("tariff_id") or tariff_id 
+        tariff_id = old_key_details.get("tariff_id") or tariff_id
     else:
         while True:
             key_name = generate_random_email()
@@ -388,9 +353,7 @@ async def finalize_key_creation(
     created_at = int(datetime.now(moscow_tz).timestamp() * 1000)
 
     try:
-        result = await session.execute(
-            select(Server).where(Server.server_name == selected_country)
-        )
+        result = await session.execute(select(Server).where(Server.server_name == selected_country))
         server_info = result.scalar_one_or_none()
         if not server_info:
             raise ValueError(f"Сервер {selected_country} не найден")
@@ -413,9 +376,7 @@ async def finalize_key_creation(
                             xui = await get_xui_instance(old_server_info.api_url)
                             await delete_client(xui, old_server_info.inbound_id, email, client_id)
                             await session.execute(
-                                update(Key)
-                                .where(Key.tg_id == tg_id, Key.email == email)
-                                .values(key=None)
+                                update(Key).where(Key.tg_id == tg_id, Key.email == email).values(key=None)
                             )
                         elif old_server_info.panel_type.lower() == "remnawave":
                             remna = RemnawaveAPI(old_server_info.api_url)
@@ -529,21 +490,15 @@ async def finalize_key_creation(
                 web_app=WebAppInfo(url=public_link or remnawave_link),
             )
         )
-        builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
-        )
+        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
     elif CONNECT_PHONE_BUTTON:
-        builder.row(
-            InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}")
-        )
+        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(
             InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
             InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
         )
     else:
-        builder.row(
-            InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}")
-        )
+        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
@@ -555,7 +510,7 @@ async def finalize_key_creation(
     if tariff_id:
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         tariff_info = result.scalar_one_or_none()
-    
+
     if is_trial:
         trial_days = TRIAL_CONFIG.get("duration_days", 1)
         if trial_days >= 30:
@@ -567,18 +522,18 @@ async def finalize_key_creation(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 0)
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 0),
         )
     else:
         tariff_duration = tariff_info["name"] if tariff_info else None
         subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
-        
+
         key_message_text = key_message_success(
             link_to_show,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
             device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
-            subgroup_title=subgroup_title
+            subgroup_title=subgroup_title,
         )
 
     await edit_or_send_message(
@@ -604,31 +559,21 @@ async def check_server_availability(server_info: dict, session: AsyncSession) ->
 
     try:
         if max_keys is not None:
-            result = await session.execute(
-                select(func.count())
-                .select_from(Key)
-                .where(Key.server_id == server_name)
-            )
+            result = await session.execute(select(func.count()).select_from(Key).where(Key.server_id == server_name))
             key_count = result.scalar()
 
             if key_count >= max_keys:
-                logger.info(
-                    f"[Ping] Сервер {server_name} достиг лимита ключей: {key_count}/{max_keys}."
-                )
+                logger.info(f"[Ping] Сервер {server_name} достиг лимита ключей: {key_count}/{max_keys}.")
                 return False
 
     except SQLAlchemyError as e:
-        logger.warning(
-            f"[Ping] Ошибка при проверке лимита ключей на сервере {server_name}: {e}"
-        )
+        logger.warning(f"[Ping] Ошибка при проверке лимита ключей на сервере {server_name}: {e}")
         return False
 
     try:
         if panel_type == "remnawave":
             remna = RemnawaveAPI(server_info["api_url"])
-            await asyncio.wait_for(
-                remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0
-            )
+            await asyncio.wait_for(remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0)
             logger.info(f"[Ping] Remnawave сервер {server_name} доступен.")
             return True
 

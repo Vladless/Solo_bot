@@ -35,18 +35,14 @@ def build_hot_lead_kb(final: bool = False) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text=DISCOUNT_TARIFF if not final else MAX_DISCOUNT_TARIFF,
-                    callback_data=(
-                        "hot_lead_discount" if not final else "hot_lead_final_discount"
-                    ),
+                    callback_data=("hot_lead_discount" if not final else "hot_lead_final_discount"),
                 )
             ]
         ]
     )
 
 
-def build_tariffs_keyboard(
-    tariffs: list[dict], prefix: str = "tariff"
-) -> InlineKeyboardMarkup:
+def build_tariffs_keyboard(tariffs: list[dict], prefix: str = "tariff") -> InlineKeyboardMarkup:
     buttons = [
         [
             InlineKeyboardButton(

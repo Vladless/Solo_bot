@@ -35,9 +35,7 @@ def build_coupons_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_coupons_list_kb(
-    coupons: list, current_page: int, total_pages: int
-) -> InlineKeyboardMarkup:
+def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for coupon in coupons:
@@ -52,18 +50,14 @@ def build_coupons_list_kb(
         pagination_buttons.append(
             InlineKeyboardButton(
                 text=BACK,
-                callback_data=AdminPanelCallback(
-                    action="coupons_list", page=current_page - 1
-                ).pack(),
+                callback_data=AdminPanelCallback(action="coupons_list", page=current_page - 1).pack(),
             )
         )
     if current_page < total_pages:
         pagination_buttons.append(
             InlineKeyboardButton(
                 text="Вперед ➡️",
-                callback_data=AdminPanelCallback(
-                    action="coupons_list", page=current_page + 1
-                ).pack(),
+                callback_data=AdminPanelCallback(action="coupons_list", page=current_page + 1).pack(),
             )
         )
     if pagination_buttons:

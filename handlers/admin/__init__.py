@@ -7,6 +7,7 @@ from .backups import router as backups_router
 from .bans import router as bans_router
 from .clusters import router as clusters_router
 from .coupons import router as coupons_router
+from .gifts import router as gifts_router
 from .management import router as management_router
 from .panel import router as panel_router
 from .restart import router as restart_router
@@ -15,7 +16,7 @@ from .servers import router as servers_router
 from .stats import router as stats_router
 from .tariffs import router as tariffs_router
 from .users import router as users_router
-from .gifts import router as gifts_router
+
 
 router = Router(name="admins_main_router")
 
@@ -33,5 +34,5 @@ router.include_routers(
     bans_router,
     ads_router,
     tariffs_router,
-    gifts_router
+    gifts_router,
 )

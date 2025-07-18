@@ -23,9 +23,7 @@ def build_bans_kb():
         text="🗑️ Очистить вручную забаненных",
         callback_data=AdminPanelCallback(action="bans_delete_manual").pack(),
     )
-    builder.button(
-        text="🔙 Назад", callback_data=AdminPanelCallback(action="management").pack()
-    )
+    builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="management").pack())
 
     builder.adjust(1)
     return builder.as_markup()

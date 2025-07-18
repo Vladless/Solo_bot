@@ -1,4 +1,5 @@
 import time
+
 from typing import Any
 
 from aiogram import F, Router
@@ -25,13 +26,12 @@ from handlers.texts import (
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
 
+
 router = Router()
 
 
 @router.callback_query(F.data.startswith("unfreeze_subscription|"))
-async def process_callback_unfreeze_subscription(
-    callback_query: CallbackQuery, session: Any
-):
+async def process_callback_unfreeze_subscription(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
     confirm_text = UNFREEZE_SUBSCRIPTION_CONFIRM_MSG
 
@@ -55,9 +55,7 @@ async def process_callback_unfreeze_subscription(
 
 
 @router.callback_query(F.data.startswith("unfreeze_subscription_confirm|"))
-async def process_callback_unfreeze_subscription_confirm(
-    callback_query: CallbackQuery, session: Any
-):
+async def process_callback_unfreeze_subscription_confirm(callback_query: CallbackQuery, session: Any):
     """
     Размораживает (включает) подписку.
     """
@@ -74,9 +72,7 @@ async def process_callback_unfreeze_subscription_confirm(
         client_id = record["client_id"]
         cluster_id = record["server_id"]
 
-        result = await toggle_client_on_cluster(
-            cluster_id, email, client_id, enable=True, session=session
-        )
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=True, session=session)
         if result["status"] != "success":
             logger.warning(f"Не удалось включить подписку: {result.get('error') or result.get('results')}")
 
@@ -86,20 +82,14 @@ async def process_callback_unfreeze_subscription_confirm(
         if not cluster_servers:
             text_error = "Сервер не найден."
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
-            )
-            await edit_or_send_message(
-                callback_query.message, text_error, builder.as_markup()
-            )
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+            await edit_or_send_message(callback_query.message, text_error, builder.as_markup())
             return
 
         tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
 
         if not tariff:
-            logger.info(
-                "[Unfreeze] Тариф не найден — возможно ключ триальный. Применяем дефолтные значения."
-            )
+            logger.info("[Unfreeze] Тариф не найден — возможно ключ триальный. Применяем дефолтные значения.")
             total_gb = TRIAL_CONFIG["traffic_limit_gb"]
             hwid_limit = TRIAL_CONFIG["hwid_limit"]
         else:
@@ -116,7 +106,7 @@ async def process_callback_unfreeze_subscription_confirm(
         await mark_key_as_unfrozen(session, record["tg_id"], client_id, new_expiry_time)
         await session.commit()
 
-        added_days = max(leftover / (1000 * 86400), 0.01)
+        max(leftover / (1000 * 86400), 0.01)
         logger.info(
             f"[Unfreeze Debug] Запуск renew_key_in_cluster с expiry={new_expiry_time}, gb={total_gb}, hwid={hwid_limit}"
         )
@@ -134,9 +124,7 @@ async def process_callback_unfreeze_subscription_confirm(
 
         text_ok = SUBSCRIPTION_UNFROZEN_MSG
         builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
-        )
+        builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
         await edit_or_send_message(callback_query.message, text_ok, builder.as_markup())
 
     except Exception as e:
@@ -144,9 +132,7 @@ async def process_callback_unfreeze_subscription_confirm(
 
 
 @router.callback_query(F.data.startswith("freeze_subscription|"))
-async def process_callback_freeze_subscription(
-    callback_query: CallbackQuery, session: Any
-):
+async def process_callback_freeze_subscription(callback_query: CallbackQuery, session: Any):
     """
     Показывает пользователю диалог подтверждения заморозки (отключения) подписки.
     """
@@ -174,9 +160,7 @@ async def process_callback_freeze_subscription(
 
 
 @router.callback_query(F.data.startswith("freeze_subscription_confirm|"))
-async def process_callback_freeze_subscription_confirm(
-    callback_query: CallbackQuery, session: Any
-):
+async def process_callback_freeze_subscription_confirm(callback_query: CallbackQuery, session: Any):
     """
     Замораживает (отключает) подписку.
     """
@@ -193,9 +177,7 @@ async def process_callback_freeze_subscription_confirm(
         client_id = record["client_id"]
         cluster_id = record["server_id"]
 
-        result = await toggle_client_on_cluster(
-            cluster_id, email, client_id, enable=False, session=session
-        )
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=False, session=session)
 
         if result["status"] == "success":
             now_ms = int(time.time() * 1000)
@@ -208,9 +190,7 @@ async def process_callback_freeze_subscription_confirm(
 
             text_ok = SUBSCRIPTION_FROZEN_MSG
             builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
-            )
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_ok,
@@ -218,11 +198,11 @@ async def process_callback_freeze_subscription_confirm(
             )
 
         else:
-            text_error = f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}")
+            text_error = (
+                f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=text_error,
@@ -231,4 +211,3 @@ async def process_callback_freeze_subscription_confirm(
 
     except Exception as e:
         await handle_error(tg_id, callback_query, f"Ошибка при заморозке подписки: {e}")
-

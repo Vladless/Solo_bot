@@ -1,9 +1,10 @@
 import csv
+
 from datetime import datetime
 from io import StringIO
 
 from aiogram.types import BufferedInputFile
-from sqlalchemy import func, join, select, exists, not_
+from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, Payment, Referral, Tariff, User
@@ -27,27 +28,23 @@ async def export_users_csv(session: AsyncSession) -> BufferedInputFile:
 
     buffer = StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "tg_id",
-            "username",
-            "first_name",
-            "last_name",
-            "language_code",
-            "is_bot",
-            "balance",
-            "trial",
-            "created_at",
-        ]
-    )
+    writer.writerow([
+        "tg_id",
+        "username",
+        "first_name",
+        "last_name",
+        "language_code",
+        "is_bot",
+        "balance",
+        "trial",
+        "created_at",
+    ])
 
     for user in users:
         writer.writerow(user)
 
     buffer.seek(0)
-    return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"), filename="users_export.csv"
-    )
+    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="users_export.csv")
 
 
 async def export_payments_csv(session: AsyncSession) -> BufferedInputFile:
@@ -73,9 +70,7 @@ async def export_payments_csv(session: AsyncSession) -> BufferedInputFile:
     return _export_payments_csv(payments, "payments_export.csv")
 
 
-async def export_user_payments_csv(
-    tg_id: int, session: AsyncSession
-) -> BufferedInputFile:
+async def export_user_payments_csv(tg_id: int, session: AsyncSession) -> BufferedInputFile:
     j = join(User, Payment, User.tg_id == Payment.tg_id)
     query = (
         select(
@@ -102,31 +97,25 @@ async def export_user_payments_csv(
 def _export_payments_csv(payments, filename: str) -> BufferedInputFile:
     buffer = StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "tg_id",
-            "username",
-            "first_name",
-            "last_name",
-            "amount",
-            "payment_system",
-            "status",
-            "created_at",
-        ]
-    )
+    writer.writerow([
+        "tg_id",
+        "username",
+        "first_name",
+        "last_name",
+        "amount",
+        "payment_system",
+        "status",
+        "created_at",
+    ])
 
     for payment in payments:
         writer.writerow(payment)
 
     buffer.seek(0)
-    return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"), filename=filename
-    )
+    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename=filename)
 
 
-async def export_referrals_csv(
-    referrer_tg_id: int, session: AsyncSession
-) -> BufferedInputFile | None:
+async def export_referrals_csv(referrer_tg_id: int, session: AsyncSession) -> BufferedInputFile | None:
     j = join(Referral, User, Referral.referred_tg_id == User.tg_id)
     query = (
         select(
@@ -175,18 +164,8 @@ async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
             User.updated_at,
         )
         .where(
-            exists(
-                select(Payment.tg_id)
-                .where(Payment.tg_id == User.tg_id)
-                .where(Payment.status == "success")
-            ),
-            not_(
-                exists(
-                    select(Key.client_id)
-                    .where(Key.tg_id == User.tg_id)
-                    .where(Key.expiry_time > now_ts)
-                )
-            )
+            exists(select(Payment.tg_id).where(Payment.tg_id == User.tg_id).where(Payment.status == "success")),
+            not_(exists(select(Key.client_id).where(Key.tg_id == User.tg_id).where(Key.expiry_time > now_ts))),
         )
         .order_by(User.updated_at.desc())
     )
@@ -231,54 +210,40 @@ async def export_keys_csv(session: AsyncSession) -> BufferedInputFile:
 
     buffer = StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(
-        [
-            "tg_id",
-            "client_id",
-            "email",
-            "created_at",
-            "expiry_time",
-            "key",
-            "server_id",
-            "is_frozen",
-            "alias",
-            "tariff",
-        ]
-    )
+    writer.writerow([
+        "tg_id",
+        "client_id",
+        "email",
+        "created_at",
+        "expiry_time",
+        "key",
+        "server_id",
+        "is_frozen",
+        "alias",
+        "tariff",
+    ])
 
     for row in keys:
         created_at = (
-            datetime.utcfromtimestamp(row.created_at / 1000).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            if row.created_at
-            else ""
+            datetime.utcfromtimestamp(row.created_at / 1000).strftime("%Y-%m-%d %H:%M:%S") if row.created_at else ""
         )
         expiry_time = (
-            datetime.utcfromtimestamp(row.expiry_time / 1000).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            if row.expiry_time
-            else ""
+            datetime.utcfromtimestamp(row.expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S") if row.expiry_time else ""
         )
         tariff = row.tariff_name or "—"
 
-        writer.writerow(
-            [
-                row.tg_id,
-                row.client_id,
-                row.email,
-                created_at,
-                expiry_time,
-                row.key,
-                row.server_id,
-                row.is_frozen,
-                row.alias or "",
-                tariff,
-            ]
-        )
+        writer.writerow([
+            row.tg_id,
+            row.client_id,
+            row.email,
+            created_at,
+            expiry_time,
+            row.key,
+            row.server_id,
+            row.is_frozen,
+            row.alias or "",
+            tariff,
+        ])
 
     buffer.seek(0)
-    return BufferedInputFile(
-        file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv"
-    )
+    return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv")

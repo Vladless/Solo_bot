@@ -6,9 +6,7 @@ from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 def build_stats_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="🔄 Обновить", callback_data=AdminPanelCallback(action="stats").pack()
-    )
+    builder.button(text="🔄 Обновить", callback_data=AdminPanelCallback(action="stats").pack())
     builder.button(
         text="📥 Выгрузить пользователей в CSV",
         callback_data=AdminPanelCallback(action="stats_export_users_csv").pack(),

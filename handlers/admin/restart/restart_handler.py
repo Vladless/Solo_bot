@@ -4,6 +4,7 @@ import subprocess
 import sys
 
 import psutil
+
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
@@ -11,15 +12,12 @@ from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb, build_restart_kb
 
+
 router = Router()
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter()
-)
-async def handle_restart_confirm(
-    callback_query: CallbackQuery, callback_data: AdminPanelCallback
-):
+@router.callback_query(AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter())
+async def handle_restart_confirm(callback_query: CallbackQuery, callback_data: AdminPanelCallback):
     kb = build_admin_back_kb()
     await callback_query.message.edit_text("🔄 Перезапускаем бота...", reply_markup=kb)
 

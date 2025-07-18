@@ -8,11 +8,7 @@ async def get_hot_leads(session: AsyncSession):
     """
     Возвращает пользователей, у которых есть успешные оплаты, но нет активных ключей.
     """
-    subquery = (
-        select(Key.tg_id)
-        .where(Key.expiry_time > func.extract("epoch", func.now()) * 1000)
-        .distinct()
-    )
+    subquery = select(Key.tg_id).where(Key.expiry_time > func.extract("epoch", func.now()) * 1000).distinct()
 
     stmt = (
         select(Payment.tg_id)

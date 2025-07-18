@@ -1,8 +1,8 @@
-from sqlalchemy import delete, insert, select, update, func
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Server, Key
+from database.models import Key, Server
 from logger import logger
 
 
@@ -54,19 +54,17 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
             if not include_enabled and not s.enabled:
                 continue
             cluster = s.cluster_name
-            grouped.setdefault(cluster, []).append(
-                {
-                    "server_name": s.server_name,
-                    "api_url": s.api_url,
-                    "subscription_url": s.subscription_url,
-                    "inbound_id": s.inbound_id,
-                    "panel_type": s.panel_type,
-                    "enabled": s.enabled,
-                    "max_keys": s.max_keys,
-                    "tariff_group": s.tariff_group,
-                    "cluster_name": cluster,
-                }
-            )
+            grouped.setdefault(cluster, []).append({
+                "server_name": s.server_name,
+                "api_url": s.api_url,
+                "subscription_url": s.subscription_url,
+                "inbound_id": s.inbound_id,
+                "panel_type": s.panel_type,
+                "enabled": s.enabled,
+                "max_keys": s.max_keys,
+                "tariff_group": s.tariff_group,
+                "cluster_name": cluster,
+            })
 
         return grouped
     except SQLAlchemyError as e:
@@ -80,9 +78,7 @@ async def get_clusters(session: AsyncSession) -> list[str]:
     return [r[0] for r in result.all()]
 
 
-async def check_unique_server_name(
-    session: AsyncSession, server_name: str, cluster_name: str | None = None
-) -> bool:
+async def check_unique_server_name(session: AsyncSession, server_name: str, cluster_name: str | None = None) -> bool:
     stmt = select(Server).where(Server.server_name == server_name)
     if cluster_name:
         stmt = stmt.where(Server.cluster_name == cluster_name)
@@ -90,13 +86,9 @@ async def check_unique_server_name(
     return result.scalar_one_or_none() is None
 
 
-async def check_server_name_by_cluster(
-    session: AsyncSession, server_name: str
-) -> dict | None:
+async def check_server_name_by_cluster(session: AsyncSession, server_name: str) -> dict | None:
     try:
-        result = await session.execute(
-            select(Server.cluster_name).where(Server.server_name == server_name)
-        )
+        result = await session.execute(select(Server.cluster_name).where(Server.server_name == server_name))
         row = result.first()
         return {"cluster_name": row[0]} if row else None
     except SQLAlchemyError as e:
@@ -104,14 +96,10 @@ async def check_server_name_by_cluster(
         return None
 
 
-async def get_cluster_name_by_server(
-    session: AsyncSession, server_id_or_name: str
-) -> str | None:
+async def get_cluster_name_by_server(session: AsyncSession, server_id_or_name: str) -> str | None:
     stmt = (
         select(Server.cluster_name)
-        .where(
-            (Server.id == server_id_or_name) | (Server.server_name == server_id_or_name)
-        )
+        .where((Server.id == server_id_or_name) | (Server.server_name == server_id_or_name))
         .limit(1)
     )
 
@@ -125,7 +113,7 @@ async def get_server_by_name(session: AsyncSession, server_name: str) -> dict | 
         stmt = select(Server).where(Server.server_name == server_name)
         result = await session.execute(stmt)
         server = result.scalar_one_or_none()
-        
+
         if server:
             return {
                 "id": server.id,
@@ -145,9 +133,7 @@ async def get_server_by_name(session: AsyncSession, server_name: str) -> dict | 
         return None
 
 
-async def update_server_field(
-    session: AsyncSession, server_name: str, field: str, value: any
-) -> bool:
+async def update_server_field(session: AsyncSession, server_name: str, field: str, value: any) -> bool:
     try:
         stmt = update(Server).where(Server.server_name == server_name).values(**{field: value})
         await session.execute(stmt)
@@ -160,11 +146,10 @@ async def update_server_field(
         return False
 
 
-async def update_server_name_with_keys(
-    session: AsyncSession, old_name: str, new_name: str
-) -> bool:
+async def update_server_name_with_keys(session: AsyncSession, old_name: str, new_name: str) -> bool:
     try:
         from sqlalchemy import update
+
         from database.models import Key
 
         if not await check_unique_server_name(session, new_name):
@@ -176,7 +161,7 @@ async def update_server_name_with_keys(
 
         stmt_keys = update(Key).where(Key.server_id == old_name).values(server_id=new_name)
         await session.execute(stmt_keys)
-        
+
         await session.commit()
         logger.info(f"✅ Сервер переименован с {old_name} на {new_name}")
         return True
@@ -196,16 +181,12 @@ async def get_available_clusters(session: AsyncSession) -> list[str]:
         return []
 
 
-async def update_server_cluster(
-    session: AsyncSession, 
-    server_name: str, 
-    new_cluster: str
-) -> bool:
+async def update_server_cluster(session: AsyncSession, server_name: str, new_cluster: str) -> bool:
     try:
         server_data = await get_server_by_name(session, server_name)
         if not server_data:
             return False
-            
+
         old_cluster = server_data["cluster_name"]
 
         stmt_remaining = select(func.count()).where(
@@ -215,26 +196,21 @@ async def update_server_cluster(
         remaining_servers = result.scalar_one()
 
         if remaining_servers == 0:
-            stmt_update_keys = update(Key).where(
-                Key.server_id == old_cluster
-            ).values(server_id=new_cluster)
+            stmt_update_keys = update(Key).where(Key.server_id == old_cluster).values(server_id=new_cluster)
             await session.execute(stmt_update_keys)
 
-        stmt_new_cluster = select(Server.tariff_group).where(
-            Server.cluster_name == new_cluster
-        ).limit(1)
+        stmt_new_cluster = select(Server.tariff_group).where(Server.cluster_name == new_cluster).limit(1)
         result = await session.execute(stmt_new_cluster)
         new_tariff_group = result.scalar_one_or_none()
 
-        stmt_update = update(Server).where(
-            Server.server_name == server_name
-        ).values(
-            cluster_name=new_cluster,
-            tariff_group=new_tariff_group
+        stmt_update = (
+            update(Server)
+            .where(Server.server_name == server_name)
+            .values(cluster_name=new_cluster, tariff_group=new_tariff_group)
         )
         await session.execute(stmt_update)
         await session.commit()
-        
+
         logger.info(f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы")
         return True
     except SQLAlchemyError as e:

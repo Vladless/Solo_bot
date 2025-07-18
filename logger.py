@@ -1,11 +1,13 @@
 import logging
 import os
 import sys
+
 from datetime import timedelta
 
 from loguru import logger
 
 from config import LOG_ROTATION_TIME
+
 
 log_folder = "logs"
 

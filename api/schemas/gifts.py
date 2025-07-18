@@ -1,18 +1,19 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
 
 
 class GiftBase(BaseModel):
     sender_tg_id: int
-    recipient_tg_id: Optional[int] = None
-    selected_months: Optional[int] = None
+    recipient_tg_id: int | None = None
+    selected_months: int | None = None
     expiry_time: datetime
     gift_link: str
     is_used: bool = False
-    is_unlimited: Optional[bool] = False
-    max_usages: Optional[int] = None
-    tariff_id: Optional[int] = None
+    is_unlimited: bool | None = False
+    max_usages: int | None = None
+    tariff_id: int | None = None
 
 
 class GiftResponse(GiftBase):
@@ -33,14 +34,14 @@ class GiftUsageResponse(BaseModel):
 
 
 class GiftUpdate(BaseModel):
-    recipient_tg_id: Optional[int] = None
-    selected_months: Optional[int] = None
-    expiry_time: Optional[datetime] = None
-    gift_link: Optional[str] = None
-    is_used: Optional[bool] = None
-    is_unlimited: Optional[bool] = None
-    max_usages: Optional[int] = None
-    tariff_id: Optional[int] = None
+    recipient_tg_id: int | None = None
+    selected_months: int | None = None
+    expiry_time: datetime | None = None
+    gift_link: str | None = None
+    is_used: bool | None = None
+    is_unlimited: bool | None = None
+    max_usages: int | None = None
+    tariff_id: int | None = None
 
     class Config:
         from_attributes = True

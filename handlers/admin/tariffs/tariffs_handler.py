@@ -29,6 +29,7 @@ from .keyboard import (
     build_tariff_menu_kb,
 )
 
+
 router = Router()
 
 
@@ -74,30 +75,24 @@ def validate_subgroup_title(title: str) -> tuple[bool, str]:
     return True, ""
 
 
-@router.callback_query(
-    AdminPanelCallback.filter(F.action == "tariffs"), IsAdminFilter()
-)
+@router.callback_query(AdminPanelCallback.filter(F.action == "tariffs"), IsAdminFilter())
 async def handle_tariff_menu(callback_query: CallbackQuery):
     text = (
         "<b>💸 Управление тарифами</b>\n\n"
         "Вы можете выполнить следующие действия:\n\n"
         "<b>🆕 Создать тариф</b>\n"
-        "• Установите длительность (в днях)\n"
+        "<blockquote>• Установите длительность (в днях)\n"
         "• Задайте цену (в рублях)\n"
         "• Задайте лимит устройств (hwid/ip_limit)\n"
-        "• Укажите лимит трафика (в ГБ)\n\n"
+        "• Укажите лимит трафика (в ГБ)</blockquote>\n\n"
         "<b>📋 Редактировать тарифы</b>\n"
-        "• Просматривайте список текущих тарифов\n"
-        "• Изменяйте параметры или удаляйте при необходимости"
+        "<blockquote>• Просматривайте список текущих тарифов\n"
+        "• Изменяйте параметры или удаляйте при необходимости</blockquote>"
     )
-    await callback_query.message.edit_text(
-        text=text, reply_markup=build_tariff_menu_kb()
-    )
+    await callback_query.message.edit_text(text=text, reply_markup=build_tariff_menu_kb())
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action == "create"), IsAdminFilter()
-)
+@router.callback_query(AdminTariffCallback.filter(F.action == "create"), IsAdminFilter())
 async def start_tariff_creation(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffCreateState.group)
     await callback.message.edit_text(
@@ -135,7 +130,7 @@ async def process_tariff_name(message: Message, state: FSMContext):
             reply_markup=build_cancel_kb(),
         )
         return
-    
+
     await state.update_data(name=name)
     await state.set_state(TariffCreateState.duration)
     await message.answer(
@@ -151,9 +146,7 @@ async def process_tariff_duration(message: Message, state: FSMContext):
         if days <= 0:
             raise ValueError
     except ValueError:
-        await message.answer(
-            "❌ Введите корректное количество дней (целое число больше 0):"
-        )
+        await message.answer("❌ Введите корректное количество дней (целое число больше 0):")
         return
 
     await state.update_data(duration_days=days)
@@ -190,9 +183,7 @@ async def process_tariff_traffic(message: Message, state: FSMContext):
         if traffic < 0:
             raise ValueError
     except ValueError:
-        await message.answer(
-            "❌ Введите корректный лимит трафика (целое число 0 или больше):"
-        )
+        await message.answer("❌ Введите корректный лимит трафика (целое число 0 или больше):")
         return
 
     await state.update_data(traffic_limit=traffic if traffic > 0 else None)
@@ -204,17 +195,13 @@ async def process_tariff_traffic(message: Message, state: FSMContext):
 
 
 @router.message(TariffCreateState.device_limit, IsAdminFilter())
-async def process_tariff_device_limit(
-    message: Message, state: FSMContext, session: AsyncSession
-):
+async def process_tariff_device_limit(message: Message, state: FSMContext, session: AsyncSession):
     try:
         device_limit = int(message.text.strip())
         if device_limit < 0:
             raise ValueError
     except ValueError:
-        await message.answer(
-            "❌ Введите корректный лимит устройств (целое число 0 или больше):"
-        )
+        await message.answer("❌ Введите корректный лимит устройств (целое число 0 или больше):")
         return
 
     data = await state.get_data()
@@ -239,9 +226,7 @@ async def process_tariff_device_limit(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Да", callback_data="add_more_tariff"),
-                    InlineKeyboardButton(
-                        text="❌ Нет", callback_data="done_tariff_group"
-                    ),
+                    InlineKeyboardButton(text="❌ Нет", callback_data="done_tariff_group"),
                 ]
             ]
         ),
@@ -251,40 +236,30 @@ async def process_tariff_device_limit(
 @router.callback_query(F.data == "add_more_tariff", IsAdminFilter())
 async def handle_add_more_tariff(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffCreateState.name)
-    await callback.message.edit_text(
-        "📝 Введите <b>название следующего тарифа</b>:", reply_markup=build_cancel_kb()
-    )
+    await callback.message.edit_text("📝 Введите <b>название следующего тарифа</b>:", reply_markup=build_cancel_kb())
 
 
 @router.callback_query(F.data == "done_tariff_group", IsAdminFilter())
 async def handle_done_tariff_group(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "✅ Группа тарифов успешно завершена.", reply_markup=build_tariff_menu_kb()
-    )
+    await callback.message.edit_text("✅ Группа тарифов успешно завершена.", reply_markup=build_tariff_menu_kb())
 
 
 @router.callback_query(F.data == "cancel_tariff_creation", IsAdminFilter())
 async def cancel_tariff_creation(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "❌ Создание тарифа отменено.", reply_markup=build_tariff_menu_kb()
-    )
+    await callback.message.edit_text("❌ Создание тарифа отменено.", reply_markup=build_tariff_menu_kb())
 
 
 @router.callback_query(AdminTariffCallback.filter(F.action == "list"), IsAdminFilter())
 async def show_tariff_groups(callback: CallbackQuery, session: AsyncSession):
     result = await session.execute(
-        select(distinct(Tariff.group_code))
-        .where(Tariff.group_code.isnot(None))
-        .order_by(Tariff.group_code)
+        select(distinct(Tariff.group_code)).where(Tariff.group_code.isnot(None)).order_by(Tariff.group_code)
     )
     groups = [row[0] for row in result.fetchall()]
 
     if not groups:
-        await callback.message.edit_text(
-            "❌ Нет сохранённых тарифов.", reply_markup=build_tariff_menu_kb()
-        )
+        await callback.message.edit_text("❌ Нет сохранённых тарифов.", reply_markup=build_tariff_menu_kb())
         return
 
     special_groups = {
@@ -310,21 +285,15 @@ def tariff_to_dict(tariff: Tariff) -> dict:
         "name": tariff.name,
         "price_rub": tariff.price_rub,
         "group_code": tariff.group_code,
-        "subgroup_title": tariff.subgroup_title
+        "subgroup_title": tariff.subgroup_title,
     }
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action.startswith("group|")), IsAdminFilter()
-)
-async def show_tariffs_in_group(
-    callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession
-):
+@router.callback_query(AdminTariffCallback.filter(F.action.startswith("group|")), IsAdminFilter())
+async def show_tariffs_in_group(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     group_code = callback_data.action.split("|", 1)[1]
 
-    result = await session.execute(
-        select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id)
-    )
+    result = await session.execute(select(Tariff).where(Tariff.group_code == group_code).order_by(Tariff.id))
     tariffs = result.scalars().all()
 
     if not tariffs:
@@ -339,12 +308,8 @@ async def show_tariffs_in_group(
     )
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action.startswith("view|")), IsAdminFilter()
-)
-async def view_tariff(
-    callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession
-):
+@router.callback_query(AdminTariffCallback.filter(F.action.startswith("view|")), IsAdminFilter())
+async def view_tariff(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     tariff_id = int(callback_data.action.split("|", 1)[1])
 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
@@ -358,24 +323,16 @@ async def view_tariff(
     await callback.message.edit_text(text=text, reply_markup=markup)
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action.startswith("delete|")), IsAdminFilter()
-)
-async def confirm_tariff_deletion(
-    callback: CallbackQuery, callback_data: AdminTariffCallback
-):
+@router.callback_query(AdminTariffCallback.filter(F.action.startswith("delete|")), IsAdminFilter())
+async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminTariffCallback):
     tariff_id = int(callback_data.action.split("|", 1)[1])
     await callback.message.edit_text(
         "⚠️ Вы уверены, что хотите <b>удалить</b> этот тариф?",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="✅ Да", callback_data=f"confirm_delete_tariff|{tariff_id}"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Отмена", callback_data=f"view|{tariff_id}"
-                    ),
+                    InlineKeyboardButton(text="✅ Да", callback_data=f"confirm_delete_tariff|{tariff_id}"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view|{tariff_id}"),
                 ]
             ]
         ),
@@ -395,36 +352,22 @@ async def delete_tariff(callback: CallbackQuery, session: AsyncSession):
 
     group_code = tariff.group_code
 
-    await session.execute(
-        update(Key).where(Key.tariff_id == tariff_id).values(tariff_id=None)
-    )
+    await session.execute(update(Key).where(Key.tariff_id == tariff_id).values(tariff_id=None))
 
     await session.execute(delete(Tariff).where(Tariff.id == tariff_id))
 
-    result = await session.execute(
-        select(Tariff).where(Tariff.group_code == group_code)
-    )
+    result = await session.execute(select(Tariff).where(Tariff.group_code == group_code))
     remaining_tariffs = result.scalars().all()
 
     if not remaining_tariffs:
-        await session.execute(
-            update(Server)
-            .where(Server.tariff_group == group_code)
-            .values(tariff_group=None)
-        )
+        await session.execute(update(Server).where(Server.tariff_group == group_code).values(tariff_group=None))
 
     await session.commit()
-    await callback.message.edit_text(
-        "🗑 Тариф успешно удалён.", reply_markup=build_tariff_menu_kb()
-    )
+    await callback.message.edit_text("🗑 Тариф успешно удалён.", reply_markup=build_tariff_menu_kb())
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action.startswith("edit|")), IsAdminFilter()
-)
-async def start_edit_tariff(
-    callback: CallbackQuery, callback_data: AdminTariffCallback, state: FSMContext
-):
+@router.callback_query(AdminTariffCallback.filter(F.action.startswith("edit|")), IsAdminFilter())
+async def start_edit_tariff(callback: CallbackQuery, callback_data: AdminTariffCallback, state: FSMContext):
     tariff_id = int(callback_data.action.split("|")[1])
     await state.update_data(tariff_id=tariff_id)
     await state.set_state(TariffEditState.choosing_field)
@@ -519,9 +462,7 @@ async def toggle_tariff_status(callback: CallbackQuery, session: AsyncSession):
     await callback.message.edit_text(text=text, reply_markup=markup)
 
 
-@router.callback_query(
-    AdminTariffCallback.filter(F.action.startswith("create|")), IsAdminFilter()
-)
+@router.callback_query(AdminTariffCallback.filter(F.action.startswith("create|")), IsAdminFilter())
 async def start_tariff_creation_existing_group(
     callback: CallbackQuery, callback_data: AdminTariffCallback, state: FSMContext
 ):
@@ -535,12 +476,8 @@ async def start_tariff_creation_existing_group(
 
 
 def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
-    traffic_text = (
-        f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
-    )
-    device_text = (
-        f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
-    )
+    traffic_text = f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
+    device_text = f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
 
     text = (
         f"<b>📄 Тариф: {tariff.name}</b>\n\n"
@@ -561,10 +498,7 @@ async def start_subgrouping(callback: CallbackQuery, state: FSMContext, session:
 
     result = await session.execute(
         select(Tariff)
-        .where(
-            Tariff.group_code == group_code,
-            (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == ""))
-        )
+        .where(Tariff.group_code == group_code, (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == "")))
         .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
@@ -574,38 +508,30 @@ async def start_subgrouping(callback: CallbackQuery, state: FSMContext, session:
             "❌ Нет доступных тарифов для группировки.\n\nВсе тарифы уже находятся в подгруппах.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(
-                        text="⬅️ Назад",
-                        callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
-                    )]
+                    [
+                        InlineKeyboardButton(
+                            text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                        )
+                    ]
                 ]
-            )
+            ),
         )
         return
 
     await state.set_state(TariffSubgroupState.selecting_tariffs)
-    await state.update_data(
-        group_code=group_code,
-        selected_tariff_ids=[]
-    )
+    await state.update_data(group_code=group_code, selected_tariff_ids=[])
 
     builder = InlineKeyboardBuilder()
     for tariff in tariffs:
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{tariff.name}",
-                callback_data=f"sub_select|{tariff.id}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{tariff.name}", callback_data=f"sub_select|{tariff.id}"))
 
     builder.row(
         InlineKeyboardButton(text="➡️ Продолжить", callback_data="subgroup_continue"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping"),
     )
 
     await callback.message.edit_text(
-        "Выберите тарифы, которые нужно объединить в подгруппу:",
-        reply_markup=builder.as_markup()
+        "Выберите тарифы, которые нужно объединить в подгруппу:", reply_markup=builder.as_markup()
     )
 
 
@@ -625,10 +551,7 @@ async def toggle_tariff_subgroup_selection(callback: CallbackQuery, state: FSMCo
     group_code = data["group_code"]
     result = await session.execute(
         select(Tariff)
-        .where(
-            Tariff.group_code == group_code,
-            (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == ""))
-        )
+        .where(Tariff.group_code == group_code, (Tariff.subgroup_title.is_(None) | (Tariff.subgroup_title == "")))
         .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
@@ -637,16 +560,11 @@ async def toggle_tariff_subgroup_selection(callback: CallbackQuery, state: FSMCo
     for tariff in tariffs:
         is_selected = tariff.id in selected
         prefix = "✅ " if is_selected else ""
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{prefix}{tariff.name}",
-                callback_data=f"sub_select|{tariff.id}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.name}", callback_data=f"sub_select|{tariff.id}"))
 
     builder.row(
         InlineKeyboardButton(text="➡️ Продолжить", callback_data="subgroup_continue"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping"),
     )
 
     await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
@@ -666,9 +584,7 @@ async def ask_subgroup_title(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffSubgroupState.entering_subgroup_title)
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")]
-        ]
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")]]
     )
 
     await callback.message.edit_text(
@@ -686,13 +602,11 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
         await message.answer(
             f"❌ {error_msg}\n\nПовторите ввод:",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")]
-                ]
+                inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_subgrouping")]]
             ),
         )
         return
-    
+
     data = await state.get_data()
     selected_ids = data.get("selected_tariff_ids", [])
 
@@ -702,14 +616,15 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
         return
 
     await session.execute(
-        update(Tariff)
-        .where(Tariff.id.in_(selected_ids))
-        .values(subgroup_title=title, updated_at=datetime.utcnow())
+        update(Tariff).where(Tariff.id.in_(selected_ids)).values(subgroup_title=title, updated_at=datetime.utcnow())
     )
     await session.commit()
     await state.clear()
 
-    await message.answer(f"✅ {len(selected_ids)} тарифов сгруппированы в подгруппу: <b>{title}</b>.", reply_markup=build_tariff_menu_kb())
+    await message.answer(
+        f"✅ {len(selected_ids)} тарифов сгруппированы в подгруппу: <b>{title}</b>.",
+        reply_markup=build_tariff_menu_kb(),
+    )
 
 
 @router.callback_query(F.data == "cancel_subgrouping", IsAdminFilter())
@@ -723,16 +638,15 @@ async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
     _, subgroup_hash, group_code = callback.data.split("|", 2)
 
     subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
-    
+
     if not subgroup_title:
         await callback.message.edit_text("❌ Подгруппа не найдена.")
         return
 
     result = await session.execute(
-        select(Tariff).where(
-            Tariff.group_code == group_code,
-            Tariff.subgroup_title == subgroup_title
-        ).order_by(Tariff.id)
+        select(Tariff)
+        .where(Tariff.group_code == group_code, Tariff.subgroup_title == subgroup_title)
+        .order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
 
@@ -789,7 +703,7 @@ async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext, sess
     _, subgroup_hash, group_code = callback.data.split("|", 2)
 
     subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
-    
+
     if not subgroup_title:
         await callback.message.edit_text("❌ Подгруппа не найдена.")
         return
@@ -807,7 +721,7 @@ async def start_rename_subgroup(callback: CallbackQuery, state: FSMContext, sess
             inline_keyboard=[
                 [InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
             ]
-        )
+        ),
     )
 
 
@@ -820,17 +734,21 @@ async def save_new_subgroup_title(message: Message, state: FSMContext, session: 
         data = await state.get_data()
         subgroup_hash = data.get("subgroup_hash")
         group_code = data.get("group_code")
-        
+
         await message.answer(
             f"❌ {error_msg}\n\nПовторите ввод:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
+                    [
+                        InlineKeyboardButton(
+                            text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
+                        )
+                    ]
                 ]
             ),
         )
         return
-    
+
     data = await state.get_data()
     old_title = data["subgroup_title"]
     group_code = data["group_code"]
@@ -846,15 +764,19 @@ async def save_new_subgroup_title(message: Message, state: FSMContext, session: 
     await session.commit()
     await state.clear()
 
-    new_hash = create_subgroup_hash(new_title, group_code)
+    create_subgroup_hash(new_title, group_code)
 
     await message.answer(
         f"✅ Подгруппа <b>{old_title}</b> переименована в <b>{new_title}</b>.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack())]
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                    )
+                ]
             ]
-        )
+        ),
     )
 
 
@@ -863,7 +785,7 @@ async def confirm_delete_subgroup(callback: CallbackQuery, state: FSMContext, se
     _, subgroup_hash, group_code = callback.data.split("|", 2)
 
     subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
-    
+
     if not subgroup_title:
         await callback.message.edit_text("❌ Подгруппа не найдена.")
         return
@@ -882,10 +804,10 @@ async def confirm_delete_subgroup(callback: CallbackQuery, state: FSMContext, se
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Удалить", callback_data="confirm_subgroup_deletion"),
-                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
+                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"),
                 ]
             ]
-        )
+        ),
     )
 
 
@@ -897,10 +819,7 @@ async def perform_subgroup_deletion(callback: CallbackQuery, state: FSMContext, 
 
     await session.execute(
         update(Tariff)
-        .where(
-            Tariff.group_code == group_code,
-            Tariff.subgroup_title == subgroup_title
-        )
+        .where(Tariff.group_code == group_code, Tariff.subgroup_title == subgroup_title)
         .values(subgroup_title=None)
     )
     await session.commit()
@@ -910,9 +829,13 @@ async def perform_subgroup_deletion(callback: CallbackQuery, state: FSMContext, 
         f"✅ Подгруппа <b>{subgroup_title}</b> удалена.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack())]
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                    )
+                ]
             ]
-        )
+        ),
     )
 
 
@@ -921,7 +844,7 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
     _, subgroup_hash, group_code = callback.data.split("|", 2)
 
     subgroup_title = await find_subgroup_by_hash(session, subgroup_hash, group_code)
-    
+
     if not subgroup_title:
         await callback.message.edit_text("❌ Подгруппа не найдена.")
         return
@@ -930,11 +853,7 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
         select(Tariff)
         .where(
             Tariff.group_code == group_code,
-            or_(
-                Tariff.subgroup_title == subgroup_title,
-                Tariff.subgroup_title.is_(None),
-                Tariff.subgroup_title == ''
-            )
+            or_(Tariff.subgroup_title == subgroup_title, Tariff.subgroup_title.is_(None), Tariff.subgroup_title == ""),
         )
         .order_by(Tariff.id)
     )
@@ -947,12 +866,9 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
             "❌ Нет доступных тарифов для редактирования.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(
-                        text="⬅️ Назад",
-                        callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
-                    )]
+                    [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
                 ]
-            )
+            ),
         )
         return
 
@@ -961,30 +877,25 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
         subgroup_title=subgroup_title,
         group_code=group_code,
         subgroup_hash=subgroup_hash,
-        selected_tariff_ids=list(subgroup_tariff_ids)
+        selected_tariff_ids=list(subgroup_tariff_ids),
     )
 
     builder = InlineKeyboardBuilder()
     for tariff in all_tariffs_to_show:
         is_in_subgroup = tariff.id in subgroup_tariff_ids
         prefix = "✅ " if is_in_subgroup else ""
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{prefix}{tariff.name}",
-                callback_data=f"edit_sub_toggle|{tariff.id}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.name}", callback_data=f"edit_sub_toggle|{tariff.id}"))
 
     builder.row(
         InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"),
     )
 
     await callback.message.edit_text(
         f"✏️ <b>Редактирование подгруппы: {subgroup_title}</b>\n\n"
         "✅ - тарифы в подгруппе\n\n"
         "Нажмите на тариф, чтобы добавить/убрать его:",
-        reply_markup=builder.as_markup()
+        reply_markup=builder.as_markup(),
     )
 
 
@@ -1009,11 +920,7 @@ async def toggle_tariff_in_subgroup_edit(callback: CallbackQuery, state: FSMCont
         select(Tariff)
         .where(
             Tariff.group_code == group_code,
-            or_(
-                Tariff.subgroup_title == subgroup_title,
-                Tariff.subgroup_title.is_(None),
-                Tariff.subgroup_title == ''
-            )
+            or_(Tariff.subgroup_title == subgroup_title, Tariff.subgroup_title.is_(None), Tariff.subgroup_title == ""),
         )
         .order_by(Tariff.id)
     )
@@ -1023,16 +930,11 @@ async def toggle_tariff_in_subgroup_edit(callback: CallbackQuery, state: FSMCont
     for tariff in all_tariffs_to_show:
         is_selected = tariff.id in selected_ids
         prefix = "✅ " if is_selected else ""
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{prefix}{tariff.name}",
-                callback_data=f"edit_sub_toggle|{tariff.id}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.name}", callback_data=f"edit_sub_toggle|{tariff.id}"))
 
     builder.row(
         InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"),
     )
 
     await callback.message.edit_reply_markup(reply_markup=builder.as_markup())
@@ -1047,11 +949,7 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
     selected_tariff_ids = set(data.get("selected_tariff_ids", []))
 
     result = await session.execute(
-        select(Tariff)
-        .where(
-            Tariff.group_code == group_code,
-            Tariff.subgroup_title == subgroup_title
-        )
+        select(Tariff).where(Tariff.group_code == group_code, Tariff.subgroup_title == subgroup_title)
     )
     current_subgroup_tariffs = result.scalars().all()
     current_tariff_ids = {t.id for t in current_subgroup_tariffs}
@@ -1061,9 +959,7 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
 
     if to_remove:
         await session.execute(
-            update(Tariff)
-            .where(Tariff.id.in_(to_remove))
-            .values(subgroup_title=None, updated_at=datetime.utcnow())
+            update(Tariff).where(Tariff.id.in_(to_remove)).values(subgroup_title=None, updated_at=datetime.utcnow())
         )
 
     if to_add:
@@ -1081,12 +977,14 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
             f"✅ Подгруппа <b>{subgroup_title}</b> была расформирована.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(
-                        text="⬅️ Назад к группе тарифов",
-                        callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
-                    )]
+                    [
+                        InlineKeyboardButton(
+                            text="⬅️ Назад к группе тарифов",
+                            callback_data=AdminTariffCallback(action=f"group|{group_code}").pack(),
+                        )
+                    ]
                 ]
-            )
+            ),
         )
         return
 
@@ -1113,14 +1011,14 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
         changes_text.append("Изменений не было")
 
     await callback.message.edit_text(
-        f"✅ <b>Подгруппа обновлена: {subgroup_title}</b>\n\n"
-        f"{chr(10).join(changes_text)}",
+        f"✅ <b>Подгруппа обновлена: {subgroup_title}</b>\n\n{chr(10).join(changes_text)}",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="⬅️ Назад к подгруппе",
-                    callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
-                )]
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Назад к подгруппе", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
+                    )
+                ]
             ]
-        )
+        ),
     )

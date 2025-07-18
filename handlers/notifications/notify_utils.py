@@ -2,6 +2,7 @@ import asyncio
 import os
 
 import aiofiles
+
 from aiogram import Bot
 from aiogram.exceptions import (
     TelegramBadRequest,
@@ -32,10 +33,7 @@ async def send_messages_with_limit(
     for i in range(0, len(messages), batch_size):
         batch = messages[i : i + batch_size]
         tasks = [
-            send_notification(
-                bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")
-            )
-            for msg in batch
+            send_notification(bot, msg["tg_id"], msg.get("photo"), msg["text"], msg.get("keyboard")) for msg in batch
         ]
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -48,17 +46,12 @@ async def send_messages_with_limit(
                 logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
                 await try_add_blocked_user(tg_id, session, source_file)
                 results.append(False)
-            elif (
-                isinstance(result, TelegramBadRequest)
-                and "chat not found" in str(result).lower()
-            ):
+            elif isinstance(result, TelegramBadRequest) and "chat not found" in str(result).lower():
                 logger.warning(f"🚫 Чат не найден для пользователя {tg_id}.")
                 await try_add_blocked_user(tg_id, session, source_file)
                 results.append(False)
             else:
-                logger.warning(
-                    f"📩 Не удалось отправить уведомление пользователю {tg_id}."
-                )
+                logger.warning(f"📩 Не удалось отправить уведомление пользователю {tg_id}.")
                 await try_add_blocked_user(tg_id, session, source_file)
                 results.append(False)
 
@@ -67,9 +60,7 @@ async def send_messages_with_limit(
     return results
 
 
-async def try_add_blocked_user(
-    tg_id: int, session: AsyncSession, source_file: str | None
-):
+async def try_add_blocked_user(tg_id: int, session: AsyncSession, source_file: str | None):
     """
     Добавляет пользователя в список заблокировавших бота, если требуется.
     """
@@ -121,9 +112,7 @@ async def send_notification(
 
     photo_path = os.path.join("img", image_filename)
     if os.path.isfile(photo_path):
-        return await _send_photo_notification(
-            bot, tg_id, photo_path, image_filename, caption, keyboard
-        )
+        return await _send_photo_notification(bot, tg_id, photo_path, image_filename, caption, keyboard)
     else:
         logger.warning(f"Файл с изображением не найден: {photo_path}")
         return await _send_text_notification(bot, tg_id, caption, keyboard)
@@ -143,9 +132,7 @@ async def _send_photo_notification(
         async with aiofiles.open(photo_path, "rb") as image_file:
             image_data = await image_file.read()
         buffered_photo = BufferedInputFile(image_data, filename=image_filename)
-        await bot.send_photo(
-            tg_id, buffered_photo, caption=caption, reply_markup=keyboard
-        )
+        await bot.send_photo(tg_id, buffered_photo, caption=caption, reply_markup=keyboard)
         return True
     except (TelegramForbiddenError, TelegramBadRequest):
         return False
@@ -168,7 +155,5 @@ async def _send_text_notification(
     except (TelegramForbiddenError, TelegramBadRequest):
         return False
     except Exception as e:
-        logger.error(
-            f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}")
         return False

@@ -1,9 +1,10 @@
-from typing import AsyncGenerator
 import hashlib
 
+from collections.abc import AsyncGenerator
+
 from fastapi import Depends, HTTPException, Header, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import async_session_maker
 from database.models import Admin
@@ -24,9 +25,7 @@ async def verify_admin_token(
     session: AsyncSession = Depends(get_session),
 ) -> Admin:
     hashed = hash_token(token)
-    result = await session.execute(
-        select(Admin).where(Admin.tg_id == admin_id, Admin.token == hashed)
-    )
+    result = await session.execute(select(Admin).where(Admin.tg_id == admin_id, Admin.token == hashed))
     admin = result.scalar_one_or_none()
     if not admin:
         raise HTTPException(status_code=401, detail="Unauthorized")

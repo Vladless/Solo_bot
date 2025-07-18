@@ -1,7 +1,9 @@
 import uuid
+
 from datetime import datetime
 
 import pytz
+
 from aiogram import Router
 from aiogram.types import (
     CallbackQuery,
@@ -34,13 +36,14 @@ from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import key_message_success
 from handlers.utils import (
     edit_or_send_message,
+    format_days,
+    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
-    format_days,
-    format_months,
 )
 from logger import logger
+
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -97,7 +100,7 @@ async def key_cluster_mode(
         except ValueError as e:
             logger.error(f"Нет доступных кластеров: {e}")
             error_message = str(e)
-            
+
             if safe_to_edit:
                 await edit_or_send_message(
                     target_message=target_message,
@@ -121,9 +124,7 @@ async def key_cluster_mode(
             is_trial=is_trial,
         )
 
-        logger.info(
-            f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}"
-        )
+        logger.info(f"[Key Creation] Ключ создан на кластере {least_loaded_cluster} для пользователя {tg_id}")
 
         key_record = await get_key_details(session, email)
         if not key_record:
@@ -146,9 +147,7 @@ async def key_cluster_mode(
 
     except Exception as e:
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")
-        error_message = (
-            "❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова."
-        )
+        error_message = "❌ Произошла ошибка при создании подписки. Пожалуйста, попробуйте снова."
 
         if safe_to_edit:
             await edit_or_send_message(
@@ -162,42 +161,27 @@ async def key_cluster_mode(
 
     builder = InlineKeyboardBuilder()
     if await is_full_remnawave_cluster(least_loaded_cluster, session):
-        builder.row(
-            InlineKeyboardButton(
-                text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}")
-        )
+        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
     elif CONNECT_PHONE_BUTTON:
-        builder.row(
-            InlineKeyboardButton(
-                text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(
             InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
             InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
         )
     else:
-        builder.row(
-            InlineKeyboardButton(
-                text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"
-            )
-        )
+        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     expiry_time_local = expiry_time.astimezone(moscow_tz)
-    remaining_time = expiry_time_local - datetime.now(moscow_tz)
-    days = remaining_time.days
+    expiry_time_local - datetime.now(moscow_tz)
 
     tariff_info = None
     if plan:
         tariff_info = await get_tariff_by_id(session, plan)
-    
+
     if is_trial:
         trial_days = TRIAL_CONFIG.get("duration_days", 1)
         if trial_days >= 30:
@@ -209,18 +193,18 @@ async def key_cluster_mode(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 0)
+            device_limit=TRIAL_CONFIG.get("hwid_limit", 0),
         )
     else:
         tariff_duration = tariff_info["name"]
         subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
-        
+
         key_message_text = key_message_success(
             final_link,
             tariff_name=tariff_duration,
             traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
             device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
-            subgroup_title=subgroup_title
+            subgroup_title=subgroup_title,
         )
 
     default_media_path = "img/pic.jpg"
