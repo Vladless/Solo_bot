@@ -86,7 +86,7 @@ def get_git_commit_number() -> str:
         return "\n(Требуется обновление через CLI, команда <code>sudo solobot</code>)"
 
 
-version = f"v4.4-b030735{get_git_commit_number()}"
+version = f"v4.4-preRelease{get_git_commit_number()}"
 
 
 dp.message.filter(IsPrivateFilter())
