@@ -54,6 +54,10 @@ class Import3xuiStates(StatesGroup):
     waiting_for_file = State()
 
 
+class FileUploadState(StatesGroup):
+    waiting_for_file = State()
+
+
 class DatabaseState(StatesGroup):
     waiting_for_backup_file = State()
 
@@ -92,7 +96,6 @@ async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
 async def process_new_domain(message: Message, state: FSMContext, session: AsyncSession):
     """Обновляет домен в таблице keys."""
     new_domain = message.text.strip()
-    logger.info(f"[DomainChange] Новый домен, введённый администратором: '{new_domain}'")
 
     if not new_domain or " " in new_domain or not new_domain.replace(".", "").isalnum():
         logger.warning("[DomainChange] Некорректный домен")
@@ -103,7 +106,6 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
         return
 
     new_domain_url = f"https://{new_domain}"
-    logger.info(f"[DomainChange] Новый домен с протоколом: '{new_domain_url}'")
 
     try:
         stmt = (
@@ -325,8 +327,6 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
             signature = f.read(5)
             if signature == b"PGDMP":
                 is_custom_dump = True
-
-        logger.info(f"[Restore] Определён формат: {'custom' if is_custom_dump else 'plain'}")
 
         subprocess.run(
             [
@@ -645,6 +645,46 @@ async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSess
 
     await callback.message.edit_text(
         f"🔁 Перевыпуск завершён:\n✅ Успешно: <b>{success}</b>\n❌ Ошибки: <b>{failed}</b>",
-        parse_mode="HTML",
         reply_markup=build_back_to_db_menu(),
     )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "upload_file"))
+async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📤 <b>Загрузка файла</b>\n\n"
+        "Вы можете заменить файл в корневой директории бота.\n\n"
+        "📁 <b>Отправьте файл с таким же именем и расширением</b>, "
+        "как у уже существующего файла. Он будет автоматически заменён.",
+        reply_markup=build_admin_back_kb("management"),
+    )
+    await state.set_state(FileUploadState.waiting_for_file)
+
+
+
+@router.message(FileUploadState.waiting_for_file, F.document)
+async def handle_admin_file_upload(message: Message, state: FSMContext):
+    document = message.document
+    file_name = document.file_name
+
+    if not file_name or "." not in file_name:
+        await message.answer("❌ У файла должно быть имя с расширением.")
+        return
+
+    dest_path = os.path.abspath(f"./{file_name}")
+
+    try:
+        await message.bot.download(document, destination=dest_path)
+        await message.answer(
+            f"✅ Файл <code>{file_name}</code> успешно загружен и заменён.\n\n"
+            "🔄 <b>Перезагрузите бота, чтобы изменения вступили в силу.</b>",
+            reply_markup=build_admin_back_kb("management"),
+        )
+    except Exception as e:
+        logger.error(f"[Upload File] Ошибка при загрузке файла {file_name}: {e}")
+        await message.answer(
+            f"❌ Не удалось сохранить файл: {e}",
+            reply_markup=build_admin_back_kb("management"),
+        )
+    await state.clear()
+

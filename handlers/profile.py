@@ -70,7 +70,6 @@ async def process_callback_view_profile(
         username = "Пользователь"
 
     image_path = os.path.join("img", "profile.jpg")
-    logger.info(f"Переход в профиль. Используется изображение: {image_path}")
 
     key_count = await get_key_count(session, chat_id)
     balance = await get_balance(session, chat_id) or 0

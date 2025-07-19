@@ -75,7 +75,6 @@ async def edit_key_by_email(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
-    logger.info(f"[API] edit_key_by_email called for email={email}, payload={key_update.dict(exclude_unset=False)}")
 
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
@@ -96,7 +95,6 @@ async def edit_key_by_email(
 
     try:
         new_expiry_time = db_key.expiry_time
-        logger.info(f"[API] renew_key_in_cluster new_expiry_time (ms) = {new_expiry_time}")
         await renew_key_in_cluster(
             cluster_id=db_key.server_id,
             email=db_key.email,
@@ -123,7 +121,6 @@ async def create_key_api(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
-    logger.info(f"[API] Запрос на создание ключа: {payload.dict()}")
 
     try:
         await create_key_on_cluster(

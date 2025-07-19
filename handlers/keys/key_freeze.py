@@ -98,7 +98,6 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
 
         now_ms = int(time.time() * 1000)
         leftover = record["expiry_time"]
-        logger.info(f"[Unfreeze Debug] expiry_time из БД: {leftover}")
         if leftover < 0:
             leftover = 0
         new_expiry_time = now_ms + leftover

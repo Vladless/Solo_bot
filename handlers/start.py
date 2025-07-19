@@ -300,7 +300,6 @@ async def handle_utm_link(
 
 async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     """Функция для отображения стандартного меню через редактирование сообщения."""
-    logger.info(f"Показываю главное меню для пользователя {message.chat.id}")
 
     image_path = os.path.join("img", "pic.jpg")
     builder = InlineKeyboardBuilder()
@@ -308,7 +307,6 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     trial_status = None
     if session is not None:
         trial_status = await get_trial(session, message.chat.id)
-        logger.info(f"Trial status для {message.chat.id}: {trial_status}")
     else:
         logger.warning(f"Сессия базы данных отсутствует, пропускаем проверку триала для {message.chat.id}")
 

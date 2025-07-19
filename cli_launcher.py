@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 
 import requests
 
@@ -69,18 +70,51 @@ def backup_project():
     console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
 
 
+def auto_update_cli():
+    """Обновляет CLI, если отличается от последней версии. Перезапускает при необходимости."""
+    console.print("[yellow]🔄 Проверка обновлений CLI...[/yellow]")
+    try:
+        url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            console.print("[red]⚠️ Не удалось получить обновление CLI[/red]")
+            return
+
+        latest_text = response.text
+        current_path = os.path.realpath(__file__)
+        with open(current_path, encoding="utf-8") as f:
+            current_text = f.read()
+
+        if current_text != latest_text:
+            console.print("[green]🆕 Доступна новая версия CLI. Обновляю...[/green]")
+            with open(current_path, "w", encoding="utf-8") as f:
+                f.write(latest_text)
+            os.chmod(current_path, 0o755)
+            console.print("[green]✅ CLI обновлён. Перезапуск...[/green]")
+            os.execv(sys.executable, [sys.executable, current_path])
+        else:
+            console.print("[green]✅ CLI уже актуален[/green]")
+    except Exception as e:
+        console.print(f"[red]❌ Ошибка при автообновлении CLI: {e}[/red]")
+
+
 def fix_permissions():
     """Устанавливает корректные права на файлы проекта"""
     console.print("[yellow]🔧 Устанавливаю права на файлы...[/yellow]")
-    try:
-        user = os.getenv("SUDO_USER") or os.getenv("USER")
-        if user:
-            subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
 
+    if os.geteuid() != 0:
+        console.print("[yellow]⚠️ Некоторые действия могут требовать прав администратора (sudo)[/yellow]")
+
+    try:
+        stat_info = os.stat(PROJECT_DIR)
+        uid = stat_info.st_uid
+        user = subprocess.check_output(["id", "-nu", str(uid)], text=True).strip()
+
+        subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
-        console.print("[green]✅ Права успешно установлены[/green]")
-    except subprocess.CalledProcessError as e:
+        console.print(f"[green]✅ Права установлены для пользователя {user}[/green]")
+    except Exception as e:
         console.print(f"[red]❌ Ошибка при установке прав: {e}[/red]")
 
 
@@ -138,19 +172,26 @@ def install_git_if_needed():
 
 def install_dependencies():
     console.print("[blue]🔧 Установка зависимостей...[/blue]")
+
+    python312_path = shutil.which("python3.12")
+    if not python312_path:
+        console.print("[red]❌ Не найден python3.12 в системе[/red]")
+        console.print("[yellow]📦 Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
+        sys.exit(1)
+
     with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
         try:
             if not os.path.exists("venv"):
-                console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю...[/yellow]")
-                subprocess.run("python3 -m venv venv", shell=True, check=True)
+                console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю через python3.12...[/yellow]")
+                subprocess.run(f"{python312_path} -m venv venv", shell=True, check=True)
 
             subprocess.run(
                 "bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
                 shell=True,
                 check=True,
             )
-        except subprocess.CalledProcessError:
-            console.print("[red]❌ Ошибка при установке зависимостей.[/red]")
+        except subprocess.CalledProcessError as e:
+            console.print(f"[red]❌ Ошибка при установке зависимостей: {e}[/red]")
 
 
 def restart_service():
@@ -189,7 +230,6 @@ def get_remote_version(branch="main"):
 
 
 def update_from_beta():
-    update_cli_launcher()
     local_version = get_local_version()
     remote_version = get_remote_version(branch="dev")
 
@@ -246,7 +286,6 @@ def update_from_beta():
 
 
 def update_from_release():
-    update_cli_launcher()
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
 
@@ -340,7 +379,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.2.0", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.2.7", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -350,31 +389,13 @@ def show_menu():
     table.add_row("5", "Показать логи (80 строк)")
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
-    table.add_row("8", "Обновить CLI лаунчер")
-    table.add_row("9", "Выход")
+    table.add_row("8", "Выход")
     console.print(table)
-
-
-def update_cli_launcher():
-    """Обновляет CLI лаунчер с dev ветки"""
-    console.print("[yellow]🔄 Обновление CLI лаунчера...[/yellow]")
-    try:
-        url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
-        response = requests.get(url, timeout=10)
-
-        if response.status_code == 200:
-            with open(os.path.join(PROJECT_DIR, "cli_launcher.py"), "w", encoding="utf-8") as f:
-                f.write(response.text)
-            console.print("[green]✅ CLI лаунчер успешно обновлён[/green]")
-            os.chmod(os.path.join(PROJECT_DIR, "cli_launcher.py"), 0o755)
-        else:
-            console.print("[red]❌ Не удалось загрузить новый CLI[/red]")
-    except Exception as e:
-        console.print(f"[red]❌ Ошибка при обновлении CLI: {e}[/red]")
 
 
 def main():
     os.chdir(PROJECT_DIR)
+    auto_update_cli()
     print_logo()
     try:
         while True:
@@ -424,11 +445,6 @@ def main():
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
-                if Confirm.ask("[yellow]Обновить CLI лаунчер с dev ветки?[/yellow]"):
-                    update_cli_launcher()
-            elif choice == "9":
-                if Confirm.ask("[yellow]Хотите обновить CLI перед выходом?[/yellow]"):
-                    update_cli_launcher()
                 console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
                 break
     except KeyboardInterrupt:

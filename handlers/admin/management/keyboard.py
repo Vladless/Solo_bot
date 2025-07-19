@@ -28,12 +28,16 @@ def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="restart").pack(),
     )
     builder.button(
-        text="🌐 Сменить домен",
+        text="🌐 Сменить домен подписок",
         callback_data=AdminPanelCallback(action="change_domain").pack(),
     )
     builder.button(
         text="🔑 Восстановить пробники",
         callback_data=AdminPanelCallback(action="restore_trials").pack(),
+    )
+    builder.button(
+        text="📤 Загрузить файл",
+        callback_data=AdminPanelCallback(action="upload_file").pack(),
     )
     maintenance_text = "🛠️ Выключить тех. работы" if maintenance.maintenance_mode else "🛠️ Включить тех. работы"
     builder.button(
@@ -54,11 +58,11 @@ def build_database_kb() -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="backups").pack(),
     )
     builder.button(
-        text="♻️ Восстановить БД",
+        text="♻️ Восстановить БД из бэкапа",
         callback_data=AdminPanelCallback(action="restore_db").pack(),
     )
     builder.button(
-        text="📤 Получить данные БД",
+        text="📤 Получить данные БД из панели",
         callback_data=AdminPanelCallback(action="export_db").pack(),
     )
     builder.row(build_admin_back_btn())

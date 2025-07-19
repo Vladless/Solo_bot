@@ -8,6 +8,7 @@ from itertools import cycle
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from config import USE_COUNTRY_SELECTION
 
 from database.models import Key, Server, User
 
@@ -16,15 +17,23 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
     imported = 0
     skipped = 0
 
-    result = await session.execute(
-        select(Server.cluster_name)
-        .where(Server.enabled is True, Server.panel_type == "3x-ui", Server.cluster_name.isnot(None))
-        .distinct()
-    )
-    clusters = [row[0] for row in result.fetchall()]
-    if not clusters:
-        raise RuntimeError("❌ Не найдено доступных кластеров для 3x-ui")
-    cluster_cycle = cycle(clusters)
+    if USE_COUNTRY_SELECTION:
+        result = await session.execute(
+            select(Server.name)
+            .where(Server.enabled == True, Server.panel_type == "3x-ui")
+        )
+    else:
+        result = await session.execute(
+            select(Server.cluster_name)
+            .where(Server.enabled == True, Server.panel_type == "3x-ui", Server.cluster_name.isnot(None))
+            .distinct()
+        )
+
+    server_ids = [row[0] for row in result.fetchall()]
+    if not server_ids:
+        raise RuntimeError("❌ Не найдено доступных серверов или кластеров для 3x-ui")
+
+    server_cycle = cycle(server_ids)
 
     try:
         conn = sqlite3.connect(db_path)
@@ -58,7 +67,7 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
         email = c.get("email")
         expiry_time = int(c.get("expiryTime") or now_ts)
         created_at = now_ts
-        server_id = next(cluster_cycle)
+        server_id = next(server_cycle)
 
         if not tg_id or not client_id:
             continue
