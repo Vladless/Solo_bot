@@ -749,11 +749,12 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
         return {"status": "error", "message": "У пользователя нет активных ключей."}
 
     server_ids = {row.server_id for row in rows}
+    server_id = list(server_ids)[0]
 
     result = await session.execute(
         select(Server).where(
-            (Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)), Server.enabled is True
-        )
+            (Server.server_name == server_id) | (Server.cluster_name == server_id)
+        ).where(Server.enabled == True)
     )
     server_rows = result.scalars().all()
     if not server_rows:
