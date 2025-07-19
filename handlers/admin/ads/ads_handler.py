@@ -1,4 +1,7 @@
 import re
+from datetime import datetime
+
+import pytz
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -171,6 +174,10 @@ async def handle_ads_cancel_input(callback_query: CallbackQuery, state: FSMConte
 
 
 def format_ads_stats(stats: dict, username_bot: str) -> str:
+    moscow_tz = pytz.timezone("Europe/Moscow")
+    now = datetime.now(moscow_tz)
+    update_time = now.strftime("%d.%m.%y %H:%M:%S")
+    
     return (
         f"<b>📊 <u>Статистика по рекламной ссылке</u></b>\n\n"
         f"📌 <b>Название:</b> {stats['name']}\n"
@@ -182,5 +189,5 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
         f"💰 <b>Финансовая информация:</b>\n"
         f"├ 💳 <b>Покупок:</b> <b>{stats.get('payments', 0)}</b>\n"
         f"└ 💸 <b>Сумма:</b> <b>{round(stats.get('total_amount', 0), 2)} ₽</b>\n\n"
-        f"<i>Просмотр статистики и управление рекламными ссылками</i>."
+        f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
     )

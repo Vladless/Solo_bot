@@ -64,10 +64,15 @@ def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineK
 def build_ads_stats_kb(code: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
+        text="🔄 Обновить",
+        callback_data=AdminAdsCallback(action="view", code=code).pack(),
+    )
+    builder.button(
         text="🗑️ Удалить",
         callback_data=AdminAdsCallback(action="delete_confirm", code=code).pack(),
     )
     builder.row(build_admin_back_btn("ads"))
+    builder.adjust(1)
     return builder.as_markup()
 
 
