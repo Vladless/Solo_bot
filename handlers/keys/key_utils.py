@@ -300,7 +300,7 @@ async def renew_key_in_cluster(
         if tariff_group_row:
             result = await session.execute(
                 select(Tariff)
-                .where(Tariff.group_code == tariff_group_row, Tariff.is_active is True)
+                .where(Tariff.group_code == tariff_group_row, Tariff.is_active.is_(True))
                 .order_by(Tariff.duration_days.desc())
                 .limit(1)
             )
@@ -554,7 +554,7 @@ async def update_key_on_cluster(
 
                 result = await session.execute(
                     select(Tariff)
-                    .where(Tariff.group_code == group_code, Tariff.is_active is True)
+                    .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
                     .order_by(Tariff.duration_days.desc())
                     .limit(1)
                 )
@@ -614,7 +614,7 @@ async def update_key_on_cluster(
 
             result = await session.execute(
                 select(Tariff)
-                .where(Tariff.group_code == group_code, Tariff.is_active is True)
+                .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
                 .order_by(Tariff.duration_days.desc())
                 .limit(1)
             )

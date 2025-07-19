@@ -657,7 +657,7 @@ async def handle_user_choose_tariff(
     await state.set_state(RenewTariffState.selecting_tariff)
 
     result = await session.execute(
-        select(Tariff).where(Tariff.group_code == group_code, Tariff.is_active is True).order_by(Tariff.id)
+        select(Tariff).where(Tariff.group_code == group_code, Tariff.is_active.is_(True)).order_by(Tariff.id)
     )
     tariffs = result.scalars().all()
 

@@ -32,7 +32,7 @@ async def admin_gift_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_gift_create")
 async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession):
-    stmt = select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active is True).order_by(Tariff.duration_days)
+    stmt = select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active.is_(True)).order_by(Tariff.duration_days)
     result = await session.execute(stmt)
     tariffs = result.scalars().all()
 
@@ -83,7 +83,7 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
             return
 
         stmt = (
-            select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active is True).order_by(Tariff.duration_days)
+            select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active.is_(True)).order_by(Tariff.duration_days)
         )
         result = await session.execute(stmt)
         tariffs = result.scalars().all()
