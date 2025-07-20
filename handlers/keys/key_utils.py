@@ -32,7 +32,7 @@ async def create_key_on_cluster(
     plan: int = None,
     session: AsyncSession = None,
     remnawave_link: str = None,
-    hwid_limit: int = 0,
+    hwid_limit: int = None,
     traffic_limit_bytes: int = None,
     is_trial: bool = False,
 ):
