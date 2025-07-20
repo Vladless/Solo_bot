@@ -60,6 +60,7 @@ def print_logo():
         style="bold cyan",
     )
     console.print(logo)
+    console.print(f"[bold green]📁 Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
 
 
 def backup_project():
