@@ -3,6 +3,11 @@ import re
 import subprocess
 import sys
 import shutil
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from time import sleep
+from rich.live import Live
+from rich.panel import Panel
+from rich.console import Group
 
 import requests
 
@@ -48,18 +53,24 @@ def is_service_exists(service_name):
 
 
 def print_logo():
-    logo = Text(
-        """
-███████╗ ██████╗ ██╗      ██████╗ ██████╗  ██████╗ ████████╗
-██╔════╝██╔═══██╗██║     ██╔═══██╗██╔══██╗██╔═══██╗╚══██╔══╝
-███████╗██║   ██║██║     ██║   ██║██████╔╝██║   ██║   ██║   
-╚════██║██║   ██║██║     ██║   ██║██╔══██╗██║   ██║   ██║   
-███████║╚██████╔╝███████╗╚██████╔╝██████╔╝╚██████╔╝   ██║   
-╚══════╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   
-""",
-        style="bold cyan",
-    )
-    console.print(logo)
+    logo_lines = [
+        "███████╗ ██████╗ ██╗      ██████╗ ██████╗  ██████╗ ████████╗",
+        "██╔════╝██╔═══██╗██║     ██╔═══██╗██╔══██╗██╔═══██╗╚══██╔══╝",
+        "███████╗██║   ██║██║     ██║   ██║██████╔╝██║   ██║   ██║   ",
+        "╚════██║██║   ██║██║     ██║   ██║██╔══██╗██║   ██║   ██║   ",
+        "███████║╚██████╔╝███████╗╚██████╔╝██████╔╝╚██████╔╝   ██║   ",
+        "╚══════╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   ",
+    ]
+
+
+    with Live(refresh_per_second=10) as live:
+        display = []
+        for line in logo_lines:
+            display.append(f"[bold cyan]{line}[/bold cyan]")
+            panel = Panel(Group(*display), border_style="cyan", padding=(0, 2), expand=False)
+            live.update(panel)
+            sleep(0.07)
+
     console.print(f"[bold green]📁 Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
 
 
@@ -100,22 +111,36 @@ def auto_update_cli():
 
 
 def fix_permissions():
-    """Устанавливает корректные права на файлы проекта"""
-    console.print("[yellow]🔧 Устанавливаю права на файлы...[/yellow]")
-
-    if os.geteuid() != 0:
-        console.print("[yellow]⚠️ Некоторые действия могут требовать прав администратора (sudo)[/yellow]")
+    """Устанавливает корректные права на все файлы и папки проекта"""
+    console.print("[yellow]🔧 Восстанавливаю владельца и права доступа к проекту...[/yellow]")
 
     try:
-        stat_info = os.stat(PROJECT_DIR)
-        uid = stat_info.st_uid
-        user = subprocess.check_output(["id", "-nu", str(uid)], text=True).strip()
+        user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
+        console.log(f"[cyan]Используем пользователь: {user}[/cyan]")
 
-        subprocess.run(["sudo", "chown", f"{user}:{user}", PROJECT_DIR], check=True)
-        subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", f"{PROJECT_DIR}/"], check=True)
+        for root, dirs, files in os.walk(PROJECT_DIR):
+            for dir in dirs:
+                if dir == "__pycache__":
+                    pycache_path = os.path.join(root, dir)
+                    subprocess.run(["sudo", "rm", "-rf", pycache_path], check=True)
+            for file in files:
+                if file.endswith(".pyc"):
+                    pyc_path = os.path.join(root, file)
+                    subprocess.run(["sudo", "rm", "-f", pyc_path], check=True)
+
+        console.log("[blue]Изменение владельца на весь проект...[/blue]")
+        subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
+
+        console.log("[blue]Изменение прав доступа (u=rwX,go=rX)...[/blue]")
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
-        console.print(f"[green]✅ Права установлены для пользователя {user}[/green]")
+        launcher_path = os.path.join(PROJECT_DIR, "cli_launcher.py")
+        if os.path.exists(launcher_path):
+            console.log("[blue]Установка флага +x для cli_launcher.py...[/blue]")
+            subprocess.run(["chmod", "+x", launcher_path], check=True)
+
+        console.print(f"[green]✅ Все права восстановлены для пользователя [bold]{user}[/bold][/green]")
+
     except Exception as e:
         console.print(f"[red]❌ Ошибка при установке прав: {e}[/red]")
 
@@ -181,14 +206,22 @@ def install_dependencies():
         console.print("[yellow]📦 Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
         sys.exit(1)
 
-    with console.status("[bold green]Устанавливаются зависимости...[/bold green]"):
+    user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
+
+    with Progress(
+        SpinnerColumn(style="green"),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        progress.add_task(description="Создание виртуального окружения...", total=None)
         try:
             if not os.path.exists("venv"):
-                console.print("[yellow]⚠️ Виртуальное окружение не найдено. Создаю через python3.12...[/yellow]")
-                subprocess.run(f"{python312_path} -m venv venv", shell=True, check=True)
+                console.print(f"[cyan]Создание venv от имени пользователя: {user}[/cyan]")
+                subprocess.run(f"sudo -u {user} {python312_path} -m venv venv", shell=True, check=True)
 
+            progress.add_task(description="Установка зависимостей...", total=None)
             subprocess.run(
-                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
+                f"sudo -u {user} bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
                 shell=True,
                 check=True,
             )
@@ -279,8 +312,8 @@ def update_from_beta():
 
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
-    fix_permissions()
     install_dependencies()
+    fix_permissions()
     restart_service()
     console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
 
@@ -347,8 +380,8 @@ def update_from_release():
 
         subprocess.run(["rm", "-rf", TEMP_DIR])
 
-        fix_permissions()
         install_dependencies()
+        fix_permissions()
         restart_service()
         console.print(f"[green]✅ Обновление до релиза {tag_name} завершено.[/green]")
 
@@ -366,7 +399,7 @@ def show_update_menu():
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Источник", style="white")
     table.add_row("1", "Обновить до BETA")
-    table.add_row("2", "Обновить до последнего релиза")
+    table.add_row("2", "Обновить/откатить до релиза")
     table.add_row("3", "Назад в меню")
 
     console.print(table)
