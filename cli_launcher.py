@@ -111,7 +111,8 @@ def fix_permissions():
         uid = stat_info.st_uid
         user = subprocess.check_output(["id", "-nu", str(uid)], text=True).strip()
 
-        subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
+        subprocess.run(["sudo", "chown", f"{user}:{user}", PROJECT_DIR], check=True)
+        subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", f"{PROJECT_DIR}/"], check=True)
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
         console.print(f"[green]✅ Права установлены для пользователя {user}[/green]")
@@ -239,8 +240,6 @@ def update_from_beta():
         if local_version == remote_version:
             if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
-    else:
-        console.print("[red]⚠️ Не удалось определить версии.[/red]")
 
     if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
         return
@@ -402,8 +401,9 @@ def main():
         while True:
             show_menu()
             choice = Prompt.ask(
-                "[bold blue]Введите номер действия[/bold blue]",
-                choices=[str(i) for i in range(1, 10)],
+                "[bold blue]👉 Введите номер действия[/bold blue]",
+                choices=[str(i) for i in range(1, 9)],
+                show_choices=False,
             )
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
