@@ -620,7 +620,7 @@ async def update_key_on_cluster(
             )
             result.scalar_one_or_none()
 
-            total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit else 0
+            total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit is not None else 0
             device_limit_value = device_limit if device_limit is not None else None
 
             config = ClientConfig(

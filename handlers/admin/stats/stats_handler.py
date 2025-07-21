@@ -149,11 +149,11 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         total_referrals = await count_total_referrals(session)
 
-        total_payments_today = await sum_payments_since(session, today_start_utc)
-        total_payments_yesterday = await sum_payments_between(session, yesterday_start_utc, yesterday_end_utc)
-        total_payments_week = await sum_payments_since(session, week_start_utc)
-        total_payments_month = await sum_payments_since(session, month_start_utc)
-        total_payments_last_month = await sum_payments_between(session, last_month_start_utc, last_month_end_utc)
+        total_payments_today = await sum_payments_since(session, today_start.replace(tzinfo=None))
+        total_payments_yesterday = await sum_payments_between(session, yesterday_start.replace(tzinfo=None), yesterday_end.replace(tzinfo=None))
+        total_payments_week = await sum_payments_since(session, week_start.replace(tzinfo=None))
+        total_payments_month = await sum_payments_since(session, month_start.replace(tzinfo=None))
+        total_payments_last_month = await sum_payments_between(session, last_month_start.replace(tzinfo=None), last_month_end.replace(tzinfo=None))
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
 
@@ -264,7 +264,7 @@ async def send_daily_stats_report(session: AsyncSession):
         end_utc = end.astimezone(pytz.UTC).replace(tzinfo=None)
 
         registrations_today = await count_users_registered_between(session, start_utc, end_utc)
-        payments_today = await sum_payments_between(session, start_utc, end_utc)
+        payments_today = await sum_payments_between(session, start.replace(tzinfo=None), end.replace(tzinfo=None))
         active_keys = await count_active_keys(session)
 
         text = (

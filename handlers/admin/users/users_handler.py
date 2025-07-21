@@ -578,7 +578,7 @@ async def handle_key_edit(
     text = (
         "<b>🔑 Информация о подписке</b>\n\n"
         "<blockquote>"
-        f"🔗 <b>Ключ:</b> {key_value}\n"
+        f"🔗 <b>Ключ:</b> <code>{key_value}</code>\n"
         f"📆 <b>Создан:</b> {created_at} (МСК)\n"
         f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
         f"🌐 <b>Кластер:</b> {key_details.get('cluster_name', '—')}\n"
