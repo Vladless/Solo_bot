@@ -667,6 +667,7 @@ async def update_subscription(
     client_id = record.client_id
     old_cluster_id = record.server_id
     tariff_id = record.tariff_id
+    alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
@@ -735,6 +736,7 @@ async def update_subscription(
         remnawave_link=remnawave_key,
         server_id=new_cluster_id,
         tariff_id=tariff_id,
+        alias=alias,
     )
 
 

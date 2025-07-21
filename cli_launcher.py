@@ -14,7 +14,6 @@ import requests
 from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
-from rich.text import Text
 
 from config import BOT_SERVICE
 
@@ -37,10 +36,10 @@ PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 IS_ROOT_DIR = PROJECT_DIR == "/root"
 
 if IS_ROOT_DIR:
-    console.print("[bold red]⛔ КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
+    console.print("[bold red]КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
     console.print("[red]Обнаружена установка бота прямо в корневой папке (/root).[/red]")
     console.print("[red]Это крайне опасно и может привести к потере данных![/red]")
-    console.print("[yellow]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/yellow]")
+    console.print("[red]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/red]")
     console.print("[red]Обновление заблокировано в целях безопасности.[/red]")
     sys.exit(1)
 GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
@@ -71,25 +70,25 @@ def print_logo():
             live.update(panel)
             sleep(0.07)
 
-    console.print(f"[bold green]📁 Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
+    console.print(f"[bold green]Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
 
 
 def backup_project():
-    console.print("[yellow]📦 Создаётся резервная копия проекта...[/yellow]")
+    console.print("[yellow]Создаётся резервная копия проекта...[/yellow]")
     with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
         subprocess.run(["rm", "-rf", BACK_DIR])
         subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
-    console.print(f"[green]✅ Бэкап сохранён в: {BACK_DIR}[/green]")
+    console.print(f"[green]Бэкап сохранён в: {BACK_DIR}[/green]")
 
 
 def auto_update_cli():
     """Обновляет CLI, если отличается от последней версии. Перезапускает при необходимости."""
-    console.print("[yellow]🔄 Проверка обновлений CLI...[/yellow]")
+    console.print("[yellow]Проверка обновлений CLI...[/yellow]")
     try:
         url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
         response = requests.get(url, timeout=10)
         if response.status_code != 200:
-            console.print("[red]⚠️ Не удалось получить обновление CLI[/red]")
+            console.print("[red]Не удалось получить обновление CLI[/red]")
             return
 
         latest_text = response.text
@@ -98,21 +97,21 @@ def auto_update_cli():
             current_text = f.read()
 
         if current_text != latest_text:
-            console.print("[green]🆕 Доступна новая версия CLI. Обновляю...[/green]")
+            console.print("[green]Доступна новая версия CLI. Обновляю...[/green]")
             with open(current_path, "w", encoding="utf-8") as f:
                 f.write(latest_text)
             os.chmod(current_path, 0o755)
-            console.print("[green]✅ CLI обновлён. Перезапуск...[/green]")
+            console.print("[green]CLI обновлён. Перезапуск...[/green]")
             os.execv(sys.executable, [sys.executable, current_path])
         else:
-            console.print("[green]✅ CLI уже актуален[/green]")
+            console.print("[green]CLI уже актуален[/green]")
     except Exception as e:
         console.print(f"[red]❌ Ошибка при автообновлении CLI: {e}[/red]")
 
 
 def fix_permissions():
     """Устанавливает корректные права на все файлы и папки проекта"""
-    console.print("[yellow]🔧 Восстанавливаю владельца и права доступа к проекту...[/yellow]")
+    console.print("[yellow]Восстанавливаю владельца и права доступа к проекту...[/yellow]")
 
     try:
         user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
@@ -139,7 +138,7 @@ def fix_permissions():
             console.log("[blue]Установка флага +x для cli_launcher.py...[/blue]")
             subprocess.run(["chmod", "+x", launcher_path], check=True)
 
-        console.print(f"[green]✅ Все права восстановлены для пользователя [bold]{user}[/bold][/green]")
+        console.print(f"[green]Все права восстановлены для пользователя [bold]{user}[/bold][/green]")
 
     except Exception as e:
         console.print(f"[red]❌ Ошибка при установке прав: {e}[/red]")
@@ -147,12 +146,12 @@ def fix_permissions():
 
 def install_rsync_if_needed():
     if subprocess.run(["which", "rsync"], capture_output=True).returncode != 0:
-        console.print("[blue]📦 Установка rsync...[/blue]")
+        console.print("[blue]Установка rsync...[/blue]")
         os.system("sudo apt update && sudo apt install -y rsync")
 
 
 def clean_project_dir_safe(update_buttons=False, update_img=False):
-    console.print("[yellow]🧹 Очистка проекта перед обновлением...[/yellow]")
+    console.print("[yellow]Очистка проекта перед обновлением...[/yellow]")
     preserved_paths = {
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
@@ -198,12 +197,12 @@ def install_git_if_needed():
 
 
 def install_dependencies():
-    console.print("[blue]🔧 Установка зависимостей...[/blue]")
+    console.print("[blue]Установка зависимостей...[/blue]")
 
     python312_path = shutil.which("python3.12")
     if not python312_path:
-        console.print("[red]❌ Не найден python3.12 в системе[/red]")
-        console.print("[yellow]📦 Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
+        console.print("[red]Не найден python3.12 в системе[/red]")
+        console.print("[yellow]Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
         sys.exit(1)
 
     with Progress(
@@ -215,7 +214,7 @@ def install_dependencies():
         try:
             if os.path.exists("venv"):
                 shutil.rmtree("venv")
-                console.print("[yellow]⚠️ Удалён старый venv[/yellow]")
+                console.print("[yellow]Удалён старый venv[/yellow]")
 
             subprocess.run(f"{python312_path} -m venv venv", shell=True, check=True)
 
@@ -226,7 +225,7 @@ def install_dependencies():
                 check=True,
             )
 
-            progress.update(task_id, description="✅ Установка завершена")
+            progress.update(task_id, description="Установка завершена")
 
         except subprocess.CalledProcessError as e:
             progress.update(task_id, description="❌ Ошибка при установке")
@@ -273,27 +272,27 @@ def update_from_beta():
     remote_version = get_remote_version(branch="dev")
 
     if local_version and remote_version:
-        console.print(f"[cyan]🔢 Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
+        console.print(f"[cyan]Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
         if local_version == remote_version:
-            if not Confirm.ask("[yellow]❗ Версия актуальна. Обновить всё равно?[/yellow]"):
+            if not Confirm.ask("[yellow]Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
 
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot с ветки DEV[/yellow]"):
+    if not Confirm.ask("[yellow]Подтвердите обновление Solobot с ветки DEV[/yellow]"):
         return
 
-    console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
-    if not Confirm.ask("[red]❓ Продолжить обновление?[/red]"):
+    console.print("[red]ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
+    if not Confirm.ask("[red]Продолжить обновление?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = Confirm.ask("[yellow]🖼 Обновлять папку img?[/yellow]", default=False)
+    update_buttons = Confirm.ask("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = Confirm.ask("[yellow]Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
     install_rsync_if_needed()
 
     os.chdir(PROJECT_DIR)
-    console.print("[cyan]📅 Клонируем временный репозиторий...[/cyan]")
+    console.print("[cyan]Клонируем временный репозиторий...[/cyan]")
     subprocess.run(["rm", "-rf", TEMP_DIR])
 
     if os.system(f"git clone --depth=1000000 -b dev {GITHUB_REPO} {TEMP_DIR}") != 0:
@@ -319,20 +318,20 @@ def update_from_beta():
     install_dependencies()
     fix_permissions()
     restart_service()
-    console.print("[green]✅ Обновление с ветки dev завершено.[/green]")
+    console.print("[green]Обновление с ветки dev завершено.[/green]")
 
 
 def update_from_release():
-    if not Confirm.ask("[yellow]🔁 Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
+    if not Confirm.ask("[yellow]Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
 
-    console.print("[red]⚠️ ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
+    console.print("[red]ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
     console.print("[red]  Исключения: папка img и файл handlers/buttons.py[/red]")
-    if not Confirm.ask("[red]❓ Вы точно хотите продолжить?[/red]"):
+    if not Confirm.ask("[red]Вы точно хотите продолжить?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]🔄 Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = Confirm.ask("[yellow]🖼 Обновлять папку img?[/yellow]", default=False)
+    update_buttons = Confirm.ask("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = Confirm.ask("[yellow]Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -356,10 +355,10 @@ def update_from_release():
         )
         tag_name = tag_choices[int(selected) - 1]
 
-        if not Confirm.ask(f"[yellow]🔁 Подтвердите установку релиза {tag_name}[/yellow]"):
+        if not Confirm.ask(f"[yellow]Подтвердите установку релиза {tag_name}[/yellow]"):
             return
 
-        console.print(f"[cyan]📥 Клонируем релиз {tag_name} во временную папку...[/cyan]")
+        console.print(f"[cyan]Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(
             f"git clone --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
@@ -367,7 +366,7 @@ def update_from_release():
             check=True,
         )
 
-        console.print("[red]⚠️ Начинается перезапись файлов бота![/red]")
+        console.print("[red]Начинается перезапись файлов бота![/red]")
         subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
         clean_project_dir_safe(update_buttons=update_buttons, update_img=update_img)
 
@@ -387,7 +386,7 @@ def update_from_release():
         install_dependencies()
         fix_permissions()
         restart_service()
-        console.print(f"[green]✅ Обновление до релиза {tag_name} завершено.[/green]")
+        console.print(f"[green]Обновление до релиза {tag_name} завершено.[/green]")
 
     except Exception as e:
         console.print(f"[red]❌ Ошибка при обновлении: {e}[/red]")
@@ -395,7 +394,7 @@ def update_from_release():
 
 def show_update_menu():
     if IS_ROOT_DIR:
-        console.print("[red]⛔ Обновление невозможно: бот находится в /root[/red]")
+        console.print("[red]Обновление невозможно: бот находится в /root[/red]")
         console.print("[yellow]Перенесите бота в отдельную папку и повторите попытку[/yellow]")
         return
 

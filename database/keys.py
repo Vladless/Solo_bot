@@ -18,6 +18,7 @@ async def store_key(
     server_id: str,
     remnawave_link: str = None,
     tariff_id: int = None,
+    alias: str = None,
 ):
     try:
         exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
@@ -35,6 +36,7 @@ async def store_key(
             server_id=server_id,
             remnawave_link=remnawave_link,
             tariff_id=tariff_id,
+            alias=alias,
         )
         session.add(new_key)
         await session.commit()
