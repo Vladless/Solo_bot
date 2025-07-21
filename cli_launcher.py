@@ -206,27 +206,31 @@ def install_dependencies():
         console.print("[yellow]📦 Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
         sys.exit(1)
 
-    user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
-
     with Progress(
         SpinnerColumn(style="green"),
         TextColumn("[progress.description]{task.description}"),
         transient=True,
     ) as progress:
-        progress.add_task(description="Создание виртуального окружения...", total=None)
+        task_id = progress.add_task(description="Создание виртуального окружения...", total=None)
         try:
-            if not os.path.exists("venv"):
-                console.print(f"[cyan]Создание venv от имени пользователя: {user}[/cyan]")
-                subprocess.run(f"sudo -u {user} {python312_path} -m venv venv", shell=True, check=True)
+            if os.path.exists("venv"):
+                shutil.rmtree("venv")
+                console.print("[yellow]⚠️ Удалён старый venv[/yellow]")
 
-            progress.add_task(description="Установка зависимостей...", total=None)
+            subprocess.run(f"{python312_path} -m venv venv", shell=True, check=True)
+
+            progress.update(task_id, description="Установка зависимостей...")
             subprocess.run(
-                f"sudo -u {user} bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
+                f"bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
                 shell=True,
                 check=True,
             )
+
+            progress.update(task_id, description="✅ Установка завершена")
+
         except subprocess.CalledProcessError as e:
-            console.print(f"[red]❌ Ошибка при установке зависимостей: {e}[/red]")
+            progress.update(task_id, description="❌ Ошибка при установке")
+            console.print(f"[red]❌ Ошибка: {e}[/red]")
 
 
 def restart_service():
@@ -412,7 +416,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.2.7", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.2.8", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
