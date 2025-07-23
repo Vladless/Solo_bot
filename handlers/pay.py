@@ -65,6 +65,10 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_yookassa)
     if YOOMONEY_ENABLE:
         payment_handlers.append(process_callback_pay_yoomoney)
+    if KASSAI_ENABLE:
+        payment_handlers.append(process_callback_pay_kassai)
+    if WATA_RU_ENABLE or WATA_SBP_ENABLE or WATA_INT_ENABLE:
+        payment_handlers.append(process_callback_pay_wata)
     if CRYPTO_BOT_ENABLE:
         payment_handlers.append(process_callback_pay_cryptobot)
     if STARS_ENABLE:
@@ -73,10 +77,6 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_robokassa)
     if FREEKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_freekassa)
-    if KASSAI_ENABLE:
-        payment_handlers.append(process_callback_pay_kassai)
-    if WATA_RU_ENABLE or WATA_SBP_ENABLE or WATA_INT_ENABLE:
-        payment_handlers.append(process_callback_pay_wata)
 
     if len(payment_handlers) == 1:
         await callback_query.answer()
@@ -88,6 +88,9 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=YOOKASSA, callback_data="pay_yookassa"))
     if YOOMONEY_ENABLE:
         builder.row(InlineKeyboardButton(text=YOOMONEY, callback_data="pay_yoomoney"))
+    if KASSAI_ENABLE:
+        builder.row(InlineKeyboardButton(text=KASSAI_CARDS, callback_data="pay_kassai_cards"))
+        builder.row(InlineKeyboardButton(text=KASSAI_SBP, callback_data="pay_kassai_sbp"))
     if CRYPTO_BOT_ENABLE:
         builder.row(InlineKeyboardButton(text=CRYPTOBOT, callback_data="pay_cryptobot"))
     if STARS_ENABLE:
@@ -96,9 +99,6 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=ROBOKASSA, callback_data="pay_robokassa"))
     if FREEKASSA_ENABLE:
         builder.row(InlineKeyboardButton(text=FREEKASSA, callback_data="pay_freekassa"))
-    if KASSAI_ENABLE:
-        builder.row(InlineKeyboardButton(text=KASSAI_CARDS, callback_data="pay_kassai_cards"))
-        builder.row(InlineKeyboardButton(text=KASSAI_SBP, callback_data="pay_kassai_sbp"))
     if WATA_RU_ENABLE:
         builder.row(InlineKeyboardButton(text=WATA_RU, callback_data="pay_wata_ru"))
     if WATA_SBP_ENABLE:

@@ -226,7 +226,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     parts = callback_query.data.split("|")
     method_name = parts[1]
-    # Теперь сумма приходит прямо в parts[2]
     amount_str = parts[2]
     
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
@@ -276,65 +275,39 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
     """
     Создание заказа в KassaAI и получение ссылки на оплату
     """
-    # Генерируем уникальный nonce (timestamp в секундах)
     nonce = int(time.time())
-    
-    # Генерируем уникальный paymentId для отслеживания заказа
     unique_payment_id = f"{nonce}_{tg_id}"
-    
-    # Формируем URL с query параметрами (включая paymentId)
     url = f"https://api.fk.life/v1/orders/create?paymentId={unique_payment_id}"
     
     headers = {
         "Content-Type": "application/json",
     }
     
-    # Формируем email клиента (тг_id@домен)
     client_email = f"{tg_id}@{KASSAI_DOMAIN}"
+    client_ip = KASSAI_IP
     
-    # Используем IP сервера из конфигурации
-    client_ip = KASSAI_IP  # IP сервера
-    
-    # Подготавливаем ТОЛЬКО обязательные данные для подписи и запроса
-    # Согласно документации: shopId, nonce, i, email, ip, amount, currency
     data_for_signature = {
         "shopId": KASSAI_SHOP_ID,
         "nonce": nonce,
         "i": method["method"],
         "email": client_email,
         "ip": client_ip,
-        "amount": int(amount),  # Целое число
+        "amount": int(amount),
         "currency": "RUB"
     }
     
-    # Формируем подпись согласно документации PHP примера:
-    # ksort($data); hash_hmac('sha256', implode('|', $data), $api_key)
     sorted_keys = sorted(data_for_signature.keys())
     values = [str(data_for_signature[key]) for key in sorted_keys]
     sign_string = "|".join(values)
     
-    # Отладочная информация
-    logger.info(f"KassaAI signature debug (correct algorithm):")
-    logger.info(f"Sorted keys: {sorted_keys}")
-    logger.info(f"Values: {values}")
-    logger.info(f"Sign string: {sign_string}")
-    logger.info(f"API key length: {len(KASSAI_API_KEY)}")
-    logger.info(f"Sending to URL: {url}")
-    
-    # HMAC SHA256 как в PHP примере
     signature = hmac.new(
         KASSAI_API_KEY.encode('utf-8'),
         sign_string.encode('utf-8'),
         hashlib.sha256
     ).hexdigest()
     
-    logger.info(f"Generated signature: {signature}")
-    
-    # Данные для отправки (только обязательные поля + подпись)
     data = data_for_signature.copy()
     data["signature"] = signature
-    
-    logger.info(f"Sending data: {data}")
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -342,35 +315,32 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
                 if resp.status == 200:
                     try:
                         resp_json = await resp.json()
-                        logger.info(f"KassaAI API response: {resp_json}")
-                        
-                        # API возвращает успешный ответ со ссылкой в поле location
                         if resp_json.get("type") == "success":
                             payment_url = resp_json.get("location")
                             if payment_url:
-                                logger.info(f"KassaAI payment URL created: {payment_url}")
+                                logger.info(f"KassaAI payment URL created for user {tg_id}")
                                 return payment_url
                             else:
-                                logger.error(f"KassaAI: Нет поля location в успешном ответе: {resp_json}")
+                                logger.error(f"KassaAI: No location in response: {resp_json}")
                                 return "https://fk.life/"
                         else:
-                            logger.error(f"KassaAI: Неуспешный ответ: {resp_json}")
+                            logger.error(f"KassaAI: Unsuccessful response: {resp_json}")
                             return "https://fk.life/"
                     except Exception as e:
-                        logger.error(f"KassaAI: Ошибка при разборе JSON ответа: {e}")
+                        logger.error(f"KassaAI: Error parsing JSON response: {e}")
                         text = await resp.text()
-                        logger.error(f"KassaAI: Содержимое ответа: {text}")
+                        logger.error(f"KassaAI: Response content: {text}")
                         return "https://fk.life/"
                 else:
                     try:
                         error_json = await resp.json()
-                        logger.error(f"Ошибка KassaAI API: статус={resp.status}, ответ={error_json}")
+                        logger.error(f"KassaAI API error: status={resp.status}, response={error_json}")
                     except Exception:
                         text = await resp.text()
-                        logger.error(f"Ошибка KassaAI API: статус={resp.status}, не-JSON ответ: {text}")
+                        logger.error(f"KassaAI API error: status={resp.status}, non-JSON response: {text}")
                     return "https://fk.life/"
     except Exception as e:
-        logger.error(f"Ошибка при создании заказа KassaAI: {e}")
+        logger.error(f"Error creating KassaAI order: {e}")
         return "https://fk.life/"
 
 
@@ -380,19 +350,15 @@ def verify_kassai_signature(data: dict, signature: str) -> bool:
     Формат: MERCHANT_ID:AMOUNT:SECRET_KEY2:MERCHANT_ORDER_ID
     """
     try:
-        # Формируем строку для подписи согласно документации:
-        # MERCHANT_ID:AMOUNT:SECRET_KEY2:MERCHANT_ORDER_ID
         sign_string = (
             f"{KASSAI_SHOP_ID}:"
             f"{data.get('AMOUNT', '')}:"
-            f"{KASSAI_SECRET_KEY}:"  # Используем SECRET_KEY2 для вебхуков
+            f"{KASSAI_SECRET_KEY}:"
             f"{data.get('MERCHANT_ORDER_ID', '')}"
         )
         
-        # Вычисляем MD5 хеш
         expected_signature = hashlib.md5(sign_string.encode('utf-8')).hexdigest()
         
-        # Сравниваем подписи (регистронезависимо)
         result = signature.upper() == expected_signature.upper()
         
         if not result:
