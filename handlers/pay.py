@@ -13,6 +13,7 @@ from config import (
     CRYPTO_BOT_ENABLE,
     DONATIONS_ENABLE,
     FREEKASSA_ENABLE,
+    KASSAI_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     WATA_INT_ENABLE,
@@ -28,6 +29,8 @@ from handlers.buttons import (
     COUPON,
     CRYPTOBOT,
     FREEKASSA,
+    KASSAI_CARDS,
+    KASSAI_SBP,
     MAIN_MENU,
     PAYMENT,
     ROBOKASSA,
@@ -40,6 +43,7 @@ from handlers.buttons import (
 )
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
 from handlers.payments.freekassa_pay import process_callback_pay_freekassa
+from handlers.payments.kassai import process_callback_pay_kassai
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
 from handlers.payments.stars_pay import process_callback_pay_stars
 from handlers.payments.wata import process_callback_pay_wata
@@ -69,6 +73,8 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_robokassa)
     if FREEKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_freekassa)
+    if KASSAI_ENABLE:
+        payment_handlers.append(process_callback_pay_kassai)
     if WATA_RU_ENABLE or WATA_SBP_ENABLE or WATA_INT_ENABLE:
         payment_handlers.append(process_callback_pay_wata)
 
@@ -90,6 +96,9 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=ROBOKASSA, callback_data="pay_robokassa"))
     if FREEKASSA_ENABLE:
         builder.row(InlineKeyboardButton(text=FREEKASSA, callback_data="pay_freekassa"))
+    if KASSAI_ENABLE:
+        builder.row(InlineKeyboardButton(text=KASSAI_CARDS, callback_data="pay_kassai_cards"))
+        builder.row(InlineKeyboardButton(text=KASSAI_SBP, callback_data="pay_kassai_sbp"))
     if WATA_RU_ENABLE:
         builder.row(InlineKeyboardButton(text=WATA_RU, callback_data="pay_wata_ru"))
     if WATA_SBP_ENABLE:
@@ -175,3 +184,13 @@ async def handle_pay_wata_sbp(callback_query: CallbackQuery, state: FSMContext, 
 @router.callback_query(F.data == "pay_wata_int")
 async def handle_pay_wata_int(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_wata(callback_query, state, session, cassa_name="int")
+
+
+@router.callback_query(F.data == "pay_kassai_cards")
+async def handle_pay_kassai_cards(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await process_callback_pay_kassai(callback_query, state, session, method_name="cards")
+
+
+@router.callback_query(F.data == "pay_kassai_sbp")
+async def handle_pay_kassai_sbp(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await process_callback_pay_kassai(callback_query, state, session, method_name="sbp")
