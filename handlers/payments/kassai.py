@@ -220,7 +220,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         force_text=True,
     )
     
-    # Сохраняем message_id для последующего удаления
     await state.update_data(
         payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else message.message_id,
         payment_chat_id=message.chat.id
@@ -275,7 +274,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         force_text=True,
     )
     
-    # Сохраняем message_id для последующего удаления
     await state.update_data(
         payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else callback_query.message.message_id,
         payment_chat_id=callback_query.message.chat.id
