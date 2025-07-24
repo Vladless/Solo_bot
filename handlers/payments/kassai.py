@@ -101,6 +101,7 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
             target_message=callback_query.message,
             text="Выберите способ оплаты через KassaAI:",
             reply_markup=builder.as_markup(),
+            force_text=True,
         )
         await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
         await state.set_state(ReplenishBalanceKassaiState.choosing_method)
@@ -153,6 +154,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=method["desc"],
         reply_markup=builder.as_markup(),
+        force_text=True,
     )
     await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
     await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
