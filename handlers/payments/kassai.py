@@ -204,7 +204,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         return
     
     await state.update_data(amount=amount)
-    payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method)
+    payment_url = await generate_kassai_payment_link(amount, message.chat.id, method)
     
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[

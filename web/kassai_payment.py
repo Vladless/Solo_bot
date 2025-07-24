@@ -1,5 +1,6 @@
 import hashlib
 import json
+import bot
 from aiohttp import web
 from database import add_payment, async_session_maker, update_balance
 from handlers.payments.utils import send_payment_success_notification
