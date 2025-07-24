@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     KASSAI_ENABLE, KASSAI_API_KEY, KASSAI_SECRET_KEY, KASSAI_DOMAIN, KASSAI_SHOP_ID,
-    REDIRECT_LINK, FAIL_REDIRECT_LINK, WEBHOOK_HOST, KASSAI_IP
+    REDIRECT_LINK, FAIL_REDIRECT_LINK, WEBHOOK_HOST, KASSAI_IP, KASSAI_SUCCESS_URL, KASSAI_FAILURE_URL
 )
 
 from handlers.buttons import BACK, PAY_2, KASSAI_CARDS, KASSAI_SBP
@@ -287,7 +287,7 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
     """
     nonce = int(time.time())
     unique_payment_id = f"{nonce}_{tg_id}"
-    url = f"https://api.fk.life/v1/orders/create?paymentId={unique_payment_id}"
+    url = "https://api.fk.life/v1/orders/create"
     
     headers = {
         "Content-Type": "application/json",
@@ -303,7 +303,10 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
         "email": client_email,
         "ip": client_ip,
         "amount": int(amount),
-        "currency": "RUB"
+        "currency": "RUB",
+        "success_url": KASSAI_SUCCESS_URL,
+        "failure_url": KASSAI_FAILURE_URL,
+        "paymentId": unique_payment_id
     }
     
     sorted_keys = sorted(data_for_signature.keys())

@@ -37,12 +37,18 @@ async def kassai_payment_webhook(request: web.Request):
         p_email = data_dict.get("P_EMAIL")
         intid = data_dict.get("intid")
         
+        logger.info(f"KassaAI payment: intid={intid}, MERCHANT_ORDER_ID={merchant_order_id}, amount={amount}")
+        
         if not amount or not intid:
             logger.error(f"KassaAI: Missing AMOUNT or intid")
             return web.Response(status=400, text="Missing required fields")
         
         if intid in processed_payments:
             logger.warning(f"KassaAI: Duplicate payment intid={intid}")
+            return web.Response(status=200, text="YES")
+        
+        if merchant_order_id and merchant_order_id in processed_payments:
+            logger.warning(f"KassaAI: Duplicate payment MERCHANT_ORDER_ID={merchant_order_id}")
             return web.Response(status=200, text="YES")
         
         try:
@@ -80,8 +86,10 @@ async def kassai_payment_webhook(request: web.Request):
             logger.warning(f"Error handling payment message deletion: {e}")
         
         processed_payments.add(intid)
+        if merchant_order_id:
+            processed_payments.add(merchant_order_id)
         
-        logger.info(f"✅ KassaAI: Payment processed for user {tg_id}, amount {amount_float}, intid={intid}")
+        logger.info(f"✅ KassaAI: Payment processed for user {tg_id}, amount {amount_float}, intid={intid}, MERCHANT_ORDER_ID={merchant_order_id}")
         return web.Response(status=200, text="YES")
         
     except Exception as e:
