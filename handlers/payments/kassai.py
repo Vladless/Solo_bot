@@ -81,13 +81,12 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
             builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
             builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
             
-            await edit_or_send_message(
-                target_message=callback_query.message,
+            await callback_query.message.delete()
+            new_message = await callback_query.message.answer(
                 text=method["desc"],
                 reply_markup=builder.as_markup(),
-                force_text=True,
             )
-            await state.update_data(kassai_method=method_name)
+            await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id, kassai_method=method_name)
             await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
             return
         
@@ -97,13 +96,12 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
                 builder.row(InlineKeyboardButton(text=method["button"], callback_data=f'kassai_method|{method["name"]}'))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
         
-        await edit_or_send_message(
-            target_message=callback_query.message,
+        await callback_query.message.delete()
+        new_message = await callback_query.message.answer(
             text="Выберите способ оплаты через KassaAI:",
             reply_markup=builder.as_markup(),
-            force_text=True,
         )
-        await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
+        await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
         await state.set_state(ReplenishBalanceKassaiState.choosing_method)
         
     except Exception as e:
@@ -150,13 +148,12 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_kassai"))
     
-    await edit_or_send_message(
-        target_message=callback_query.message,
+    await callback_query.message.delete()
+    new_message = await callback_query.message.answer(
         text=method["desc"],
         reply_markup=builder.as_markup(),
-        force_text=True,
     )
-    await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
+    await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
     await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
 
 
