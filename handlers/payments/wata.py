@@ -131,7 +131,7 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
                     callback_data=f'wata_amount|{cassa_name}|{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_wata"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
     await callback_query.message.delete()
     new_message = await callback_query.message.answer(
         text=cassa["desc"],
@@ -194,7 +194,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="pay_wata")],
+            [InlineKeyboardButton(text=BACK, callback_data="balance")],
         ]
     )
     await edit_or_send_message(
@@ -237,7 +237,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="pay_wata")],
+            [InlineKeyboardButton(text=BACK, callback_data="balance")],
         ]
     )
     await edit_or_send_message(

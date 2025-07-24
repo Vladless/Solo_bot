@@ -76,7 +76,7 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
                     )
                 )
         builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
         
         await callback_query.message.delete()
         new_message = await callback_query.message.answer(
@@ -209,15 +209,20 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="pay_kassai")],
+            [InlineKeyboardButton(text=BACK, callback_data="balance")],
         ]
     )
     
-    await edit_or_send_message(
+    payment_message = await edit_or_send_message(
         target_message=message,
         text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
         force_text=True,
+    )
+    
+    await state.update_data(
+        payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else message.message_id,
+        payment_chat_id=message.chat.id
     )
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
@@ -258,15 +263,20 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     confirm_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="pay_kassai")],
+            [InlineKeyboardButton(text=BACK, callback_data="balance")],
         ]
     )
     
-    await edit_or_send_message(
+    payment_message = await edit_or_send_message(
         target_message=callback_query.message,
         text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
         force_text=True,
+    )
+    
+    await state.update_data(
+        payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else callback_query.message.message_id,
+        payment_chat_id=callback_query.message.chat.id
     )
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
