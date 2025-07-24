@@ -40,8 +40,6 @@ if STARS_ENABLE:
     router.include_router(stars_router)
 if KASSAI_ENABLE:
     router.include_router(kassai_router)
-if YOOMONEY_ENABLE:
-    router.include_router(yoomoney_router)
 if HELEKET_ENABLE:
     router.include_router(heleket_router)
 
