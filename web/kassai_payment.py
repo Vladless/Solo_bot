@@ -6,7 +6,9 @@ from handlers.payments.utils import send_payment_success_notification
 from handlers.payments.kassai import verify_kassai_signature
 from config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID
 from logger import logger
+import bot
 
+# Хранилище обработанных платежей для предотвращения дублирования
 processed_payments = set()
 
 
@@ -57,6 +59,29 @@ async def kassai_payment_webhook(request: web.Request):
             await update_balance(session, tg_id, amount_float)
             await send_payment_success_notification(tg_id, amount_float, session)
             await add_payment(session, tg_id, amount_float, "kassai")
+        
+        # Попытка удалить сообщение с кнопкой оплаты
+        try:
+            from aiogram.fsm.context import FSMContext
+            from aiogram.fsm.storage.base import StorageKey
+            
+            # Получаем данные из FSM state пользователя
+            storage_key = StorageKey(bot_id=bot.bot.id, chat_id=tg_id, user_id=tg_id)
+            state_data = await bot.dp.storage.get_data(storage_key)
+            
+            if state_data and 'payment_message_id' in state_data:
+                payment_message_id = state_data['payment_message_id']
+                try:
+                    await bot.bot.delete_message(chat_id=tg_id, message_id=payment_message_id)
+                    logger.info(f"Payment message deleted for user {tg_id}")
+                except Exception as e:
+                    logger.warning(f"Could not delete payment message for user {tg_id}: {e}")
+                
+                # Очищаем state после успешной оплаты
+                await bot.dp.storage.set_state(storage_key, None)
+                await bot.dp.storage.set_data(storage_key, {})
+        except Exception as e:
+            logger.warning(f"Error handling payment message deletion: {e}")
         
         if merchant_order_id:
             processed_payments.add(merchant_order_id)
