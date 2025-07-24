@@ -131,7 +131,7 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
                     callback_data=f'wata_amount|{cassa_name}|{PAYMENT_OPTIONS[i]["callback_data"]}',
                 )
             )
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_wata"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
     await callback_query.message.delete()
     new_message = await callback_query.message.answer(
         text=cassa["desc"],

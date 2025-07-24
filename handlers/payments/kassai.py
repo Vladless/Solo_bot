@@ -76,7 +76,7 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
                     )
                 )
         builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
         
         await callback_query.message.delete()
         new_message = await callback_query.message.answer(
