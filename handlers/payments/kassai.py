@@ -41,65 +41,73 @@ KASSAI_PAYMENT_METHODS = [
 
 @router.callback_query(F.data == "pay_kassai")
 async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession, method_name: str = None):
-    tg_id = callback_query.message.chat.id
-    logger.info(f"User {tg_id} initiated KassaAI payment.")
-    
-    if method_name:
-        method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
-        if not method:
+    try:
+        tg_id = callback_query.message.chat.id
+        logger.info(f"User {tg_id} initiated KassaAI payment.")
+        
+        await state.clear()
+        
+        if method_name:
+            method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
+            if not method:
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text="Ошибка: выбранный способ оплаты недоступен.",
+                    reply_markup=types.InlineKeyboardMarkup(),
+                    force_text=True,
+                )
+                return
+            
+            builder = InlineKeyboardBuilder()
+            for i in range(0, len(PAYMENT_OPTIONS), 2):
+                if i + 1 < len(PAYMENT_OPTIONS):
+                    builder.row(
+                        InlineKeyboardButton(
+                            text=PAYMENT_OPTIONS[i]["text"],
+                            callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]["callback_data"].split("|")[1]}',
+                        ),
+                        InlineKeyboardButton(
+                            text=PAYMENT_OPTIONS[i + 1]["text"],
+                            callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i + 1]["callback_data"].split("|")[1]}',
+                        ),
+                    )
+                else:
+                    builder.row(
+                        InlineKeyboardButton(
+                            text=PAYMENT_OPTIONS[i]["text"],
+                            callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]["callback_data"].split("|")[1]}',
+                        )
+                    )
+            builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
+            builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+            
             await edit_or_send_message(
                 target_message=callback_query.message,
-                text="Ошибка: выбранный способ оплаты недоступен.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                text=method["desc"],
+                reply_markup=builder.as_markup(),
                 force_text=True,
             )
+            await state.update_data(kassai_method=method_name)
+            await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
             return
         
         builder = InlineKeyboardBuilder()
-        for i in range(0, len(PAYMENT_OPTIONS), 2):
-            if i + 1 < len(PAYMENT_OPTIONS):
-                builder.row(
-                    InlineKeyboardButton(
-                        text=PAYMENT_OPTIONS[i]["text"],
-                        callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]["callback_data"].split("|")[1]}',
-                    ),
-                    InlineKeyboardButton(
-                        text=PAYMENT_OPTIONS[i + 1]["text"],
-                        callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i + 1]["callback_data"].split("|")[1]}',
-                    ),
-                )
-            else:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=PAYMENT_OPTIONS[i]["text"],
-                        callback_data=f'kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]["callback_data"].split("|")[1]}',
-                    )
-                )
-        builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
+        for method in KASSAI_PAYMENT_METHODS:
+            if method["enable"]:
+                builder.row(InlineKeyboardButton(text=method["button"], callback_data=f'kassai_method|{method["name"]}'))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
         
-        await callback_query.message.delete()
-        new_message = await callback_query.message.answer(
-            text=method["desc"],
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="Выберите способ оплаты через KassaAI:",
             reply_markup=builder.as_markup(),
         )
-        await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id, kassai_method=method_name)
-        await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
-        return
-    
-    builder = InlineKeyboardBuilder()
-    for method in KASSAI_PAYMENT_METHODS:
-        if method["enable"]:
-            builder.row(InlineKeyboardButton(text=method["button"], callback_data=f'kassai_method|{method["name"]}'))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
-    
-    await callback_query.message.delete()
-    new_message = await callback_query.message.answer(
-        text="Выберите способ оплаты через KassaAI:",
-        reply_markup=builder.as_markup(),
-    )
-    await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
-    await state.set_state(ReplenishBalanceKassaiState.choosing_method)
+        await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
+        await state.set_state(ReplenishBalanceKassaiState.choosing_method)
+        
+    except Exception as e:
+        logger.error(f"Error in process_callback_pay_kassai for user {callback_query.message.chat.id}: {e}")
+        await callback_query.answer("Произошла ошибка при инициализации платежа. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("kassai_method|"))
@@ -141,12 +149,12 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_kassai"))
     
-    await callback_query.message.delete()
-    new_message = await callback_query.message.answer(
+    await edit_or_send_message(
+        target_message=callback_query.message,
         text=method["desc"],
         reply_markup=builder.as_markup(),
     )
-    await state.update_data(message_id=new_message.message_id, chat_id=new_message.chat.id)
+    await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
     await state.set_state(ReplenishBalanceKassaiState.choosing_amount)
 
 
@@ -220,10 +228,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         force_text=True,
     )
     
-    await state.update_data(
-        payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else message.message_id,
-        payment_chat_id=message.chat.id
-    )
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
 
@@ -274,10 +278,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         force_text=True,
     )
     
-    await state.update_data(
-        payment_message_id=payment_message.message_id if hasattr(payment_message, 'message_id') else callback_query.message.message_id,
-        payment_chat_id=callback_query.message.chat.id
-    )
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
 
