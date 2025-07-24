@@ -10,6 +10,7 @@ from config import (
     STARS_ENABLE,
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
+    HELEKET_ENABLE,
 )
 
 from .cryprobot_pay import router as cryprobot_router
@@ -21,6 +22,7 @@ from .stars_pay import router as stars_router
 from .yookassa_pay import router as yookassa_router
 from .yoomoney_pay import router as yoomoney_router
 from .wata import router as wata_router
+from .heleket import router as heleket_router
 
 router = Router(name="payments_main_router")
 
@@ -38,6 +40,10 @@ if STARS_ENABLE:
     router.include_router(stars_router)
 if KASSAI_ENABLE:
     router.include_router(kassai_router)
+if YOOMONEY_ENABLE:
+    router.include_router(yoomoney_router)
+if HELEKET_ENABLE:
+    router.include_router(heleket_router)
 
 router.include_router(wata_router)
 router.include_router(gift_router)

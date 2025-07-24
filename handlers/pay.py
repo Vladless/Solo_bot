@@ -13,6 +13,7 @@ from config import (
     CRYPTO_BOT_ENABLE,
     DONATIONS_ENABLE,
     FREEKASSA_ENABLE,
+    HELEKET_ENABLE,
     KASSAI_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
@@ -29,6 +30,7 @@ from handlers.buttons import (
     COUPON,
     CRYPTOBOT,
     FREEKASSA,
+    HELEKET_CRYPTO,
     KASSAI_CARDS,
     KASSAI_SBP,
     MAIN_MENU,
@@ -43,6 +45,7 @@ from handlers.buttons import (
 )
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
 from handlers.payments.freekassa_pay import process_callback_pay_freekassa
+from handlers.payments.heleket import process_callback_pay_heleket
 from handlers.payments.kassai import process_callback_pay_kassai
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
 from handlers.payments.stars_pay import process_callback_pay_stars
@@ -67,6 +70,8 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_yoomoney)
     if KASSAI_ENABLE:
         payment_handlers.append(process_callback_pay_kassai)
+    if HELEKET_ENABLE:
+        payment_handlers.append(process_callback_pay_heleket)
     if WATA_RU_ENABLE or WATA_SBP_ENABLE or WATA_INT_ENABLE:
         payment_handlers.append(process_callback_pay_wata)
     if CRYPTO_BOT_ENABLE:
@@ -91,6 +96,8 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
     if KASSAI_ENABLE:
         builder.row(InlineKeyboardButton(text=KASSAI_CARDS, callback_data="pay_kassai_cards"))
         builder.row(InlineKeyboardButton(text=KASSAI_SBP, callback_data="pay_kassai_sbp"))
+    if HELEKET_ENABLE:
+        builder.row(InlineKeyboardButton(text=HELEKET_CRYPTO, callback_data="pay_heleket_crypto"))
     if CRYPTO_BOT_ENABLE:
         builder.row(InlineKeyboardButton(text=CRYPTOBOT, callback_data="pay_cryptobot"))
     if STARS_ENABLE:
@@ -194,3 +201,8 @@ async def handle_pay_kassai_cards(callback_query: CallbackQuery, state: FSMConte
 @router.callback_query(F.data == "pay_kassai_sbp")
 async def handle_pay_kassai_sbp(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_kassai(callback_query, state, session, method_name="sbp")
+
+
+@router.callback_query(F.data == "pay_heleket_crypto")
+async def handle_pay_heleket_crypto(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await process_callback_pay_heleket(callback_query, state, session, method_name="crypto")
