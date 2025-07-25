@@ -57,6 +57,10 @@ class BanCheckerMiddleware(BaseMiddleware):
                 reason = ban.reason or "не указана"
                 until = ban.until
 
+                if reason == "shadow":
+                    logger.info(f"[BanChecker] Теневой бан: пользователь {tg_id} — действия игнорируются.")
+                    return
+
                 logger.warning(f"[BanChecker] Пользователь {tg_id} заблокирован (до: {until}, причина: {reason})")
 
                 if until:

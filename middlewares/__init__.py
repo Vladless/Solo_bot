@@ -13,6 +13,7 @@ from .maintenance import MaintenanceModeMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
+from .direct_start_blocker import DirectStartBlockerMiddleware
 
 
 def register_middleware(
@@ -23,6 +24,10 @@ def register_middleware(
     sessionmaker=None,
 ) -> None:
     """Регистрирует middleware в диспетчере."""
+    direct_start_blocker = DirectStartBlockerMiddleware()
+    dispatcher.message.outer_middleware(direct_start_blocker)
+    dispatcher.callback_query.outer_middleware(direct_start_blocker)
+
     if middlewares is None:
         available_middlewares = {
             "session": (SessionMiddleware(sessionmaker) if sessionmaker else SessionMiddleware()),
@@ -33,12 +38,12 @@ def register_middleware(
             "user": UserMiddleware(),
         }
 
-        if sessionmaker:
-            dispatcher.update.outer_middleware(SubscriptionMiddleware())
-            dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
-
         exclude_set = set(exclude or [])
         middlewares = [middleware for name, middleware in available_middlewares.items() if name not in exclude_set]
+
+    if sessionmaker:
+        dispatcher.update.outer_middleware(SubscriptionMiddleware())
+        dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
 
     handlers = [
         dispatcher.message,
@@ -52,3 +57,4 @@ def register_middleware(
 
         for handler in handlers:
             handler.outer_middleware(middleware)
+

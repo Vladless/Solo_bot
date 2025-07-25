@@ -1,10 +1,14 @@
 import csv
 import io
+from datetime import datetime, timezone
+from aiogram.fsm.context import FSMContext
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from aiogram import F, Router
-from aiogram.types import BufferedInputFile, CallbackQuery
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from aiogram.fsm.state import State, StatesGroup
 
 from database import delete_user_data
 from database.models import ManualBan
@@ -16,6 +20,10 @@ from .keyboard import build_bans_kb
 
 
 router = Router()
+
+
+class PreemptiveBanStates(StatesGroup):
+    waiting_for_preemptive_ids = State()
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "bans"), IsAdminFilter())
@@ -133,3 +141,54 @@ async def handle_delete_manual_banned(callback_query: CallbackQuery, session: As
     except Exception as e:
         logger.error(f"[BANS] Ошибка при очистке manual_bans: {e}")
         await callback_query.message.edit_text("❌ Ошибка при удалении вручную забаненных пользователей.")
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "bans_preemptive"), IsAdminFilter())
+async def handle_preemptive_ban_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(PreemptiveBanStates.waiting_for_preemptive_ids)
+    await callback.message.edit_text(
+        "📥 Отправьте список Telegram ID (один на строке), которых нужно заранее забанить (теневой бан).\n\n"
+        "Пример:\n<code>123456789\n987654321</code>"
+    )
+
+
+@router.message(PreemptiveBanStates.waiting_for_preemptive_ids, IsAdminFilter())
+async def handle_preemptive_ids_input(message: Message, state: FSMContext, session: AsyncSession):
+    lines = message.text.strip().splitlines()
+    tg_ids = set()
+
+    for line in lines:
+        line = line.strip()
+        if line.isdigit():
+            tg_ids.add(int(line))
+
+    if not tg_ids:
+        await message.answer("❌ Не найдено ни одного корректного Telegram ID.")
+        return
+
+    now = datetime.now(timezone.utc)
+
+    stmt = pg_insert(ManualBan).values([
+        {
+            "tg_id": tg_id,
+            "reason": "shadow",
+            "banned_by": message.from_user.id,
+            "until": None,
+            "banned_at": now,
+        }
+        for tg_id in tg_ids
+    ]).on_conflict_do_update(
+        index_elements=[ManualBan.tg_id],
+        set_={
+            "reason": "shadow",
+            "until": None,
+            "banned_by": message.from_user.id,
+            "banned_at": now,
+        },
+    )
+
+    await session.execute(stmt)
+    await session.commit()
+
+    await message.answer(f"✅ Успешно добавлено в теневой бан: <b>{len(tg_ids)}</b> пользователей.")
+    await state.clear()

@@ -342,3 +342,42 @@ async def build_cluster_selection_kb(session, tg_id: int, email: str, action: st
     )
     builder.adjust(1)
     return builder.as_markup()
+
+
+def build_user_ban_type_kb(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⛔ Навсегда",
+            callback_data=AdminUserEditorCallback(
+                action="users_ban_forever", tg_id=tg_id
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="⏳ По сроку",
+            callback_data=AdminUserEditorCallback(
+                action="users_ban_temporary", tg_id=tg_id
+            ).pack(),
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="👻 Теневой бан",
+            callback_data=AdminUserEditorCallback(
+                action="users_ban_shadow", tg_id=tg_id
+            ).pack(),
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=AdminUserEditorCallback(
+                action="users_editor", tg_id=tg_id, edit=True
+            ).pack(),
+        )
+    )
+
+    return builder.as_markup()
