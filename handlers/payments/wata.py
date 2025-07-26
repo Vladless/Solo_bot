@@ -50,7 +50,7 @@ async def process_callback_pay_wata(callback_query: types.CallbackQuery, state: 
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text="Ошибка: выбранная касса недоступна.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
                 force_text=True,
             )
             return
@@ -106,7 +106,7 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
         await edit_or_send_message(
             target_message=callback_query.message,
             text="Ошибка: выбранная касса недоступна.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
         return
@@ -165,7 +165,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         await edit_or_send_message(
             target_message=message,
             text="Ошибка: выбранная касса недоступна.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
         return
@@ -177,7 +177,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
             await edit_or_send_message(
                 target_message=message,
                 text="Минимальная сумма для оплаты через СБП — 50 рублей.",
-                reply_markup=types.InlineKeyboardMarkup(),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
                 force_text=True,
             )
             return
@@ -185,7 +185,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         await edit_or_send_message(
             target_message=message,
             text="Некорректная сумма. Введите целое число больше 0.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
         return
@@ -216,7 +216,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await edit_or_send_message(
             target_message=callback_query.message,
             text="Ошибка: выбранная касса недоступна.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
         return
@@ -228,7 +228,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         await edit_or_send_message(
             target_message=callback_query.message,
             text="Некорректная сумма.",
-            reply_markup=types.InlineKeyboardMarkup(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
         return
