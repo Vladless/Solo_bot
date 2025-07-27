@@ -57,14 +57,16 @@ async def combine_unique_lines(
     urls_with_query = [f"{url}?{query_string}" if query_string else url for url in urls]
     tasks = [fetch_url_content(url, identifier) for url in urls_with_query]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    all_lines = set()
+    all_lines = []
     all_headers = []
     for result in results:
         if isinstance(result, tuple):
             lines, headers = result
-            all_lines.update(filter(None, lines))
+            for line in filter(None, lines):
+                if line not in all_lines:
+                    all_lines.append(line)
             all_headers.append(headers)
-    return list(all_lines), all_headers
+    return all_lines, all_headers
 
 
 async def get_subscription_urls(
@@ -87,6 +89,9 @@ async def get_subscription_urls(
 
     if include_remnawave_key:
         urls.append(include_remnawave_key)
+
+    if RANDOM_SUBSCRIPTIONS:
+        random.shuffle(urls)
 
     return urls
 
@@ -259,8 +264,6 @@ async def handle_subscription(request: web.Request) -> web.Response:
 
             query_string = request.query_string
             combined_subscriptions, headers_list = await combine_unique_lines(urls, tg_id or email, query_string)
-            if RANDOM_SUBSCRIPTIONS:
-                random.shuffle(combined_subscriptions)
 
             cleaned_subscriptions = [clean_subscription_line(line) for line in combined_subscriptions]
 

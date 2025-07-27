@@ -231,7 +231,7 @@ async def create_client_on_server(
                 raise ValueError(f"Тариф с id={plan} не найден.")
 
             total_gb_value = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
-            device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else None
+            device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else 0
 
         try:
             logger.info(
@@ -621,7 +621,7 @@ async def update_key_on_cluster(
             result.scalar_one_or_none()
 
             total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit is not None else 0
-            device_limit_value = device_limit if device_limit is not None else None
+            device_limit_value = device_limit if device_limit is not None else 0
 
             config = ClientConfig(
                 client_id=remnawave_client_id,
@@ -678,7 +678,7 @@ async def update_subscription(
         tariff = result.scalar_one_or_none()
         if tariff:
             traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
-            device_limit = int(tariff.device_limit) if tariff.device_limit is not None else None
+            device_limit = int(tariff.device_limit) if tariff.device_limit is not None else 0
         else:
             logger.warning(f"[LOG] update_subscription: тариф с id={tariff_id} не найден!")
     else:

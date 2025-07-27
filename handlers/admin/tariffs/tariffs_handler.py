@@ -332,7 +332,7 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Да", callback_data=f"confirm_delete_tariff|{tariff_id}"),
-                    InlineKeyboardButton(text="❌ Отмена", callback_data=f"view|{tariff_id}"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()),
                 ]
             ]
         ),

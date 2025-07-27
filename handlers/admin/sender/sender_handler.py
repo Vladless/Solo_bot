@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 
@@ -19,7 +20,53 @@ from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
 
 
+
 router = Router()
+
+
+async def send_broadcast_batch(bot, messages, batch_size=15):
+    results = []
+    
+    for i in range(0, len(messages), batch_size):
+        batch = messages[i:i + batch_size]
+        tasks = []
+        
+        for msg in batch:
+            tg_id = msg["tg_id"]
+            text = msg["text"]
+            photo = msg.get("photo")
+            keyboard = msg.get("keyboard")
+            
+            if photo:
+                task = bot.send_photo(
+                    chat_id=tg_id,
+                    photo=photo,
+                    caption=text,
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+            else:
+                task = bot.send_message(
+                    chat_id=tg_id,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+            tasks.append(task)
+
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in batch_results:
+            if isinstance(result, Exception):
+                logger.error(f"❌ Ошибка отправки: {result}")
+                results.append(False)
+            else:
+                results.append(True)
+
+        if i + batch_size < len(messages):
+            await asyncio.sleep(1.0)
+    
+    return results
 
 
 class AdminSender(StatesGroup):
@@ -243,26 +290,23 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
 
     await callback_query.message.edit_text(f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}")
 
+    messages = []
     for tg_id in tg_ids:
-        try:
-            if photo:
-                await callback_query.bot.send_photo(
-                    chat_id=tg_id,
-                    photo=photo,
-                    caption=text_message,
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
-            else:
-                await callback_query.bot.send_message(
-                    chat_id=tg_id,
-                    text=text_message,
-                    parse_mode="HTML",
-                    reply_markup=keyboard,
-                )
-            success_count += 1
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки пользователю {tg_id}: {e}")
+        message_data = {
+            "tg_id": tg_id,
+            "text": text_message,
+            "photo": photo,
+            "keyboard": keyboard
+        }
+        messages.append(message_data)
+
+    results = await send_broadcast_batch(
+        bot=callback_query.bot,
+        messages=messages,
+        batch_size=15
+    )
+    
+    success_count = sum(1 for result in results if result)
 
     await callback_query.message.answer(
         text=(

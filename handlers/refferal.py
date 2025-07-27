@@ -20,7 +20,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT
+from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT, REFERRAL_QR
 from database import (
     add_referral,
     add_user,
@@ -93,7 +93,8 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
     else:
         invite_text = INVITE_TEXT_NON_INLINE.format(referral_link=referral_link)
         builder.button(text=INVITE, switch_inline_query=invite_text)
-    builder.button(text=QR, callback_data=f"show_referral_qr|{chat_id}")
+    if REFERRAL_QR:
+        builder.button(text=QR, callback_data=f"show_referral_qr|{chat_id}")
     if TOP_REFERRAL_BUTTON:
         builder.button(text=TOP_FIVE, callback_data="top_referrals")
     builder.button(text=MAIN_MENU, callback_data="profile")

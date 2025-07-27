@@ -210,7 +210,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                 )
             )
 
-        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="renew_menu"))
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"renew_key|{key_name}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         await edit_or_send_message(

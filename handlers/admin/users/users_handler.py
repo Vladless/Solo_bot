@@ -569,13 +569,15 @@ async def handle_key_edit(
 
     expiry_date = key_details.get("expiry_date") or "—"
     tariff_name = "—"
+    subgroup_title = "—"
     if key_details.get("tariff_id"):
         result = await session.execute(
-            select(Tariff.name, Tariff.group_code).where(Tariff.id == key_details["tariff_id"])
+            select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_details["tariff_id"])
         )
         row = result.first()
         if row:
-            tariff_name = f"{row[0]} ({row[1]})"
+            tariff_name = row[0]
+            subgroup_title = row[1] or "—"
 
     text = (
         "<b>🔑 Информация о подписке</b>\n\n"
@@ -585,6 +587,7 @@ async def handle_key_edit(
         f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
         f"🌐 <b>Кластер:</b> {key_details.get('cluster_name', '—')}\n"
         f"🆔 <b>ID клиента:</b> {key_details.get('tg_id', '—')}\n"
+        f"📁 <b>Группа:</b> {subgroup_title}\n"
         f"📦 <b>Тариф:</b> {tariff_name}\n"
     )
     if alias:

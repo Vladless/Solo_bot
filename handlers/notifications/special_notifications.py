@@ -120,7 +120,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
         if expiry_time:
             expiry_dt = pytz.utc.localize(datetime.fromtimestamp(expiry_time / 1000)).astimezone(moscow_tz)
-            if (current_dt - (expiry_dt - timedelta(days=30))) < timedelta(hours=NOTIFY_INACTIVE_TRAFFIC):
+            if current_dt > expiry_dt:
                 continue
 
         try:
