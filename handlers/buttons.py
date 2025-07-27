@@ -99,3 +99,6 @@ KASSAI_SBP = "🏦 KassaAI: СБП"
 
 # Кнопки Heleket
 HELEKET_CRYPTO = "₿ Heleket: Crypto"
+
+# Кнопки CryptoCloud
+CRYPTOCLOUD_CRYPTO = "₿ CryptoCloud: Crypto"
