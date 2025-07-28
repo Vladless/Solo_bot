@@ -25,7 +25,6 @@ from handlers.buttons import (
     PC_PC,
     SUPPORT,
     TV_CONTINUE,
-    TV_INSTRUCTIONS,
 )
 from handlers.texts import (
     CHOOSE_DEVICE_TEXT,
