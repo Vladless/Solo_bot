@@ -77,128 +77,139 @@ async def handle_key_creation(
     session: Any,
     message_or_query: Message | CallbackQuery,
 ):
-    current_time = datetime.now(moscow_tz)
+    state_data = await state.get_data()
+    if state_data.get("key_creation_in_progress"):
+        logger.warning(f"[AntiSpam] Пользователь {tg_id} повторно нажал на покупку — игнор.")
+        return
 
-    if not TRIAL_TIME_DISABLE:
-        trial_status = await get_trial(session, tg_id)
-        if trial_status in [0, -1]:
-            base_days = TRIAL_CONFIG["duration_days"]
-            extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
-            total_days = base_days + extra_days
-            expiry_time = current_time + timedelta(days=total_days)
+    await state.update_data(key_creation_in_progress=True)
 
-            logger.info(f"[Trial] Доступен {total_days}-дневный триал для пользователя {tg_id}")
+    try:
+        current_time = datetime.now(moscow_tz)
+
+        if not TRIAL_TIME_DISABLE:
+            trial_status = await get_trial(session, tg_id)
+            if trial_status in [0, -1]:
+                base_days = TRIAL_CONFIG["duration_days"]
+                extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
+                total_days = base_days + extra_days
+                expiry_time = current_time + timedelta(days=total_days)
+
+                logger.info(f"[Trial] Доступен {total_days}-дневный триал для пользователя {tg_id}")
+
+                await edit_or_send_message(
+                    target_message=(
+                        message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+                    ),
+                    text=CREATING_CONNECTION_MSG,
+                    reply_markup=None,
+                )
+
+                await state.update_data(is_trial=True)
+                await create_key(tg_id, expiry_time, state, session, message_or_query)
+                return
+
+        try:
+            cluster_name = await get_least_loaded_cluster(session)
+        except ValueError as e:
+            logger.error(f"Нет доступных кластеров: {e}")
+            await edit_or_send_message(
+                target_message=(
+                    message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+                ),
+                text=str(e),
+                reply_markup=InlineKeyboardBuilder()
+                .row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                .as_markup(),
+            )
+            return
+
+        tariffs = await get_tariffs_for_cluster(session, cluster_name)
+
+        if not tariffs:
+            result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
+            is_admin = result.scalar_one_or_none() is not None
+
+            if is_admin:
+                builder = InlineKeyboardBuilder()
+                builder.row(
+                    InlineKeyboardButton(
+                        text="🔗 Привязать тариф", callback_data=AdminPanelCallback(action="clusters").pack()
+                    )
+                )
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+                text = (
+                    f"🚫 <b>Невозможно создать подписку</b>\n\n"
+                    f"📊 <b>Информация о кластере:</b>\n<blockquote>"
+                    f"🌐 <b>Кластер:</b> <code>{cluster_name}</code>\n"
+                    f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
+                    f"💡 <b>Привяжите тариф к кластеру</b>"
+                )
+            else:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                text = "❌ Нет доступных тарифов для выбора."
 
             await edit_or_send_message(
                 target_message=(
                     message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
                 ),
-                text=CREATING_CONNECTION_MSG,
-                reply_markup=None,
+                text=text,
+                reply_markup=builder.as_markup(),
             )
-
-            await state.update_data(is_trial=True)
-            await create_key(tg_id, expiry_time, state, session, message_or_query)
             return
 
-    try:
-        cluster_name = await get_least_loaded_cluster(session)
-    except ValueError as e:
-        logger.error(f"Нет доступных кластеров: {e}")
-        await edit_or_send_message(
-            target_message=(
-                message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-            ),
-            text=str(e),
-            reply_markup=InlineKeyboardBuilder()
-            .row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            .as_markup(),
-        )
-        return
+        group_code = tariffs[0].get("group_code") if tariffs else None
+        if not group_code:
+            await edit_or_send_message(
+                target_message=(
+                    message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+                ),
+                text="❌ Не удалось определить группу тарифов.",
+                reply_markup=None,
+            )
+            return
 
-    tariffs = await get_tariffs_for_cluster(session, cluster_name)
+        grouped_tariffs = defaultdict(list)
+        for t in tariffs:
+            subgroup = t.get("subgroup_title")
+            grouped_tariffs[subgroup].append(t)
 
-    if not tariffs:
-        result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
-        is_admin = result.scalar_one_or_none() is not None
+        builder = InlineKeyboardBuilder()
 
-        if is_admin:
-            builder = InlineKeyboardBuilder()
+        for t in grouped_tariffs.get(None, []):
             builder.row(
                 InlineKeyboardButton(
-                    text="🔗 Привязать тариф", callback_data=AdminPanelCallback(action="clusters").pack()
+                    text=f"{t['name']} — {t['price_rub']}₽",
+                    callback_data=f"select_tariff_plan|{t['id']}",
                 )
             )
-            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-            text = (
-                f"🚫 <b>Невозможно создать подписку</b>\n\n"
-                f"📊 <b>Информация о кластере:</b>\n<blockquote>"
-                f"🌐 <b>Кластер:</b> <code>{cluster_name}</code>\n"
-                f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
-                f"💡 <b>Привяжите тариф к кластеру</b>"
+        for subgroup in sorted(k for k in grouped_tariffs if k):
+            subgroup_hash = create_subgroup_hash(subgroup, group_code)
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{subgroup}",
+                    callback_data=f"tariff_subgroup_user|{subgroup_hash}",
+                )
             )
-        else:
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            text = "❌ Нет доступных тарифов для выбора."
+
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+        target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
 
         await edit_or_send_message(
-            target_message=(
-                message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-            ),
-            text=text,
+            target_message=target_message,
+            text=SELECT_TARIFF_PLAN_MSG,
             reply_markup=builder.as_markup(),
         )
-        return
 
-    group_code = tariffs[0].get("group_code") if tariffs else None
-    if not group_code:
-        await edit_or_send_message(
-            target_message=(
-                message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-            ),
-            text="❌ Не удалось определить группу тарифов.",
-            reply_markup=None,
-        )
-        return
+        await state.update_data(tg_id=tg_id, cluster_name=cluster_name, group_code=group_code)
+        await state.set_state(Form.waiting_for_server_selection)
 
-    grouped_tariffs = defaultdict(list)
-    for t in tariffs:
-        subgroup = t.get("subgroup_title")
-        grouped_tariffs[subgroup].append(t)
-
-    builder = InlineKeyboardBuilder()
-
-    for t in grouped_tariffs.get(None, []):
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{t['name']} — {t['price_rub']}₽",
-                callback_data=f"select_tariff_plan|{t['id']}",
-            )
-        )
-
-    for subgroup in sorted(k for k in grouped_tariffs if k):
-        subgroup_hash = create_subgroup_hash(subgroup, group_code)
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{subgroup}",
-                callback_data=f"tariff_subgroup_user|{subgroup_hash}",
-            )
-        )
-
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-
-    target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-
-    await edit_or_send_message(
-        target_message=target_message,
-        text=SELECT_TARIFF_PLAN_MSG,
-        reply_markup=builder.as_markup(),
-    )
-
-    await state.update_data(tg_id=tg_id, cluster_name=cluster_name, group_code=group_code)
-    await state.set_state(Form.waiting_for_server_selection)
+    finally:
+        await state.update_data(key_creation_in_progress=False)
 
 
 @router.callback_query(F.data.startswith("tariff_subgroup_user|"))
