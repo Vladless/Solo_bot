@@ -1,11 +1,12 @@
 import hashlib
 
 from aiohttp import web
-from handlers.payments.utils import send_payment_success_notification
 
 from config import KASSAI_SECRET_KEY
 from database import add_payment, async_session_maker, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from logger import logger
+
 
 processed_payments = set()
 

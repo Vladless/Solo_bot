@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.dialects.postgresql import insert

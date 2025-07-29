@@ -10,8 +10,10 @@ from database.models import Gift, GiftUsage, Tariff
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
-from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
+
 from ..panel.keyboard import AdminPanelCallback
+from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
+
 
 router = Router()
 

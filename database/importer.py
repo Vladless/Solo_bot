@@ -1,7 +1,8 @@
 import json
 import sqlite3
 import time
-from datetime import datetime, UTC
+
+from datetime import UTC, datetime
 from itertools import cycle
 
 from sqlalchemy import select

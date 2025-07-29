@@ -1,4 +1,5 @@
 import time
+
 from typing import Any
 
 from aiogram import F, Router
@@ -22,6 +23,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
+
 
 router = Router()
 

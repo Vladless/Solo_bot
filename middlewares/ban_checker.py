@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from aiogram import BaseMiddleware

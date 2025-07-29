@@ -4,6 +4,7 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas import ServerBase, ServerResponse, ServerUpdate
 from database.models import Server
 
+
 router: APIRouter = generate_crud_router(
     model=Server,
     schema_response=ServerResponse,

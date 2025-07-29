@@ -1,6 +1,7 @@
 import secrets
 import uuid
-from datetime import datetime, UTC
+
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
+
 
 Base = declarative_base()
 

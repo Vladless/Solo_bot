@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import insert
 from sqlalchemy.exc import SQLAlchemyError

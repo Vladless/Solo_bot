@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -6,7 +7,6 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.gift import handle_gift_link
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,7 @@ from handlers.buttons import (
 )
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
+from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
@@ -51,9 +52,11 @@ from handlers.texts import (
     get_about_vpn,
 )
 from logger import logger
+
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
 from .utils import edit_or_send_message
+
 
 router = Router()
 

@@ -1,15 +1,11 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
-from handlers.payments.freekassa_pay import process_callback_pay_freekassa
-from handlers.payments.stars_pay import process_callback_pay_stars
-from handlers.payments.yookassa_pay import process_callback_pay_yookassa
-from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,12 +43,19 @@ from handlers.buttons import (
     YOOKASSA,
     YOOMONEY,
 )
+from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
+from handlers.payments.freekassa_pay import process_callback_pay_freekassa
 from handlers.payments.heleket import process_callback_pay_heleket
 from handlers.payments.kassai import process_callback_pay_kassai
 from handlers.payments.robokassa_pay import process_callback_pay_robokassa
+from handlers.payments.stars_pay import process_callback_pay_stars
 from handlers.payments.wata import process_callback_pay_wata
+from handlers.payments.yookassa_pay import process_callback_pay_yookassa
+from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
 from handlers.texts import BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
+
 from .utils import edit_or_send_message
+
 
 router = Router()
 

@@ -7,6 +7,7 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas import ReferralResponse
 from database.models import Admin, Referral
 
+
 router = generate_crud_router(
     model=Referral,
     schema_response=ReferralResponse,

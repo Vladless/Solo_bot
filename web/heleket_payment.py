@@ -3,11 +3,12 @@ import hashlib
 import json
 
 from aiohttp import web
-from handlers.payments.utils import send_payment_success_notification
 
 from config import HELEKET_API_KEY, HELEKET_CURRENCY_RATE
 from database import add_payment, async_session_maker, update_balance
+from handlers.payments.utils import send_payment_success_notification
 from logger import logger
+
 
 processed_payments = set()
 

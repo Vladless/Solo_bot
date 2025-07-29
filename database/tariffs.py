@@ -1,5 +1,6 @@
 import hashlib
-from datetime import datetime, UTC
+
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError

@@ -24,6 +24,7 @@ from database.models import (
     TrackingSource,
 )
 
+
 router = APIRouter()
 
 router.include_router(

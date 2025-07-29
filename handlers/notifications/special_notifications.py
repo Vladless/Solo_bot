@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytz
+
 from aiogram import Bot, Router, types
 from aiogram.types import InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -30,6 +31,7 @@ from handlers.texts import (
 )
 from handlers.utils import format_days, is_full_remnawave_cluster
 from logger import logger
+
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")

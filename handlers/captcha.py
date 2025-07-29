@@ -1,5 +1,6 @@
 import random
 import secrets
+
 from typing import Any
 
 from aiogram import F, Router
@@ -9,7 +10,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
 from logger import logger
+
 from .utils import edit_or_send_message
+
 
 router = Router()
 

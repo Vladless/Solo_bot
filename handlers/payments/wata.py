@@ -1,4 +1,5 @@
 import aiohttp
+
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -28,6 +29,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
+
 
 router = Router()
 

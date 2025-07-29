@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message
@@ -35,8 +36,10 @@ from utils.csv_export import (
     export_payments_csv,
     export_users_csv,
 )
-from .keyboard import build_stats_kb
+
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+from .keyboard import build_stats_kb
+
 
 router = Router()
 

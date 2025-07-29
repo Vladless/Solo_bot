@@ -1,7 +1,9 @@
 import os
+
 from io import BytesIO
 
 import qrcode
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -38,8 +40,10 @@ from handlers.texts import (
     TOP_REFERRALS_TEXT,
 )
 from logger import logger
+
 from .texts import get_referral_link
 from .utils import edit_or_send_message, format_days
+
 
 router = Router()
 

@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.tariffs import create_subgroup_hash
+
 from ..panel.keyboard import AdminPanelCallback
 
 

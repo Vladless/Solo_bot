@@ -4,13 +4,11 @@ from math import ceil
 from typing import Any
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.stars_pay import process_custom_amount_input_stars
-from handlers.payments.yookassa_pay import process_custom_amount_input
-from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from sqlalchemy import select
 
 from config import (
@@ -33,6 +31,9 @@ from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_ta
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.stars_pay import process_custom_amount_input_stars
+from handlers.payments.yookassa_pay import process_custom_amount_input
+from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
@@ -40,8 +41,10 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, get_least_loaded_cluster
 from logger import logger
+
 from .key_cluster_mode import key_cluster_mode
 from .key_country_mode import key_country_mode
+
 
 router = Router()
 

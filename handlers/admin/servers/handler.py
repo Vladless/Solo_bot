@@ -17,6 +17,8 @@ from database.servers import (
 )
 from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
+
+from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminServerCallback,
     build_cancel_edit_kb,
@@ -25,7 +27,7 @@ from .keyboard import (
     build_manage_server_kb,
     build_panel_type_selection_kb,
 )
-from ..panel.keyboard import build_admin_back_kb
+
 
 router = Router()
 

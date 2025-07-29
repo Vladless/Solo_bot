@@ -12,6 +12,7 @@ from config import (
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
 )
+
 from .cryprobot_pay import router as cryprobot_router
 from .freekassa_pay import router as freekassa_router
 from .gift import router as gift_router
@@ -22,6 +23,7 @@ from .stars_pay import router as stars_router
 from .wata import router as wata_router
 from .yookassa_pay import router as yookassa_router
 from .yoomoney_pay import router as yoomoney_router
+
 
 router = Router(name="payments_main_router")
 

@@ -2,12 +2,12 @@ from aiogram import Router
 
 from . import (
     ads,
-    misc,
     bans,
     clusters,
     coupons,
     gifts,
     management,
+    misc,
     panel,
     sender,
     servers,
@@ -15,6 +15,7 @@ from . import (
     tariffs,
     users,
 )
+
 
 router = Router(name="admins_main_router")
 

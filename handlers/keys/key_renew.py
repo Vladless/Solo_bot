@@ -1,16 +1,14 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from math import ceil
 from typing import Any
 
 import pytz
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from handlers.payments.stars_pay import process_custom_amount_input_stars
-from handlers.payments.yookassa_pay import process_custom_amount_input
-from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +30,9 @@ from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
+from handlers.payments.stars_pay import process_custom_amount_input_stars
+from handlers.payments.yookassa_pay import process_custom_amount_input
+from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
@@ -40,6 +41,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, get_russian_month
 from logger import logger
+
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")

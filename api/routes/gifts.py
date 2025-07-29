@@ -7,6 +7,7 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
 from database.models import Admin, Gift, GiftUsage
 
+
 router = APIRouter()
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError

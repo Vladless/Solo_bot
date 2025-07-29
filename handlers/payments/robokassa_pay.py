@@ -1,5 +1,6 @@
 import hashlib
-from datetime import datetime, timedelta, UTC
+
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiogram import F, Router, types
@@ -8,7 +9,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
-from handlers.payments.utils import send_payment_success_notification
 from robokassa import HashAlgorithm, Robokassa
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,9 +31,11 @@ from database import (
     update_balance,
 )
 from handlers.buttons import BACK, PAY_2
+from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 from handlers.utils import edit_or_send_message
 from logger import logger
+
 
 router = Router()
 

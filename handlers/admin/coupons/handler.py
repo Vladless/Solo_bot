@@ -19,13 +19,15 @@ from filters.admin import IsAdminFilter
 from handlers.buttons import BACK
 from handlers.utils import format_days
 from logger import logger
+
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminCouponDeleteCallback,
     build_coupons_kb,
     build_coupons_list_kb,
     format_coupons_list,
 )
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+
 
 router = Router()
 

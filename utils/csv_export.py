@@ -1,5 +1,6 @@
 import csv
-from datetime import datetime, UTC
+
+from datetime import UTC, datetime
 from io import StringIO
 
 from aiogram.types import BufferedInputFile
