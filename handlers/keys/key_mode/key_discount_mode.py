@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
@@ -32,7 +32,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
         await callback.message.edit_text("⏳ Срок действия скидки истёк.")
         return
@@ -82,7 +82,7 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
         await callback.message.edit_text("⏳ Срок действия финальной скидки истёк.")
         return

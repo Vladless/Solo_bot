@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any
 
 from aiogram import F, Router, types
@@ -213,7 +213,7 @@ async def robokassa_webhook(request: web.Request):
         logger.info(f"Processing payment for user {tg_id} with amount {amount}.")
 
         async with async_session_maker() as session:
-            recent_time = datetime.utcnow() - timedelta(minutes=1)
+            recent_time = datetime.now(UTC) - timedelta(minutes=1)
 
             result = await session.execute(
                 select(Payment).where(

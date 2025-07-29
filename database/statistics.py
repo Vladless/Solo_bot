@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, UTC
 
 from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,7 @@ async def count_total_keys(session: AsyncSession) -> int:
 
 
 async def count_active_keys(session: AsyncSession) -> int:
-    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    current_time_ms = int(datetime.now(UTC).timestamp() * 1000)
     return await session.scalar(select(func.count()).select_from(Key).where(Key.expiry_time > current_time_ms))
 
 
@@ -119,7 +119,7 @@ async def sum_total_payments(session: AsyncSession) -> float:
 
 async def count_hot_leads(session: AsyncSession) -> int:
     subquery_active_keys = (
-        select(Key.tg_id).where(Key.expiry_time > int(datetime.utcnow().timestamp() * 1000)).distinct()
+        select(Key.tg_id).where(Key.expiry_time > int(datetime.now(UTC).timestamp() * 1000)).distinct()
     )
 
     stmt = (

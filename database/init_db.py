@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import select
 
@@ -20,8 +20,8 @@ async def init_db():
                     username="system",
                     first_name="System",
                     is_bot=True,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
+                    updated_at=datetime.now(UTC),
                 )
             )
 
@@ -30,7 +30,7 @@ async def init_db():
             if not result.scalar_one_or_none():
                 session.add(
                     Admin(
-                        tg_id=tg_id, role="superadmin", description="Imported from config", added_at=datetime.utcnow()
+                        tg_id=tg_id, role="superadmin", description="Imported from config", added_at=datetime.now(UTC)
                     )
                 )
         await session.commit()

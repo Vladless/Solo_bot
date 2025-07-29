@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
@@ -13,10 +13,10 @@ async def create_temporary_data(session: AsyncSession, tg_id: int, state: str, d
     try:
         stmt = (
             insert(TemporaryData)
-            .values(tg_id=tg_id, state=state, data=data, updated_at=datetime.utcnow())
+            .values(tg_id=tg_id, state=state, data=data, updated_at=datetime.now(UTC))
             .on_conflict_do_update(
                 index_elements=[TemporaryData.tg_id],
-                set_={"state": state, "data": data, "updated_at": datetime.utcnow()},
+                set_={"state": state, "data": data, "updated_at": datetime.now(UTC)},
             )
         )
         await session.execute(stmt)

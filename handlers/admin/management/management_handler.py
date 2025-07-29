@@ -6,7 +6,7 @@ import sys
 import time
 import traceback
 from asyncio import sleep
-from datetime import datetime
+from datetime import datetime, UTC
 from tempfile import NamedTemporaryFile
 
 from aiogram import Bot, F, Router
@@ -509,8 +509,8 @@ async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> in
                 balance=0.0,
                 trial=1,
                 source_code=None,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
             session.add(new_user)
             added += 1

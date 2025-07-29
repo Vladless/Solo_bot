@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from math import ceil
 from typing import Any
 
@@ -254,7 +254,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
 
         email = record["email"]
         expiry_time = record["expiry_time"]
-        current_time = datetime.utcnow().timestamp() * 1000
+        current_time = datetime.now(UTC).timestamp() * 1000
 
         if expiry_time <= current_time:
             new_expiry_time = int(current_time + timedelta(days=duration_days).total_seconds() * 1000)

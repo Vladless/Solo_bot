@@ -1,7 +1,7 @@
 import html
 import os
 import re
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 import pytz
@@ -228,7 +228,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     expiry_time = record["expiry_time"]
     server_name = record["server_id"]
     expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-    time_left = expiry_date - datetime.utcnow()
+    time_left = expiry_date - datetime.now(UTC)
 
     if time_left.total_seconds() <= 0:
         days_left_message = DAYS_LEFT_MESSAGE

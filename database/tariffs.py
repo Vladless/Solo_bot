@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -86,8 +86,8 @@ async def get_tariffs_for_cluster(session: AsyncSession, cluster_name: str):
 
 async def create_tariff(session: AsyncSession, data: dict):
     try:
-        data["created_at"] = datetime.utcnow()
-        data["updated_at"] = datetime.utcnow()
+        data["created_at"] = datetime.now(UTC)
+        data["updated_at"] = datetime.now(UTC)
 
         stmt = insert(Tariff).values(**data).returning(Tariff)
         result = await session.execute(stmt)
@@ -103,7 +103,7 @@ async def update_tariff(session: AsyncSession, tariff_id: int, updates: dict):
     if not updates:
         return False
     try:
-        updates["updated_at"] = datetime.utcnow()
+        updates["updated_at"] = datetime.now(UTC)
         await session.execute(update(Tariff).where(Tariff.id == tariff_id).values(**updates))
         await session.commit()
         return True

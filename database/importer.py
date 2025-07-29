@@ -1,7 +1,7 @@
 import json
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, UTC
 from itertools import cycle
 
 from sqlalchemy import select
@@ -82,8 +82,8 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
                         balance=0.0,
                         trial=1,
                         source_code=None,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow(),
+                        created_at=datetime.now(UTC),
+                        updated_at=datetime.now(UTC),
                     )
                 )
             except SQLAlchemyError:

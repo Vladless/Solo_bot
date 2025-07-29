@@ -1,5 +1,5 @@
 import csv
-from datetime import datetime
+from datetime import datetime, UTC
 from io import StringIO
 
 from aiogram.types import BufferedInputFile
@@ -152,7 +152,7 @@ async def export_referrals_csv(referrer_tg_id: int, session: AsyncSession) -> Bu
 
 
 async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
-    now_ts = int(datetime.utcnow().timestamp() * 1000)
+    now_ts = int(datetime.now(UTC).timestamp() * 1000)
 
     stmt = (
         select(

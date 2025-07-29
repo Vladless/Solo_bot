@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -222,7 +222,7 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
     keyboard_data = data.get("keyboard")
     send_to = data.get("type", "all")
     cluster_name = data.get("cluster_name")
-    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    now_ms = int(datetime.now(UTC).timestamp() * 1000)
 
     keyboard = None
     if keyboard_data:

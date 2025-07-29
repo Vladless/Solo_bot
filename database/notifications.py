@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,11 +16,11 @@ async def add_notification(session: AsyncSession, tg_id: int, notification_type:
             .values(
                 tg_id=tg_id,
                 notification_type=notification_type,
-                last_notification_time=datetime.utcnow(),
+                last_notification_time=datetime.now(UTC),
             )
             .on_conflict_do_update(
                 index_elements=[Notification.tg_id, Notification.notification_type],
-                set_={"last_notification_time": datetime.utcnow()},
+                set_={"last_notification_time": datetime.now(UTC)},
             )
         )
         await session.execute(stmt)
@@ -50,7 +50,7 @@ async def check_notification_time(session: AsyncSession, tg_id: int, notificatio
     last_time = result.scalar_one_or_none()
     if not last_time:
         return True
-    return datetime.utcnow() - last_time > timedelta(hours=hours)
+    return datetime.now(UTC) - last_time > timedelta(hours=hours)
 
 
 async def get_last_notification_time(session: AsyncSession, tg_id: int, notification_type: str) -> int | None:
@@ -76,7 +76,7 @@ async def check_notifications_bulk(
     from database.models import BlockedUser, Notification
 
     try:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         subq_last_notification = (
             select(Notification.tg_id, func.max(Notification.last_notification_time).label("last_notification_time"))
             .where(Notification.notification_type == notification_type)

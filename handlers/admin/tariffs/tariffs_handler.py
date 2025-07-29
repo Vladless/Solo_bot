@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, UTC
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -521,7 +521,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
             return
 
     setattr(tariff, field, value)
-    tariff.updated_at = datetime.utcnow()
+    tariff.updated_at = datetime.now(UTC)
 
     await session.commit()
     await state.clear()
@@ -702,7 +702,7 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
         return
 
     await session.execute(
-        update(Tariff).where(Tariff.id.in_(selected_ids)).values(subgroup_title=title, updated_at=datetime.utcnow())
+        update(Tariff).where(Tariff.id.in_(selected_ids)).values(subgroup_title=title, updated_at=datetime.now(UTC))
     )
     await session.commit()
     await state.clear()
@@ -1045,14 +1045,14 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
 
     if to_remove:
         await session.execute(
-            update(Tariff).where(Tariff.id.in_(to_remove)).values(subgroup_title=None, updated_at=datetime.utcnow())
+            update(Tariff).where(Tariff.id.in_(to_remove)).values(subgroup_title=None, updated_at=datetime.now(UTC))
         )
 
     if to_add:
         await session.execute(
             update(Tariff)
             .where(Tariff.id.in_(to_add))
-            .values(subgroup_title=subgroup_title, updated_at=datetime.utcnow())
+            .values(subgroup_title=subgroup_title, updated_at=datetime.now(UTC))
         )
 
     await session.commit()

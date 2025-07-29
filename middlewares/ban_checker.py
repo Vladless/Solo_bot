@@ -1,5 +1,5 @@
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -48,7 +48,7 @@ class BanCheckerMiddleware(BaseMiddleware):
             result = await session.execute(
                 select(ManualBan).where(
                     ManualBan.tg_id == tg_id,
-                    (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow()),
+                    (ManualBan.until.is_(None)) | (ManualBan.until > datetime.now(UTC)),
                 )
             )
             ban = result.scalar_one_or_none()

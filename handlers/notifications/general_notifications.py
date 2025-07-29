@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 import pytz
 from aiogram import Bot, Router
@@ -508,8 +508,8 @@ async def process_auto_renew_or_notify(
 
         new_expiry_time = (
             current_expiry
-            if current_expiry > datetime.utcnow().timestamp() * 1000
-            else datetime.utcnow().timestamp() * 1000
+            if current_expiry > datetime.now(UTC).timestamp() * 1000
+            else datetime.now(UTC).timestamp() * 1000
         ) + duration_days * 24 * 60 * 60 * 1000
 
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
