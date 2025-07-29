@@ -1,3 +1,3 @@
-__all__ = ("router",)
+from . import handler
 
-from .panel_handler import router
+__all__ = ["handler"]

@@ -100,7 +100,7 @@ async def process_callback_delete_server(
     state: FSMContext,
     session: AsyncSession,
 ):
-    from ..clusters.clusters_handler import AdminClusterStates
+    from ..clusters.handler import AdminClusterStates
 
     server_name = callback_data.data
 

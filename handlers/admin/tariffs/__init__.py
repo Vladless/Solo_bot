@@ -1,3 +1,3 @@
-__all__ = ("router",)
+from . import handler
 
-from .tariffs_handler import router
+__all__ = ["handler"]

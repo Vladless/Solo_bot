@@ -1,3 +1,3 @@
-__all__ = ("router",)
+from . import handler
 
-from .coupons_handler import router
+__all__ = ["handler"]
