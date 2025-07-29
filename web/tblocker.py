@@ -1,4 +1,3 @@
-import datetime
 from datetime import datetime
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
