@@ -174,20 +174,13 @@ def format_hours(hours: int) -> str:
     return f"{hours} {get_plural_form(hours, 'час', 'часа', 'часов')}"
 
 
-def format_minutes(minutes: int) -> str:
-    """Форматирует количество минут с правильным склонением"""
-    if minutes <= 0:
-        return "0 минут"
-    return f"{minutes} {get_plural_form(minutes, 'минута', 'минуты', 'минут')}"
-
-
 async def edit_or_send_message(
-    target_message: Message,
-    text: str,
-    reply_markup: InlineKeyboardMarkup | None = None,
-    media_path: str = None,
-    disable_web_page_preview: bool = False,
-    force_text: bool = False,
+        target_message: Message,
+        text: str,
+        reply_markup: InlineKeyboardMarkup | None = None,
+        media_path: str = None,
+        disable_web_page_preview: bool = False,
+        force_text: bool = False,
 ):
     """
     Универсальная функция для редактирования исходного сообщения target_message.
