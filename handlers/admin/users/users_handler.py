@@ -60,13 +60,13 @@ from .keyboard import (
     build_hwid_menu_kb,
     build_key_delete_kb,
     build_key_edit_kb,
+    build_user_ban_type_kb,
     build_user_delete_kb,
     build_user_edit_kb,
     build_users_balance_change_kb,
     build_users_balance_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
-    build_user_ban_type_kb
 )
 
 
@@ -1629,10 +1629,7 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
     await state.clear()
 
     await message.answer(
-        text=(
-            f"✅ Пользователь <code>{tg_id}</code> забанен навсегда."
-            f"{f'\n📄 Причина: {reason}' if reason else ''}"
-        ),
+        text=(f"✅ Пользователь <code>{tg_id}</code> забанен навсегда.{f'\n📄 Причина: {reason}' if reason else ''}"),
         reply_markup=build_editor_kb(tg_id, edit=True),
     )
 

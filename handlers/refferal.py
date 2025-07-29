@@ -20,7 +20,15 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, TRIAL_CONFIG, USERNAME_BOT, REFERRAL_QR
+from config import (
+    ADMIN_ID,
+    INLINE_MODE,
+    REFERRAL_BONUS_PERCENTAGES,
+    REFERRAL_QR,
+    TOP_REFERRAL_BUTTON,
+    TRIAL_CONFIG,
+    USERNAME_BOT,
+)
 from database import (
     add_referral,
     add_user,

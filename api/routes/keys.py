@@ -75,7 +75,6 @@ async def edit_key_by_email(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
-
     result = await session.execute(select(Key).where(Key.email == email))
     db_key = result.scalar_one_or_none()
     if not db_key:
@@ -121,7 +120,6 @@ async def create_key_api(
     session: AsyncSession = Depends(get_session),
     admin: Admin = Depends(verify_admin_token),
 ):
-
     try:
         await create_key_on_cluster(
             cluster_id=payload.cluster_id,

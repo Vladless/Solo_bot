@@ -8,12 +8,12 @@ from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
 
 from .admin import AdminMiddleware
+from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware
 from .maintenance import MaintenanceModeMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
-from .direct_start_blocker import DirectStartBlockerMiddleware
 
 
 def register_middleware(
@@ -57,4 +57,3 @@ def register_middleware(
 
         for handler in handlers:
             handler.outer_middleware(middleware)
-

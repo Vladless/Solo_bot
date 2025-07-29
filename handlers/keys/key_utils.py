@@ -754,9 +754,9 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
     server_id = list(server_ids)[0]
 
     result = await session.execute(
-        select(Server).where(
-            (Server.server_name == server_id) | (Server.cluster_name == server_id)
-        ).where(Server.enabled == True)
+        select(Server)
+        .where((Server.server_name == server_id) | (Server.cluster_name == server_id))
+        .where(Server.enabled is True)
     )
     server_rows = result.scalars().all()
     if not server_rows:

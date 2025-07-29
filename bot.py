@@ -1,7 +1,8 @@
 import os
 import subprocess
-import traceback
 import time
+import traceback
+
 from functools import lru_cache
 
 from aiogram import Bot, Dispatcher
@@ -40,23 +41,25 @@ def _get_git_commit_number_uncached() -> str:
     env["GIT_WORK_TREE"] = cwd
 
     try:
-        local_number = subprocess.check_output(
-            ["git", "rev-list", "--count", "HEAD"], cwd=cwd, env=env
-        ).decode().strip()
-        local_hash = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=cwd, env=env
-        ).decode().strip()
+        local_number = (
+            subprocess.check_output(["git", "rev-list", "--count", "HEAD"], cwd=cwd, env=env).decode().strip()
+        )
+        local_hash = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd, env=env).decode().strip()
         try:
-            branch = subprocess.check_output(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, env=env
-            ).decode().strip()
+            branch = (
+                subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, env=env).decode().strip()
+            )
             if branch == "HEAD":
-                describe = subprocess.check_output(
-                    ["git", "describe", "--tags", "--exact-match"],
-                    cwd=cwd,
-                    env=env,
-                    stderr=subprocess.DEVNULL,
-                ).decode().strip()
+                describe = (
+                    subprocess.check_output(
+                        ["git", "describe", "--tags", "--exact-match"],
+                        cwd=cwd,
+                        env=env,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    .decode()
+                    .strip()
+                )
                 branch = "main" if describe.startswith("v") or "release" in describe.lower() else "dev"
         except Exception:
             branch = "dev"
@@ -72,9 +75,9 @@ def _get_git_commit_number_uncached() -> str:
         ).decode()
         remote_hash = remote_commit.split()[0]
 
-        remote_number = subprocess.check_output(
-            ["git", "rev-list", "--count", remote_hash], cwd=cwd, env=env
-        ).decode().strip()
+        remote_number = (
+            subprocess.check_output(["git", "rev-list", "--count", remote_hash], cwd=cwd, env=env).decode().strip()
+        )
 
         if local_hash == remote_hash:
             logger.info("[Git] Локальная версия актуальна")

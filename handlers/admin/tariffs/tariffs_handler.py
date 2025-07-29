@@ -1,5 +1,6 @@
-from datetime import datetime
 import re
+
+from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,7 +16,7 @@ from sqlalchemy import delete, distinct, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import create_tariff
-from database.models import Key, Server, Tariff, Gift
+from database.models import Gift, Key, Server, Tariff
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from filters.admin import IsAdminFilter
 
@@ -348,9 +349,7 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
     if group_code == "gifts":
         gift_check = await session.execute(select(Gift).where(Gift.tariff_id == tariff_id).limit(1))
         if gift_check.scalar_one_or_none():
-            result = await session.execute(
-                select(Tariff).where(Tariff.group_code == "gifts", Tariff.id != tariff_id)
-            )
+            result = await session.execute(select(Tariff).where(Tariff.group_code == "gifts", Tariff.id != tariff_id))
             other_tariffs = result.scalars().all()
 
             if not other_tariffs:
@@ -372,16 +371,14 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
             for t in other_tariffs:
                 builder.button(
                     text=f"{t.name} — {t.price_rub}₽",
-                    callback_data=f"confirm_delete_tariff_with_replace|{tariff_id}|{t.id}"
+                    callback_data=f"confirm_delete_tariff_with_replace|{tariff_id}|{t.id}",
                 )
-            builder.button(
-                text="❌ Отмена", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
-            )
+            builder.button(text="❌ Отмена", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack())
 
             await callback.message.edit_text(
                 "<b>Этот тариф используется в подарках.</b>\n\n"
                 "Выберите тариф, на который заменить его во всех подарках перед удалением:",
-                reply_markup=builder.as_markup()
+                reply_markup=builder.as_markup(),
             )
             return
 
@@ -391,7 +388,9 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="✅ Да", callback_data=f"confirm_delete_tariff|{tariff_id}"),
-                    InlineKeyboardButton(text="❌ Отмена", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()),
+                    InlineKeyboardButton(
+                        text="❌ Отмена", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
+                    ),
                 ]
             ]
         ),
@@ -404,9 +403,7 @@ async def delete_tariff_with_gift_replacement(callback: CallbackQuery, session: 
     tariff_id = int(tariff_id_str)
     replacement_id = int(replacement_id_str)
 
-    await session.execute(
-        update(Gift).where(Gift.tariff_id == tariff_id).values(tariff_id=replacement_id)
-    )
+    await session.execute(update(Gift).where(Gift.tariff_id == tariff_id).values(tariff_id=replacement_id))
 
     await session.execute(update(Key).where(Key.tariff_id == tariff_id).values(tariff_id=None))
 
@@ -465,7 +462,6 @@ async def delete_tariff(callback: CallbackQuery, session: AsyncSession):
 
     await session.commit()
     await callback.message.edit_text("🗑 Тариф успешно удалён.", reply_markup=build_tariff_menu_kb())
-
 
 
 @router.callback_query(F.data.startswith("edit_field|"), IsAdminFilter())

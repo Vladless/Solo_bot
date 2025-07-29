@@ -20,38 +20,28 @@ from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
 
 
-
 router = Router()
 
 
 async def send_broadcast_batch(bot, messages, batch_size=15):
     results = []
-    
+
     for i in range(0, len(messages), batch_size):
-        batch = messages[i:i + batch_size]
+        batch = messages[i : i + batch_size]
         tasks = []
-        
+
         for msg in batch:
             tg_id = msg["tg_id"]
             text = msg["text"]
             photo = msg.get("photo")
             keyboard = msg.get("keyboard")
-            
+
             if photo:
                 task = bot.send_photo(
-                    chat_id=tg_id,
-                    photo=photo,
-                    caption=text,
-                    parse_mode="HTML",
-                    reply_markup=keyboard
+                    chat_id=tg_id, photo=photo, caption=text, parse_mode="HTML", reply_markup=keyboard
                 )
             else:
-                task = bot.send_message(
-                    chat_id=tg_id,
-                    text=text,
-                    parse_mode="HTML",
-                    reply_markup=keyboard
-                )
+                task = bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
             tasks.append(task)
 
         batch_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -65,7 +55,7 @@ async def send_broadcast_batch(bot, messages, batch_size=15):
 
         if i + batch_size < len(messages):
             await asyncio.sleep(1.0)
-    
+
     return results
 
 
@@ -292,20 +282,11 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
 
     messages = []
     for tg_id in tg_ids:
-        message_data = {
-            "tg_id": tg_id,
-            "text": text_message,
-            "photo": photo,
-            "keyboard": keyboard
-        }
+        message_data = {"tg_id": tg_id, "text": text_message, "photo": photo, "keyboard": keyboard}
         messages.append(message_data)
 
-    results = await send_broadcast_batch(
-        bot=callback_query.bot,
-        messages=messages,
-        batch_size=15
-    )
-    
+    results = await send_broadcast_batch(bot=callback_query.bot, messages=messages, batch_size=15)
+
     success_count = sum(1 for result in results if result)
 
     await callback_query.message.answer(

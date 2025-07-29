@@ -83,7 +83,9 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
             return
 
         stmt = (
-            select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active.is_(True)).order_by(Tariff.duration_days)
+            select(Tariff)
+            .where(Tariff.group_code == "gifts", Tariff.is_active.is_(True))
+            .order_by(Tariff.duration_days)
         )
         result = await session.execute(stmt)
         tariffs = result.scalars().all()

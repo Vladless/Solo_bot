@@ -661,7 +661,6 @@ async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
     await state.set_state(FileUploadState.waiting_for_file)
 
 
-
 @router.message(FileUploadState.waiting_for_file, F.document)
 async def handle_admin_file_upload(message: Message, state: FSMContext):
     document = message.document
@@ -687,4 +686,3 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
             reply_markup=build_admin_back_kb("management"),
         )
     await state.clear()
-

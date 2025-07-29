@@ -150,10 +150,14 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         total_referrals = await count_total_referrals(session)
 
         total_payments_today = await sum_payments_since(session, today_start.replace(tzinfo=None))
-        total_payments_yesterday = await sum_payments_between(session, yesterday_start.replace(tzinfo=None), yesterday_end.replace(tzinfo=None))
+        total_payments_yesterday = await sum_payments_between(
+            session, yesterday_start.replace(tzinfo=None), yesterday_end.replace(tzinfo=None)
+        )
         total_payments_week = await sum_payments_since(session, week_start.replace(tzinfo=None))
         total_payments_month = await sum_payments_since(session, month_start.replace(tzinfo=None))
-        total_payments_last_month = await sum_payments_between(session, last_month_start.replace(tzinfo=None), last_month_end.replace(tzinfo=None))
+        total_payments_last_month = await sum_payments_between(
+            session, last_month_start.replace(tzinfo=None), last_month_end.replace(tzinfo=None)
+        )
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
 

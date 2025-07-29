@@ -1,17 +1,17 @@
 import os
 import re
+import shutil
 import subprocess
 import sys
-import shutil
-from rich.progress import Progress, SpinnerColumn, TextColumn
+
 from time import sleep
-from rich.live import Live
-from rich.panel import Panel
-from rich.console import Group
 
 import requests
 
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
@@ -60,7 +60,6 @@ def print_logo():
         "███████║╚██████╔╝███████╗╚██████╔╝██████╔╝╚██████╔╝   ██║   ",
         "╚══════╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   ",
     ]
-
 
     with Live(refresh_per_second=10) as live:
         display = []
@@ -220,7 +219,7 @@ def install_dependencies():
 
             progress.update(task_id, description="Установка зависимостей...")
             subprocess.run(
-                f"bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
+                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
                 shell=True,
                 check=True,
             )

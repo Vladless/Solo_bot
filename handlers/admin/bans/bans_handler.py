@@ -1,14 +1,15 @@
 import csv
 import io
+
 from datetime import datetime, timezone
-from aiogram.fsm.context import FSMContext
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import delete, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from aiogram.fsm.state import State, StatesGroup
 
 from database import delete_user_data
 from database.models import ManualBan
@@ -168,23 +169,27 @@ async def handle_preemptive_ids_input(message: Message, state: FSMContext, sessi
 
     now = datetime.now(timezone.utc)
 
-    stmt = pg_insert(ManualBan).values([
-        {
-            "tg_id": tg_id,
-            "reason": "shadow",
-            "banned_by": message.from_user.id,
-            "until": None,
-            "banned_at": now,
-        }
-        for tg_id in tg_ids
-    ]).on_conflict_do_update(
-        index_elements=[ManualBan.tg_id],
-        set_={
-            "reason": "shadow",
-            "until": None,
-            "banned_by": message.from_user.id,
-            "banned_at": now,
-        },
+    stmt = (
+        pg_insert(ManualBan)
+        .values([
+            {
+                "tg_id": tg_id,
+                "reason": "shadow",
+                "banned_by": message.from_user.id,
+                "until": None,
+                "banned_at": now,
+            }
+            for tg_id in tg_ids
+        ])
+        .on_conflict_do_update(
+            index_elements=[ManualBan.tg_id],
+            set_={
+                "reason": "shadow",
+                "until": None,
+                "banned_by": message.from_user.id,
+                "banned_at": now,
+            },
+        )
     )
 
     await session.execute(stmt)

@@ -1,4 +1,5 @@
 import re
+
 from datetime import datetime
 
 import pytz
@@ -177,7 +178,7 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
     moscow_tz = pytz.timezone("Europe/Moscow")
     now = datetime.now(moscow_tz)
     update_time = now.strftime("%d.%m.%y %H:%M:%S")
-    
+
     return (
         f"<b>📊 <u>Статистика по рекламной ссылке</u></b>\n\n"
         f"📌 <b>Название:</b> {stats['name']}\n"

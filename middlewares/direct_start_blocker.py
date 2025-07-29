@@ -5,7 +5,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
 
 from config import DISABLE_DIRECT_START
-from database import check_user_exists, async_session_maker
+from database import async_session_maker, check_user_exists
 from logger import logger
 
 
