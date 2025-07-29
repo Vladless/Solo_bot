@@ -13,7 +13,6 @@ from config import (
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     SUPPORT_CHAT_URL,
-    TRIAL_CONFIG,
 )
 from database import (
     add_notification,
@@ -22,6 +21,7 @@ from database import (
     update_key_notified,
 )
 from database.models import Key
+from database.tariffs import get_tariffs
 from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
 from handlers.keys.key_utils import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
@@ -44,7 +44,12 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
     messages = []
 
-    trial_days = TRIAL_CONFIG["duration_days"]
+    trial_tariffs = await get_tariffs(session, group_code="trial")
+    if not trial_tariffs:
+        logger.error("[Notifications] Триальный тариф не найден")
+        return
+    
+    trial_days = trial_tariffs[0]["duration_days"]
 
     for user in users:
         tg_id = user["tg_id"]

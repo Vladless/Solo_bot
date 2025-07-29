@@ -103,7 +103,8 @@ async def start_tariff_creation(callback: CallbackQuery, state: FSMContext):
         "<b>Специальные группы:</b>\n"
         "• <code>discounts</code> — тарифы со скидкой\n"
         "• <code>discounts_max</code> — тарифы с максимальной скидкой\n"
-        "• <code>gifts</code> — тарифы для подарков",
+        "• <code>gifts</code> — тарифы для подарков\n"
+        "• <code>trial</code> — тариф для пробного периода",
         reply_markup=build_cancel_kb(),
     )
 
@@ -276,6 +277,7 @@ async def show_tariff_groups(callback: CallbackQuery, session: AsyncSession):
         "discounts": "🔻 Скидки",
         "discounts_max": "🔻 Макс. скидки",
         "gifts": "🎁 Подарки",
+        "trial": "🚀 Пробный период",
     }
 
     text = "<b>📋 Выберите тарифную группу:</b>\n\n"

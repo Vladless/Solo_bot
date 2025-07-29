@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     NOTIFY_EXTRA_DAYS,
-    TRIAL_CONFIG,
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
@@ -29,7 +28,7 @@ from database import (
     get_trial,
 )
 from database.models import Admin
-from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
@@ -90,7 +89,21 @@ async def handle_key_creation(
         if not TRIAL_TIME_DISABLE:
             trial_status = await get_trial(session, tg_id)
             if trial_status in [0, -1]:
-                base_days = TRIAL_CONFIG["duration_days"]
+                trial_tariffs = await get_tariffs(session, group_code="trial")
+                if not trial_tariffs:
+                    await edit_or_send_message(
+                        target_message=(
+                            message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+                        ),
+                        text="❌ Пробная подписка временно недоступна.",
+                        reply_markup=InlineKeyboardBuilder()
+                        .row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                        .as_markup(),
+                    )
+                    return
+
+                trial_tariff = trial_tariffs[0]
+                base_days = trial_tariff["duration_days"]
                 extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
                 total_days = base_days + extra_days
                 expiry_time = current_time + timedelta(days=total_days)
@@ -105,8 +118,8 @@ async def handle_key_creation(
                     reply_markup=None,
                 )
 
-                await state.update_data(is_trial=True)
-                await create_key(tg_id, expiry_time, state, session, message_or_query)
+                await state.update_data(is_trial=True, plan=trial_tariff["id"])
+                await create_key(tg_id, expiry_time, state, session, message_or_query, plan=trial_tariff["id"])
                 return
 
         try:

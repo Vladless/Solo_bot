@@ -24,7 +24,6 @@ from config import (
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     SUPPORT_CHAT_URL,
-    TRIAL_CONFIG,
 )
 from database import (
     add_user,
@@ -34,7 +33,9 @@ from database import (
     get_trial,
     update_balance,
     update_trial,
+    get_tariff_by_id,
 )
+
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_client_on_server
@@ -335,10 +336,7 @@ async def finalize_key_creation(
     data = await state.get_data() if state else {}
     is_trial = data.get("is_trial", False)
 
-    if is_trial:
-        traffic_limit_bytes = int(TRIAL_CONFIG.get("traffic_limit_gb", 100)) * 1024**3
-        device_limit = TRIAL_CONFIG.get("hwid_limit", 0)
-    elif data.get("tariff_id") or tariff_id:
+    if data.get("tariff_id") or tariff_id:
         tariff_id = data.get("tariff_id") or tariff_id
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         tariff = result.scalar_one_or_none()
@@ -511,30 +509,16 @@ async def finalize_key_creation(
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         tariff_info = result.scalar_one_or_none()
 
-    if is_trial:
-        trial_days = TRIAL_CONFIG.get("duration_days", 1)
-        if trial_days >= 30:
-            months = trial_days // 30
-            tariff_duration = format_months(months)
-        else:
-            tariff_duration = format_days(trial_days)
-        key_message_text = key_message_success(
-            link_to_show,
-            tariff_name=tariff_duration,
-            traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 0),
-        )
-    else:
-        tariff_duration = tariff_info["name"] if tariff_info else None
-        subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
+    tariff_duration = tariff_info["name"]
+    subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
 
-        key_message_text = key_message_success(
-            link_to_show,
-            tariff_name=tariff_duration,
-            traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
-            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
-            subgroup_title=subgroup_title,
-        )
+    key_message_text = key_message_success(
+        link_to_show,
+        tariff_name=tariff_duration,
+        traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
+        device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
+        subgroup_title=subgroup_title,
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,

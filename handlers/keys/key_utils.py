@@ -6,8 +6,9 @@ from typing import Any
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, TRIAL_CONFIG
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import delete_notification, get_servers, get_tariff_by_id, store_key
+
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
 from logger import logger
@@ -220,11 +221,7 @@ async def create_client_on_server(
         total_gb_value = 0
         device_limit_value = 0
 
-        if is_trial:
-            total_gb_value = TRIAL_CONFIG.get("traffic_limit_gb", 0)
-            device_limit_value = TRIAL_CONFIG.get("hwid_limit")
-            logger.info(f"[Trial] Используются параметры триала: {total_gb_value} GB, {device_limit_value} устройств")
-        elif plan is not None:
+        if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             logger.info(f"[Tariff Debug] Получен тариф: {tariff}")
             if not tariff:

@@ -20,15 +20,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import (
-    ADMIN_ID,
-    INLINE_MODE,
-    REFERRAL_BONUS_PERCENTAGES,
-    REFERRAL_QR,
-    TOP_REFERRAL_BUTTON,
-    TRIAL_CONFIG,
-    USERNAME_BOT,
-)
+from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, USERNAME_BOT, REFERRAL_QR
 from database import (
     add_referral,
     add_user,
@@ -37,6 +29,7 @@ from database import (
     get_referral_stats,
 )
 from database.models import Referral
+from database.tariffs import get_tariffs
 from handlers.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
 from handlers.texts import (
     INVITE_MESSAGE_TEMPLATE,
@@ -118,9 +111,15 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
 
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
-async def inline_referral_handler(inline_query: InlineQuery):
+async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSession):
     referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
-    trial_days = TRIAL_CONFIG["duration_days"]
+    
+    trial_tariffs = await get_tariffs(session, group_code="trial")
+    if not trial_tariffs:
+        await inline_query.answer(results=[], cache_time=0)
+        return
+    
+    trial_days = trial_tariffs[0]["duration_days"]
     trial_time_formatted = format_days(trial_days)
 
     results: list[InlineQueryResultArticle] = []

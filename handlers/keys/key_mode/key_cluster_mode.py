@@ -15,7 +15,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL, TRIAL_CONFIG
+from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL
 from database import (
     get_key_details,
     get_tariff_by_id,
@@ -23,6 +23,7 @@ from database import (
     update_balance,
     update_trial,
 )
+
 from handlers.buttons import (
     CONNECT_DEVICE,
     CONNECT_PHONE,
@@ -84,10 +85,7 @@ async def key_cluster_mode(
         device_limit = 0
         traffic_limit_gb = 0
 
-        if is_trial:
-            device_limit = TRIAL_CONFIG.get("hwid_limit", 0)
-            traffic_limit_gb = TRIAL_CONFIG.get("traffic_limit_gb", 100)
-        elif plan:
+        if plan:
             tariff = await get_tariff_by_id(session, plan)
             if tariff:
                 if tariff.get("device_limit") is not None:
@@ -182,30 +180,16 @@ async def key_cluster_mode(
     if plan:
         tariff_info = await get_tariff_by_id(session, plan)
 
-    if is_trial:
-        trial_days = TRIAL_CONFIG.get("duration_days", 1)
-        if trial_days >= 30:
-            months = trial_days // 30
-            tariff_duration = format_months(months)
-        else:
-            tariff_duration = format_days(trial_days)
-        key_message_text = key_message_success(
-            final_link,
-            tariff_name=tariff_duration,
-            traffic_limit=TRIAL_CONFIG.get("traffic_limit_gb", 100),
-            device_limit=TRIAL_CONFIG.get("hwid_limit", 0),
-        )
-    else:
-        tariff_duration = tariff_info["name"]
-        subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
+    tariff_duration = tariff_info["name"]
+    subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
 
-        key_message_text = key_message_success(
-            final_link,
-            tariff_name=tariff_duration,
-            traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
-            device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
-            subgroup_title=subgroup_title,
-        )
+    key_message_text = key_message_success(
+        final_link,
+        tariff_name=tariff_duration,
+        traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
+        device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
+        subgroup_title=subgroup_title,
+    )
 
     default_media_path = "img/pic.jpg"
     if safe_to_edit:

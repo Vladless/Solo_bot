@@ -92,7 +92,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         if tariff_id:
             if await check_tariff_exists(session, tariff_id):
                 current_tariff = await get_tariff_by_id(session, tariff_id)
-                if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts"]:
+                if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts", "trial"]:
                     group_code = current_tariff["group_code"]
 
         tariffs = await get_tariffs(session, group_code=group_code)

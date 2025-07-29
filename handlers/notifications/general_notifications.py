@@ -476,7 +476,7 @@ async def process_auto_renew_or_notify(
         else:
             if await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
-                if current_tariff["group_code"] in ["discounts", "discounts_max", "gifts"]:
+                if current_tariff["group_code"] in ["discounts", "discounts_max", "gifts", "trial"]:
                     cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
                     if cluster_tariffs:
                         cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
