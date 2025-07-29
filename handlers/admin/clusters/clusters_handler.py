@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
 from typing import Any
 
 from aiogram import F, Router, types
@@ -579,7 +579,7 @@ async def handle_sync_cluster(
             try:
                 if only_remnawave:
                     expire_iso = (
-                        datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
+                        datetime.fromtimestamp(key["expiry_time"] / 1000, UTC).replace(tzinfo=timezone.utc).isoformat()
                     )
 
                     remna = RemnawaveAPI(cluster_servers[0]["api_url"])
@@ -784,7 +784,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
             )
             await update_key_expiry(session, key.client_id, new_expiry)
 
-            logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}")
+            logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.fromtimestamp(new_expiry / 1000, UTC)}")
 
         await message.answer(
             f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."

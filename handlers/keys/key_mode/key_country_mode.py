@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any
 
 import pytz
@@ -386,7 +386,7 @@ async def finalize_key_creation(
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})")
 
-            expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
+            expire_at = datetime.fromtimestamp(expiry_timestamp / 1000, UTC).isoformat() + "Z"
             user_data = {
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",

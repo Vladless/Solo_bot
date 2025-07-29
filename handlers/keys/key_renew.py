@@ -128,7 +128,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
             balance=balance,
-            expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+            expiry_date=datetime.fromtimestamp(expiry_time / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         await edit_or_send_message(

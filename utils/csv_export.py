@@ -224,10 +224,10 @@ async def export_keys_csv(session: AsyncSession) -> BufferedInputFile:
 
     for row in keys:
         created_at = (
-            datetime.utcfromtimestamp(row.created_at / 1000).strftime("%Y-%m-%d %H:%M:%S") if row.created_at else ""
+            datetime.fromtimestamp(row.created_at / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S") if row.created_at else ""
         )
         expiry_time = (
-            datetime.utcfromtimestamp(row.expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S") if row.expiry_time else ""
+            datetime.fromtimestamp(row.expiry_time / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S") if row.expiry_time else ""
         )
         tariff = row.tariff_name or "—"
 

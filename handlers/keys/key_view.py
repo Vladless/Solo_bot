@@ -227,7 +227,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     expiry_time = record["expiry_time"]
     server_name = record["server_id"]
-    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+    expiry_date = datetime.fromtimestamp(expiry_time / 1000, UTC)
     time_left = expiry_date - datetime.now(UTC)
 
     if time_left.total_seconds() <= 0:

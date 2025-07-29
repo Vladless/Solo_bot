@@ -70,7 +70,7 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
         return None
 
     key, user = row
-    expiry_date = datetime.utcfromtimestamp(key.expiry_time / 1000)
+    expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, UTC)
     current_date = datetime.now(UTC)
     time_left = expiry_date - current_date
 
