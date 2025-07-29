@@ -4,7 +4,6 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas import TariffBase, TariffResponse, TariffUpdate
 from database.models import Tariff
 
-
 router: APIRouter = generate_crud_router(
     model=Tariff,
     schema_response=TariffResponse,

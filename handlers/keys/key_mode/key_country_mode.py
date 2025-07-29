@@ -1,15 +1,14 @@
 import asyncio
 import uuid
-
 from datetime import datetime
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from panels.remnawave import RemnawaveAPI
 from py3xui import AsyncApi
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -33,25 +32,19 @@ from database import (
     get_trial,
     update_balance,
     update_trial,
-    get_tariff_by_id,
 )
-
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_client_on_server
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
     edit_or_send_message,
-    format_days,
-    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
 from logger import logger
-from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance
-
 
 router = Router()
 

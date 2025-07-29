@@ -7,21 +7,27 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    WATA_RU_ENABLE, WATA_RU_TOKEN,
-    WATA_SBP_ENABLE, WATA_SBP_TOKEN,
-    WATA_INT_ENABLE, WATA_INT_TOKEN,
-    REDIRECT_LINK,
     FAIL_REDIRECT_LINK,
+    REDIRECT_LINK,
+    WATA_INT_ENABLE,
+    WATA_INT_TOKEN,
+    WATA_RU_ENABLE,
+    WATA_RU_TOKEN,
+    WATA_SBP_ENABLE,
+    WATA_SBP_TOKEN,
 )
-
-from handlers.buttons import BACK, PAY_2, WATA_RU, WATA_SBP, WATA_INT
+from handlers.buttons import BACK, PAY_2, WATA_INT, WATA_RU, WATA_SBP
 from handlers.texts import (
-    WATA_RU_DESCRIPTION, WATA_SBP_DESCRIPTION, WATA_INT_DESCRIPTION,
-    WATA_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS, WATA_PAYMENT_TITLE
+    ENTER_SUM,
+    PAYMENT_OPTIONS,
+    WATA_INT_DESCRIPTION,
+    WATA_PAYMENT_MESSAGE,
+    WATA_PAYMENT_TITLE,
+    WATA_RU_DESCRIPTION,
+    WATA_SBP_DESCRIPTION,
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
-
 
 router = Router()
 
@@ -265,7 +271,6 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
     }
 
     if cassa["name"] == "int":
-        import json
         async def get_usd_rate():
             url = "https://api.exchangerate.host/latest?base=RUB&symbols=USD"
             async with aiohttp.ClientSession() as session:

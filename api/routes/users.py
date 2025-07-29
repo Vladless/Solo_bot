@@ -12,7 +12,6 @@ from database.models import Key, User
 from handlers.keys.key_utils import delete_key_from_cluster
 from logger import logger
 
-
 router = generate_crud_router(
     model=User,
     schema_response=UserResponse,

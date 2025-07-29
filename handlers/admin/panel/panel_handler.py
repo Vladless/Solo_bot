@@ -10,9 +10,7 @@ from bot import get_version
 from database.models import Admin
 from filters.admin import IsAdminFilter
 from logger import logger
-
 from .keyboard import AdminPanelCallback, build_panel_kb
-
 
 router = Router()
 

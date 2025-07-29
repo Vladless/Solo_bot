@@ -1,6 +1,5 @@
 import csv
 import io
-
 from datetime import datetime, timezone
 
 from aiogram import F, Router
@@ -15,10 +14,8 @@ from database import delete_user_data
 from database.models import ManualBan
 from filters.admin import IsAdminFilter
 from logger import logger
-
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_bans_kb
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 

@@ -2,7 +2,6 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from middlewares import maintenance
-
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 

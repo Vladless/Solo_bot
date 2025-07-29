@@ -4,7 +4,6 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas import CouponBase, CouponResponse, CouponUpdate
 from database.models import Coupon
 
-
 router: APIRouter = generate_crud_router(
     model=Coupon,
     schema_response=CouponResponse,

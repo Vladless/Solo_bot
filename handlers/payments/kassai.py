@@ -1,8 +1,8 @@
-import aiohttp
 import hashlib
 import hmac
 import time
-import json
+
+import aiohttp
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -11,14 +11,22 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    KASSAI_ENABLE, KASSAI_API_KEY, KASSAI_SECRET_KEY, KASSAI_DOMAIN, KASSAI_SHOP_ID,
-    REDIRECT_LINK, FAIL_REDIRECT_LINK, WEBHOOK_HOST, KASSAI_IP, KASSAI_SUCCESS_URL, KASSAI_FAILURE_URL
+    KASSAI_API_KEY,
+    KASSAI_DOMAIN,
+    KASSAI_ENABLE,
+    KASSAI_FAILURE_URL,
+    KASSAI_IP,
+    KASSAI_SECRET_KEY,
+    KASSAI_SHOP_ID,
+    KASSAI_SUCCESS_URL,
 )
-
-from handlers.buttons import BACK, PAY_2, KASSAI_CARDS, KASSAI_SBP
+from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
 from handlers.texts import (
-    KASSAI_CARDS_DESCRIPTION, KASSAI_SBP_DESCRIPTION,
-    KASSAI_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS, KASSAI_PAYMENT_TITLE
+    ENTER_SUM,
+    KASSAI_CARDS_DESCRIPTION,
+    KASSAI_PAYMENT_MESSAGE,
+    KASSAI_SBP_DESCRIPTION,
+    PAYMENT_OPTIONS,
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
@@ -223,7 +231,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         ]
     )
     
-    payment_message = await edit_or_send_message(
+    await edit_or_send_message(
         target_message=message,
         text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
@@ -273,7 +281,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         ]
     )
     
-    payment_message = await edit_or_send_message(
+    await edit_or_send_message(
         target_message=callback_query.message,
         text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,

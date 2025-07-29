@@ -1,5 +1,4 @@
 import re
-
 from datetime import datetime
 
 from aiogram import F, Router
@@ -19,8 +18,6 @@ from database import create_tariff
 from database.models import Gift, Key, Server, Tariff
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from filters.admin import IsAdminFilter
-
-from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     AdminTariffCallback,
     build_cancel_kb,
@@ -30,7 +27,7 @@ from .keyboard import (
     build_tariff_list_kb,
     build_tariff_menu_kb,
 )
-
+from ..panel.keyboard import AdminPanelCallback
 
 router = Router()
 

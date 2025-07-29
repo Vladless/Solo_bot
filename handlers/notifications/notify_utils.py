@@ -2,7 +2,6 @@ import asyncio
 import os
 
 import aiofiles
-
 from aiogram import Bot
 from aiogram.exceptions import (
     TelegramBadRequest,

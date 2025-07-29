@@ -1,9 +1,7 @@
 import os
-
 from io import BytesIO
 
 import qrcode
-
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -39,7 +37,6 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from logger import logger
-
 
 router = Router()
 

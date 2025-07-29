@@ -1,9 +1,7 @@
 import os
-
 from io import BytesIO
 
 import qrcode
-
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -20,7 +18,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, TOP_REFERRAL_BUTTON, USERNAME_BOT, REFERRAL_QR
+from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, REFERRAL_QR, TOP_REFERRAL_BUTTON, USERNAME_BOT
 from database import (
     add_referral,
     add_user,
@@ -40,10 +38,8 @@ from handlers.texts import (
     TOP_REFERRALS_TEXT,
 )
 from logger import logger
-
 from .texts import get_referral_link
 from .utils import edit_or_send_message, format_days
-
 
 router = Router()
 

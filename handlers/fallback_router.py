@@ -6,7 +6,6 @@ from config import SUPPORT_CHAT_URL
 from handlers.buttons import MAIN_MENU, SUPPORT
 from handlers.texts import FALLBACK_MESSAGE
 
-
 fallback_router = Router()
 
 

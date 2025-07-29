@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Payment
 from logger import logger
 
-
 MOSCOW_TZ = timezone("Europe/Moscow")
 
 

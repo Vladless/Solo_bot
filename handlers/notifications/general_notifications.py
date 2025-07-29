@@ -1,9 +1,7 @@
 import asyncio
-
 from datetime import datetime, timedelta
 
 import pytz
-
 from aiogram import Bot, Router
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -46,13 +44,11 @@ from handlers.texts import (
     KEY_EXPIRY_24H,
     get_renewal_message,
 )
-from handlers.utils import format_days, format_hours, format_minutes, format_months, get_russian_month
+from handlers.utils import format_hours, format_minutes, get_russian_month
 from logger import logger
-
 from .hot_leads_notifications import notify_hot_leads
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
-
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")

@@ -1,11 +1,9 @@
 import time
-
 from typing import Any
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import text
 
 from database import (
     get_key_details,
@@ -24,7 +22,6 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
-
 
 router = Router()
 

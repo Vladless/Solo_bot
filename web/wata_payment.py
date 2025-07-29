@@ -2,16 +2,14 @@ import base64
 import json
 
 import aiohttp
-
 from aiohttp import web
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from handlers.payments.utils import send_payment_success_notification
 
 from database import add_payment, async_session_maker, update_balance
-from handlers.payments.utils import send_payment_success_notification
 from logger import logger
-
 
 PUBLIC_KEY_URL = "https://api.wata.pro/api/h2h/public-key"
 

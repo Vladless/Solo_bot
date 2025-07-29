@@ -29,12 +29,9 @@ from handlers.buttons import (
     TRIAL_SUB,
 )
 from handlers.texts import ADD_SUBSCRIPTION_HINT
-from logger import logger
-
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import profile_message_send
 from .utils import edit_or_send_message
-
 
 router = Router()
 

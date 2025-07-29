@@ -5,24 +5,23 @@ from aiogram import Router
 from config import (
     CRYPTO_BOT_ENABLE,
     FREEKASSA_ENABLE,
+    HELEKET_ENABLE,
     KASSAI_ENABLE,
     ROBOKASSA_ENABLE,
     STARS_ENABLE,
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
-    HELEKET_ENABLE,
 )
-
 from .cryprobot_pay import router as cryprobot_router
 from .freekassa_pay import router as freekassa_router
 from .gift import router as gift_router
+from .heleket import router as heleket_router
 from .kassai import router as kassai_router
 from .robokassa_pay import router as robokassa_router
 from .stars_pay import router as stars_router
+from .wata import router as wata_router
 from .yookassa_pay import router as yookassa_router
 from .yoomoney_pay import router as yoomoney_router
-from .wata import router as wata_router
-from .heleket import router as heleket_router
 
 router = Router(name="payments_main_router")
 

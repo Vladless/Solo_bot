@@ -1,7 +1,6 @@
 import asyncio
 import re
 import ssl
-
 from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton
@@ -14,7 +13,6 @@ from config import ADMIN_ID, PING_TIME
 from database import get_servers
 from handlers.admin.servers.keyboard import AdminServerCallback
 from logger import logger
-
 
 last_ping_times = {}
 last_down_times = {}

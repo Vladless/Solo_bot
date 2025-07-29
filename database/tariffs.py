@@ -1,5 +1,4 @@
 import hashlib
-
 from datetime import datetime
 
 from sqlalchemy import delete, insert, select, update

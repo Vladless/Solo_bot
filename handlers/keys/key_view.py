@@ -1,12 +1,10 @@
 import html
 import os
 import re
-
 from datetime import datetime
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -62,7 +60,6 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from logger import logger
-
 
 router = Router()
 

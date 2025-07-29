@@ -1,5 +1,4 @@
 import asyncio
-
 from datetime import datetime, timezone
 from typing import Any
 
@@ -7,6 +6,7 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from panels.remnawave import RemnawaveAPI
 from py3xui import AsyncApi
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,9 +29,6 @@ from handlers.keys.key_utils import (
     renew_key_in_cluster,
 )
 from logger import logger
-from panels.remnawave import RemnawaveAPI
-
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminClusterCallback,
     AdminServerCallback,
@@ -42,7 +39,7 @@ from .keyboard import (
     build_sync_cluster_kb,
     build_tariff_group_selection_kb,
 )
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 

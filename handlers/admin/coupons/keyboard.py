@@ -1,12 +1,9 @@
-from typing import Optional
-
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK
 from handlers.utils import format_days
-
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 

@@ -1,5 +1,4 @@
 import hashlib
-
 from collections.abc import AsyncGenerator
 
 from fastapi import Depends, HTTPException, Header, Query

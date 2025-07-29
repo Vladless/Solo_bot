@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from api.routes import users, keys, coupons, servers, tariffs, gifts, referrals, misc
 
 app = FastAPI(

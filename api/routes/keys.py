@@ -11,7 +11,6 @@ from database.models import Admin, Key, Tariff
 from handlers.keys.key_utils import create_key_on_cluster, delete_key_from_cluster, renew_key_in_cluster
 from logger import logger
 
-
 router = generate_crud_router(
     model=Key,
     schema_response=KeyResponse,

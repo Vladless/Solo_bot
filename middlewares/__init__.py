@@ -3,10 +3,8 @@ from collections.abc import Iterable
 from aiogram import Dispatcher
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
-from logger import logger
 from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
-
 from .admin import AdminMiddleware
 from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware

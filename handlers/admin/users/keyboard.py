@@ -3,15 +3,14 @@ from datetime import datetime, timezone
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
-from database.models import Key, Server, Tariff
+from database.models import Key, Tariff
 from handlers.buttons import BACK
 from handlers.utils import format_days
-
 from ..panel.keyboard import build_admin_back_btn
 
 

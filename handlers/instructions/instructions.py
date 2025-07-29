@@ -1,5 +1,4 @@
 import os
-
 from typing import Any
 
 from aiogram import F, Router
@@ -36,7 +35,6 @@ from handlers.texts import (
     SUBSCRIPTION_DETAILS_TEXT,
 )
 from handlers.utils import edit_or_send_message
-
 
 router = Router()
 

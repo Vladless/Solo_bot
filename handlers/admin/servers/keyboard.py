@@ -2,8 +2,6 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.buttons import BACK
-
 
 class AdminServerCallback(CallbackData, prefix="admin_server"):
     action: str

@@ -1,7 +1,6 @@
 import json
 import sqlite3
 import time
-
 from datetime import datetime
 from itertools import cycle
 

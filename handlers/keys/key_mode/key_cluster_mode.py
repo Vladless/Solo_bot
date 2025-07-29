@@ -1,9 +1,7 @@
 import uuid
-
 from datetime import datetime
 
 import pytz
-
 from aiogram import Router
 from aiogram.types import (
     CallbackQuery,
@@ -23,7 +21,6 @@ from database import (
     update_balance,
     update_trial,
 )
-
 from handlers.buttons import (
     CONNECT_DEVICE,
     CONNECT_PHONE,
@@ -37,14 +34,11 @@ from handlers.keys.key_utils import create_key_on_cluster
 from handlers.texts import key_message_success
 from handlers.utils import (
     edit_or_send_message,
-    format_days,
-    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
 from logger import logger
-
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")

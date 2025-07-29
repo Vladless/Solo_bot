@@ -11,9 +11,7 @@ from database.models import Notification
 from handlers.notifications.notify_kb import build_tariffs_keyboard
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
 from logger import logger
-
 from .key_create import select_tariff_plan
-
 
 router = Router()
 
