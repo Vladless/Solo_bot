@@ -48,7 +48,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     if not trial_tariffs:
         logger.error("[Notifications] Триальный тариф не найден")
         return
-    
+
     trial_days = trial_tariffs[0]["duration_days"]
 
     for user in users:

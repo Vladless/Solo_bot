@@ -1158,15 +1158,8 @@ async def process_user_search(
         else:
             referrer_text = f"\n🤝 Пригласил: <b>{referrer_tg_id}</b>"
 
-    stmt = (
-        select(
-            func.count(Payment.id),
-            func.sum(Payment.amount)
-        )
-        .where(
-            Payment.status == "success",
-            Payment.tg_id == tg_id
-        )
+    stmt = select(func.count(Payment.id), func.sum(Payment.amount)).where(
+        Payment.status == "success", Payment.tg_id == tg_id
     )
     result = await session.execute(stmt)
     topups_amount, topups_sum = result.one_or_none() or (0, 0.0)
