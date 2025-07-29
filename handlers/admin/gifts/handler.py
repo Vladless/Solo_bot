@@ -197,29 +197,6 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
     await callback.message.edit_text(f"🎁 <b>Список подарков</b>\nСтраница {page}:", reply_markup=builder.as_markup())
 
 
-async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: int):
-    limit = 10
-    offset = (page - 1) * limit
-
-    stmt = select(Gift).order_by(Gift.created_at.desc()).offset(offset).limit(limit)
-    result = await session.execute(stmt)
-    gifts = result.scalars().all()
-
-    builder = InlineKeyboardBuilder()
-
-    if not gifts:
-        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
-        await callback.message.edit_text("❌ Подарки не найдены.", reply_markup=builder.as_markup())
-        return
-
-    keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
-
-    for row in keyboard.inline_keyboard:
-        builder.row(*row)
-
-    await callback.message.edit_text(f"🎁 <b>Список подарков</b>\nСтраница {page}:", reply_markup=builder.as_markup())
-
-
 @router.callback_query(F.data.startswith("gift_view|"))
 async def view_gift(callback: CallbackQuery, session: AsyncSession):
     gift_id = callback.data.split("|")[1]
