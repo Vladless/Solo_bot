@@ -106,7 +106,7 @@ def get_git_commit_number() -> str:
 
 
 def get_version() -> str:
-    return f"v4.4-preRelease{get_git_commit_number()}"
+    return f"v4.4-Release{get_git_commit_number()}"
 
 
 dp.message.filter(IsPrivateFilter())
