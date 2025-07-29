@@ -165,9 +165,6 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
 
     logger.exception(f"Update: {event.update}\nException: {event.exception}")
 
-    if not ADMIN_ID:
-        return True
-
     try:
         for admin_id in ADMIN_ID:
             await bot.send_document(
