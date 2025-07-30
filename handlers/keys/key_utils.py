@@ -1,8 +1,8 @@
 import asyncio
-
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
+from panels.remnawave import RemnawaveAPI
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,6 @@ from database import delete_notification, get_servers, get_tariff_by_id, store_k
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
 from logger import logger
-from panels.remnawave import RemnawaveAPI
 from panels.three_xui import (
     ClientConfig,
     add_client,
@@ -92,7 +91,7 @@ async def create_key_on_cluster(
             if not logged_in:
                 logger.error("Не удалось войти в Remnawave API")
             else:
-                expire_at = datetime.fromtimestamp(expiry_timestamp / 1000, UTC).isoformat() + "Z"
+                expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
                 inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
 
                 if not inbound_ids:
@@ -324,7 +323,7 @@ async def renew_key_in_cluster(
             if remnawave_server:
                 remna = RemnawaveAPI(remnawave_server["api_url"])
                 if await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    expire_iso = datetime.fromtimestamp(new_expiry_time // 1000, UTC).isoformat() + "Z"
+                    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
                     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
                     updated = await remna.update_user(
                         uuid=client_id,
@@ -398,7 +397,7 @@ async def renew_key_in_cluster(
 
             traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
 
-            async def update_or_create_client(xui, inbound_id, unique_email, sub_id, traffic_bytes):
+            async def update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name):
                 updated = await extend_client_key(
                     xui=xui,
                     inbound_id=int(inbound_id),
@@ -427,7 +426,7 @@ async def renew_key_in_cluster(
                     )
                     await add_client(xui, config)
 
-            tasks.append(update_or_create_client(xui, inbound_id, unique_email, sub_id, traffic_bytes))
+            tasks.append(update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -530,7 +529,7 @@ async def update_key_on_cluster(
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
-        expire_iso = datetime.fromtimestamp(expiry_time / 1000, UTC).replace(tzinfo=timezone.utc).isoformat()
+        expire_iso = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=timezone.utc).isoformat()
 
         remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
         xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]

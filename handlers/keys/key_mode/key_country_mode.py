@@ -1,15 +1,14 @@
 import asyncio
 import uuid
-
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from panels.remnawave import RemnawaveAPI
 from py3xui import AsyncApi
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -45,9 +44,7 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from logger import logger
-from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance
-
 
 router = Router()
 
@@ -389,7 +386,7 @@ async def finalize_key_creation(
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})")
 
-            expire_at = datetime.fromtimestamp(expiry_timestamp / 1000, UTC).isoformat() + "Z"
+            expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
             user_data = {
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",

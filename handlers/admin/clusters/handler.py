@@ -1,17 +1,17 @@
 import asyncio
-
-from datetime import UTC, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from panels.remnawave import RemnawaveAPI
 from py3xui import AsyncApi
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.backup import create_backup_and_send_to_admins
+from backup import create_backup_and_send_to_admins
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -29,9 +29,6 @@ from handlers.keys.key_utils import (
     renew_key_in_cluster,
 )
 from logger import logger
-from panels.remnawave import RemnawaveAPI
-
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminClusterCallback,
     AdminServerCallback,
@@ -42,7 +39,7 @@ from .keyboard import (
     build_sync_cluster_kb,
     build_tariff_group_selection_kb,
 )
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 
@@ -582,7 +579,7 @@ async def handle_sync_cluster(
             try:
                 if only_remnawave:
                     expire_iso = (
-                        datetime.fromtimestamp(key["expiry_time"] / 1000, UTC).replace(tzinfo=timezone.utc).isoformat()
+                        datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
                     )
 
                     remna = RemnawaveAPI(cluster_servers[0]["api_url"])
@@ -787,7 +784,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
             )
             await update_key_expiry(session, key.client_id, new_expiry)
 
-            logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.fromtimestamp(new_expiry / 1000, UTC)}")
+            logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}")
 
         await message.answer(
             f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
