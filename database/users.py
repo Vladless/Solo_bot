@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -130,7 +130,7 @@ async def upsert_user(
                     last_name=last_name or user.last_name,
                     language_code=language_code or user.language_code,
                     is_bot=is_bot,
-                    updated_at=datetime.now(UTC),
+                    updated_at=datetime.utcnow(),
                 )
             )
         else:
@@ -143,8 +143,8 @@ async def upsert_user(
                     last_name=last_name,
                     language_code=language_code,
                     is_bot=is_bot,
-                    created_at=datetime.now(UTC),
-                    updated_at=datetime.now(UTC),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 )
                 .on_conflict_do_update(
                     index_elements=[User.tg_id],
@@ -154,7 +154,7 @@ async def upsert_user(
                         "last_name": last_name,
                         "language_code": language_code,
                         "is_bot": is_bot,
-                        "updated_at": datetime.now(UTC),
+                        "updated_at": datetime.utcnow(),
                     },
                 )
             )

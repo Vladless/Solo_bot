@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,7 +27,7 @@ async def store_gift_link(
             selected_months=selected_months,
             expiry_time=expiry_time,
             gift_link=gift_link,
-            created_at=datetime.now(UTC),
+            created_at=datetime.utcnow(),
             is_used=False,
             tariff_id=tariff_id,
             is_unlimited=is_unlimited,

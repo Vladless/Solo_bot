@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -77,7 +77,7 @@ async def delete_coupon(session: AsyncSession, code: str) -> bool:
 
 async def create_coupon_usage(session: AsyncSession, coupon_id: int, user_id: int):
     try:
-        stmt = insert(CouponUsage).values(coupon_id=coupon_id, user_id=user_id, used_at=datetime.now(UTC))
+        stmt = insert(CouponUsage).values(coupon_id=coupon_id, user_id=user_id, used_at=datetime.utcnow())
         await session.execute(stmt)
         await session.commit()
         logger.info(f"✅ Купон {coupon_id} использован пользователем {user_id}")

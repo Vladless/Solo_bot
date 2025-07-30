@@ -1,8 +1,7 @@
 import asyncio
 import json
 import re
-
-from datetime import UTC, datetime
+from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -15,10 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Key, Payment, Server, User
 from filters.admin import IsAdminFilter
 from logger import logger
-
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
-
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 router = Router()
 
@@ -225,7 +222,7 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
     keyboard_data = data.get("keyboard")
     send_to = data.get("type", "all")
     cluster_name = data.get("cluster_name")
-    now_ms = int(datetime.now(UTC).timestamp() * 1000)
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
 
     keyboard = None
     if keyboard_data:

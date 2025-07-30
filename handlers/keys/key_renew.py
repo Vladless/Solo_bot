@@ -1,14 +1,16 @@
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from math import ceil
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.payments.stars_pay import process_custom_amount_input_stars
+from handlers.payments.yookassa_pay import process_custom_amount_input
+from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +32,6 @@ from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.keys.key_utils import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.stars_pay import process_custom_amount_input_stars
-from handlers.payments.yookassa_pay import process_custom_amount_input
-from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
@@ -41,7 +40,6 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, get_russian_month
 from logger import logger
-
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -130,7 +128,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
             balance=balance,
-            expiry_date=datetime.fromtimestamp(expiry_time / 1000, UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         await edit_or_send_message(
@@ -256,7 +254,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
 
         email = record["email"]
         expiry_time = record["expiry_time"]
-        current_time = datetime.now(UTC).timestamp() * 1000
+        current_time = datetime.utcnow().timestamp() * 1000
 
         if expiry_time <= current_time:
             new_expiry_time = int(current_time + timedelta(days=duration_days).total_seconds() * 1000)

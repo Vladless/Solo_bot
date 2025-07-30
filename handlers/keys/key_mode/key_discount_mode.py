@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
@@ -11,9 +11,7 @@ from database.models import Notification
 from handlers.notifications.notify_kb import build_tariffs_keyboard
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
 from logger import logger
-
 from .key_create import select_tariff_plan
-
 
 router = Router()
 
@@ -34,7 +32,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
         await callback.message.edit_text("⏳ Срок действия скидки истёк.")
         return
@@ -84,7 +82,7 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
     if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
         await callback.message.edit_text("⏳ Срок действия финальной скидки истёк.")
         return

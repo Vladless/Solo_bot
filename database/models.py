@@ -1,7 +1,6 @@
 import secrets
 import uuid
-
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import (
     JSON,
@@ -16,7 +15,6 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
-
 
 Base = declarative_base()
 
@@ -44,8 +42,8 @@ class User(DictLikeMixin, Base):
     balance = Column(Float, default=0.0)
     trial = Column(Integer, default=0)
     source_code = Column(String, ForeignKey("tracking_sources.code"))
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Key(DictLikeMixin, Base):
@@ -77,8 +75,8 @@ class Tariff(DictLikeMixin, Base):
     traffic_limit = Column(BigInteger, nullable=True)
     device_limit = Column(Integer, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
     subgroup_title = Column(String, nullable=True)
 
 
@@ -105,7 +103,7 @@ class Payment(DictLikeMixin, Base):
     amount = Column(Float)
     payment_system = Column(String)
     status = Column(String)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Coupon(DictLikeMixin, Base):
@@ -125,7 +123,7 @@ class CouponUsage(DictLikeMixin, Base):
 
     coupon_id = Column(Integer, ForeignKey("coupons.id"), primary_key=True)
     user_id = Column(BigInteger, primary_key=True)
-    used_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    used_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Referral(DictLikeMixin, Base):
@@ -141,7 +139,7 @@ class Notification(DictLikeMixin, Base):
 
     tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
     notification_type = Column(String, primary_key=True)
-    last_notification_time = Column(DateTime, default=lambda: datetime.now(UTC))
+    last_notification_time = Column(DateTime, default=datetime.utcnow)
 
 
 class Gift(DictLikeMixin, Base):
@@ -153,7 +151,7 @@ class Gift(DictLikeMixin, Base):
     selected_months = Column(Integer)
     expiry_time = Column(DateTime)
     gift_link = Column(String)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=datetime.utcnow)
     is_used = Column(Boolean, default=False)
     is_unlimited = Column(Boolean, default=False)
     max_usages = Column(Integer, nullable=True)
@@ -165,14 +163,14 @@ class GiftUsage(DictLikeMixin, Base):
 
     gift_id = Column(String, ForeignKey("gifts.gift_id"), primary_key=True)
     tg_id = Column(BigInteger, primary_key=True)
-    used_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    used_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ManualBan(DictLikeMixin, Base):
     __tablename__ = "manual_bans"
 
     tg_id = Column(BigInteger, primary_key=True)
-    banned_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    banned_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     reason = Column(Text)
     banned_by = Column(BigInteger)
     until = Column(DateTime(timezone=True), nullable=True)
@@ -184,7 +182,7 @@ class TemporaryData(DictLikeMixin, Base):
     tg_id = Column(BigInteger, primary_key=True)
     state = Column(String)
     data = Column(JSON)
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 
 class BlockedUser(DictLikeMixin, Base):
@@ -201,7 +199,7 @@ class TrackingSource(DictLikeMixin, Base):
     code = Column(String, unique=True)
     type = Column(String)
     created_by = Column(BigInteger)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Admin(Base):
@@ -211,7 +209,7 @@ class Admin(Base):
     token = Column(String, unique=True, nullable=True)
     description = Column(String, nullable=True)
     role = Column(String, nullable=False, default="admin")
-    added_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    added_at = Column(DateTime, default=datetime.utcnow)
 
     @staticmethod
     def generate_token() -> str:

@@ -1,9 +1,7 @@
 import asyncio
-
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytz
-
 from aiogram import Bot, Router
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,11 +46,9 @@ from handlers.texts import (
 )
 from handlers.utils import format_hours, format_minutes, get_russian_month
 from logger import logger
-
 from .hot_leads_notifications import notify_hot_leads
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
-
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -512,8 +508,8 @@ async def process_auto_renew_or_notify(
 
         new_expiry_time = (
             current_expiry
-            if current_expiry > datetime.now(UTC).timestamp() * 1000
-            else datetime.now(UTC).timestamp() * 1000
+            if current_expiry > datetime.utcnow().timestamp() * 1000
+            else datetime.utcnow().timestamp() * 1000
         ) + duration_days * 24 * 60 * 60 * 1000
 
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")

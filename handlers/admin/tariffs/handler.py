@@ -1,6 +1,5 @@
 import re
-
-from datetime import UTC, datetime
+from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -19,8 +18,6 @@ from database import create_tariff
 from database.models import Gift, Key, Server, Tariff
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
 from filters.admin import IsAdminFilter
-
-from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     AdminTariffCallback,
     build_cancel_kb,
@@ -30,7 +27,7 @@ from .keyboard import (
     build_tariff_list_kb,
     build_tariff_menu_kb,
 )
-
+from ..panel.keyboard import AdminPanelCallback
 
 router = Router()
 
@@ -524,7 +521,7 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
             return
 
     setattr(tariff, field, value)
-    tariff.updated_at = datetime.now(UTC)
+    tariff.updated_at = datetime.utcnow()
 
     await session.commit()
     await state.clear()
@@ -705,7 +702,7 @@ async def apply_subgroup_title(message: Message, state: FSMContext, session: Asy
         return
 
     await session.execute(
-        update(Tariff).where(Tariff.id.in_(selected_ids)).values(subgroup_title=title, updated_at=datetime.now(UTC))
+        update(Tariff).where(Tariff.id.in_(selected_ids)).values(subgroup_title=title, updated_at=datetime.utcnow())
     )
     await session.commit()
     await state.clear()
@@ -1048,14 +1045,14 @@ async def save_subgroup_tariffs_changes(callback: CallbackQuery, state: FSMConte
 
     if to_remove:
         await session.execute(
-            update(Tariff).where(Tariff.id.in_(to_remove)).values(subgroup_title=None, updated_at=datetime.now(UTC))
+            update(Tariff).where(Tariff.id.in_(to_remove)).values(subgroup_title=None, updated_at=datetime.utcnow())
         )
 
     if to_add:
         await session.execute(
             update(Tariff)
             .where(Tariff.id.in_(to_add))
-            .values(subgroup_title=subgroup_title, updated_at=datetime.now(UTC))
+            .values(subgroup_title=subgroup_title, updated_at=datetime.utcnow())
         )
 
     await session.commit()

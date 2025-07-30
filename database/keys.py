@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,7 +30,7 @@ async def store_key(
             tg_id=tg_id,
             client_id=client_id,
             email=email,
-            created_at=int(datetime.now(UTC).timestamp() * 1000),
+            created_at=int(datetime.utcnow().timestamp() * 1000),
             expiry_time=expiry_time,
             key=key,
             server_id=server_id,
@@ -70,8 +70,8 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
         return None
 
     key, user = row
-    expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, UTC)
-    current_date = datetime.now(UTC)
+    expiry_date = datetime.utcfromtimestamp(key.expiry_time / 1000)
+    current_date = datetime.utcnow()
     time_left = expiry_date - current_date
 
     if time_left.total_seconds() <= 0:

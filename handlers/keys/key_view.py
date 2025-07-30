@@ -1,12 +1,10 @@
 import html
 import os
 import re
-
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 import pytz
-
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -62,7 +60,6 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from logger import logger
-
 
 router = Router()
 
@@ -230,8 +227,8 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     expiry_time = record["expiry_time"]
     server_name = record["server_id"]
-    expiry_date = datetime.fromtimestamp(expiry_time / 1000, UTC)
-    time_left = expiry_date - datetime.now(UTC)
+    expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
+    time_left = expiry_date - datetime.utcnow()
 
     if time_left.total_seconds() <= 0:
         days_left_message = DAYS_LEFT_MESSAGE
