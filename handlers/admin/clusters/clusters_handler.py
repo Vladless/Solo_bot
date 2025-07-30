@@ -208,8 +208,8 @@ async def handle_subscription_url_input(message: Message, state: FSMContext):
     await state.update_data(subscription_url=subscription_url)
 
     await message.answer(
-        text=f"<b>Введите inbound_id для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        f"Для Remnawave это UUID Инбаунда, для 3x-ui — просто ID (например, <code>1</code>).",
+        text=f"<b>Введите inbound_id/Squads для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
+        f"Для Remnawave это UUID Squads, для 3x-ui — просто ID (например, <code>1</code>).",
         reply_markup=build_admin_back_kb("clusters"),
     )
     await state.set_state(AdminClusterStates.waiting_for_inbound_id)
@@ -393,21 +393,19 @@ async def handle_cluster_availability(
                 total_online_users += online_remna_users
 
                 nodes_info = nodes_data["nodes"]
-                if len(nodes_info) > 1:
-                    result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
-                    for node_info in nodes_info:
-                        country_code = node_info.get("country_code", "Unknown")
-                        node_name = node_info.get("name", "Unknown")
-                        online_users = node_info.get("online_users", 0)
+                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+                seen = set()
+                for node_info in nodes_info:
+                    node_name = node_info.get("name", "Unknown")
+                    if node_name in seen:
+                        continue
+                    seen.add(node_name)
 
-                        if country_code != "Unknown" and len(country_code) == 2:
-                            flag = "".join(chr(ord(c) + 127397) for c in country_code.upper())
-                        else:
-                            flag = country_code
+                    country_code = node_info.get("country_code", "Unknown")
+                    online_users = node_info.get("online_users", 0)
 
-                        result_text += f"  ↳ {flag} ({node_name}): {online_users} онлайн\n"
-                else:
-                    result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+                    flag = "".join(chr(ord(c) + 127397) for c in country_code.upper()) if country_code != "Unknown" and len(country_code) == 2 else country_code
+                    result_text += f"  ↳ {flag} ({node_name}): {online_users} онлайн\n"
 
         except Exception as e:
             error_text = str(e) or "Сервер недоступен"

@@ -77,7 +77,7 @@ async def handle_server_manage(
             text += f"🌐 Subscription URL: <b>{subscription_url}</b>\n"
 
         text += (
-            f"🔑 Inbound ID: <b>{inbound_id}</b>\n"
+            f"🔑 Inbound ID/Squads: <b>{inbound_id}</b>\n"
             f"⚙️ Тип панели: <b>{panel_type}</b>\n"
             f"📈 Лимит ключей: <b>{limit_display}</b>\n"
         )
@@ -258,7 +258,7 @@ async def toggle_server_enabled(
         f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
         f"<b>📡 API URL:</b> {server['api_url']}\n"
         f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-        f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+        f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
         f"<b>📈 Лимит ключей:</b> {limit_display}"
     )
 
@@ -311,7 +311,7 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
             f"<b>📡 API URL:</b> {server['api_url']}\n"
             f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-            f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+            f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
             f"<b>📈 Лимит ключей:</b> {limit_display}"
         )
 
@@ -361,7 +361,7 @@ async def ask_new_field_value(callback: CallbackQuery, state: FSMContext, sessio
         "server_name": "имя сервера",
         "api_url": "API URL",
         "subscription_url": "Subscription URL",
-        "inbound_id": "Inbound ID",
+        "inbound_id": "Inbound ID/Squads",
     }
 
     await callback.message.edit_text(
@@ -438,7 +438,7 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
             "server_name": "имя сервера",
             "api_url": "API URL",
             "subscription_url": "Subscription URL",
-            "inbound_id": "Inbound ID",
+            "inbound_id": "Inbound ID/Squads",
         }
 
         await message.answer(

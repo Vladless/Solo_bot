@@ -108,7 +108,7 @@ async def create_key_on_cluster(
                         "trafficLimitStrategy": "NO_RESET",
                         "expireAt": expire_at,
                         "telegramId": tg_id,
-                        "activeUserInbounds": inbound_ids,
+                        "activeInternalSquads": inbound_ids,
                     }
 
                     if traffic_limit_bytes and traffic_limit_bytes > 0:
@@ -352,7 +352,7 @@ async def renew_key_in_cluster(
                             "trafficLimitStrategy": "NO_RESET",
                             "expireAt": expire_iso,
                             "telegramId": tg_id,
-                            "activeUserInbounds": remnawave_inbound_ids,
+                            "activeInternalSquads": remnawave_inbound_ids,
                         }
                         if remnawave_link and "/" in remnawave_link:
                             user_data["shortUuid"] = remnawave_link.rstrip("/").split("/")[-1]
@@ -567,7 +567,7 @@ async def update_key_on_cluster(
                     "trafficLimitStrategy": "NO_RESET",
                     "expireAt": expire_iso,
                     "telegramId": tg_id,
-                    "activeUserInbounds": inbound_ids,
+                    "activeInternalSquads": inbound_ids,
                 }
                 if traffic_limit is not None:
                     user_data["trafficLimitBytes"] = traffic_limit * 1024**3
