@@ -43,20 +43,19 @@ async def process_callback_pay_heleket(callback_query: types.CallbackQuery, stat
     try:
         tg_id = callback_query.message.chat.id
         logger.info(f"User {tg_id} initiated Heleket payment.")
-        
+
         await state.clear()
-        
+
         if method_name:
             method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
             if not method:
-                await edit_or_send_message(
-                    target_message=callback_query.message,
+                await callback_query.message.delete()
+                await callback_query.message.answer(
                     text="Ошибка: выбранный способ оплаты недоступен.",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-                    force_text=True,
                 )
                 return
-            
+
             builder = InlineKeyboardBuilder()
             for i in range(0, len(PAYMENT_OPTIONS), 2):
                 if i + 1 < len(PAYMENT_OPTIONS):
@@ -79,32 +78,35 @@ async def process_callback_pay_heleket(callback_query: types.CallbackQuery, stat
                     )
             builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"heleket_custom_amount|{method_name}"))
             builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
-            
-            await edit_or_send_message(
-                target_message=callback_query.message,
+
+            await callback_query.message.delete()
+            new_msg = await callback_query.message.answer(
                 text=method["desc"],
                 reply_markup=builder.as_markup(),
-                force_text=True,
             )
-            await state.update_data(heleket_method=method_name)
+
+            await state.update_data(
+                heleket_method=method_name,
+                message_id=new_msg.message_id,
+                chat_id=new_msg.chat.id,
+            )
             await state.set_state(ReplenishBalanceHeleket.choosing_amount)
             return
-        
+
         builder = InlineKeyboardBuilder()
         for method in HELEKET_PAYMENT_METHODS:
             if method["enable"]:
                 builder.row(InlineKeyboardButton(text=method["button"], callback_data=f'heleket_method|{method["name"]}'))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
-        
-        await edit_or_send_message(
-            target_message=callback_query.message,
+
+        await callback_query.message.delete()
+        new_msg = await callback_query.message.answer(
             text="Выберите способ оплаты через Heleket:",
             reply_markup=builder.as_markup(),
-            force_text=True,
         )
-        await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
+        await state.update_data(message_id=new_msg.message_id, chat_id=new_msg.chat.id)
         await state.set_state(ReplenishBalanceHeleket.choosing_method)
-        
+
     except Exception as e:
         logger.error(f"Error in process_callback_pay_heleket for user {callback_query.message.chat.id}: {e}")
         await callback_query.answer("Произошла ошибка при инициализации платежа. Попробуйте позже.", show_alert=True)
