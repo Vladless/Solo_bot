@@ -30,12 +30,11 @@ from database import (
     check_server_name_by_cluster,
     check_user_exists,
     get_key_details,
+    get_tariff_by_id,
     get_trial,
     update_balance,
     update_trial,
-    get_tariff_by_id,
 )
-
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.key_utils import create_client_on_server

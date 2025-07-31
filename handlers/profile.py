@@ -29,6 +29,7 @@ from handlers.buttons import (
     TRIAL_SUB,
 )
 from handlers.texts import ADD_SUBSCRIPTION_HINT
+from hooks.hooks import run_hooks
 from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
@@ -100,6 +101,14 @@ async def process_callback_view_profile(
         row_buttons.append(InlineKeyboardButton(text=GIFTS, callback_data="gifts"))
     if row_buttons:
         builder.row(*row_buttons)
+
+    try:
+        buttons = await run_hooks("profile_menu", chat_id=chat_id, admin=admin, session=session)
+        for btn in buttons:
+            if btn:
+                builder.row(btn)
+    except Exception as e:
+        logger.error(f"[Hooks] Ошибка в универсальном profile_menu хуке: {e}")
 
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))

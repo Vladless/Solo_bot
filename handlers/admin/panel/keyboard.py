@@ -5,6 +5,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK, MAIN_MENU
+from hooks.hooks import run_hooks
+from logger import logger
 
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
@@ -17,7 +19,7 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
         super().__init__(**data)
 
 
-def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
+async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
         text="👤 Поиск пользователя",
@@ -27,7 +29,6 @@ def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         text="🔑 Поиск по подписке",
         callback_data=AdminPanelCallback(action="search_key").pack(),
     )
-
     builder.button(
         text="🖥️ Управление серверами",
         callback_data=AdminPanelCallback(action="clusters").pack(),
@@ -56,6 +57,14 @@ def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
                 callback_data=AdminPanelCallback(action="ads").pack(),
             ),
         )
+
+    try:
+        buttons = await run_hooks("admin_panel", admin_role=admin_role)
+        for btn in buttons:
+            if btn:
+                builder.row(btn)
+    except Exception as e:
+        logger.error(f"[Hooks] Ошибка в admin_panel хуке: {e}")
 
     builder.button(
         text=MAIN_MENU,

@@ -6,10 +6,10 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot import get_version
 from database.models import Admin
 from filters.admin import IsAdminFilter
 from logger import logger
+from utils.versioning import get_version
 
 from .keyboard import AdminPanelCallback, build_panel_kb
 
@@ -26,7 +26,7 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
     result = await session.execute(select(Admin.role).where(Admin.tg_id == callback_query.from_user.id))
     role = result.scalar_one_or_none() or "admin"
 
-    markup = build_panel_kb(admin_role=role)
+    markup = await build_panel_kb(admin_role=role)
 
     if callback_query.message.text:
         try:
@@ -69,6 +69,6 @@ async def handle_admin_message(message: Message, state: FSMContext, session: Asy
 
     await message.answer(
         text=text,
-        reply_markup=build_panel_kb(admin_role=role),
+        reply_markup=await build_panel_kb(admin_role=role),
         disable_web_page_preview=True,
     )

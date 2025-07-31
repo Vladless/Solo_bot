@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import delete_notification, get_servers, get_tariff_by_id, store_key
-
 from database.models import Key, Server, Tariff
 from handlers.utils import check_server_key_limit, get_least_loaded_cluster
 from logger import logger
@@ -753,9 +752,7 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
     result = await session.execute(
         select(Server)
         .where(Server.enabled.is_(True))
-        .where(
-            Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids)
-        )
+        .where(Server.server_name.in_(server_ids) | Server.cluster_name.in_(server_ids))
     )
     server_rows = result.scalars().all()
     if not server_rows:

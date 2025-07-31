@@ -46,7 +46,7 @@ from handlers.texts import (
     KEY_EXPIRY_24H,
     get_renewal_message,
 )
-from handlers.utils import format_days, format_hours, format_minutes, format_months, get_russian_month
+from handlers.utils import format_hours, format_minutes, get_russian_month
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
@@ -69,7 +69,7 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
         async with notification_lock:
             try:
                 async with sessionmaker() as session:
-                    logger.info("🔔 Запуск обработки уведомлений")
+                    logger.info("Запуск обработки уведомлений")
 
                     current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
                     threshold_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
@@ -115,7 +115,7 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                         except Exception as e:
                             logger.error(f"Ошибка в notify_hot_leads: {e}")
 
-                    logger.info("✅ Уведомления завершены")
+                    logger.info("Уведомления завершены")
             except Exception as e:
                 logger.error(f"Ошибка в periodic_notifications: {e}")
 

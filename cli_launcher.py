@@ -1,3 +1,4 @@
+import locale
 import os
 import re
 import shutil
@@ -18,15 +19,39 @@ from rich.table import Table
 from config import BOT_SERVICE
 
 
+def ensure_utf8_locale():
+    try:
+        current_locale = locale.getlocale()
+        if current_locale and current_locale[1] == "UTF-8":
+            return
+    except Exception:
+        pass
+
+    console.print("[yellow]⏳ Проверка и установка локали UTF-8...[/yellow]")
+
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+
+    result = subprocess.run(["locale", "-a"], capture_output=True, text=True)
+    if "en_US.utf8" not in result.stdout.lower():
+        console.print("[blue]Добавляю локаль en_US.UTF-8 в систему...[/blue]")
+        try:
+            subprocess.run(["sudo", "locale-gen", "en_US.UTF-8"], check=True)
+            subprocess.run(["sudo", "update-locale", "LANG=en_US.UTF-8"], check=True)
+            console.print("[green]Локаль успешно установлена.[/green]")
+        except Exception as e:
+            console.print(f"[red]❌ Ошибка при установке локали: {e}[/red]")
+    else:
+        console.print("[green]Локаль UTF-8 уже доступна в системе.[/green]")
+
+
 try:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
-if not os.environ.get("LC_ALL", "").endswith("UTF-8"):
-    os.environ["LC_ALL"] = "en_US.UTF-8"
-    os.environ["LANG"] = "en_US.UTF-8"
+ensure_utf8_locale()
 
 console = Console()
 
@@ -155,7 +180,12 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
         os.path.join(PROJECT_DIR, ".git"),
+        os.path.join(PROJECT_DIR, "modules"),
     }
+
+    for root, _, files in os.walk(os.path.join(PROJECT_DIR, "modules")):
+        for file in files:
+            preserved_paths.add(os.path.join(root, file))
 
     if not update_buttons:
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
@@ -182,6 +212,8 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
             if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "handlers"):
                 continue
             if not update_img and os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "img"):
+                continue
+            if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "modules"):
                 continue
             try:
                 os.rmdir(dir_path)
@@ -306,6 +338,7 @@ def update_from_beta():
         exclude_options += "--exclude=img "
     if not update_buttons:
         exclude_options += "--exclude=handlers/buttons.py "
+    exclude_options += "--exclude=modules "
 
     subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
 
@@ -374,6 +407,7 @@ def update_from_release():
             exclude_options += "--exclude=img "
         if not update_buttons:
             exclude_options += "--exclude=handlers/buttons.py "
+        exclude_options += "--exclude=modules "
 
         subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
 
@@ -414,7 +448,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.2.8", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.2.9", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")

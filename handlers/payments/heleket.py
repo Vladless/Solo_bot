@@ -18,7 +18,7 @@ from config import (
 
 from handlers.buttons import BACK, PAY_2, HELEKET_CRYPTO
 from handlers.texts import (
-    HELEKET_CRYPTO_DESCRIPTION, HELEKET_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS, HELEKET_PAYMENT_TITLE
+    HELEKET_CRYPTO_DESCRIPTION, HELEKET_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 )
 from handlers.utils import edit_or_send_message
 from logger import logger

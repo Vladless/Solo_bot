@@ -23,7 +23,6 @@ from database import (
     update_balance,
     update_trial,
 )
-
 from handlers.buttons import (
     CONNECT_DEVICE,
     CONNECT_PHONE,

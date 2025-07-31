@@ -3,9 +3,8 @@ import json
 
 from aiohttp import web
 
-from config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID
+from config import KASSAI_SECRET_KEY
 from database import add_payment, async_session_maker, update_balance
-from handlers.payments.kassai import verify_kassai_signature
 from handlers.payments.utils import send_payment_success_notification
 from logger import logger
 

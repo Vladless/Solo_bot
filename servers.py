@@ -108,7 +108,7 @@ async def check_servers(session: AsyncSession):
                 server_info_list.append((server_name, server_host))
                 tasks.append(ping_server(server_host))
 
-        logger.info(f"🔍 Начинаем проверку {len(server_info_list)} серверов...")
+        logger.info(f"Начинаем проверку {len(server_info_list)} серверов...")
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

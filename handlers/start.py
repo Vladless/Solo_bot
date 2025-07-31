@@ -51,6 +51,7 @@ from handlers.texts import (
     WELCOME_TEXT,
     get_about_vpn,
 )
+from hooks.hooks import run_hooks
 from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
@@ -181,6 +182,9 @@ async def process_start_logic(
     try:
         gift_detected = False
         text_parts = text.split("-")
+
+        for part in text_parts:
+            await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
 
         for part in text_parts:
             if "coupons" in part:

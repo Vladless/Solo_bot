@@ -11,7 +11,6 @@ from py3xui import AsyncApi
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backup import create_backup_and_send_to_admins
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
@@ -30,6 +29,7 @@ from handlers.keys.key_utils import (
 )
 from logger import logger
 from panels.remnawave import RemnawaveAPI
+from utils.backup import create_backup_and_send_to_admins
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
@@ -404,7 +404,11 @@ async def handle_cluster_availability(
                     country_code = node_info.get("country_code", "Unknown")
                     online_users = node_info.get("online_users", 0)
 
-                    flag = "".join(chr(ord(c) + 127397) for c in country_code.upper()) if country_code != "Unknown" and len(country_code) == 2 else country_code
+                    flag = (
+                        "".join(chr(ord(c) + 127397) for c in country_code.upper())
+                        if country_code != "Unknown" and len(country_code) == 2
+                        else country_code
+                    )
                     result_text += f"  ↳ {flag} ({node_name}): {online_users} онлайн\n"
 
         except Exception as e:

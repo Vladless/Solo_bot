@@ -20,7 +20,6 @@ from database import (
     mark_trial_extended,
     update_key_notified,
 )
-from database.models import Key
 from database.tariffs import get_tariffs
 from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
 from handlers.keys.key_utils import get_user_traffic
@@ -48,7 +47,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     if not trial_tariffs:
         logger.error("[Notifications] Триальный тариф не найден")
         return
-    
+
     trial_days = trial_tariffs[0]["duration_days"]
 
     for user in users:
@@ -100,7 +99,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
                 await add_notification(session, msg["tg_id"], msg["notification_id"])
                 sent_count += 1
         logger.info(f"Отправлено {sent_count} уведомлений неактивным пользователям.")
-    logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
+    logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
 
 
 async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time: int, keys: list):

@@ -93,7 +93,9 @@ async def handle_key_creation(
                 if not trial_tariffs:
                     await edit_or_send_message(
                         target_message=(
-                            message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+                            message_or_query.message
+                            if isinstance(message_or_query, CallbackQuery)
+                            else message_or_query
                         ),
                         text="❌ Пробная подписка временно недоступна.",
                         reply_markup=InlineKeyboardBuilder()

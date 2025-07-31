@@ -19,7 +19,7 @@ from logger import logger
 
 
 async def notify_hot_leads(bot: Bot, session: AsyncSession):
-    logger.info("🚀 Запуск уведомлений для горячих лидов.")
+    logger.info("Запуск уведомлений для горячих лидов.")
 
     try:
         leads = await get_hot_leads(session)
@@ -51,7 +51,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 result = await send_notification(bot, tg_id, None, HOT_LEAD_MESSAGE, keyboard)
                 if result:
                     await add_notification(session, tg_id, "hot_lead_step_2")
-                    logger.info(f"🔥 Шаг 2 — отправлено первое уведомление: {tg_id}")
+                    logger.info(f"Шаг 2 — отправлено первое уведомление: {tg_id}")
                     notified += 1
                 continue
 
@@ -97,7 +97,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     logger.info(f"⚡ Шаг 3 — отправлено финальное уведомление: {tg_id}")
                     notified += 1
 
-        logger.info(f"✅ Уведомления завершены. Отправлено: {notified}")
+        logger.info(f"Уведомления завершены. Отправлено: {notified}")
 
     except Exception as e:
         logger.error(f"❌ Ошибка в notify_hot_leads: {e}")
