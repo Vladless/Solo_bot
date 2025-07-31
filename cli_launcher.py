@@ -342,6 +342,15 @@ def update_from_beta():
 
     subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
 
+    modules_path = os.path.join(PROJECT_DIR, "modules")
+    if not os.path.exists(modules_path):
+        console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+        try:
+            os.makedirs(modules_path, exist_ok=True)
+            console.print("[green]Папка modules успешно создана.[/green]")
+        except Exception as e:
+            console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
+
     if os.path.exists(os.path.join(TEMP_DIR, ".git")):
         subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
 
@@ -411,6 +420,15 @@ def update_from_release():
 
         subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
 
+        modules_path = os.path.join(PROJECT_DIR, "modules")
+        if not os.path.exists(modules_path):
+            console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+            try:
+                os.makedirs(modules_path, exist_ok=True)
+                console.print("[green]Папка modules успешно создана.[/green]")
+            except Exception as e:
+                console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
+
         if os.path.exists(os.path.join(TEMP_DIR, ".git")):
             subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
 
@@ -448,7 +466,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.2.9", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.0", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")

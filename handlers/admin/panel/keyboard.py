@@ -29,20 +29,20 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         text="🔑 Поиск по подписке",
         callback_data=AdminPanelCallback(action="search_key").pack(),
     )
-    builder.button(
-        text="🖥️ Управление серверами",
-        callback_data=AdminPanelCallback(action="clusters").pack(),
-    )
+    if admin_role == "superadmin":
+        builder.button(
+            text="🖥️ Управление серверами",
+            callback_data=AdminPanelCallback(action="clusters").pack(),
+        )
     builder.row(
         InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
         InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )
-    builder.row(
-        InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
-        InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
-    )
-
     if admin_role == "superadmin":
+        builder.row(
+            InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
+            InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
+        )
         builder.button(
             text="🤖 Управление ботом",
             callback_data=AdminPanelCallback(action="management").pack(),
@@ -57,6 +57,11 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
                 callback_data=AdminPanelCallback(action="ads").pack(),
             ),
         )
+    else:
+        builder.button(
+            text="🎁 Подарки",
+            callback_data=AdminPanelCallback(action="gifts").pack(),
+        )
 
     try:
         buttons = await run_hooks("admin_panel", admin_role=admin_role)
@@ -70,7 +75,7 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         text=MAIN_MENU,
         callback_data="profile",
     )
-    builder.adjust(1, 1, 1, 2, 2, 1, 2 if admin_role == "superadmin" else 0, 1)
+    builder.adjust(1, 1, 1, 2, 2, 1, 2 if admin_role == "superadmin" else 1, 1)
     return builder.as_markup()
 
 

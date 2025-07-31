@@ -39,7 +39,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     get_renewal_message,
 )
-from handlers.utils import edit_or_send_message, format_days, format_months, get_russian_month
+from handlers.utils import edit_or_send_message, get_russian_month
 from logger import logger
 
 
