@@ -265,20 +265,60 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
     }
 
     if cassa["name"] == "int":
-        import json
+        import xml.etree.ElementTree as ET
+        from datetime import datetime
+        
         async def get_usd_rate():
-            url = "https://api.exchangerate.host/latest?base=RUB&symbols=USD"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=10) as resp:
-                    data = await resp.json()
-                    return data["rates"]["USD"]
-        usd_rate = await get_usd_rate()
-        rub_per_usd = 1 / usd_rate
-        rub_per_usd_plus_5 = rub_per_usd + 5
-        new_usd_rate = 1 / rub_per_usd_plus_5
-        amount_usd = round(float(amount) * new_usd_rate, 2)
-        data["amount"] = amount_usd
-        data["currency"] = "USD"
+            today = datetime.now().strftime("%d/%m/%Y")
+            url = f"http://www.cbr.ru/scripts/XML_daily.asp?date_req={today}"
+            
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=15) as resp:
+                        if resp.status == 200:
+                            xml_content = await resp.text()
+                            root = ET.fromstring(xml_content)
+                            
+                            for valute in root.findall('Valute'):
+                                char_code = valute.find('CharCode')
+                                if char_code is not None and char_code.text == 'USD':
+                                    value_elem = valute.find('Value')
+                                    if value_elem is not None:
+
+                                        usd_rub_rate = float(value_elem.text.replace(',', '.'))
+
+                                        rub_usd_rate = 1 / usd_rub_rate
+                                        logger.info(f"Successfully got USD rate from CBR: 1 USD = {usd_rub_rate} RUB, 1 RUB = {rub_usd_rate} USD")
+                                        return rub_usd_rate
+                            
+                            logger.warning("USD rate not found in CBR response")
+                            
+            except Exception as e:
+                logger.error(f"Failed to get USD rate from CBR: {e}")
+            
+
+            fallback_rate = 0.0105  
+            logger.warning(f"Using fallback USD rate: {fallback_rate}")
+            return fallback_rate
+        
+        try:
+            usd_rate = await get_usd_rate()
+            rub_per_usd = 1 / usd_rate
+            rub_per_usd_plus_5 = rub_per_usd + 5
+            new_usd_rate = 1 / rub_per_usd_plus_5
+            amount_usd = round(float(amount) * new_usd_rate, 2)
+            data["amount"] = amount_usd
+            data["currency"] = "USD"
+        except Exception as e:
+            logger.error(f"Failed to convert RUB to USD: {e}")
+
+            fallback_usd_rate = 0.0105
+            rub_per_usd = 1 / fallback_usd_rate
+            rub_per_usd_plus_5 = rub_per_usd + 5
+            new_usd_rate = 1 / rub_per_usd_plus_5
+            amount_usd = round(float(amount) * new_usd_rate, 2)
+            data["amount"] = amount_usd
+            data["currency"] = "USD"
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=data, timeout=60) as resp:
             if resp.status == 200:
