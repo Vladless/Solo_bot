@@ -176,24 +176,28 @@ def install_rsync_if_needed():
 
 def clean_project_dir_safe(update_buttons=False, update_img=False):
     console.print("[yellow]Очистка проекта перед обновлением...[/yellow]")
-    preserved_paths = {
+
+    preserved_paths = set()
+
+    preserved_paths.update([
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
         os.path.join(PROJECT_DIR, ".git"),
         os.path.join(PROJECT_DIR, "modules"),
-    }
+    ])
 
-    for root, _, files in os.walk(os.path.join(PROJECT_DIR, "modules")):
-        for file in files:
-            preserved_paths.add(os.path.join(root, file))
+    for root, dirs, files in os.walk(os.path.join(PROJECT_DIR, "modules")):
+        for name in dirs + files:
+            preserved_paths.add(os.path.join(root, name))
 
     if not update_buttons:
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
+
     if not update_img:
         preserved_paths.add(os.path.join(PROJECT_DIR, "img"))
-        for root, _, files in os.walk(os.path.join(PROJECT_DIR, "img")):
-            for file in files:
-                preserved_paths.add(os.path.join(root, file))
+        for root, dirs, files in os.walk(os.path.join(PROJECT_DIR, "img")):
+            for name in dirs + files:
+                preserved_paths.add(os.path.join(root, name))
 
     for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
         for file in files:
@@ -209,12 +213,17 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
 
         for dir in dirs:
             dir_path = os.path.join(root, dir)
-            if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "handlers"):
+
+            if os.path.abspath(dir_path) in [
+                os.path.join(PROJECT_DIR, "handlers"),
+                os.path.join(PROJECT_DIR, "img"),
+                os.path.join(PROJECT_DIR, "modules"),
+            ]:
                 continue
-            if not update_img and os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "img"):
+
+            if os.path.abspath(dir_path).startswith(os.path.join(PROJECT_DIR, "modules") + os.sep):
                 continue
-            if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "modules"):
-                continue
+
             try:
                 os.rmdir(dir_path)
             except Exception:
