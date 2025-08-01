@@ -269,8 +269,6 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
         from datetime import datetime
         
         async def get_usd_rate():
-            # Используем API Центробанка России для получения курса USD
-            # Формат: сколько рублей стоит 1 доллар
             today = datetime.now().strftime("%d/%m/%Y")
             url = f"http://www.cbr.ru/scripts/XML_daily.asp?date_req={today}"
             
@@ -281,15 +279,14 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
                             xml_content = await resp.text()
                             root = ET.fromstring(xml_content)
                             
-                            # Ищем курс USD (код R01235)
                             for valute in root.findall('Valute'):
                                 char_code = valute.find('CharCode')
                                 if char_code is not None and char_code.text == 'USD':
                                     value_elem = valute.find('Value')
                                     if value_elem is not None:
-                                        # Заменяем запятую на точку для корректного парсинга float
+
                                         usd_rub_rate = float(value_elem.text.replace(',', '.'))
-                                        # Конвертируем в курс RUB к USD (сколько USD стоит 1 RUB)
+
                                         rub_usd_rate = 1 / usd_rub_rate
                                         logger.info(f"Successfully got USD rate from CBR: 1 USD = {usd_rub_rate} RUB, 1 RUB = {rub_usd_rate} USD")
                                         return rub_usd_rate
@@ -299,8 +296,8 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
             except Exception as e:
                 logger.error(f"Failed to get USD rate from CBR: {e}")
             
-            # Fallback значение если API ЦБ недоступен
-            fallback_rate = 0.0105  # Примерно 1 RUB = 0.0105 USD
+
+            fallback_rate = 0.0105  
             logger.warning(f"Using fallback USD rate: {fallback_rate}")
             return fallback_rate
         
@@ -314,7 +311,7 @@ async def generate_wata_payment_link(amount, tg_id, cassa):
             data["currency"] = "USD"
         except Exception as e:
             logger.error(f"Failed to convert RUB to USD: {e}")
-            # В случае критической ошибки используем примерный курс
+
             fallback_usd_rate = 0.0105
             rub_per_usd = 1 / fallback_usd_rate
             rub_per_usd_plus_5 = rub_per_usd + 5
