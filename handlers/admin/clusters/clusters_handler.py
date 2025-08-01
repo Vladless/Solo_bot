@@ -723,45 +723,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
         cluster_name = user_data.get("cluster_name")
         add_ms = days * 86400 * 1000
 
-        result = await session.execute(
-            select(Server.tariff_group)
-            .where(Server.cluster_name == cluster_name)
-            .where(Server.tariff_group.isnot(None))
-            .limit(1)
-        )
-        row = result.first()
-        if not row or not row[0]:
-            result = await session.execute(
-                select(Server.tariff_group)
-                .where(Server.server_name == cluster_name)
-                .where(Server.tariff_group.isnot(None))
-                .limit(1)
-            )
-            row = result.first()
-            if not row or not row[0]:
-                await message.answer("❌ Не удалось определить тарифную группу для этого кластера или сервера.")
-                await state.clear()
-                return
-
-        group_code = row[0]
-
-        result = await session.execute(
-            select(Tariff)
-            .where(
-                Tariff.group_code == group_code,
-                Tariff.is_active.is_(True),
-                Tariff.duration_days >= days,
-            )
-            .order_by(Tariff.duration_days.asc())
-            .limit(1)
-        )
-        tariff = result.scalars().first()
-        if not tariff:
-            await message.answer("❌ Нет активных тарифов, подходящих по сроку.")
-            await state.clear()
-            return
-
-        total_gb = tariff.traffic_limit or 0
+        logger.info(f"[Cluster Extend] Добавляем {days} дней для кластера: {cluster_name}")
 
         server_stmt = select(Server.server_name).where(Server.cluster_name == cluster_name)
         server_rows = await session.execute(server_stmt)
@@ -778,13 +740,26 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
 
         for key in keys:
             new_expiry = key.expiry_time + add_ms
+
+            traffic_limit = 0
+            device_limit = 0
+            if key.tariff_id:
+                result = await session.execute(
+                    select(Tariff.traffic_limit, Tariff.device_limit).where(Tariff.id == key.tariff_id, Tariff.is_active.is_(True))
+                )
+                tariff = result.first()
+                if tariff:
+                    traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
+                    device_limit = int(tariff[1]) if tariff[1] is not None else 0
+            
             await renew_key_in_cluster(
                 cluster_name,
                 email=key.email,
                 client_id=key.client_id,
                 new_expiry_time=new_expiry,
-                total_gb=total_gb,
+                total_gb=traffic_limit,
                 session=session,
+                hwid_device_limit=device_limit,
                 reset_traffic=False,
             )
             await update_key_expiry(session, key.client_id, new_expiry)
