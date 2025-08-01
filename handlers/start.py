@@ -209,13 +209,12 @@ async def process_start_logic(
 
             if "gift" in part:
                 gift_raw = part.split("gift")[1].strip("_")
-                parts = gift_raw.split("_")
-                if len(parts) < 2:
+                
+                if not gift_raw:
                     await message.answer("❌ Неверный формат ссылки на подарок.")
                     return await process_callback_view_profile(message, state, admin, session)
 
-                gift_id = parts[0]
-                sender_id = parts[1]
+                gift_id = gift_raw
 
                 if gift_id in processing_gifts:
                     await message.answer("⏳ Подарок уже обрабатывается, подождите...")
@@ -224,7 +223,7 @@ async def process_start_logic(
                 processing_gifts.add(gift_id)
 
                 try:
-                    logger.info(f"[GIFT] Обнаружен подарок {gift_id} от {sender_id}")
+                    logger.info(f"[GIFT] Обнаружен подарок {gift_id}")
                     await handle_gift_link(gift_id, message, state, session, user_data=user_data)
                     gift_detected = True
                 finally:

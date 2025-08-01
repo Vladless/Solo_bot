@@ -11,6 +11,7 @@ from robokassa import HashAlgorithm, Robokassa
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_
+from pytz import timezone
 
 from config import (
     ROBOKASSA_ENABLE,
@@ -37,6 +38,8 @@ from logger import logger
 
 router = Router()
 
+
+MOSCOW_TZ = timezone("Europe/Moscow")
 
 class ReplenishBalanceState(StatesGroup):
     choosing_amount_robokassa = State()
@@ -213,7 +216,7 @@ async def robokassa_webhook(request: web.Request):
         logger.info(f"Processing payment for user {tg_id} with amount {amount}.")
 
         async with async_session_maker() as session:
-            recent_time = datetime.utcnow() - timedelta(minutes=1)
+            recent_time = datetime.now(MOSCOW_TZ).replace(tzinfo=None) - timedelta(minutes=1)
 
             result = await session.execute(
                 select(Payment).where(
