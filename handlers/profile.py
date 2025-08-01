@@ -3,7 +3,7 @@ import os
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
@@ -102,13 +102,40 @@ async def process_callback_view_profile(
     if row_buttons:
         builder.row(*row_buttons)
 
-    try:
-        buttons = await run_hooks("profile_menu", chat_id=chat_id, admin=admin, session=session)
-        for btn in buttons:
-            if btn:
-                builder.row(btn)
-    except Exception as e:
-        logger.error(f"[Hooks] Ошибка в универсальном profile_menu хуке: {e}")
+    module_buttons = await run_hooks("profile_menu", chat_id=chat_id, admin=admin, session=session)
+
+    for module_btn in module_buttons:
+        if isinstance(module_btn, dict) and "after" in module_btn:
+            after_callback = module_btn["after"]
+            insert_pos = -1
+            current_markup = builder.as_markup()
+
+            for i, row in enumerate(current_markup.inline_keyboard):
+                for btn in row:
+                    if btn.callback_data == after_callback:
+                        insert_pos = i + 1
+                        break
+                if insert_pos > 0:
+                    break
+            
+            if insert_pos > 0:
+                new_buttons = []
+                for i, row in enumerate(current_markup.inline_keyboard):
+                    if i == insert_pos:
+                        new_buttons.append([module_btn["button"]])
+                    new_buttons.append(row)
+
+                if insert_pos >= len(current_markup.inline_keyboard):
+                    new_buttons.append([module_btn["button"]])
+
+                builder = InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_buttons))
+            else:
+                builder.row(module_btn["button"])
+        else:
+            if isinstance(module_btn, dict):
+                builder.row(module_btn["button"])
+            else:
+                builder.row(module_btn)
 
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))

@@ -63,19 +63,52 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
             callback_data=AdminPanelCallback(action="gifts").pack(),
         )
 
-    try:
-        buttons = await run_hooks("admin_panel", admin_role=admin_role)
-        for btn in buttons:
-            if btn:
-                builder.row(btn)
-    except Exception as e:
-        logger.error(f"[Hooks] Ошибка в admin_panel хуке: {e}")
+    module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
+
+    for module_btn in module_buttons:
+        if isinstance(module_btn, dict) and "after" in module_btn:
+            after_callback = module_btn["after"]
+            insert_pos = -1
+
+            current_markup = builder.as_markup()
+
+            for i, row in enumerate(current_markup.inline_keyboard):
+                for btn in row:
+                    if btn.callback_data == after_callback:
+                        insert_pos = i + 1
+                        break
+                if insert_pos > 0:
+                    break
+            
+            if insert_pos > 0:
+                new_buttons = []
+                for i, row in enumerate(current_markup.inline_keyboard):
+                    if i == insert_pos:
+                        new_buttons.append([module_btn["button"]])
+                    new_buttons.append(row)
+
+                if insert_pos >= len(current_markup.inline_keyboard):
+                    new_buttons.append([module_btn["button"]])
+
+                builder = InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_buttons))
+            else:
+                builder.row(module_btn["button"])
+        else:
+            if isinstance(module_btn, dict):
+                builder.row(module_btn["button"])
+            else:
+                builder.row(module_btn)
 
     builder.button(
         text=MAIN_MENU,
         callback_data="profile",
     )
-    builder.adjust(1, 1, 1, 2, 2, 1, 2 if admin_role == "superadmin" else 1, 1)
+
+    if admin_role == "superadmin":
+        builder.adjust(1, 1, 1, 1, 2, 2, 1, 2, 1)
+    else:
+        builder.adjust(1, 1, 1, 2, 1, 1)
+    
     return builder.as_markup()
 
 
