@@ -33,7 +33,7 @@ from database import (
     update_key_expiry,
     update_key_tariff,
 )
-from handlers.keys.key_utils import delete_key_from_cluster, renew_key_in_cluster
+from handlers.keys.operations import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import (
     build_notification_expired_kb,
     build_notification_kb,

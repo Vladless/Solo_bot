@@ -10,7 +10,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     NOTIFY_EXTRA_DAYS,
@@ -33,6 +32,7 @@ from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU, PAYMENT
 from handlers.payments.robokassa_pay import handle_custom_amount_input
 from handlers.payments.stars_pay import process_custom_amount_input_stars
+from handlers.payments.wata import handle_custom_amount_input as handle_custom_amount_input_wata
 from handlers.payments.yookassa_pay import process_custom_amount_input
 from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
 from handlers.texts import (
@@ -321,6 +321,10 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
             await process_custom_amount_input_stars(callback_query, session)
         elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
             await process_custom_amount_input_yoomoney(callback_query, session)
+        elif USE_NEW_PAYMENT_FLOW == "WATA":
+            await state.update_data(wata_cassa="sbp", required_amount=required_amount)
+            await handle_custom_amount_input_wata(callback_query, state)
+
         else:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))

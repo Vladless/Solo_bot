@@ -1,5 +1,4 @@
 import hashlib
-import json
 
 from aiohttp import web
 

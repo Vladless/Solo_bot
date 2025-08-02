@@ -5,7 +5,6 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import text
 
 from database import (
     get_key_details,
@@ -15,7 +14,7 @@ from database import (
     mark_key_as_unfrozen,
 )
 from handlers.buttons import APPLY, BACK, CANCEL
-from handlers.keys.key_utils import renew_key_in_cluster, toggle_client_on_cluster
+from handlers.keys.operations import renew_key_in_cluster, toggle_client_on_cluster
 from handlers.texts import (
     FREEZE_SUBSCRIPTION_CONFIRM_MSG,
     SUBSCRIPTION_FROZEN_MSG,

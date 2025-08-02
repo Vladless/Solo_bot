@@ -21,7 +21,7 @@ from config import (
 from database import check_unique_server_name, get_servers, update_key_expiry
 from database.models import Key, Server, Tariff
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import (
+from handlers.keys.operations import (
     create_client_on_server,
     create_key_on_cluster,
     delete_key_from_cluster,
@@ -745,13 +745,15 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
             device_limit = 0
             if key.tariff_id:
                 result = await session.execute(
-                    select(Tariff.traffic_limit, Tariff.device_limit).where(Tariff.id == key.tariff_id, Tariff.is_active.is_(True))
+                    select(Tariff.traffic_limit, Tariff.device_limit).where(
+                        Tariff.id == key.tariff_id, Tariff.is_active.is_(True)
+                    )
                 )
                 tariff = result.first()
                 if tariff:
                     traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
                     device_limit = int(tariff[1]) if tariff[1] is not None else 0
-            
+
             await renew_key_in_cluster(
                 cluster_name,
                 email=key.email,

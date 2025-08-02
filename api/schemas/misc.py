@@ -102,5 +102,9 @@ class TrackingSourceResponse(BaseModel):
     created_by: int
     created_at: datetime
 
+    registrations: int = 0
+    trials: int = 0
+    payments: int = 0
+
     class Config:
         from_attributes = True

@@ -8,7 +8,7 @@ from api.depends import get_session, verify_admin_token
 from api.routes.base_crud import generate_crud_router
 from api.schemas.keys import KeyBase, KeyCreateRequest, KeyResponse, KeyUpdate
 from database.models import Admin, Key, Tariff
-from handlers.keys.key_utils import create_key_on_cluster, delete_key_from_cluster, renew_key_in_cluster
+from handlers.keys.operations import create_key_on_cluster, delete_key_from_cluster, renew_key_in_cluster
 from logger import logger
 
 

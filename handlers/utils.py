@@ -1,3 +1,4 @@
+import html
 import os
 import re
 import secrets
@@ -292,3 +293,13 @@ def get_russian_month(date: datetime) -> str:
     """
     english_month = date.strftime("%B")
     return RUSSIAN_MONTHS.get(english_month, english_month)
+
+
+def get_username(user) -> str:
+    if getattr(user, "full_name", None):
+        return html.escape(user.full_name)
+    if getattr(user, "first_name", None):
+        return html.escape(user.first_name)
+    if getattr(user, "username", None):
+        return "@" + html.escape(user.username)
+    return "Пользователь"

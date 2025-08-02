@@ -28,7 +28,7 @@ from database import (
     update_key_expiry,
 )
 from handlers.buttons import MAIN_MENU
-from handlers.keys.key_utils import renew_key_in_cluster
+from handlers.keys.operations import renew_key_in_cluster
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     COUPONS_DAYS_MESSAGE,

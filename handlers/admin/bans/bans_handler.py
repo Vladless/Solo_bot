@@ -151,7 +151,7 @@ async def handle_preemptive_ban_start(callback: CallbackQuery, state: FSMContext
     await callback.message.edit_text(
         "📥 Отправьте список Telegram ID (один на строке), которых нужно заранее забанить (теневой бан).\n\n"
         "Пример:\n<code>123456789\n987654321</code>",
-        reply_markup=build_admin_back_kb("bans")
+        reply_markup=build_admin_back_kb("bans"),
     )
 
 

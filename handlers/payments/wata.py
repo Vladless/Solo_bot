@@ -156,54 +156,61 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceWataState.entering_custom_amount)
 
 
-@router.message(ReplenishBalanceWataState.entering_custom_amount)
-async def handle_custom_amount_input(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    cassa_name = data.get("wata_cassa")
-    cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name), None)
-    if not cassa or not cassa["enable"]:
-        await edit_or_send_message(
-            target_message=message,
-            text="Ошибка: выбранная касса недоступна.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
-        )
-        return
+async def handle_custom_amount_input(
+    callback_query: types.CallbackQuery,
+    state: FSMContext,
+):
+    tg_id = callback_query.from_user.id
+    target_message = callback_query.message
+
     try:
-        amount = int(message.text.strip())
-        if amount <= 0:
-            raise ValueError
-        if cassa_name == "sbp" and amount < 50:
+        data = await state.get_data()
+        required_amount = data.get("required_amount", 0)
+        cassa_name = data.get("wata_cassa", "sbp")
+
+        if not required_amount or required_amount <= 0:
             await edit_or_send_message(
-                target_message=message,
-                text="Минимальная сумма для оплаты через СБП — 50 рублей.",
+                target_message=target_message,
+                text="❌ Недостаточная сумма для оплаты.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-                force_text=True,
             )
             return
-    except Exception:
-        await edit_or_send_message(
-            target_message=message,
-            text="Некорректная сумма. Введите целое число больше 0.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
+
+        cassa = next((c for c in WATA_CASSA_CONFIG if c["name"] == cassa_name and c["enable"]), None)
+        if not cassa:
+            await edit_or_send_message(
+                target_message=target_message,
+                text="❌ Выбранная касса WATA недоступна.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            )
+            return
+
+        payment_url = await generate_wata_payment_link(required_amount, tg_id, cassa)
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=PAY_2, url=payment_url)],
+                [InlineKeyboardButton(text=BACK, callback_data="balance")],
+            ]
         )
-        return
-    await state.update_data(amount=amount)
-    payment_url = await generate_wata_payment_link(amount, message.chat.id, cassa)
-    confirm_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="balance")],
-        ]
-    )
-    await edit_or_send_message(
-        target_message=message,
-        text=WATA_PAYMENT_MESSAGE.format(amount=amount),
-        reply_markup=confirm_keyboard,
-        force_text=True,
-    )
-    await state.set_state(ReplenishBalanceWataState.waiting_for_payment_confirmation)
+
+        message_text = f"💰 Вы выбрали пополнение на <b>{required_amount}₽</b>. Перейдите по ссылке для оплаты:"
+        await edit_or_send_message(
+            target_message=target_message,
+            text=message_text,
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
+        )
+
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"[WATA] Ошибка при создании ссылки для оплаты: {e}", exc_info=True)
+        await edit_or_send_message(
+            target_message=target_message,
+            text="⚠️ Произошла ошибка при создании ссылки на оплату. Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+        )
 
 
 @router.callback_query(F.data.startswith("wata_amount|"))

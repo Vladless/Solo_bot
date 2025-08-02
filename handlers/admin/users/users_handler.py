@@ -33,7 +33,7 @@ from database import (
 )
 from database.models import Key, ManualBan, Payment, Referral, Server, Tariff, User
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import (
+from handlers.keys.operations import (
     create_key_on_cluster,
     delete_key_from_cluster,
     get_user_traffic,

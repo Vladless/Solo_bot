@@ -9,7 +9,7 @@ from api.routes.base_crud import generate_crud_router
 from api.schemas.users import UserBase, UserResponse, UserUpdate
 from database import delete_user_data, get_servers
 from database.models import Key, User
-from handlers.keys.key_utils import delete_key_from_cluster
+from handlers.keys.operations import delete_key_from_cluster
 from logger import logger
 
 

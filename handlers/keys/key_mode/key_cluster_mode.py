@@ -32,12 +32,10 @@ from handlers.buttons import (
     SUPPORT,
     TV_BUTTON,
 )
-from handlers.keys.key_utils import create_key_on_cluster
+from handlers.keys.operations import create_key_on_cluster
 from handlers.texts import key_message_success
 from handlers.utils import (
     edit_or_send_message,
-    format_days,
-    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,

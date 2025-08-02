@@ -5,8 +5,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK, MAIN_MENU
+from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
-from logger import logger
 
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
@@ -21,6 +21,7 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
 
 async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
     builder.button(
         text="👤 Поиск пользователя",
         callback_data=AdminPanelCallback(action="search_user").pack(),
@@ -29,15 +30,18 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         text="🔑 Поиск по подписке",
         callback_data=AdminPanelCallback(action="search_key").pack(),
     )
+
     if admin_role == "superadmin":
         builder.button(
             text="🖥️ Управление серверами",
             callback_data=AdminPanelCallback(action="clusters").pack(),
         )
+
     builder.row(
         InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
         InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
     )
+
     if admin_role == "superadmin":
         builder.row(
             InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
@@ -48,14 +52,8 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
             callback_data=AdminPanelCallback(action="management").pack(),
         )
         builder.row(
-            InlineKeyboardButton(
-                text="📊 Статистика",
-                callback_data=AdminPanelCallback(action="stats").pack(),
-            ),
-            InlineKeyboardButton(
-                text="📈 Аналитика",
-                callback_data=AdminPanelCallback(action="ads").pack(),
-            ),
+            InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
+            InlineKeyboardButton(text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()),
         )
     else:
         builder.button(
@@ -64,40 +62,7 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         )
 
     module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
-
-    for module_btn in module_buttons:
-        if isinstance(module_btn, dict) and "after" in module_btn:
-            after_callback = module_btn["after"]
-            insert_pos = -1
-
-            current_markup = builder.as_markup()
-
-            for i, row in enumerate(current_markup.inline_keyboard):
-                for btn in row:
-                    if btn.callback_data == after_callback:
-                        insert_pos = i + 1
-                        break
-                if insert_pos > 0:
-                    break
-            
-            if insert_pos > 0:
-                new_buttons = []
-                for i, row in enumerate(current_markup.inline_keyboard):
-                    if i == insert_pos:
-                        new_buttons.append([module_btn["button"]])
-                    new_buttons.append(row)
-
-                if insert_pos >= len(current_markup.inline_keyboard):
-                    new_buttons.append([module_btn["button"]])
-
-                builder = InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_buttons))
-            else:
-                builder.row(module_btn["button"])
-        else:
-            if isinstance(module_btn, dict):
-                builder.row(module_btn["button"])
-            else:
-                builder.row(module_btn)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     builder.button(
         text=MAIN_MENU,
@@ -108,7 +73,7 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         builder.adjust(1, 1, 1, 1, 2, 2, 1, 2, 1)
     else:
         builder.adjust(1, 1, 1, 2, 1, 1)
-    
+
     return builder.as_markup()
 
 

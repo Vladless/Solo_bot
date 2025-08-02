@@ -22,7 +22,7 @@ from database import (
 )
 from database.tariffs import get_tariffs
 from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
-from handlers.keys.key_utils import get_user_traffic
+from handlers.keys.operations import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
     TRIAL_INACTIVE_BONUS_MSG,

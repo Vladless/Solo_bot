@@ -30,19 +30,16 @@ from database import (
     check_server_name_by_cluster,
     check_user_exists,
     get_key_details,
-    get_tariff_by_id,
     get_trial,
     update_balance,
     update_trial,
 )
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
-from handlers.keys.key_utils import create_client_on_server
+from handlers.keys.operations import create_client_on_server
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
     edit_or_send_message,
-    format_days,
-    format_months,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,

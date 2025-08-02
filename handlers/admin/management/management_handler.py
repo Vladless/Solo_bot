@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.models import Admin, Key, Server, User
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import update_subscription
+from handlers.keys.operations import update_subscription
 from logger import logger
 from middlewares import maintenance
 from panels.remnawave import RemnawaveAPI

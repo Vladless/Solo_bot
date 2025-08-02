@@ -44,7 +44,7 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
         ):
             logger.warning("Отправляем стартовое меню.")
             try:
-                from handlers.start import handle_start_callback_query, start_command
+                from handlers.start import start_entry
 
                 if event.update.message:
                     fsm_context = dp.fsm.get_context(
@@ -52,8 +52,8 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                         chat_id=event.update.message.chat.id,
                         user_id=event.update.message.from_user.id,
                     )
-                    await start_command(
-                        event.update.message,
+                    await start_entry(
+                        event=event.update.message,
                         state=fsm_context,
                         session=None,
                         admin=False,
@@ -65,15 +65,15 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                         chat_id=event.update.callback_query.message.chat.id,
                         user_id=event.update.callback_query.from_user.id,
                     )
-                    await handle_start_callback_query(
-                        event.update.callback_query,
+                    await start_entry(
+                        event=event.update.callback_query,
                         state=fsm_context,
                         session=None,
                         admin=False,
                         captcha=False,
                     )
             except Exception as e:
-                logger.error(f"Ошибка при показе стартового меню после ошибки: {e}")
+                logger.error(f"Ошибка при показе стартового меню после ошибки: {e}", exc_info=True)
 
             return True
 
@@ -93,7 +93,7 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                 caption=f"{hbold(type(event.exception).__name__)}: {str(event.exception)[:1021]}...",
             )
 
-        from handlers.start import handle_start_callback_query, start_command
+        from handlers.start import start_entry
 
         if event.update.message:
             fsm_context = dp.fsm.get_context(
@@ -101,8 +101,8 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                 chat_id=event.update.message.chat.id,
                 user_id=event.update.message.from_user.id,
             )
-            await start_command(
-                event.update.message,
+            await start_entry(
+                event=event.update.message,
                 state=fsm_context,
                 session=None,
                 admin=False,
@@ -114,8 +114,8 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                 chat_id=event.update.callback_query.message.chat.id,
                 user_id=event.update.callback_query.from_user.id,
             )
-            await handle_start_callback_query(
-                event.update.callback_query,
+            await start_entry(
+                event=event.update.callback_query,
                 state=fsm_context,
                 session=None,
                 admin=False,

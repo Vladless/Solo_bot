@@ -1,7 +1,5 @@
 from aiohttp.web_urldispatcher import UrlDispatcher
 
-import bot
-
 from config import TBLOCKER_WEBHOOK_PATH
 
 from .heleket_payment import heleket_payment_webhook

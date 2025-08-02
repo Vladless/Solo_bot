@@ -24,9 +24,12 @@ def register_middleware(
     sessionmaker=None,
 ) -> None:
     """Регистрирует middleware в диспетчере."""
-    direct_start_blocker = DirectStartBlockerMiddleware()
-    dispatcher.message.outer_middleware(direct_start_blocker)
-    dispatcher.callback_query.outer_middleware(direct_start_blocker)
+
+    dispatcher.update.outer_middleware(DirectStartBlockerMiddleware())
+
+    if sessionmaker:
+        dispatcher.update.outer_middleware(SubscriptionMiddleware())
+        dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
 
     if middlewares is None:
         available_middlewares = {
@@ -40,10 +43,6 @@ def register_middleware(
 
         exclude_set = set(exclude or [])
         middlewares = [middleware for name, middleware in available_middlewares.items() if name not in exclude_set]
-
-    if sessionmaker:
-        dispatcher.update.outer_middleware(SubscriptionMiddleware())
-        dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
 
     handlers = [
         dispatcher.message,
