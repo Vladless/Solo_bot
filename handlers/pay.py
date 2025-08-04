@@ -53,6 +53,8 @@ from handlers.payments.wata import process_callback_pay_wata
 from handlers.payments.yookassa_pay import process_callback_pay_yookassa
 from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
 from handlers.texts import BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 
 from .utils import edit_or_send_message
 
@@ -114,6 +116,9 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=WATA_INT, callback_data="pay_wata_int"))
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+
+    module_buttons = await run_hooks("pay_menu_buttons", chat_id=callback_query.from_user.id, admin=False, session=session)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

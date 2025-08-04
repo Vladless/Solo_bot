@@ -28,3 +28,27 @@ def load_modules_from_folder(folder: str = "modules") -> list[Router]:
         except Exception as e:
             logger.error(f"[Modules] Ошибка при загрузке {module_path}: {e}")
     return routers
+
+
+def load_module_webhooks(folder: str = "modules") -> list[dict]:
+    webhooks = []
+    base_path = Path(folder)
+
+    if not base_path.exists():
+        logger.warning(f"[Modules] Папка {folder} не найдена, пропускаем загрузку вебхуков.")
+        return []
+
+    for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        module_path = f"{folder}.{name}"
+        try:
+            router_module = importlib.import_module(f"{module_path}.router")
+            if hasattr(router_module, "get_webhook_data"):
+                webhook_data = router_module.get_webhook_data()
+                if isinstance(webhook_data, dict) and "path" in webhook_data and "handler" in webhook_data:
+                    webhooks.append(webhook_data)
+                    logger.info(f"[Modules] Найден вебхук в модуле {name}: {webhook_data['path']}")
+                        
+        except Exception as e:
+            logger.error(f"[Modules] Ошибка при загрузке вебхуков из {module_path}: {e}")
+    
+    return webhooks
