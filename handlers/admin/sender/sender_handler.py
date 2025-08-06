@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Payment, Server, User
+from database.models import Key, Payment, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -268,6 +268,13 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
             .join(Payment, User.tg_id == Payment.tg_id)
             .where(Payment.status == "success")
             .where(~User.tg_id.in_(subquery))
+        )
+    elif send_to == "trial":
+        trial_tariff_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
+        
+        query = (
+            select(distinct(Key.tg_id))
+            .where(Key.tariff_id.in_(trial_tariff_subquery))
         )
     else:
         query = select(distinct(User.tg_id))

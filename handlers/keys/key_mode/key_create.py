@@ -42,6 +42,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, get_least_loaded_cluster
 from logger import logger
+from utils.modules_loader import load_module_fast_flow_handlers
 
 from .key_cluster_mode import key_cluster_mode
 from .key_country_mode import key_country_mode
@@ -313,27 +314,38 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
             },
         )
 
-        if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
-            await process_custom_amount_input(callback_query, session)
-        elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
-            await handle_custom_amount_input(message=callback_query, session=session)
-        elif USE_NEW_PAYMENT_FLOW == "STARS":
-            await process_custom_amount_input_stars(callback_query, session)
-        elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
-            await process_custom_amount_input_yoomoney(callback_query, session)
-        elif USE_NEW_PAYMENT_FLOW == "WATA":
-            await state.update_data(wata_cassa="sbp", required_amount=required_amount)
-            await handle_custom_amount_input_wata(callback_query, state)
+        module_fast_flow_handlers = load_module_fast_flow_handlers()
+        flow_handled = False
+        
+        if USE_NEW_PAYMENT_FLOW in module_fast_flow_handlers:
+            try:
+                handler = module_fast_flow_handlers[USE_NEW_PAYMENT_FLOW]
+                await handler(callback_query, session, state)
+                flow_handled = True
+            except Exception as e:
+                logger.error(f"[CREATE] Ошибка в модульном обработчике быстрого флоу {USE_NEW_PAYMENT_FLOW}: {e}")
 
-        else:
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
-                reply_markup=builder.as_markup(),
-            )
+        if not flow_handled:
+            if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
+                await process_custom_amount_input(callback_query, session)
+            elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
+                await handle_custom_amount_input(message=callback_query, session=session)
+            elif USE_NEW_PAYMENT_FLOW == "STARS":
+                await process_custom_amount_input_stars(callback_query, session)
+            elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
+                await process_custom_amount_input_yoomoney(callback_query, session)
+            elif USE_NEW_PAYMENT_FLOW == "WATA":
+                await state.update_data(wata_cassa="sbp", required_amount=required_amount)
+                await handle_custom_amount_input_wata(callback_query, state)
+            else:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
+                    reply_markup=builder.as_markup(),
+                )
         return
 
     builder = InlineKeyboardBuilder()
