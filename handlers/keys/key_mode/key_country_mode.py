@@ -504,15 +504,17 @@ async def finalize_key_creation(
     if tariff_id:
         result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
         tariff_info = result.scalar_one_or_none()
+        if not tariff_info:
+            logger.warning(f"[Key Finalize] Тариф с ID {tariff_id} не найден")
 
-    tariff_duration = tariff_info["name"]
-    subgroup_title = tariff_info.get("subgroup_title", "") if tariff_info else ""
+    tariff_duration = tariff_info.name if tariff_info else "—"
+    subgroup_title = tariff_info.subgroup_title if tariff_info and tariff_info.subgroup_title else ""
 
     key_message_text = key_message_success(
         link_to_show,
         tariff_name=tariff_duration,
-        traffic_limit=tariff_info.get("traffic_limit", 0) if tariff_info else 0,
-        device_limit=tariff_info.get("device_limit", 0) if tariff_info else 0,
+        traffic_limit=tariff_info.traffic_limit if tariff_info else 0,
+        device_limit=tariff_info.device_limit if tariff_info else 0,
         subgroup_title=subgroup_title,
     )
 
