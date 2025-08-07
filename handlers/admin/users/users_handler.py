@@ -559,15 +559,22 @@ async def handle_key_edit(
 
     key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
     alias = key_details.get("alias")
-    utc_tz = pytz.utc
+
     created_at_raw = key_details.get("created_at")
     if created_at_raw:
-        created_at_dt = datetime.fromtimestamp(int(created_at_raw) / 1000, tz=utc_tz).astimezone(MOSCOW_TZ)
+        created_at_dt = datetime.fromtimestamp(int(created_at_raw) / 1000) + timedelta(hours=3)
         created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
     else:
         created_at = "—"
 
-    expiry_date = key_details.get("expiry_date") or "—"
+
+    expiry_time_raw = key_details.get("expiry_time")
+    if expiry_time_raw:
+        expiry_dt = datetime.fromtimestamp(int(expiry_time_raw) / 1000)
+        expiry_date = expiry_dt.strftime("%d %B %Y года %H:%M")
+    else:
+        expiry_date = "—"
+
     tariff_name = "—"
     subgroup_title = "—"
     if key_details.get("tariff_id"):

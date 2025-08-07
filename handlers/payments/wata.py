@@ -141,6 +141,22 @@ async def process_cassa_selection(callback_query: types.CallbackQuery, state: FS
     await state.set_state(ReplenishBalanceWataState.choosing_amount)
 
 
+@router.message(ReplenishBalanceWataState.entering_custom_amount)
+async def handle_custom_amount_text_input(message: types.Message, state: FSMContext):
+    text = message.text.strip()
+
+    try:
+        amount = int(text)
+        if amount <= 0:
+            raise ValueError
+
+        await state.update_data(required_amount=amount)
+        await handle_custom_amount_input(message, state)
+
+    except ValueError:
+        await message.answer("❌ Введите корректную сумму: только цифры, без символов.")
+
+
 @router.callback_query(F.data.startswith("wata_custom_amount|"))
 async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext):
     cassa_name = callback_query.data.split("|")[1]
@@ -156,12 +172,9 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.set_state(ReplenishBalanceWataState.entering_custom_amount)
 
 
-async def handle_custom_amount_input(
-    callback_query: types.CallbackQuery,
-    state: FSMContext,
-):
-    tg_id = callback_query.from_user.id
-    target_message = callback_query.message
+async def handle_custom_amount_input(event: types.Message | types.CallbackQuery, state: FSMContext):
+    tg_id = event.from_user.id
+    target_message = getattr(event, "message", None) or event
 
     try:
         data = await state.get_data()

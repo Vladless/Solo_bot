@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import traceback
+import re
 
 from asyncio import sleep
 from datetime import datetime
@@ -97,7 +98,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     """Обновляет домен в таблице keys."""
     new_domain = message.text.strip()
 
-    if not new_domain or " " in new_domain or not new_domain.replace(".", "").isalnum():
+    if not re.fullmatch(r"[a-zA-Z0-9.-]+", new_domain) or " " in new_domain:
         logger.warning("[DomainChange] Некорректный домен")
         await message.answer(
             "🚫 Некорректный домен! Введите домен без http:// и без пробелов.",
