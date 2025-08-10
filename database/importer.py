@@ -18,11 +18,13 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
     skipped = 0
 
     if USE_COUNTRY_SELECTION:
-        result = await session.execute(select(Server.name).where(Server.enabled is True, Server.panel_type == "3x-ui"))
+        result = await session.execute(
+            select(Server.server_name).where(Server.enabled.is_(True), Server.panel_type == "3x-ui")
+        )
     else:
         result = await session.execute(
             select(Server.cluster_name)
-            .where(Server.enabled is True, Server.panel_type == "3x-ui", Server.cluster_name.isnot(None))
+            .where(Server.enabled.is_(True), Server.panel_type == "3x-ui", Server.cluster_name.isnot(None))
             .distinct()
         )
 

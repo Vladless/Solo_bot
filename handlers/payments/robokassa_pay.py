@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_
 from pytz import timezone
+from typing import Optional
 
 from config import (
     ROBOKASSA_ENABLE,
@@ -58,16 +59,35 @@ if ROBOKASSA_ENABLE:
     logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
 
 
+def _build_receipt(amount: float, *, sno: Optional[str] = None) -> dict:
+    receipt = {
+        "items": [{
+            "name": "Пополнение баланса",
+            "quantity": 1,
+            "sum": float(amount),
+            "payment_method": "full_payment",
+            "payment_object": "payment",
+            "tax": "none",               
+        }]
+    }
+    if sno:
+        receipt["sno"] = sno       
+    return receipt
+
+
 def generate_payment_link(amount, inv_id, description, tg_id):
-    """Генерация ссылки на оплату."""
+    """Генерация ссылки на оплату с номенклатурой (Receipt)."""
     logger.debug(
         f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}"
     )
+    receipt = _build_receipt(amount)
+
     payment_link = robokassa._payment.link.generate_by_script(
-        out_sum=amount,
+        out_sum=float(amount),
         inv_id=inv_id,
         description=f"Пополнение баланса (tg_id: {tg_id})",
-        id=f"{tg_id}",
+        id=str(tg_id), 
+        receipt=receipt
     )
     logger.info(f"Generated payment link: {payment_link}")
     return payment_link
@@ -247,24 +267,26 @@ async def robokassa_webhook(request: web.Request):
 
 
 def check_payment_signature(params):
-    """Проверка подписи запроса от Robokassa с учетом shp_id."""
-    out_sum = params.get("OutSum")
-    inv_id = params.get("InvId")
-    signature_value = params.get("SignatureValue")
-    shp_id = params.get("shp_id")
+    """Проверка подписи ResultURL от Robokassa с учётом всех Shp_*."""
+    out_sum = params.get("OutSum") or params.get("out_summ") or params.get("outsumm")
+    inv_id = params.get("InvId") or params.get("inv_id") or params.get("invid")
+    received_sig = (params.get("SignatureValue") or params.get("signaturevalue") or "").upper()
 
-    signature_string = f"{out_sum}:{inv_id}:{ROBOKASSA_PASSWORD2}:shp_id={shp_id}"
+    if not out_sum or not inv_id or not received_sig:
+        logger.error("Missing required params for signature check.")
+        return False
 
-    logger.info(f"Signature string before hashing: {signature_string}")
+    shp_items = [(k, params[k]) for k in params.keys() if k.lower().startswith("shp_")]
+    shp_items.sort(key=lambda kv: kv[0].lower())
+    shp_suffix = "".join(f":{k}={v}" for k, v in shp_items)
+    base = f"{out_sum}:{inv_id}:{ROBOKASSA_PASSWORD2}{shp_suffix}"
+    expected_sig = hashlib.md5(base.encode("utf-8")).hexdigest().upper()
 
-    expected_signature = (
-        hashlib.md5(signature_string.encode("utf-8")).hexdigest().upper()
-    )
+    logger.info(f"Signature base (RESULT): {base}")
+    logger.info(f"Expected signature: {expected_sig}")
+    logger.info(f"Received signature: {received_sig}")
 
-    logger.info(f"Expected signature: {expected_signature}")
-    logger.info(f"Received signature: {signature_value}")
-
-    return signature_value.upper() == expected_signature.upper()
+    return received_sig == expected_sig
 
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")

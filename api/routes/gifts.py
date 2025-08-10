@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Path
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token
@@ -18,7 +18,7 @@ gift_router = generate_crud_router(
     schema_update=GiftUpdate,
     identifier_field="gift_id",
     parameter_name="gift_id",
-    enabled_methods=["get_all", "get_one", "create", "update", "delete"],
+    enabled_methods=["get_all", "get_one", "create", "update"],
 )
 router.include_router(gift_router, prefix="", tags=["Gifts"])
 
@@ -46,3 +46,20 @@ gift_usage_router = generate_crud_router(
 )
 router.include_router(gift_usage_router, prefix="/usages", tags=["GiftUsages"])
 router.include_router(gift_usage_router, prefix="/usages", tags=["Gifts"])
+
+
+@router.delete("/{gift_id}", response_model=dict, tags=["Gifts"])
+async def delete_gift_with_usages(
+    gift_id: str = Path(..., description="ID подарка"),
+    admin: Admin = Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Gift).where(Gift.gift_id == gift_id))
+    gift = result.scalar_one_or_none()
+    if not gift:
+        raise HTTPException(status_code=404, detail="Gift not found")
+
+    await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
+    await session.delete(gift)
+    await session.commit()
+    return {"message": "Подарок и связанные использования удалены"}

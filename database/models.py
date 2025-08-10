@@ -123,7 +123,11 @@ class Coupon(DictLikeMixin, Base):
 class CouponUsage(DictLikeMixin, Base):
     __tablename__ = "coupon_usages"
 
-    coupon_id = Column(Integer, ForeignKey("coupons.id"), primary_key=True)
+    coupon_id = Column(
+        Integer,
+        ForeignKey("coupons.id", ondelete="CASCADE"),  # Каскадное удаление
+        primary_key=True
+    )
     user_id = Column(BigInteger, primary_key=True)
     used_at = Column(DateTime, default=datetime.utcnow)
 
