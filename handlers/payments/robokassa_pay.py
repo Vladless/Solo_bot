@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from sqlalchemy import select, and_
 from pytz import timezone
-from typing import Optional
-
+from urllib.parse import urlencode, quote_plus
 from config import (
     ROBOKASSA_ENABLE,
     ROBOKASSA_LOGIN,
@@ -31,6 +30,8 @@ from database import (
     update_balance,
     Payment
 )
+import json
+from decimal import Decimal, ROUND_DOWN
 from handlers.buttons import BACK, PAY_2
 from handlers.payments.utils import send_payment_success_notification
 from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
@@ -59,7 +60,7 @@ if ROBOKASSA_ENABLE:
     logger.info("Robokassa initialized with login: {}", ROBOKASSA_LOGIN)
 
 
-def _build_receipt(amount: float, *, sno: Optional[str] = None) -> dict:
+def _build_receipt(amount: float, *, sno: str = "usn_income") -> dict:
     receipt = {
         "items": [{
             "name": "Пополнение баланса",
@@ -67,30 +68,48 @@ def _build_receipt(amount: float, *, sno: Optional[str] = None) -> dict:
             "sum": float(amount),
             "payment_method": "full_payment",
             "payment_object": "payment",
-            "tax": "none",               
-        }]
+            "tax": "none",
+        }],
+        "sno": sno,
     }
-    if sno:
-        receipt["sno"] = sno       
     return receipt
 
 
-def generate_payment_link(amount, inv_id, description, tg_id):
-    """Генерация ссылки на оплату с номенклатурой (Receipt)."""
-    logger.debug(
-        f"Generating payment link for amount: {amount}, inv_id: {inv_id}, description: {description}"
-    )
-    receipt = _build_receipt(amount)
+def _format_amount(amount: float | int) -> str:
+    s = str(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s
 
-    payment_link = robokassa._payment.link.generate_by_script(
-        out_sum=float(amount),
-        inv_id=inv_id,
-        description=f"Пополнение баланса (tg_id: {tg_id})",
-        id=str(tg_id), 
-        receipt=receipt
-    )
-    logger.info(f"Generated payment link: {payment_link}")
-    return payment_link
+def generate_payment_link(amount, inv_id, description, tg_id):
+    out_sum = _format_amount(amount)
+
+    receipt = _build_receipt(amount)
+    receipt_json = json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
+
+    receipt_enc1 = quote_plus(receipt_json, safe="") 
+
+    shp = {"Shp_id": str(tg_id)}
+
+    base = f"{ROBOKASSA_LOGIN}:{out_sum}:{inv_id}:{receipt_enc1}:{ROBOKASSA_PASSWORD1}"
+    for k in sorted(shp.keys(), key=str.lower):
+        base += f":{k}={shp[k]}"
+
+    signature = hashlib.md5(base.encode("utf-8")).hexdigest().upper()
+
+    query = {
+        "MrchLogin": ROBOKASSA_LOGIN,
+        "OutSum": out_sum,
+        "InvId": inv_id,
+        "Description": description,
+        "Receipt": receipt_enc1,      
+        "SignatureValue": signature,
+        **shp,
+    }
+    if ROBOKASSA_TEST_MODE:
+        query["IsTest"] = 1
+
+    return "https://auth.robokassa.ru/Merchant/Index.aspx?" + urlencode(query)
 
 
 @router.callback_query(F.data == "pay_robokassa")
@@ -217,7 +236,7 @@ async def robokassa_webhook(request: web.Request):
 
         amount = params.get("OutSum")
         inv_id = params.get("InvId")
-        shp_id = params.get("shp_id")
+        shp_id = params.get("Shp_id") or params.get("shp_id") or params.get("id")
         signature_value = params.get("SignatureValue")
 
         logger.info(

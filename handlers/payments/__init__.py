@@ -11,6 +11,7 @@ from config import (
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
     HELEKET_ENABLE,
+    TRIBUTE_ENABLE
 )
 
 from .cryprobot_pay import router as cryprobot_router
@@ -23,6 +24,7 @@ from .yookassa_pay import router as yookassa_router
 from .yoomoney_pay import router as yoomoney_router
 from .wata import router as wata_router
 from .heleket import router as heleket_router
+from .tribute_pay import router as tribute_router
 
 router = Router(name="payments_main_router")
 
@@ -42,6 +44,8 @@ if KASSAI_ENABLE:
     router.include_router(kassai_router)
 if HELEKET_ENABLE:
     router.include_router(heleket_router)
+if TRIBUTE_ENABLE:
+    router.include_router(tribute_router)
 
 router.include_router(wata_router)
 router.include_router(gift_router)

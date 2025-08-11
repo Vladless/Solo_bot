@@ -22,6 +22,8 @@ from config import (
     WATA_SBP_ENABLE,
     YOOKASSA_ENABLE,
     YOOMONEY_ENABLE,
+    TRIBUTE_ENABLE,
+    TRIBUTE_LINK
 )
 from database import get_last_payments
 from database.models import User
@@ -42,6 +44,7 @@ from handlers.buttons import (
     WATA_SBP,
     YOOKASSA,
     YOOMONEY,
+    TRIBUTE,
 )
 from handlers.payments.cryprobot_pay import process_callback_pay_cryptobot
 from handlers.payments.freekassa_pay import process_callback_pay_freekassa
@@ -52,6 +55,7 @@ from handlers.payments.stars_pay import process_callback_pay_stars
 from handlers.payments.wata import process_callback_pay_wata
 from handlers.payments.yookassa_pay import process_callback_pay_yookassa
 from handlers.payments.yoomoney_pay import process_callback_pay_yoomoney
+from handlers.payments.tribute_pay import process_callback_pay_tribute
 from handlers.texts import BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
@@ -84,6 +88,8 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_robokassa)
     if FREEKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_freekassa)
+    if TRIBUTE_ENABLE:                                        
+        payment_handlers.append(process_callback_pay_tribute)
 
     if len(payment_handlers) == 1:
         await callback_query.answer()
@@ -114,6 +120,8 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=WATA_SBP, callback_data="pay_wata_sbp"))
     if WATA_INT_ENABLE:
         builder.row(InlineKeyboardButton(text=WATA_INT, callback_data="pay_wata_int"))
+    if TRIBUTE_ENABLE:
+        builder.row(InlineKeyboardButton(text=TRIBUTE, url=TRIBUTE_LINK))
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
 
@@ -211,3 +219,8 @@ async def handle_pay_kassai_sbp(callback_query: CallbackQuery, state: FSMContext
 @router.callback_query(F.data == "pay_heleket_crypto")
 async def handle_pay_heleket_crypto(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_heleket(callback_query, state, session, method_name="crypto")
+
+
+@router.callback_query(F.data == "pay_tribute")
+async def handle_pay_tribute(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    await process_callback_pay_tribute(callback_query, state, session)

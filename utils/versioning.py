@@ -92,4 +92,4 @@ def get_git_commit_number() -> str:
 
 
 def get_version() -> str:
-    return f"dev-mod{get_git_commit_number()}"
+    return f"b110820{get_git_commit_number()}"

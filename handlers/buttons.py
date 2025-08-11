@@ -96,6 +96,7 @@ WATA_SBP = "🏦 WATA: СБП"
 WATA_INT = "🌍 WATA: Международные карты"
 KASSAI_CARDS = "💳 KassaAI: Карты РФ"
 KASSAI_SBP = "🏦 KassaAI: СБП"
+TRIBUTE = "💳 Tribute"
 
 # Кнопки Heleket
 HELEKET_CRYPTO = "₿ Heleket: Crypto"
