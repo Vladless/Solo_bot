@@ -1165,11 +1165,11 @@ async def process_user_search(
         else:
             referrer_text = f"\n🤝 Пригласил: <b>{referrer_tg_id}</b>"
 
-    stmt = select(func.count(Payment.id), func.sum(Payment.amount)).where(
+    stmt = select(func.count(Payment.id), func.coalesce(func.sum(Payment.amount), 0)).where(
         Payment.status == "success", Payment.tg_id == tg_id
     )
     result = await session.execute(stmt)
-    topups_amount, topups_sum = result.one_or_none() or (0, 0.0)
+    topups_amount, topups_sum = result.one_or_none() or (0, 0)
 
     stmt_keys = select(Key).where(Key.tg_id == tg_id)
     result_keys = await session.execute(stmt_keys)
@@ -1193,7 +1193,7 @@ async def process_user_search(
         f"📅 Дата регистрации: <b>{created_at_str}</b>\n"
         f"🏃 Дата активности: <b>{updated_at_str}</b>\n"
         f"💰 Баланс: <b>{balance} Р.</b>\n"
-        f"💳 Пополнения: <b>{topups_sum} Р. ({topups_amount})</b>\n"
+        f"💳 Пополнения: <b>{topups_sum} Р. ({topups_amount} шт.)</b>\n"
         f"👥 Количество рефералов: <b>{referral_count}</b>{referrer_text}"
         f"</blockquote>"
     )
