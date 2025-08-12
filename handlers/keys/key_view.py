@@ -62,6 +62,8 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from logger import logger
+from hooks.hooks import run_hooks
+from hooks.hook_buttons import insert_hook_buttons
 
 
 router = Router()
@@ -313,7 +315,8 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
             )
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-
+    module_buttons = await run_hooks("view_key_menu", key_name=key_name, session=session)
+    builder = insert_hook_buttons(builder, module_buttons)
     if HWID_RESET_BUTTON and hwid_count > 0:
         builder.row(
             InlineKeyboardButton(
@@ -335,6 +338,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     if TOGGLE_CLIENT:
         builder.row(InlineKeyboardButton(text=FREEZE, callback_data=f"freeze_subscription|{key_name}"))
+
 
     builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
