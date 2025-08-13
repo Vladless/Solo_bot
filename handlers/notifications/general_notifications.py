@@ -53,6 +53,8 @@ from .hot_leads_notifications import notify_hot_leads
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
 
+from hooks.hooks import run_hooks
+
 
 router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -109,7 +111,6 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                         except Exception as e:
                             logger.error(f"Ошибка в notify_users_no_traffic: {e}")
                     try:
-                        from hooks.hooks import run_hooks
                         await run_hooks("periodic_notifications", bot=bot, session=session, keys=keys)
                     except Exception as e:
                         logger.error(f"Ошибка в хуках periodic_notifications: {e}")
