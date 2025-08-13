@@ -108,6 +108,11 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                             await notify_users_no_traffic(bot, session, current_time, keys)
                         except Exception as e:
                             logger.error(f"Ошибка в notify_users_no_traffic: {e}")
+                    try:
+                        from hooks.hooks import run_hooks
+                        await run_hooks("periodic_notifications", bot=bot, session=session, keys=keys)
+                    except Exception as e:
+                        logger.error(f"Ошибка в хуках periodic_notifications: {e}")
 
                     if NOTIFY_HOT_LEADS:
                         try:
