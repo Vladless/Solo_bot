@@ -86,7 +86,6 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_freekassa)
 
     if len(payment_handlers) == 1:
-        await callback_query.answer()
         return await payment_handlers[0](callback_query, state, session)
 
     builder = InlineKeyboardBuilder()

@@ -438,8 +438,6 @@ async def back_to_database_menu(callback: CallbackQuery):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
-    await callback.answer()
-
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
     servers = result.scalars().all()
 
