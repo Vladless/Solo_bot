@@ -16,6 +16,7 @@ from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
 from .answer import CallbackAnswerMiddleware
 
+
 def register_middleware(
     dispatcher: Dispatcher,
     middlewares: Iterable[BaseMiddleware | type[BaseMiddleware]] | None = None,
