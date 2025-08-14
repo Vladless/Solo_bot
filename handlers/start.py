@@ -43,6 +43,7 @@ from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
+from hooks.hook_buttons import insert_hook_buttons
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -243,6 +244,13 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
 
     if admin:
         kb.row(InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack()))
+
+    # Кнопки из модулей (например, "Топ пригласивших")
+    try:
+        module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
+        kb = insert_hook_buttons(kb, module_buttons)
+    except Exception as e:
+        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}")
 
     kb.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 
