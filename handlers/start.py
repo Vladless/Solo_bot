@@ -245,7 +245,6 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     if admin:
         kb.row(InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack()))
 
-    # Кнопки из модулей (например, "Топ пригласивших")
     try:
         module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
         kb = insert_hook_buttons(kb, module_buttons)
