@@ -43,14 +43,12 @@ async def check_tcp_connection(host: str, port: int) -> bool:
         await writer.wait_closed()
         return True
     except ssl.SSLError as e:
-        err_text = str(e)
-        if ("hostname mismatch" in err_text or 
-            "certificate is not valid for" in err_text or
-            "sslv3 alert handshake failure" in err_text):
-            return True
-        logger.warning(f"[SSL Error] Сертификат сервера {host} вызвал ошибку: {e}")
-        await notify_ssl_error(host, err_text)
-        return False
+        err_text = str(e).lower()
+        if "certificate has expired" in err_text:
+            logger.warning(f"[SSL Error] Сертификат сервера {host} просрочен: {e}")
+            await notify_ssl_error(host, str(e))
+            return False
+        return True
     except Exception:
         return False
 
