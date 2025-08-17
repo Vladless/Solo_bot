@@ -88,10 +88,18 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         payment_handlers.append(process_callback_pay_robokassa)
     if FREEKASSA_ENABLE:
         payment_handlers.append(process_callback_pay_freekassa)
-    if TRIBUTE_ENABLE:                                        
+    if TRIBUTE_ENABLE:
         payment_handlers.append(process_callback_pay_tribute)
 
-    if len(payment_handlers) == 1:
+    module_buttons = await run_hooks(
+        "pay_menu_buttons",
+        chat_id=callback_query.from_user.id,
+        admin=False,
+        session=session
+    )
+    has_extra_menu_items = bool(module_buttons) or bool(DONATIONS_ENABLE) or bool(TRIBUTE_ENABLE)
+
+    if len(payment_handlers) == 1 and not has_extra_menu_items:
         return await payment_handlers[0](callback_query, state, session)
 
     builder = InlineKeyboardBuilder()
@@ -124,7 +132,6 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
     if DONATIONS_ENABLE:
         builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
 
-    module_buttons = await run_hooks("pay_menu_buttons", chat_id=callback_query.from_user.id, admin=False, session=session)
     builder = insert_hook_buttons(builder, module_buttons)
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))

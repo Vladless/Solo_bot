@@ -10,6 +10,7 @@ from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.formatting import Text, Bold, BlockQuote
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, or_, select, update
@@ -1155,15 +1156,15 @@ async def process_user_search(
     result_ref_by = await session.execute(stmt_ref_by)
     referrer_tg_id = result_ref_by.scalar_one_or_none()
 
-    referrer_text = ""
+    referrer_text = None
     if referrer_tg_id:
         stmt_referrer = select(User.username).where(User.tg_id == referrer_tg_id)
         result_referrer = await session.execute(stmt_referrer)
         ref_username = result_referrer.scalar_one_or_none()
         if ref_username:
-            referrer_text = f"\n🤝 Пригласил: <b>@{ref_username}</b>"
+            referrer_text = f"🤝 Пригласил: @{ref_username}"
         else:
-            referrer_text = f"\n🤝 Пригласил: <b>{referrer_tg_id}</b>"
+            referrer_text = f"🤝 Пригласил: {referrer_tg_id}"
 
     stmt = select(func.count(Payment.id), func.coalesce(func.sum(Payment.amount), 0)).where(
         Payment.status == "success", Payment.tg_id == tg_id
@@ -1185,28 +1186,43 @@ async def process_user_search(
     user_obj = await session.get(User, tg_id)
     full_name = user_obj.first_name if user_obj else None
 
-    text = (
-        f"<b>📊 Информация о пользователе</b>\n\n"
-        f"<blockquote>"
-        f"🆔 ID: <b>{tg_id}</b>\n"
-        f"📄 Логин: <b>@{username}</b>{f' ({full_name})' if full_name else ''}\n"
-        f"📅 Дата регистрации: <b>{created_at_str}</b>\n"
-        f"🏃 Дата активности: <b>{updated_at_str}</b>\n"
-        f"💰 Баланс: <b>{balance} Р.</b>\n"
-        f"💳 Пополнения: <b>{topups_sum} Р. ({topups_amount} шт.)</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>{referrer_text}"
-        f"</blockquote>"
+    body = Text(
+        f"🆔 ID: {tg_id}\n",
+        f"📄 Логин: @{username}" if username else "📄 Логин: —",
+        f"{f' ({full_name})' if full_name else ''}\n",
+        f"📅 Дата регистрации: {created_at_str}\n",
+        f"🏃 Дата активности: {updated_at_str}\n",
+        f"💰 Баланс: {balance} Р.\n",
+        f"💳 Пополнения: {topups_sum} Р. ({topups_amount} шт.)\n",
+        f"👥 Количество рефералов: {referral_count}\n",
     )
 
+    if referrer_text:
+        body += Text(referrer_text, "\n")
+
+    text_builder = Text(
+        Bold("📊 Информация о пользователе"), "\n\n",
+        BlockQuote(body)
+    )
+
+    text = text_builder.as_html()
     kb = build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
 
     if edit:
         try:
-            await message.edit_text(text=text, reply_markup=kb)
+            await message.edit_text(
+                text=text,
+                reply_markup=kb,
+                disable_web_page_preview=True
+            )
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(text=text, reply_markup=kb)
+        await message.answer(
+            text=text,
+            reply_markup=kb,
+            disable_web_page_preview=True
+        )
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:

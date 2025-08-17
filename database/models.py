@@ -43,7 +43,14 @@ class User(DictLikeMixin, Base):
     is_bot = Column(Boolean, default=False)
     balance = Column(Float, default=0.0)
     trial = Column(Integer, default=0)
-    source_code = Column(String, ForeignKey("tracking_sources.code"))
+    source_code = Column(
+        String,
+        ForeignKey(
+            "tracking_sources.code",
+            ondelete="SET NULL",
+            onupdate="CASCADE", 
+        ),
+        nullable=True, )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -125,7 +132,7 @@ class CouponUsage(DictLikeMixin, Base):
 
     coupon_id = Column(
         Integer,
-        ForeignKey("coupons.id", ondelete="CASCADE"),  # Каскадное удаление
+        ForeignKey("coupons.id", ondelete="CASCADE"),
         primary_key=True
     )
     user_id = Column(BigInteger, primary_key=True)

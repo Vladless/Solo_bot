@@ -69,7 +69,7 @@ async def handle_activate_coupon(callback_query_or_message: Message | CallbackQu
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
 
 
-@router.message(CouponActivationState.waiting_for_coupon_code)
+@router.message(CouponActivationState.waiting_for_coupon_code, F.text)
 async def process_coupon_code(message: Message, state: FSMContext, session: Any):
     coupon_code = message.text.strip()
     await activate_coupon(message, state, session, coupon_code=coupon_code)
