@@ -14,6 +14,7 @@ from .maintenance import MaintenanceModeMiddleware
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
+from .answer import CallbackAnswerMiddleware
 
 
 def register_middleware(
@@ -39,6 +40,7 @@ def register_middleware(
             "logging": LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
+            "answer": CallbackAnswerMiddleware(),
         }
 
         exclude_set = set(exclude or [])

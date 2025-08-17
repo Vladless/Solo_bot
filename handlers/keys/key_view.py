@@ -157,7 +157,6 @@ async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "cancel_and_back_to_view_keys")
 async def cancel_and_back(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     await state.clear()
-    await callback.answer()
     await process_callback_or_message_view_keys(callback, session)
 
 
