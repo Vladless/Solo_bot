@@ -142,6 +142,13 @@ async def handle_key_creation(
 
         tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
+        if tariffs:
+            group_code = tariffs[0].get("group_code")
+            if group_code:
+                tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
+                tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
+                subgroup_weights = tariffs_data['subgroup_weights']
+
         if not tariffs:
             result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
             is_admin = result.scalar_one_or_none() is not None
@@ -202,7 +209,12 @@ async def handle_key_creation(
                 )
             )
 
-        for subgroup in sorted(k for k in grouped_tariffs if k):
+        sorted_subgroups = sorted(
+            [k for k in grouped_tariffs if k],
+            key=lambda x: (subgroup_weights.get(x, 999999), x)
+        )
+        
+        for subgroup in sorted_subgroups:
             subgroup_hash = create_subgroup_hash(subgroup, group_code)
             builder.row(
                 InlineKeyboardButton(
@@ -245,7 +257,13 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
         return
 
     tariffs = await get_tariffs_for_cluster(session, cluster_name)
-    filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup]
+    filtered = []
+
+    if tariffs:
+        group_code = tariffs[0].get("group_code")
+        if group_code:
+            tariffs = await get_tariffs(session, group_code=group_code)
+            filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get('is_active')]
 
     if not filtered:
         await edit_or_send_message(
