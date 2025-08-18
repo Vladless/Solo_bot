@@ -26,7 +26,7 @@ from database import (
     update_key_expiry,
 )
 from database.models import Key, Server
-from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.keys.operations import renew_key_in_cluster
 from handlers.payments.robokassa_pay import handle_custom_amount_input
@@ -97,8 +97,10 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts", "trial"]:
                     group_code = current_tariff["group_code"]
 
-        tariffs = await get_tariffs(session, group_code=group_code)
-        tariffs = [t for t in tariffs if t["is_active"]]
+        tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
+        tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
+        subgroup_weights = tariffs_data['subgroup_weights']
+        
         if not tariffs:
             await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
             return
@@ -118,7 +120,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 )
             )
 
-        for subgroup in sorted(k for k in grouped_tariffs if k):
+        sorted_subgroups = sorted(
+            [k for k in grouped_tariffs if k],
+            key=lambda x: (subgroup_weights.get(x, 999999), x)
+        )
+        
+        for subgroup in sorted_subgroups:
             subgroup_hash = create_subgroup_hash(subgroup, group_code)
             builder.row(
                 InlineKeyboardButton(

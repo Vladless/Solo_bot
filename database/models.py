@@ -87,6 +87,7 @@ class Tariff(DictLikeMixin, Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     subgroup_title = Column(String, nullable=True)
+    sort_order = Column(Integer, nullable=True)
 
 
 class Server(DictLikeMixin, Base):
