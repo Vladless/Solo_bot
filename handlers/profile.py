@@ -66,6 +66,10 @@ async def process_callback_view_profile(
     profile_message = profile_message_send(username, chat_id, int(balance), key_count)
     profile_message += ADD_SUBSCRIPTION_HINT if key_count == 0 else f"\n<blockquote><i>{NEWS_MESSAGE}</i></blockquote>"
 
+    text_hooks = await run_hooks("profile_text", username=username, chat_id=chat_id, balance=int(balance), key_count=key_count, session=session)
+    if text_hooks:
+        profile_message = text_hooks[0]
+
     builder = InlineKeyboardBuilder()
 
     if key_count > 0:

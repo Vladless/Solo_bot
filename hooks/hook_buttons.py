@@ -9,6 +9,7 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
     Поддерживает:
     - {"button": InlineKeyboardButton} — добавить в конец
     - {"after": callback_data, "button": InlineKeyboardButton} — вставить после заданной кнопки
+    - {"insert_at": int, "button": InlineKeyboardButton} — вставить по индексу (0 = начало)
     - {"remove": str | list[str]} — удалить кнопки с указанным callback_data
     - {"remove_prefix": str} — удалить кнопки, у которых callback_data начинается с префикса
     """
@@ -58,11 +59,19 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
                 new_rows.insert(insert_pos, [button])
             else:
                 new_rows.append([button])
+        elif isinstance(module, dict) and "insert_at" in module and "button" in module:
+            insert_at = module["insert_at"]
+            button = module["button"]
+            
+            if 0 <= insert_at <= len(new_rows):
+                new_rows.insert(insert_at, [button])
+            else:
+                new_rows.append([button])
         else:
             if isinstance(module, dict) and "button" in module:
                 button = module["button"]
                 new_rows.append([button])
-            elif module and not isinstance(module, dict):  # оставим совместимость со старыми модулями
+            elif module and not isinstance(module, dict):
                 new_rows.append([module])
 
     return InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_rows))

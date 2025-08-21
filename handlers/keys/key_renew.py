@@ -41,6 +41,8 @@ from handlers.texts import (
     get_renewal_message,
 )
 from handlers.utils import edit_or_send_message, get_russian_month
+from hooks.hooks import run_hooks
+from hooks.hook_buttons import insert_hook_buttons
 from logger import logger
 from utils.modules_loader import load_module_fast_flow_handlers
 
@@ -136,6 +138,19 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
         builder.row(InlineKeyboardButton(text=BACK, callback_data="renew_menu"))
 
+        try:
+            hook_builder = InlineKeyboardBuilder()
+            hook_builder.attach(builder)
+
+            hook_commands = await run_hooks("renew_tariffs", chat_id=tg_id, admin=False, session=session)
+            if hook_commands:
+                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+            
+            final_markup = hook_builder.as_markup()
+        except Exception as e:
+            logger.warning(f"[RENEW] Ошибка при применении хуков: {e}")
+            final_markup = builder.as_markup()
+
         balance = await get_balance(session, tg_id)
         response_message = PLAN_SELECTION_MSG.format(
             balance=balance,
@@ -145,7 +160,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         await edit_or_send_message(
             target_message=callback_query.message,
             text=response_message,
-            reply_markup=builder.as_markup(),
+            reply_markup=final_markup,
         )
 
     except Exception as e:
@@ -222,10 +237,23 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"renew_key|{key_name}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
+        try:
+            hook_builder = InlineKeyboardBuilder()
+            hook_builder.attach(builder)
+
+            hook_commands = await run_hooks("renew_tariffs", chat_id=callback.from_user.id, admin=False, session=session)
+            if hook_commands:
+                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+            
+            final_markup = hook_builder.as_markup()
+        except Exception as e:
+            logger.warning(f"[RENEW_SUBGROUP] Ошибка при применении хуков: {e}")
+            final_markup = builder.as_markup()
+
         await edit_or_send_message(
             target_message=callback.message,
             text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
-            reply_markup=builder.as_markup(),
+            reply_markup=final_markup,
         )
 
     except Exception as e:

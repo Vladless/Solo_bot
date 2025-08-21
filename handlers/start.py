@@ -173,6 +173,17 @@ async def handle_gift(part, message, state, session, user_data):
 
     processing_gifts.add(gift_id)
     try:
+        gift_results = await run_hooks("gift_activation", 
+            gift_id=gift_id, 
+            message=message, 
+            state=state, 
+            session=session, 
+            user_data=user_data
+        )
+
+        if gift_results and "SUCCESS" in gift_results:
+            return True
+
         await handle_gift_link(gift_id, message, state, session, user_data=user_data)
         return True
     finally:

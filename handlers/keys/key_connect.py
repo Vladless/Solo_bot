@@ -38,6 +38,8 @@ from handlers.texts import (
     SUBSCRIPTION_DESCRIPTION,
 )
 from handlers.utils import edit_or_send_message
+from hooks.hooks import run_hooks
+from hooks.hook_buttons import insert_hook_buttons
 from logger import logger
 
 
@@ -45,7 +47,7 @@ router = Router()
 
 
 @router.callback_query(F.data.startswith("connect_device|"))
-async def handle_connect_device(callback_query: CallbackQuery):
+async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSession):
     try:
         key_name = callback_query.data.split("|")[1]
 
@@ -57,10 +59,23 @@ async def handle_connect_device(callback_query: CallbackQuery):
         #    builder.row(InlineKeyboardButton(text=ROUTER, callback_data=f"connect_router|{key_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
+        try:
+            hook_builder = InlineKeyboardBuilder()
+            hook_builder.attach(builder)
+
+            hook_commands = await run_hooks("connect_device_menu", chat_id=callback_query.from_user.id, admin=False, session=session)
+            if hook_commands:
+                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+            
+            final_markup = hook_builder.as_markup()
+        except Exception as e:
+            logger.warning(f"[CONNECT_DEVICE] Ошибка при применении хуков: {e}")
+            final_markup = builder.as_markup()
+
         await edit_or_send_message(
             target_message=callback_query.message,
             text=CHOOSE_DEVICE_TEXT,
-            reply_markup=builder.as_markup(),
+            reply_markup=final_markup,
             media_path=None,
         )
     except Exception as e:
