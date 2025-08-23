@@ -44,6 +44,8 @@ from handlers.utils import (
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
+from hooks.hooks import run_hooks
+from hooks.hook_buttons import insert_hook_buttons
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from panels.three_xui import delete_client, get_xui_instance
@@ -497,6 +499,13 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    try:
+        hook_commands = await run_hooks("key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name)
+        if hook_commands:
+            builder = insert_hook_buttons(builder, hook_commands)
+    except Exception as e:
+        logger.warning(f"[KEY_CREATION_COMPLETE] Ошибка при применении хуков: {e}")
 
     link_to_show = public_link or remnawave_link or "Ссылка не найдена"
 
