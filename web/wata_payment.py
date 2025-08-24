@@ -59,8 +59,8 @@ async def wata_payment_webhook(request: web.Request):
                 return web.Response(status=400)
             async with async_session_maker() as session:
                 await update_balance(session, int(tg_id), float(amount))
-                await send_payment_success_notification(tg_id, float(amount), session)
                 await add_payment(session, int(tg_id), float(amount), "wata")
+                await send_payment_success_notification(tg_id, float(amount), session)
             logger.info(f"✅ WATA: баланс пополнен для пользователя {tg_id} на {amount}")
         elif data.get("transactionStatus") == "Declined":
             logger.warning(f"WATA: транзакция отклонена: {data}")
