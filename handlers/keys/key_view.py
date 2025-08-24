@@ -314,8 +314,6 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
             )
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-    module_buttons = await run_hooks("view_key_menu", key_name=key_name, session=session)
-    builder = insert_hook_buttons(builder, module_buttons)
     if HWID_RESET_BUTTON and hwid_count > 0:
         builder.row(
             InlineKeyboardButton(
@@ -341,6 +339,9 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    
+    module_buttons = await run_hooks("view_key_menu", key_name=key_name, session=session)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     await edit_or_send_message(
         target_message=message,
