@@ -82,7 +82,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=PC_PC, callback_data=f"windows_menu|{key_name}"))
     builder.row(InlineKeyboardButton(text=PC_MACOS, callback_data=f"macos_menu|{key_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{key_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -142,7 +142,7 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{key_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(

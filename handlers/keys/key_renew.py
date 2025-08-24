@@ -405,6 +405,13 @@ async def complete_key_renewal(
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
 
+        try:
+            hook_commands = await run_hooks("renewal_complete", chat_id=tg_id, admin=False, session=session, email=email, client_id=client_id)
+            if hook_commands:
+                builder = insert_hook_buttons(builder, hook_commands)
+        except Exception as e:
+            logger.warning(f"[RENEWAL_COMPLETE] Ошибка при применении хуков: {e}")
+
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
 
         formatted_expiry_date = formatted_expiry_date.replace(

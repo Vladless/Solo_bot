@@ -63,8 +63,8 @@ async def kassai_payment_webhook(request: web.Request):
 
         async with async_session_maker() as session:
             await update_balance(session, tg_id, amount_float)
-            await send_payment_success_notification(tg_id, amount_float, session)
             await add_payment(session, tg_id, amount_float, "kassai")
+            await send_payment_success_notification(tg_id, amount_float, session)
 
         processed_payments.add(intid)
         if merchant_order_id:
