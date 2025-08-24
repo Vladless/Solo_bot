@@ -39,7 +39,7 @@ from utils.csv_export import (
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_stats_kb
-
+from hooks.hooks import run_hooks
 
 router = Router()
 
@@ -198,6 +198,10 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             f"🔥 <b>Горячие лиды: {hot_leads_count}</b>\n"
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
+
+        extra_blocks = await run_hooks("admin_stats", session=session, now=now)
+        if extra_blocks:
+            stats_message += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
 
         await callback_query.message.edit_text(text=stats_message, reply_markup=build_stats_kb())
 
