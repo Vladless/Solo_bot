@@ -34,11 +34,15 @@ async def count_active_keys(session: AsyncSession) -> int:
 
 
 async def count_trial_keys(session: AsyncSession) -> int:
-    subquery_success_payments = (
-        select(Payment.tg_id).where(and_(Payment.tg_id == Key.tg_id, Payment.status == "success")).exists()
+    trial_tariffs_subquery = (
+        select(Tariff.id).where(Tariff.group_code == "trial")
     )
-
-    return await session.scalar(select(func.count()).select_from(Key).where(not_(subquery_success_payments)))
+    
+    return await session.scalar(
+        select(func.count())
+        .select_from(Key)
+        .where(Key.tariff_id.in_(trial_tariffs_subquery))
+    )
 
 
 async def get_tariff_distribution(
