@@ -52,11 +52,13 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         ))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         
+        expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
         await callback.message.edit_text(
-            "🔥 <b>Скидка активна!</b>\n\n"
-            "💎 <b>Скидка</b> на все тарифы\n"
-            f"⏰ Осталось: <b>{format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)}</b>\n\n"
-            "У вас есть просроченная подписка. Продлите её со скидкой!",
+            f"🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            f"💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
+            f"🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
+            f"</blockquote>\n"
+            f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, DISCOUNT_ACTIVE_HOURS)} — не упустите свой шанс!</b>",
             reply_markup=builder.as_markup()
         )
     else:
@@ -121,10 +123,11 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         
         await callback.message.edit_text(
-            "🔥 <b>Максимальная скидка активна!</b>\n\n"
-            "💎 <b>Максимальная скидка</b> на все тарифы\n"
-            f"⏰ Осталось: <b>{format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)}</b>\n\n"
-            "У вас есть просроченная подписка. Продлите её с максимальной скидкой!",
+            f"🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            f"💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
+            f"🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
+            f"</blockquote>\n"
+            f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)} — не упустите шанс!</b>",
             reply_markup=builder.as_markup()
         )
     else:
