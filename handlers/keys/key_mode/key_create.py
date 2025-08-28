@@ -16,6 +16,7 @@ from config import (
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
+    DISCOUNT_ACTIVE_HOURS,
 )
 from database import (
     add_user,
@@ -26,6 +27,7 @@ from database import (
     get_tariffs_for_cluster,
     get_trial,
 )
+from database.notifications import check_hot_lead_discount
 from database.models import Admin
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
@@ -40,7 +42,7 @@ from handlers.texts import (
     INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
 )
-from handlers.utils import edit_or_send_message, get_least_loaded_cluster
+from handlers.utils import edit_or_send_message, get_least_loaded_cluster, format_discount_time_left
 from logger import logger
 from utils.modules_loader import load_module_fast_flow_handlers
 
@@ -142,9 +144,21 @@ async def handle_key_creation(
 
         tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
+        discount_info = None
+        subgroup_weights = {}
+
         if tariffs:
             group_code = tariffs[0].get("group_code")
             if group_code:
+                from database.notifications import check_hot_lead_discount
+                discount_info = await check_hot_lead_discount(session, tg_id)
+                
+                if discount_info and discount_info.get("available"):
+                    group_code = discount_info["tariff_group"]
+                    await state.update_data(discount_info=discount_info)
+                else:
+                    await state.update_data(discount_info=None)
+                
                 tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
                 tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
                 subgroup_weights = tariffs_data['subgroup_weights']
@@ -211,7 +225,7 @@ async def handle_key_creation(
 
         sorted_subgroups = sorted(
             [k for k in grouped_tariffs if k],
-            key=lambda x: (subgroup_weights.get(x, 999999), x)
+            key=lambda x: (subgroup_weights.get(x, 999999) if subgroup_weights else 999999, x)
         )
         
         for subgroup in sorted_subgroups:
@@ -227,9 +241,23 @@ async def handle_key_creation(
 
         target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
 
+        discount_message = ""
+        
+        if discount_info and discount_info.get("available"):
+            discount_message = f"\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
+            if discount_info["type"] == "hot_lead_step_2":
+                discount_message += "💎 <b>Вам открыт доступ к специальным тарифам</b>\n"
+                discount_message += "🚀 <b>Эксклюзивные предложения</b> - доступны только для вас!\n"
+            else:
+                discount_message += "💎 <b>Вам открыт доступ к МАКСИМАЛЬНО выгодным тарифам</b>\n"
+                discount_message += "🚀 <b>VIP предложения</b> - максимальная выгода!\n"
+            
+            expires_at = discount_info["expires_at"]
+            discount_message += f"</blockquote>\n⏰ <b>Предложение действует только: {format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)}</b>, не упустите свой шанс!"
+
         await edit_or_send_message(
             target_message=target_message,
-            text=SELECT_TARIFF_PLAN_MSG,
+            text=SELECT_TARIFF_PLAN_MSG + discount_message,
             reply_markup=builder.as_markup(),
         )
 
@@ -312,6 +340,18 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
     if not tariff:
         await callback_query.message.edit_text("❌ Указанный тариф не найден.")
         return
+
+    discount_info = await check_hot_lead_discount(session, tg_id)
+    if tariff.get("group_code") in ["discounts", "discounts_max"]:
+        if not discount_info.get("available") or datetime.utcnow() >= discount_info["expires_at"]:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+            
+            await callback_query.message.edit_text(
+                "❌ Скидка недоступна или истекла. Пожалуйста, выберите тариф заново.",
+                reply_markup=builder.as_markup()
+            )
+            return
 
     duration_days = tariff["duration_days"]
     price_rub = tariff["price_rub"]

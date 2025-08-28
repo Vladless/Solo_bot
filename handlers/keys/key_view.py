@@ -391,6 +391,18 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
                 deleted += 1
         await callback_query.answer(f"✅ Устройства сброшены ({deleted})", show_alert=True)
 
+    hook_result = await run_hooks("after_hwid_reset", chat_id=callback_query.from_user.id, admin=False, session=session, key_name=key_name)
+    if hook_result and any("redirect_to_profile" in str(result) for result in hook_result):
+        
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+        if callback_query.message.text:
+            await callback_query.message.edit_text("✅ Устройства сброшены", reply_markup=kb.as_markup())
+        else:
+            await callback_query.message.edit_caption(caption="✅ Устройства сброшены", reply_markup=kb.as_markup())
+        return
+
     image_path = os.path.join("img", "pic_view.jpg")
     await render_key_info(callback_query.message, session, key_name, image_path)
 

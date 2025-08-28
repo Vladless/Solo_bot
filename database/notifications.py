@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import DISCOUNT_ACTIVE_HOURS
 from database.models import Key, Notification, User
 from logger import logger
 
@@ -62,6 +63,57 @@ async def get_last_notification_time(session: AsyncSession, tg_id: int, notifica
     if ts:
         return int(ts.timestamp() * 1000)
     return None
+
+
+async def check_hot_lead_discount(session: AsyncSession, tg_id: int) -> dict:
+    try:
+        result = await session.execute(
+            select(Notification.notification_type, Notification.last_notification_time)
+            .where(Notification.tg_id == tg_id)
+            .where(Notification.notification_type.in_(['hot_lead_step_2', 'hot_lead_step_3']))
+            .order_by(Notification.last_notification_time.desc())
+            .limit(1)
+        )
+        
+        row = result.first()
+        if not row:
+            return {"available": False}
+        
+        notification_type, last_time = row
+
+        expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
+        current_time = datetime.utcnow()
+        
+        if current_time > expires_at:
+            return {"available": False}
+
+        tariff_group = "discounts" if notification_type == "hot_lead_step_2" else "discounts_max"
+        
+        return {
+            "available": True,
+            "type": notification_type,
+            "tariff_group": tariff_group,
+            "expires_at": expires_at
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при проверке скидки горячего лида для {tg_id}: {e}")
+        return {"available": False}
+
+
+async def clear_hot_lead_notifications(session: AsyncSession, tg_id: int):
+    try:
+        await session.execute(
+            delete(Notification).where(
+                Notification.tg_id == tg_id,
+                Notification.notification_type.in_(['hot_lead_step_1', 'hot_lead_step_2', 'hot_lead_step_3', 'hot_lead_step_2_expired'])
+            )
+        )
+        await session.commit()
+        logger.info(f"✅ Уведомления о скидках горячих лидов очищены для пользователя {tg_id}")
+    except SQLAlchemyError as e:
+        logger.error(f"❌ Ошибка при очистке уведомлений о скидках для {tg_id}: {e}")
+        await session.rollback()
 
 
 async def check_notifications_bulk(

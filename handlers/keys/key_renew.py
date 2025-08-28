@@ -13,7 +13,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import USE_NEW_PAYMENT_FLOW
+from config import USE_NEW_PAYMENT_FLOW, DISCOUNT_ACTIVE_HOURS
 from database import (
     check_tariff_exists,
     create_temporary_data,
@@ -26,6 +26,7 @@ from database import (
     update_key_expiry,
 )
 from database.models import Key, Server
+from database.notifications import check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.keys.operations import renew_key_in_cluster
@@ -40,7 +41,7 @@ from handlers.texts import (
     PLAN_SELECTION_MSG,
     get_renewal_message,
 )
-from handlers.utils import edit_or_send_message, get_russian_month
+from handlers.utils import edit_or_send_message, get_russian_month, format_discount_time_left
 from hooks.hooks import run_hooks
 from hooks.hook_buttons import insert_hook_buttons
 from logger import logger
@@ -99,6 +100,11 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts", "trial"]:
                     group_code = current_tariff["group_code"]
 
+        discount_info = await check_hot_lead_discount(session, tg_id)
+        
+        if discount_info.get("available"):
+            group_code = discount_info["tariff_group"]
+
         tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
         tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
         subgroup_weights = tariffs_data['subgroup_weights']
@@ -152,10 +158,24 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             final_markup = builder.as_markup()
 
         balance = await get_balance(session, tg_id)
+
+        discount_message = ""
+        if discount_info.get("available"):
+            discount_message = f"\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
+            if discount_info["type"] == "hot_lead_step_2":
+                discount_message += "💎 <b>Вам открыт доступ к специальным тарифам</b> для продления\n"
+                discount_message += "🚀 <b>Эксклюзивные предложения</b> - доступны только для вас!\n"
+            else:
+                discount_message += "💎 <b>Вам открыт доступ к МАКСИМАЛЬНО выгодным тарифам</b> для продления\n"
+                discount_message += "🚀 <b>VIP предложения</b> - максимальная выгода!\n"
+            
+            expires_at = discount_info["expires_at"]
+            discount_message += f"</blockquote>\n⏰ <b>Предложение действует только: {format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)}, не упустите свой шанс!</b>"
+
         response_message = PLAN_SELECTION_MSG.format(
             balance=balance,
             expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
-        )
+        ) + discount_message
 
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -209,6 +229,12 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         group_code = row[0]
 
+        tg_id = callback.from_user.id
+        discount_info = await check_hot_lead_discount(session, tg_id)
+        
+        if discount_info.get("available"):
+            group_code = discount_info["tariff_group"]
+
         subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
         if not subgroup:
             await callback.message.answer("❌ Подгруппа не найдена.")
@@ -250,9 +276,22 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             logger.warning(f"[RENEW_SUBGROUP] Ошибка при применении хуков: {e}")
             final_markup = builder.as_markup()
 
+        discount_message = ""
+        if discount_info.get("available"):
+            discount_message = f"\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
+            if discount_info["type"] == "hot_lead_step_2":
+                discount_message += "💎 <b>Вам открыт доступ к специальным тарифам</b> для продления\n"
+                discount_message += "🚀 <b>Эксклюзивные предложения</b> - доступны только для вас!\n"
+            else:
+                discount_message += "💎 <b>Вам открыт доступ к МАКСИМАЛЬНО выгодным тарифам</b> для продления\n"
+                discount_message += "🚀 <b>VIP предложения</b> - максимальная выгода!\n"
+            
+            expires_at = discount_info["expires_at"]
+            discount_message += f"</blockquote>\n⏰ <b>Предложение действует только: {format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)}, не упустите свой шанс!</b>"
+
         await edit_or_send_message(
             target_message=callback.message,
-            text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+            text=f"<b>{subgroup}</b>\n\nВыберите тариф:{discount_message}",
             reply_markup=final_markup,
         )
 
@@ -280,6 +319,18 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
         if not tariff or not tariff["is_active"]:
             await callback_query.message.answer("❌ Тариф не найден или отключён.")
             return
+
+        discount_info = await check_hot_lead_discount(session, tg_id)
+        if tariff.get("group_code") in ["discounts", "discounts_max"]:
+            if not discount_info.get("available") or datetime.utcnow() >= discount_info["expires_at"]:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                
+                await callback_query.message.answer(
+                    "❌ Скидка недоступна или истекла. Пожалуйста, выберите тариф заново.",
+                    reply_markup=builder.as_markup()
+                )
+                return
 
         duration_days = tariff["duration_days"]
         cost = tariff["price_rub"]
@@ -469,4 +520,6 @@ async def complete_key_renewal(
         logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")
 
     except Exception as e:
+        logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")
+
         logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")

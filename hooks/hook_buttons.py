@@ -24,54 +24,55 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
         else:
             flat_buttons.append(item)
 
-    for module in flat_buttons:
-        if isinstance(module, dict) and ("remove" in module or "remove_prefix" in module):
-            removes = module.get("remove")
-            if isinstance(removes, str):
-                removes = [removes]
-            removes = set(removes or [])
-            prefix = module.get("remove_prefix")
+    remove_operations = [b for b in flat_buttons if isinstance(b, dict) and ("remove" in b or "remove_prefix" in b)]
+    for module in remove_operations:
+        removes = module.get("remove")
+        if isinstance(removes, str):
+            removes = [removes]
+        removes = set(removes or [])
+        prefix = module.get("remove_prefix")
 
-            filtered_rows = []
-            for row in new_rows:
-                filtered_row = []
-                for btn in row:
-                    cdata = getattr(btn, "callback_data", None)
-                    if cdata and (cdata in removes or (prefix and cdata.startswith(prefix))):
-                        continue
-                    filtered_row.append(btn)
-                if filtered_row:
-                    filtered_rows.append(filtered_row)
-            new_rows = filtered_rows
+        filtered_rows = []
+        for row in new_rows:
+            filtered_row = []
+            for btn in row:
+                cdata = getattr(btn, "callback_data", None)
+                if cdata and (cdata in removes or (prefix and cdata.startswith(prefix))):
+                    continue
+                filtered_row.append(btn)
+            if filtered_row:
+                filtered_rows.append(filtered_row)
+        new_rows = filtered_rows
 
-    for module in flat_buttons:
-        if isinstance(module, dict) and "after" in module and "button" in module:
-            after = module["after"]
-            button = module["button"]
-
-            insert_pos = -1
-            for i, row in enumerate(new_rows):
-                if any(getattr(btn, "callback_data", None) == after for btn in row):
-                    insert_pos = i + 1
-                    break
-
-            if 0 <= insert_pos <= len(new_rows):
-                new_rows.insert(insert_pos, [button])
-            else:
-                new_rows.append([button])
-        elif isinstance(module, dict) and "insert_at" in module and "button" in module:
-            insert_at = module["insert_at"]
-            button = module["button"]
-            
-            if 0 <= insert_at <= len(new_rows):
-                new_rows.insert(insert_at, [button])
-            else:
-                new_rows.append([button])
+    insert_operations = [b for b in flat_buttons if isinstance(b, dict) and "insert_at" in b and "button" in b]
+    for module in insert_operations:
+        insert_at = module["insert_at"]
+        button = module["button"]
+        
+        if 0 <= insert_at <= len(new_rows):
+            new_rows.insert(insert_at, [button])
         else:
-            if isinstance(module, dict) and "button" in module:
-                button = module["button"]
-                new_rows.append([button])
-            elif module and not isinstance(module, dict):
-                new_rows.append([module])
+            new_rows.append([button])
+
+    after_operations = [b for b in flat_buttons if isinstance(b, dict) and "after" in b and "button" in b]
+    for module in after_operations:
+        after = module["after"]
+        button = module["button"]
+
+        insert_pos = -1
+        for i, row in enumerate(new_rows):
+            if any(getattr(btn, "callback_data", None) == after for btn in row):
+                insert_pos = i + 1
+                break
+
+        if 0 <= insert_pos <= len(new_rows):
+            new_rows.insert(insert_pos, [button])
+        else:
+            new_rows.append([button])
+
+    regular_buttons = [b for b in flat_buttons if isinstance(b, dict) and "button" in b and "insert_at" not in b and "after" not in b]
+    for module in regular_buttons:
+        button = module["button"]
+        new_rows.append([button])
 
     return InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_rows))
