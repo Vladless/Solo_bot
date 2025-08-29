@@ -70,9 +70,11 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
         else:
             new_rows.append([button])
 
-    regular_buttons = [b for b in flat_buttons if isinstance(b, dict) and "button" in b and "insert_at" not in b and "after" not in b]
-    for module in regular_buttons:
-        button = module["button"]
-        new_rows.append([button])
+    for module in flat_buttons:
+        if isinstance(module, dict) and "button" in module and "insert_at" not in module and "after" not in module:
+            button = module["button"]
+            new_rows.append([button])
+        elif module and not isinstance(module, dict):
+            new_rows.append([module])
 
     return InlineKeyboardBuilder.from_markup(InlineKeyboardMarkup(inline_keyboard=new_rows))
