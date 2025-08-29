@@ -1206,7 +1206,7 @@ async def process_user_search(
     )
 
     text = text_builder.as_html()
-    kb = build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
+    kb = await build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
 
     if edit:
         try:

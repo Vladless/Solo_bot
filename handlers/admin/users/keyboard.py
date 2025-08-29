@@ -3,14 +3,16 @@ from datetime import datetime, timezone
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
-from database.models import Key, Server, Tariff
+from database.models import Key, Tariff
 from handlers.buttons import BACK
 from handlers.utils import format_days
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 
 from ..panel.keyboard import build_admin_back_btn
 
@@ -30,7 +32,7 @@ class AdminUserKeyEditorCallback(CallbackData, prefix="admin_users_key"):
     edit: bool = False
 
 
-def build_user_edit_kb(tg_id: int, key_records: list, is_banned: bool = False) -> InlineKeyboardMarkup:
+async def build_user_edit_kb(tg_id: int, key_records: list, is_banned: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     current_time = datetime.now(tz=timezone.utc)
 
@@ -89,6 +91,9 @@ def build_user_edit_kb(tg_id: int, key_records: list, is_banned: bool = False) -
             ).pack(),
         ),
     )
+
+    hook_buttons = await run_hooks("admin_user_edit", tg_id=tg_id, is_banned=is_banned)
+    builder = insert_hook_buttons(builder, hook_buttons)
 
     builder.row(build_editor_btn("🔄 Обновить данные", tg_id, edit=True))
     builder.row(build_admin_back_btn())
