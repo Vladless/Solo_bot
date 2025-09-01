@@ -1114,12 +1114,13 @@ async def handle_delete_user_confirm(
 
         await callback_query.message.edit_text(
             text=f"🗑️ Пользователь с ID {tg_id} был удален.",
-            reply_markup=build_editor_kb(callback_data.tg_id),
+            reply_markup=build_admin_back_kb(),
         )
     except Exception as e:
         logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
+            text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова.",
+            reply_markup=build_admin_back_kb(),
         )
 
 

@@ -164,8 +164,14 @@ async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
             User.updated_at,
         )
         .where(
-            exists(select(Payment.tg_id).where(Payment.tg_id == User.tg_id).where(Payment.status == "success")),
-            not_(exists(select(Key.client_id).where(Key.tg_id == User.tg_id).where(Key.expiry_time > now_ts))),
+            exists(
+                select(Payment.tg_id)
+                .where(Payment.tg_id == User.tg_id)
+                .where(Payment.status == "success")
+                .where(Payment.amount > 0)
+                .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+            ),
+            not_(exists(select(Key.tg_id).where(Key.tg_id == User.tg_id).where(Key.expiry_time > now_ts))),
         )
         .order_by(User.updated_at.desc())
     )

@@ -65,21 +65,31 @@ class BanCheckerMiddleware(BaseMiddleware):
 
                 if until:
                     until_local = until.astimezone(TZ).strftime("%Y-%m-%d %H:%M")
-                    text = (
+                    text_html = (
                         f"🚫 Вы заблокированы до <b>{until_local}</b> по МСК.\n"
                         f"📄 Причина: <i>{reason}</i>\n\n"
                         f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
                     )
+                    text_plain = (
+                        f"🚫 Вы заблокированы до {until_local} по МСК.\n"
+                        f"📄 Причина: {reason}\n\n"
+                        f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
+                    )
                 else:
-                    text = (
+                    text_html = (
                         f"🚫 Вы заблокированы <b>навсегда</b>.\n"
                         f"📄 Причина: <i>{reason}</i>\n\n"
                         f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
                     )
+                    text_plain = (
+                        f"🚫 Вы заблокированы навсегда.\n"
+                        f"📄 Причина: {reason}\n\n"
+                        f"Если вы считаете, что это ошибка, обратитесь в поддержку: {SUPPORT_CHAT_URL}"
+                    )
 
                 if isinstance(obj, Message):
-                    await obj.answer(text, parse_mode="HTML")
+                    await obj.answer(text_html, parse_mode="HTML")
                 elif isinstance(obj, CallbackQuery):
-                    await obj.answer(text, show_alert=True)
+                    await obj.answer(text_plain, show_alert=True)
                 return
         return await handler(event, data)
