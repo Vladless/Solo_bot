@@ -510,7 +510,7 @@ async def complete_key_renewal(
             new_expiry_time,
             total_gb,
             session,
-            hwid_device_limit=tariff["device_limit"],
+            hwid_device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
         )
 
         await update_key_expiry(session, client_id, new_expiry_time)
