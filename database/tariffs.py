@@ -53,11 +53,10 @@ async def get_tariffs(session: AsyncSession, tariff_id: int = None, group_code: 
         if with_subgroup_weights and group_code:
             tariffs_without_order = [t for t in tariffs if t.get("sort_order") is None]
             if tariffs_without_order:
-                max_order = max((t.get("sort_order") or 0 for t in tariffs), default=0)
-                for i, tariff in enumerate(tariffs_without_order, start=max_order + 1):
-                    tariff["sort_order"] = i
+                for tariff in tariffs_without_order:
+                    tariff["sort_order"] = 1
                     await session.execute(
-                        update(Tariff).where(Tariff.id == tariff["id"]).values(sort_order=i)
+                        update(Tariff).where(Tariff.id == tariff["id"]).values(sort_order=1)
                     )
                 await session.commit()
             
@@ -130,11 +129,14 @@ async def create_tariff(session: AsyncSession, data: dict):
             if group_code:
                 result = await session.execute(
                     select(func.max(Tariff.sort_order))
-                    .where(Tariff.group_code == group_code)
+                    .where(Tariff.group_code == group_code, Tariff.sort_order.isnot(None))
                 )
                 max_order = result.scalar() or 0
             else:
-                result = await session.execute(select(func.max(Tariff.sort_order)))
+                result = await session.execute(
+                    select(func.max(Tariff.sort_order))
+                    .where(Tariff.sort_order.isnot(None))
+                )
                 max_order = result.scalar() or 0
 
             data["sort_order"] = max_order + 1
@@ -259,5 +261,29 @@ async def initialize_tariff_sort_orders(session: AsyncSession, group_code: str) 
         return True
     except SQLAlchemyError as e:
         logger.error(f"[TARIFF] Ошибка при инициализации sort_order для группы {group_code}: {e}")
+        await session.rollback()
+        return False
+
+
+async def initialize_all_tariff_weights(session: AsyncSession) -> bool:
+    try:
+        result = await session.execute(
+            select(Tariff).where(Tariff.sort_order.is_(None))
+        )
+        tariffs_without_weight = result.scalars().all()
+        
+        if not tariffs_without_weight:
+            return True
+
+        for tariff in tariffs_without_weight:
+            await session.execute(
+                update(Tariff).where(Tariff.id == tariff.id).values(sort_order=1)
+            )
+        
+        await session.commit()
+        return True
+        
+    except SQLAlchemyError as e:
+        logger.error(f"[TARIFF] Ошибка при инициализации весов тарифов: {e}")
         await session.rollback()
         return False
