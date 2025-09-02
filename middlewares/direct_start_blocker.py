@@ -4,6 +4,7 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
 from sqlalchemy import select
+from datetime import datetime
 
 from config import DISABLE_DIRECT_START
 from database import async_session_maker, check_user_exists
@@ -60,9 +61,15 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
 
                 elif start_param.startswith("gift_"):
                     gift_id = start_param.removeprefix("gift_")
-                    result = await session.execute(select(Gift).where(Gift.id == gift_id))
+                    result = await session.execute(
+                        select(Gift).where(
+                            Gift.gift_id == gift_id,
+                            Gift.is_used.is_(False),
+                            (Gift.expiry_time.is_(None)) | (Gift.expiry_time > datetime.utcnow()),
+                        )
+                    )
                     if not result.scalar_one_or_none():
-                        logger.info(f"[DirectStartBlocker] Подарок не найден: {gift_id!r}")
+                        logger.info(f"[DirectStartBlocker] Подарок неактивен или не найден: {gift_id!r}")
                         return
 
                 elif start_param.startswith("referral_"):
@@ -92,4 +99,4 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
             )
             return
 
-        return await handler(event, data)
+        return

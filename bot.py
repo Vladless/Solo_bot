@@ -13,6 +13,7 @@ from config import ADMIN_ID, API_TOKEN
 from filters.private import IsPrivateFilter
 from logger import logger
 from utils.modules_loader import load_modules_from_folder
+from database import async_session_maker
 
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -52,26 +53,28 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                         chat_id=event.update.message.chat.id,
                         user_id=event.update.message.from_user.id,
                     )
-                    await start_entry(
-                        event=event.update.message,
-                        state=fsm_context,
-                        session=None,
-                        admin=False,
-                        captcha=False,
-                    )
+                    async with async_session_maker() as session:
+                        await start_entry(
+                            event=event.update.message,
+                            state=fsm_context,
+                            session=session,
+                            admin=False,
+                            captcha=False,
+                        )
                 elif event.update.callback_query:
                     fsm_context = dp.fsm.get_context(
                         bot=bot,
                         chat_id=event.update.callback_query.message.chat.id,
                         user_id=event.update.callback_query.from_user.id,
                     )
-                    await start_entry(
-                        event=event.update.callback_query,
-                        state=fsm_context,
-                        session=None,
-                        admin=False,
-                        captcha=False,
-                    )
+                    async with async_session_maker() as session:
+                        await start_entry(
+                            event=event.update.callback_query,
+                            state=fsm_context,
+                            session=session,
+                            admin=False,
+                            captcha=False,
+                        )
             except Exception as e:
                 logger.error(f"Ошибка при показе стартового меню после ошибки: {e}", exc_info=True)
 
@@ -93,38 +96,37 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
                 caption=f"{hbold(type(event.exception).__name__)}: {str(event.exception)[:1021]}...",
             )
 
-        from handlers.start import start_entry
-
         if event.update.message:
             fsm_context = dp.fsm.get_context(
                 bot=bot,
                 chat_id=event.update.message.chat.id,
                 user_id=event.update.message.from_user.id,
             )
-            await start_entry(
-                event=event.update.message,
-                state=fsm_context,
-                session=None,
-                admin=False,
-                captcha=False,
-            )
+            async with async_session_maker() as session:
+                await start_entry(
+                    event=event.update.message,
+                    state=fsm_context,
+                    session=session,
+                    admin=False,
+                    captcha=False,
+                )
         elif event.update.callback_query:
             fsm_context = dp.fsm.get_context(
                 bot=bot,
                 chat_id=event.update.callback_query.message.chat.id,
                 user_id=event.update.callback_query.from_user.id,
             )
-            await start_entry(
-                event=event.update.callback_query,
-                state=fsm_context,
-                session=None,
-                admin=False,
-                captcha=False,
-            )
+            async with async_session_maker() as session:
+                await start_entry(
+                    event=event.update.callback_query,
+                    state=fsm_context,
+                    session=session,
+                    admin=False,
+                    captcha=False,
+                )
 
     except TelegramBadRequest as exception:
         logger.warning(f"Не удалось отправить детали ошибки: {exception}")
     except Exception as exception:
         logger.error(f"Неожиданная ошибка в error handler: {exception}")
 
-    return True

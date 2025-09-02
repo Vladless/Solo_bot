@@ -163,7 +163,9 @@ async def get_tracking_source_with_stats(
         type=source.type,
         created_by=source.created_by,
         created_at=source.created_at,
-        registrations=stats.get("registrations", 0),
-        trials=stats.get("trials", 0),
-        payments=stats.get("payments", 0),
+        registrations=(stats["registrations"] if stats else 0),
+        trials=(stats["trials"] if stats else 0),
+        payments=(stats["payments"] if stats else 0),
+        total_amount=(float(stats["total_amount"]) if stats else 0.0),
+        monthly=(stats["monthly"] if stats and "monthly" in stats else []),
     )

@@ -255,7 +255,7 @@ async def robokassa_webhook(request: web.Request):
         logger.info(f"Processing payment for user {tg_id} with amount {amount}.")
 
         async with async_session_maker() as session:
-            recent_time = datetime.now(MOSCOW_TZ).replace(tzinfo=None) - timedelta(minutes=1)
+            recent_time = datetime.now(MOSCOW_TZ).replace(tzinfo=None) - timedelta(seconds=10)
 
             result = await session.execute(
                 select(Payment).where(

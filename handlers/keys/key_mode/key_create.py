@@ -338,7 +338,11 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
 
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
-        await callback_query.message.edit_text("❌ Указанный тариф не найден.")
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Указанный тариф не найден.",
+        )
+        await callback_query.answer()
         return
 
     discount_info = await check_hot_lead_discount(session, tg_id)
@@ -346,18 +350,18 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
         if not discount_info.get("available") or datetime.utcnow() >= discount_info["expires_at"]:
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            
-            await callback_query.message.edit_text(
-                "❌ Скидка недоступна или истекла. Пожалуйста, выберите тариф заново.",
-                reply_markup=builder.as_markup()
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Скидка недоступна или истекла. Пожалуйста, выберите тариф заново.",
+                reply_markup=builder.as_markup(),
             )
+            await callback_query.answer()
             return
 
     duration_days = tariff["duration_days"]
     price_rub = tariff["price_rub"]
 
     balance = await get_balance(session, tg_id)
-    price_rub = tariff["price_rub"]
 
     if balance < price_rub:
         required_amount = ceil(price_rub - balance)
@@ -374,7 +378,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
 
         module_fast_flow_handlers = load_module_fast_flow_handlers()
         flow_handled = False
-        
+
         if USE_NEW_PAYMENT_FLOW in module_fast_flow_handlers:
             try:
                 handler = module_fast_flow_handlers[USE_NEW_PAYMENT_FLOW]
@@ -413,6 +417,7 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
         text=CREATING_CONNECTION_MSG,
         reply_markup=builder.as_markup(),
     )
+    await callback_query.answer()
 
     expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
     await state.update_data(tariff_id=tariff_id)

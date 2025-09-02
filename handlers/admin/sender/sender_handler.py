@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Payment, Server, Tariff, User
+from database.models import Key, Payment, Server, Tariff, User, BlockedUser, ManualBan
 from filters.admin import IsAdminFilter
 from logger import logger
 
@@ -234,9 +234,17 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
         except Exception as e:
             logger.error(f"Ошибка восстановления клавиатуры: {e}")
 
+    banned_tg_ids = (
+        select(BlockedUser.tg_id).union_all(
+            select(ManualBan.tg_id).where(
+                (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow())
+            )
+        )
+    )
+
     query = None
     if send_to == "subscribed":
-        query = select(distinct(User.tg_id)).join(Key).where(Key.expiry_time > now_ms)
+        query = select(distinct(User.tg_id)).join(Key).where(Key.expiry_time > now_ms).where(~User.tg_id.in_(banned_tg_ids))
     elif send_to == "unsubscribed":
         subquery = (
             select(User.tg_id)
@@ -250,16 +258,17 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
                 .having(func.max(Key.expiry_time) <= now_ms)
             )
         )
-        query = select(distinct(subquery.c.tg_id))
+        query = select(distinct(subquery.c.tg_id)).where(~subquery.c.tg_id.in_(banned_tg_ids))
     elif send_to == "untrial":
         subquery = select(Key.tg_id)
-        query = select(distinct(User.tg_id)).where(~User.tg_id.in_(subquery) & User.trial.in_([0, -1]))
+        query = select(distinct(User.tg_id)).where(~User.tg_id.in_(subquery) & User.trial.in_([0, -1])).where(~User.tg_id.in_(banned_tg_ids))
     elif send_to == "cluster":
         query = (
             select(distinct(User.tg_id))
             .join(Key, User.tg_id == Key.tg_id)
             .join(Server, Key.server_id == Server.cluster_name)
             .where(Server.cluster_name == cluster_name)
+            .where(~User.tg_id.in_(banned_tg_ids))
         )
     elif send_to == "hotleads":
         subquery = select(Key.tg_id)
@@ -268,6 +277,7 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
             .join(Payment, User.tg_id == Payment.tg_id)
             .where(Payment.status == "success")
             .where(~User.tg_id.in_(subquery))
+            .where(~User.tg_id.in_(banned_tg_ids))
         )
     elif send_to == "trial":
         trial_tariff_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
@@ -275,9 +285,10 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
         query = (
             select(distinct(Key.tg_id))
             .where(Key.tariff_id.in_(trial_tariff_subquery))
+            .where(~Key.tg_id.in_(banned_tg_ids))
         )
     else:
-        query = select(distinct(User.tg_id))
+        query = select(distinct(User.tg_id)).where(~User.tg_id.in_(banned_tg_ids))
 
     result = await session.execute(query)
     tg_ids = [row[0] for row in result.all()]

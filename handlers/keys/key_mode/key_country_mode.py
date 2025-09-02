@@ -245,12 +245,6 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data.startswith("select_country|"))
 async def handle_country_selection(callback_query: CallbackQuery, session: Any, state: FSMContext):
-    """
-    Обрабатывает выбор страны.
-    Формат callback data:
-      select_country|{selected_country}|{ts} [|{old_key_name} (опционально)]
-    Если передан old_key_name – значит, происходит смена локации.
-    """
     data = callback_query.data.split("|")
     if len(data) < 3:
         await callback_query.message.answer("❌ Некорректные данные. Попробуйте снова.")
@@ -263,23 +257,41 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
         return
 
-    expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
-
     old_key_name = data[3] if len(data) > 3 else None
-
     tg_id = callback_query.from_user.id
-    logger.info(f"Пользователь {tg_id} выбрал страну: {selected_country}")
-    logger.info(f"Получено время истечения (timestamp): {ts}")
 
-    await finalize_key_creation(
-        tg_id,
-        expiry_time,
-        selected_country,
-        state,
-        session,
-        callback_query,
-        old_key_name,
-    )
+    fsm_data = await state.get_data()
+    if fsm_data.get("creating_key"):
+        try:
+            await callback_query.answer("⏳ Уже обрабатываю…")
+        except Exception:
+            pass
+        return
+
+    await state.update_data(creating_key=True)
+
+    try:
+        await callback_query.answer("Обрабатываю…")
+        if callback_query.message:
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    try:
+        expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
+        await finalize_key_creation(
+            tg_id,
+            expiry_time,
+            selected_country,
+            state,
+            session,
+            callback_query,
+            old_key_name,
+        )
+    finally:
+        fsm_data = await state.get_data()
+        if fsm_data.get("creating_key"):
+            await state.update_data(creating_key=False)
 
 
 async def finalize_key_creation(

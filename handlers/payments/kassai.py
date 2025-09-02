@@ -49,7 +49,10 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
         if method_name:
             method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
             if not method:
-                await callback_query.message.delete()
+                try:
+                    await callback_query.message.delete()
+                except Exception:
+                    pass
                 await callback_query.message.answer(
                     target_message=callback_query.message,
                     text="Ошибка: выбранный способ оплаты недоступен.",
@@ -80,7 +83,10 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
             builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
             builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
             
-            await callback_query.message.delete()
+            try:
+                await callback_query.message.delete()
+            except Exception:
+                pass
             new_msg = await callback_query.message.answer(
                 target_message=callback_query.message,
                 text=method["desc"],
@@ -101,7 +107,10 @@ async def process_callback_pay_kassai(callback_query: types.CallbackQuery, state
                 builder.row(InlineKeyboardButton(text=method["button"], callback_data=f'kassai_method|{method["name"]}'))
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
         
-        await callback_query.message.delete()
+        try:
+            await callback_query.message.delete()
+        except Exception:
+            pass
         new_msg = await callback_query.message.answer(
             target_message=callback_query.message,
             text="Выберите способ оплаты через KassaAI:",
