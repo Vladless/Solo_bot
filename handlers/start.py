@@ -281,8 +281,20 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     if CHANNEL_EXISTS:
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
 
+    module_buttons = await run_hooks("about_menu", chat_id=user_id, trial=trial, session=session)
+    kb = insert_hook_buttons(kb, module_buttons)
+
     kb.row(InlineKeyboardButton(text=BACK, callback_data=back_target))
+
     text = get_about_vpn("3.2.3-minor")
+    text_hooks = await run_hooks("about_text", chat_id=user_id, trial=trial, session=session)
+    if text_hooks:
+        text = text_hooks[0]
+
     await edit_or_send_message(
-        callback.message, text, reply_markup=kb.as_markup(), media_path=os.path.join("img", "pic.jpg"), force_text=False
+        callback.message,
+        text,
+        reply_markup=kb.as_markup(),
+        media_path=os.path.join("img", "pic.jpg"),
+        force_text=False
     )
