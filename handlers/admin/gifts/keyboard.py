@@ -4,13 +4,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database.models import Gift, Tariff
 from handlers.buttons import BACK
 from handlers.utils import format_days, format_months
-from hooks.hooks import run_hooks
-from hooks.hook_buttons import insert_hook_buttons
 
 from ..panel.keyboard import AdminPanelCallback
 
 
-async def build_admin_gifts_kb() -> InlineKeyboardMarkup:
+def build_admin_gifts_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(InlineKeyboardButton(text="🎁 Создать подарок", callback_data="admin_gift_create"))
@@ -18,9 +16,6 @@ async def build_admin_gifts_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📦 Все подарки", callback_data="admin_gifts_all"),
     )
     builder.row(InlineKeyboardButton(text=BACK, callback_data="admin"))
-
-    module_buttons = await run_hooks("admin_gifts_keyboard")
-    builder = insert_hook_buttons(builder, module_buttons)
 
     return builder.as_markup()
 

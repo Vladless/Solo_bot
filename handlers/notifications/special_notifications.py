@@ -141,12 +141,6 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
             value if isinstance(value, int | float) else 0 for value in traffic_data.get("traffic", {}).values()
         )
 
-        try:
-            await update_key_notified(session, tg_id, client_id)
-        except Exception as e:
-            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {e}")
-            continue
-
         if total_traffic == 0:
             logger.info(f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление.")
             builder = InlineKeyboardBuilder()
@@ -181,6 +175,11 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 "keyboard": keyboard,
                 "client_id": client_id,
             })
+
+        try:
+            await update_key_notified(session, tg_id, client_id)
+        except Exception as e:
+            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {e}")
 
     if messages:
         results = await send_messages_with_limit(

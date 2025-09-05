@@ -27,7 +27,7 @@ class GiftCreationState(StatesGroup):
 @router.callback_query(AdminPanelCallback.filter(F.action == "gifts"))
 async def admin_gift_menu(callback: CallbackQuery):
     await callback.message.edit_text(
-        text="🎁 <b>Подарки</b>\nВыберите, что хотите сделать:", reply_markup=await build_admin_gifts_kb()
+        text="🎁 <b>Подарки</b>\nВыберите, что хотите сделать:", reply_markup=build_admin_gifts_kb()
     )
 
 

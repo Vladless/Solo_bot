@@ -43,7 +43,7 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=await build_coupons_kb())
+    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
 
 
 @router.callback_query(
