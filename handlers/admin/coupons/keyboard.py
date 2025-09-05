@@ -4,6 +4,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK
 from handlers.utils import format_days
+from hooks.hooks import run_hooks
+from hooks.hook_buttons import insert_hook_buttons
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
@@ -13,7 +15,7 @@ class AdminCouponDeleteCallback(CallbackData, prefix="admin_coupon_delete"):
     confirm: bool | None = None
 
 
-def build_coupons_kb() -> InlineKeyboardMarkup:
+async def build_coupons_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
@@ -29,6 +31,9 @@ def build_coupons_kb() -> InlineKeyboardMarkup:
         )
     )
     builder.row(build_admin_back_btn())
+
+    module_buttons = await run_hooks("admin_coupons_keyboard")
+    builder = insert_hook_buttons(builder, module_buttons)
 
     return builder.as_markup()
 
