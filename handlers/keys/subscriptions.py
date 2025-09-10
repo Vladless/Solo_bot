@@ -160,6 +160,7 @@ def clean_subscription_line(line: str) -> str:
         return line
     try:
         base, meta = line.split("#", 1)
+        meta = urllib.parse.unquote(meta).strip()
     except ValueError:
         return line
     parts = meta.split("-")
