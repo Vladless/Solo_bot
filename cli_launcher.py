@@ -105,6 +105,44 @@ def backup_project():
     console.print(f"[green]Бэкап сохранён в: {BACK_DIR}[/green]")
 
 
+def restore_from_backup():
+    if not os.path.isdir(BACK_DIR):
+        console.print(f"[red]❌ Бэкап не найден: {BACK_DIR}[/red]")
+        return
+
+    try:
+        mtime = os.path.getmtime(BACK_DIR)
+        from datetime import datetime
+        dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        console.print(f"[cyan]Обнаружен бэкап от: {dt}[/cyan]")
+    except Exception:
+        pass
+
+    console.print("[red]Внимание: текущие файлы проекта будут перезаписаны содержимым бэкапа.[/red]")
+    if not Confirm.ask("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
+        return
+
+    if is_service_exists(SERVICE_NAME):
+        console.print("[blue]Останавливаю службу перед восстановлением...[/blue]")
+        subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
+
+    install_rsync_if_needed()
+
+    console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
+    rc = subprocess.run(
+        f"rsync -a --delete {BACK_DIR}/ {PROJECT_DIR}/",
+        shell=True
+    ).returncode
+    if rc != 0:
+        console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
+        return
+
+    install_dependencies()
+    fix_permissions()
+    restart_service()
+    console.print("[green]✅ Восстановление из бэкапа завершено[/green]")
+
+
 def auto_update_cli():
     """Обновляет CLI, если отличается от последней версии. Перезапускает при необходимости."""
     console.print("[yellow]Проверка обновлений CLI...[/yellow]")
@@ -475,7 +513,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.3.0", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.3", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -485,7 +523,8 @@ def show_menu():
     table.add_row("5", "Показать логи (80 строк)")
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
-    table.add_row("8", "Выход")
+    table.add_row("8", "Восстановить из бэкапа")
+    table.add_row("9", "Выход")
     console.print(table)
 
 
@@ -498,7 +537,7 @@ def main():
             show_menu()
             choice = Prompt.ask(
                 "[bold blue]👉 Введите номер действия[/bold blue]",
-                choices=[str(i) for i in range(1, 9)],
+                choices=[str(i) for i in range(1, 10)],
                 show_choices=False,
             )
             if choice == "1":
@@ -542,6 +581,8 @@ def main():
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
+                restore_from_backup()
+            elif choice == "9":
                 console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
                 break
     except KeyboardInterrupt:
