@@ -39,8 +39,10 @@ async def _run_provider_flow(
     if not fast_name:
         return False
 
-    if up.startswith("KASSAI_"):
-        module_name = "handlers.payments.kassai.handlers"
+    # Используем поле module из конфигурации, если есть
+    module_name_from_config = cfg.get("module")
+    if module_name_from_config:
+        module_name = f"handlers.payments.{module_name_from_config}.handlers"
     else:
         module_name = f"handlers.payments.{up.lower()}.handlers"
 

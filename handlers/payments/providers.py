@@ -21,11 +21,13 @@ PROVIDERS_BASE: Dict[str, dict] = {
         "currency": "RUB",
         "value": "pay_kassai_cards",
         "fast": "handle_custom_amount_input_kassai_cards",
+        "module": "kassai",
     },
     "KASSAI_SBP": {
         "currency": "RUB",
         "value": "pay_kassai_sbp",
         "fast": "handle_custom_amount_input_kassai_sbp",
+        "module": "kassai",
     },
     "WATA_RU": {
         "currency": "RUB",
