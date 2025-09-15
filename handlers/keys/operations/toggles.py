@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers
 from logger import logger
+from panels._3xui import get_xui_instance, toggle_client
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import get_xui_instance, toggle_client
 
 
 async def toggle_client_on_cluster(

@@ -29,6 +29,7 @@ from database import (
     sum_total_payments,
 )
 from filters.admin import IsAdminFilter
+from hooks.hooks import run_hooks
 from logger import logger
 from utils.csv_export import (
     export_hot_leads_csv,
@@ -39,7 +40,7 @@ from utils.csv_export import (
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import build_stats_kb
-from hooks.hooks import run_hooks
+
 
 router = Router()
 

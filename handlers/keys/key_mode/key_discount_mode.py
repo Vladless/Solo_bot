@@ -7,12 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS
-from database import get_tariffs, get_keys
+from database import get_keys, get_tariffs
 from database.models import Notification
-from handlers.utils import format_discount_time_left
+from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
 from handlers.notifications.notify_kb import build_tariffs_keyboard
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
-from handlers.buttons import RENEW_KEY_NOTIFICATION, MAIN_MENU
+from handlers.utils import format_discount_time_left
 from logger import logger
 
 from .key_create import select_tariff_plan
@@ -43,15 +43,12 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         return
 
     keys = await get_keys(session, tg_id)
-    
+
     if keys and len(keys) > 0:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(
-            text=RENEW_KEY_NOTIFICATION,
-            callback_data=f"renew_key|{keys[0].email}"
-        ))
+        builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        
+
         expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
         await callback.message.edit_text(
             f"🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
@@ -59,7 +56,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
             f"🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
             f"</blockquote>\n"
             f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, DISCOUNT_ACTIVE_HOURS)} — не упустите свой шанс!</b>",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
         )
     else:
         tariffs = await get_tariffs(session=session, group_code="discounts")
@@ -113,22 +110,19 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         return
 
     keys = await get_keys(session, tg_id)
-    
+
     if keys and len(keys) > 0:
         builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(
-            text=RENEW_KEY_NOTIFICATION,
-            callback_data=f"renew_key|{keys[0].email}"
-        ))
+        builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        
+
         await callback.message.edit_text(
             f"🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
             f"💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
             f"🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
             f"</blockquote>\n"
             f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)} — не упустите шанс!</b>",
-            reply_markup=builder.as_markup()
+            reply_markup=builder.as_markup(),
         )
     else:
         tariffs = await get_tariffs(session, group_code="discounts_max")

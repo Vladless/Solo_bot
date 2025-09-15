@@ -113,6 +113,7 @@ def restore_from_backup():
     try:
         mtime = os.path.getmtime(BACK_DIR)
         from datetime import datetime
+
         dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
         console.print(f"[cyan]Обнаружен бэкап от: {dt}[/cyan]")
     except Exception:
@@ -129,10 +130,7 @@ def restore_from_backup():
     install_rsync_if_needed()
 
     console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
-    rc = subprocess.run(
-        f"rsync -a --delete {BACK_DIR}/ {PROJECT_DIR}/",
-        shell=True
-    ).returncode
+    rc = subprocess.run(f"rsync -a --delete {BACK_DIR}/ {PROJECT_DIR}/", shell=True).returncode
     if rc != 0:
         console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
         return

@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database import get_servers
 from logger import logger
+from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import delete_client, get_xui_instance
 
 
 async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, session: AsyncSession):

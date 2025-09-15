@@ -19,7 +19,7 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
     buttons = buttons or []
     flat_buttons = []
     for item in buttons:
-        if isinstance(item, (list, tuple)):
+        if isinstance(item, list | tuple):
             flat_buttons.extend(item)
         else:
             flat_buttons.append(item)
@@ -48,7 +48,7 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
     for module in insert_operations:
         insert_at = module["insert_at"]
         button = module["button"]
-        
+
         if 0 <= insert_at <= len(new_rows):
             new_rows.insert(insert_at, [button])
         else:

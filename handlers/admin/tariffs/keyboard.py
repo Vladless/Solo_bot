@@ -57,7 +57,7 @@ def build_tariff_arrangement_groups_kb(groups: list[str]) -> InlineKeyboardMarku
         if len(row) == 2 or i == len(groups) - 1:
             builder.row(*row)
             row = []
-    
+
     builder.row(
         InlineKeyboardButton(
             text="⬅️ Назад",
@@ -80,9 +80,17 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
     if grouped_tariffs.get(None):
         for t in grouped_tariffs[None]:
             builder.row(
-                InlineKeyboardButton(text="⬆️", callback_data=AdminTariffCallback(action=f"quick_move_up|{t.get('id')}|{group_code}").pack()),
-                InlineKeyboardButton(text=f"  {t.get('name')}  ", callback_data=AdminTariffCallback(action=f"view|{t.get('id')}").pack()),
-                InlineKeyboardButton(text="⬇️", callback_data=AdminTariffCallback(action=f"quick_move_down|{t.get('id')}|{group_code}").pack())
+                InlineKeyboardButton(
+                    text="⬆️",
+                    callback_data=AdminTariffCallback(action=f"quick_move_up|{t.get('id')}|{group_code}").pack(),
+                ),
+                InlineKeyboardButton(
+                    text=f"  {t.get('name')}  ", callback_data=AdminTariffCallback(action=f"view|{t.get('id')}").pack()
+                ),
+                InlineKeyboardButton(
+                    text="⬇️",
+                    callback_data=AdminTariffCallback(action=f"quick_move_down|{t.get('id')}|{group_code}").pack(),
+                ),
             )
 
     for subgroup, tariffs_list in grouped_tariffs.items():
@@ -92,11 +100,20 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
             )
             for t in tariffs_list:
                 builder.row(
-                    InlineKeyboardButton(text="⬆️", callback_data=AdminTariffCallback(action=f"quick_move_up|{t.get('id')}|{group_code}").pack()),
-                    InlineKeyboardButton(text=f"  {t.get('name')}  ", callback_data=AdminTariffCallback(action=f"view|{t.get('id')}").pack()),
-                    InlineKeyboardButton(text="⬇️", callback_data=AdminTariffCallback(action=f"quick_move_down|{t.get('id')}|{group_code}").pack())
+                    InlineKeyboardButton(
+                        text="⬆️",
+                        callback_data=AdminTariffCallback(action=f"quick_move_up|{t.get('id')}|{group_code}").pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text=f"  {t.get('name')}  ",
+                        callback_data=AdminTariffCallback(action=f"view|{t.get('id')}").pack(),
+                    ),
+                    InlineKeyboardButton(
+                        text="⬇️",
+                        callback_data=AdminTariffCallback(action=f"quick_move_down|{t.get('id')}|{group_code}").pack(),
+                    ),
                 )
-    
+
     builder.row(
         InlineKeyboardButton(
             text="⬅️ Назад",
@@ -109,7 +126,7 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
             callback_data=AdminPanelCallback(action="admin").pack(),
         )
     )
-    
+
     return builder.as_markup()
 
 
@@ -150,16 +167,13 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
         grouped[subgroup].append(t)
 
     sorted_subgroups = sorted(
-        [k for k in grouped if k],
-        key=lambda x: (sum(t.get("sort_order", 1) for t in grouped[x]), x)
+        [k for k in grouped if k], key=lambda x: (sum(t.get("sort_order", 1) for t in grouped[x]), x)
     )
 
     for subgroup_title in sorted_subgroups:
         subgroup_hash = create_subgroup_hash(subgroup_title, group_code)
         builder.row(
-            InlineKeyboardButton(
-                text=f"{subgroup_title}", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}"
-            )
+            InlineKeyboardButton(text=f"{subgroup_title}", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")
         )
 
     for t in grouped.get(None, []):
@@ -216,7 +230,9 @@ def build_single_tariff_kb(tariff_id: int, group_code: str = None) -> InlineKeyb
             [
                 InlineKeyboardButton(
                     text="⬅️ Назад",
-                    callback_data=AdminTariffCallback(action=f"group|{group_code}").pack() if group_code else AdminTariffCallback(action="list").pack(),
+                    callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                    if group_code
+                    else AdminTariffCallback(action="list").pack(),
                 )
             ],
         ]

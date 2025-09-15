@@ -9,8 +9,8 @@ from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers
 from database.models import Key, Server
 from logger import logger
+from panels._3xui import get_client_traffic, get_xui_instance
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import get_client_traffic, get_xui_instance
 
 
 async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dict[str, Any]:

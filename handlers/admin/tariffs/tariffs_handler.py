@@ -1,7 +1,8 @@
 import re
-from collections import defaultdict
 
+from collections import defaultdict
 from datetime import datetime
+
 import pytz
 
 from aiogram import F, Router
@@ -20,11 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import create_tariff
 from database.models import Gift, Key, Server, Tariff
 from database.tariffs import (
-    create_subgroup_hash, 
+    create_subgroup_hash,
     find_subgroup_by_hash,
     get_tariffs,
+    move_tariff_down as db_move_tariff_down,
     move_tariff_up as db_move_tariff_up,
-    move_tariff_down as db_move_tariff_down
 )
 from filters.admin import IsAdminFilter
 
@@ -34,10 +35,10 @@ from .keyboard import (
     build_cancel_kb,
     build_edit_tariff_fields_kb,
     build_single_tariff_kb,
+    build_tariff_arrangement_groups_kb,
     build_tariff_groups_kb,
     build_tariff_list_kb,
     build_tariff_menu_kb,
-    build_tariff_arrangement_groups_kb,
     build_tariffs_arrangement_kb,
 )
 
@@ -348,7 +349,7 @@ async def show_tariffs_in_group(callback: CallbackQuery, callback_data: AdminTar
     if not tariffs:
         await callback.message.edit_text("❌ В этой группе пока нет тарифов.")
         return
-    
+
     tariff_dicts = [tariff_to_dict(t) for t in tariffs]
 
     await callback.message.edit_text(
@@ -362,8 +363,8 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
     group_code = callback_data.action.split("|")[1]
 
     tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
-    tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
-    subgroup_weights = tariffs_data['subgroup_weights']
+    tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+    subgroup_weights = tariffs_data["subgroup_weights"]
 
     if not tariffs:
         await callback.message.edit_text("❌ В этой группе пока нет активных тарифов.")
@@ -373,21 +374,18 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
     for t in tariffs:
         grouped_tariffs[t.get("subgroup_title")].append(t)
 
-    sorted_subgroups = sorted(
-        [k for k in grouped_tariffs if k],
-        key=lambda x: (subgroup_weights.get(x, 999999), x)
-    )
+    sorted_subgroups = sorted([k for k in grouped_tariffs if k], key=lambda x: (subgroup_weights.get(x, 999999), x))
 
     moscow_tz = pytz.timezone("Europe/Moscow")
     now = datetime.now(moscow_tz)
     current_time = now.strftime("%d.%m.%y %H:%M:%S МСК")
-    
+
     text = f"🔢 <b>Итоговая сортировка тарифов в группе: {group_code}</b>\n\n"
 
     if grouped_tariffs.get(None):
         text += "<b>📋 Основные тарифы:</b>\n"
         for t in grouped_tariffs[None]:
-            sort_order = t.get('sort_order', 1)
+            sort_order = t.get("sort_order", 1)
             text += f"• {t.get('name')} <code>[позиция: {sort_order}]</code>\n"
         text += "\n"
 
@@ -397,7 +395,7 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
             subgroup_weight = subgroup_weights.get(subgroup, 999999)
             text += f"• <b>{subgroup}</b> <code>[вес группы: {subgroup_weight}]</code>\n"
             for t in grouped_tariffs[subgroup]:
-                sort_order = t.get('sort_order', 1)
+                sort_order = t.get("sort_order", 1)
                 text += f"  └ {t.get('name')} <code>[позиция: {sort_order}]</code>\n"
             text += "\n"
 
@@ -656,7 +654,7 @@ async def start_tariff_creation_existing_group(
 def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
     traffic_text = f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
     device_text = f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
-    sort_order = getattr(tariff, 'sort_order', 1)
+    sort_order = getattr(tariff, "sort_order", 1)
 
     text = (
         f"<b>📄 Тариф: {tariff.name}</b>\n\n"
@@ -732,7 +730,9 @@ async def toggle_tariff_subgroup_selection(callback: CallbackQuery, state: FSMCo
     for tariff in tariffs:
         is_selected = tariff.get("id") in selected
         prefix = "✅ " if is_selected else ""
-        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.get('name')}", callback_data=f"sub_select|{tariff.get('id')}"))
+        builder.row(
+            InlineKeyboardButton(text=f"{prefix}{tariff.get('name')}", callback_data=f"sub_select|{tariff.get('id')}")
+        )
 
     builder.row(
         InlineKeyboardButton(text="➡️ Продолжить", callback_data="subgroup_continue"),
@@ -1018,7 +1018,11 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
         return
 
     all_tariffs_to_show = await get_tariffs(session, group_code=group_code)
-    all_tariffs_to_show = [t for t in all_tariffs_to_show if t.get("subgroup_title") == subgroup_title or not t.get("subgroup_title") or t.get("subgroup_title") == ""]
+    all_tariffs_to_show = [
+        t
+        for t in all_tariffs_to_show
+        if t.get("subgroup_title") == subgroup_title or not t.get("subgroup_title") or t.get("subgroup_title") == ""
+    ]
 
     subgroup_tariff_ids = {t.get("id") for t in all_tariffs_to_show if t.get("subgroup_title") == subgroup_title}
 
@@ -1045,7 +1049,11 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
     for tariff in all_tariffs_to_show:
         is_in_subgroup = tariff.get("id") in subgroup_tariff_ids
         prefix = "✅ " if is_in_subgroup else ""
-        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.get('name')}", callback_data=f"edit_sub_toggle|{tariff.get('id')}"))
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{tariff.get('name')}", callback_data=f"edit_sub_toggle|{tariff.get('id')}"
+            )
+        )
 
     builder.row(
         InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
@@ -1078,13 +1086,21 @@ async def toggle_tariff_in_subgroup_edit(callback: CallbackQuery, state: FSMCont
     subgroup_hash = data["subgroup_hash"]
 
     all_tariffs_to_show = await get_tariffs(session, group_code=group_code)
-    all_tariffs_to_show = [t for t in all_tariffs_to_show if t.get("subgroup_title") == subgroup_title or not t.get("subgroup_title") or t.get("subgroup_title") == ""]
+    all_tariffs_to_show = [
+        t
+        for t in all_tariffs_to_show
+        if t.get("subgroup_title") == subgroup_title or not t.get("subgroup_title") or t.get("subgroup_title") == ""
+    ]
 
     builder = InlineKeyboardBuilder()
     for tariff in all_tariffs_to_show:
         is_selected = tariff.get("id") in selected_ids
         prefix = "✅ " if is_selected else ""
-        builder.row(InlineKeyboardButton(text=f"{prefix}{tariff.get('name')}", callback_data=f"edit_sub_toggle|{tariff.get('id')}"))
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{tariff.get('name')}", callback_data=f"edit_sub_toggle|{tariff.get('id')}"
+            )
+        )
 
     builder.row(
         InlineKeyboardButton(text="💾 Сохранить", callback_data="edit_sub_save"),
@@ -1183,14 +1199,14 @@ async def move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCall
     tariff_id = int(callback_data.action.split("|")[1])
 
     success = await db_move_tariff_up(session, tariff_id)
-    
+
     if not success:
         await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
         return
 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
-    
+
     if not tariff:
         await callback.answer("❌ Тариф не найден", show_alert=True)
         return
@@ -1205,14 +1221,14 @@ async def move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCa
     tariff_id = int(callback_data.action.split("|")[1])
 
     success = await db_move_tariff_down(session, tariff_id)
-    
+
     if not success:
         await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
         return
 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
-    
+
     if not tariff:
         await callback.answer("❌ Тариф не найден", show_alert=True)
         return
@@ -1229,7 +1245,7 @@ async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTari
     group_code = parts[2]
 
     success = await db_move_tariff_up(session, tariff_id)
-    
+
     if not success:
         await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
         return
@@ -1238,6 +1254,7 @@ async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTari
     new_callback_data = AdminTariffCallback(action=f"arrange_group|{group_code}")
     await show_tariffs_arrangement(callback, new_callback_data, session)
 
+
 @router.callback_query(AdminTariffCallback.filter(F.action.startswith("quick_move_down|")), IsAdminFilter())
 async def quick_move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     parts = callback_data.action.split("|")
@@ -1245,7 +1262,7 @@ async def quick_move_tariff_down(callback: CallbackQuery, callback_data: AdminTa
     group_code = parts[2]
 
     success = await db_move_tariff_down(session, tariff_id)
-    
+
     if not success:
         await callback.answer("❌ Ошибка при перемещении тарифа", show_alert=True)
         return

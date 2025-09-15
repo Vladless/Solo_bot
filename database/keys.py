@@ -45,9 +45,9 @@ async def store_key(
 
         try:
             await clear_hot_lead_notifications(session, tg_id)
-        except Exception as e:
+        except Exception:
             pass
-            
+
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
         await session.rollback()

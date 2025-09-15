@@ -10,12 +10,12 @@ from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import check_server_key_limit
 from logger import logger
-from panels.remnawave import RemnawaveAPI
-from panels.three_xui import (
+from panels._3xui import (
     ClientConfig,
     add_client,
     get_xui_instance,
 )
+from panels.remnawave import RemnawaveAPI
 
 
 async def create_key_on_cluster(

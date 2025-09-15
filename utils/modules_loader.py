@@ -47,10 +47,10 @@ def load_module_webhooks(folder: str = "modules") -> list[dict]:
                 if isinstance(webhook_data, dict) and "path" in webhook_data and "handler" in webhook_data:
                     webhooks.append(webhook_data)
                     logger.info(f"[Modules] Найден вебхук в модуле {name}: {webhook_data['path']}")
-                        
+
         except Exception as e:
             logger.error(f"[Modules] Ошибка при загрузке вебхуков из {module_path}: {e}")
-    
+
     return webhooks
 
 
@@ -68,15 +68,20 @@ def load_module_fast_flow_handlers(folder: str = "modules") -> dict:
             router_module = importlib.import_module(f"{module_path}.router")
             if hasattr(router_module, "get_fast_flow_handler"):
                 fast_flow_data = router_module.get_fast_flow_handler()
-                if fast_flow_data and isinstance(fast_flow_data, dict) and "payment_key" in fast_flow_data and "handler" in fast_flow_data:
+                if (
+                    fast_flow_data
+                    and isinstance(fast_flow_data, dict)
+                    and "payment_key" in fast_flow_data
+                    and "handler" in fast_flow_data
+                ):
                     payment_key = fast_flow_data["payment_key"]
                     handler = fast_flow_data["handler"]
                     handlers[payment_key] = handler
                     logger.info(f"[Modules] Найден обработчик быстрого флоу в модуле {name}: {payment_key}")
                 elif fast_flow_data is None:
                     logger.info(f"[Modules] Быстрое флоу отключено в модуле {name}")
-                        
+
         except Exception as e:
             logger.error(f"[Modules] Ошибка при загрузке быстрого флоу из {module_path}: {e}")
-    
+
     return handlers

@@ -12,39 +12,34 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 
 from config import (
+    DISCOUNT_ACTIVE_HOURS,
     NOTIFY_EXTRA_DAYS,
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
-    DISCOUNT_ACTIVE_HOURS,
 )
 from database import (
     add_user,
     check_user_exists,
-    create_temporary_data,
     get_balance,
     get_tariff_by_id,
     get_tariffs_for_cluster,
     get_trial,
 )
-from database.notifications import check_hot_lead_discount
 from database.models import Admin
+from database.notifications import check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU, PAYMENT
-from handlers.payments.robokassa_pay import handle_custom_amount_input
-from handlers.payments.stars_pay import process_custom_amount_input_stars
-from handlers.payments.wata import handle_custom_amount_input as handle_custom_amount_input_wata
-from handlers.payments.yookassa_pay import process_custom_amount_input
-from handlers.payments.yoomoney_pay import process_custom_amount_input_yoomoney
+from handlers.payments.currency_rates import format_for_user
+from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
 )
-from handlers.utils import edit_or_send_message, get_least_loaded_cluster, format_discount_time_left
+from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from logger import logger
-from utils.modules_loader import load_module_fast_flow_handlers
 
 from .key_cluster_mode import key_cluster_mode
 from .key_country_mode import key_country_mode
@@ -144,6 +139,12 @@ async def handle_key_creation(
 
         tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
+        language_code = (
+            message_or_query.from_user.language_code
+            if not isinstance(message_or_query, CallbackQuery)
+            else message_or_query.from_user.language_code
+        )
+
         discount_info = None
         subgroup_weights = {}
 
@@ -151,17 +152,18 @@ async def handle_key_creation(
             group_code = tariffs[0].get("group_code")
             if group_code:
                 from database.notifications import check_hot_lead_discount
+
                 discount_info = await check_hot_lead_discount(session, tg_id)
-                
+
                 if discount_info and discount_info.get("available"):
                     group_code = discount_info["tariff_group"]
                     await state.update_data(discount_info=discount_info)
                 else:
                     await state.update_data(discount_info=None)
-                
+
                 tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
-                tariffs = [t for t in tariffs_data['tariffs'] if t.get('is_active')]
-                subgroup_weights = tariffs_data['subgroup_weights']
+                tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+                subgroup_weights = tariffs_data["subgroup_weights"]
 
         if not tariffs:
             result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
@@ -216,18 +218,19 @@ async def handle_key_creation(
         builder = InlineKeyboardBuilder()
 
         for t in grouped_tariffs.get(None, []):
+            price_txt = await format_for_user(session, tg_id, t.get("price_rub", 0), language_code)
             builder.row(
                 InlineKeyboardButton(
-                    text=f"{t['name']} — {t['price_rub']}₽",
+                    text=f"{t['name']} — {price_txt}",
                     callback_data=f"select_tariff_plan|{t['id']}",
                 )
             )
 
         sorted_subgroups = sorted(
             [k for k in grouped_tariffs if k],
-            key=lambda x: (subgroup_weights.get(x, 999999) if subgroup_weights else 999999, x)
+            key=lambda x: (subgroup_weights.get(x, 999999) if subgroup_weights else 999999, x),
         )
-        
+
         for subgroup in sorted_subgroups:
             subgroup_hash = create_subgroup_hash(subgroup, group_code)
             builder.row(
@@ -242,16 +245,16 @@ async def handle_key_creation(
         target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
 
         discount_message = ""
-        
+
         if discount_info and discount_info.get("available"):
-            discount_message = f"\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
+            discount_message = "\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
             if discount_info["type"] == "hot_lead_step_2":
                 discount_message += "💎 <b>Вам открыт доступ к специальным тарифам</b>\n"
                 discount_message += "🚀 <b>Эксклюзивные предложения</b> - доступны только для вас!\n"
             else:
                 discount_message += "💎 <b>Вам открыт доступ к МАКСИМАЛЬНО выгодным тарифам</b>\n"
                 discount_message += "🚀 <b>VIP предложения</b> - максимальная выгода!\n"
-            
+
             expires_at = discount_info["expires_at"]
             discount_message += f"</blockquote>\n⏰ <b>Предложение действует только: {format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)}</b>, не упустите свой шанс!"
 
@@ -291,7 +294,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
         group_code = tariffs[0].get("group_code")
         if group_code:
             tariffs = await get_tariffs(session, group_code=group_code)
-            filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get('is_active')]
+            filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")]
 
     if not filtered:
         await edit_or_send_message(
@@ -301,11 +304,15 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
         )
         return
 
+    tg_id = callback.from_user.id
+    language_code = callback.from_user.language_code
+
     builder = InlineKeyboardBuilder()
     for t in filtered:
+        price_txt = await format_for_user(session, tg_id, t.get("price_rub", 0), language_code)
         builder.row(
             InlineKeyboardButton(
-                text=f"{t['name']} — {t['price_rub']}₽",
+                text=f"{t['name']} — {price_txt}",
                 callback_data=f"select_tariff_plan|{t['id']}",
             )
         )
@@ -365,49 +372,35 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
 
     if balance < price_rub:
         required_amount = ceil(price_rub - balance)
-        await create_temporary_data(
-            session,
-            tg_id,
-            "waiting_for_payment",
-            {
-                "tariff_id": tariff_id,
-                "duration_days": duration_days,
-                "required_amount": required_amount,
-            },
+
+        if USE_NEW_PAYMENT_FLOW:
+            handled = await try_fast_payment_flow(
+                callback_query,
+                session,
+                state,
+                tg_id=tg_id,
+                temp_key="waiting_for_payment",
+                temp_payload={
+                    "tariff_id": tariff_id,
+                    "duration_days": duration_days,
+                    "required_amount": required_amount,
+                },
+                required_amount=required_amount,
+            )
+            if handled:
+                return
+
+        language_code = getattr(callback_query.from_user, "language_code", None)
+        required_amount_text = await format_for_user(session, tg_id, float(required_amount), language_code)
+
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount_text),
+            reply_markup=builder.as_markup(),
         )
-
-        module_fast_flow_handlers = load_module_fast_flow_handlers()
-        flow_handled = False
-
-        if USE_NEW_PAYMENT_FLOW in module_fast_flow_handlers:
-            try:
-                handler = module_fast_flow_handlers[USE_NEW_PAYMENT_FLOW]
-                await handler(callback_query, session, state)
-                flow_handled = True
-            except Exception as e:
-                logger.error(f"[CREATE] Ошибка в модульном обработчике быстрого флоу {USE_NEW_PAYMENT_FLOW}: {e}")
-
-        if not flow_handled:
-            if USE_NEW_PAYMENT_FLOW == "YOOKASSA":
-                await process_custom_amount_input(callback_query, session)
-            elif USE_NEW_PAYMENT_FLOW == "ROBOKASSA":
-                await handle_custom_amount_input(message=callback_query, session=session)
-            elif USE_NEW_PAYMENT_FLOW == "STARS":
-                await process_custom_amount_input_stars(callback_query, session)
-            elif USE_NEW_PAYMENT_FLOW == "YOOMONEY":
-                await process_custom_amount_input_yoomoney(callback_query, session)
-            elif USE_NEW_PAYMENT_FLOW == "WATA":
-                await state.update_data(wata_cassa="sbp", required_amount=required_amount)
-                await handle_custom_amount_input_wata(callback_query, state)
-            else:
-                builder = InlineKeyboardBuilder()
-                builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount),
-                    reply_markup=builder.as_markup(),
-                )
         return
 
     builder = InlineKeyboardBuilder()

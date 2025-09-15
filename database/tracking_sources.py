@@ -1,4 +1,4 @@
-from sqlalchemy import func, insert, not_, select, and_
+from sqlalchemy import and_, func, insert, not_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from logger import logger
 
 
 EXCLUDED_PAYMENT_MARKERS = ["coupon", "referral", "cashback"]
+
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):
     try:
@@ -76,14 +77,13 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         return dt.strftime("%Y-%m")
 
     src_row = await session.execute(
-        select(TrackingSource.name, TrackingSource.code, TrackingSource.created_at)
-        .where(TrackingSource.code == code)
+        select(TrackingSource.name, TrackingSource.code, TrackingSource.created_at).where(TrackingSource.code == code)
     )
     src = src_row.first()
     if not src:
         return None
 
-    src_name, src_code, created_at = src
+    _src_name, _src_code, created_at = src
 
     reg_subq = (
         select(func.count(func.distinct(User.tg_id)))
@@ -212,11 +212,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
             month_expr_trials,
             func.count(func.distinct(User.tg_id)).label("cnt"),
         )
-        .where(
-            (User.source_code == code)
-            & (User.trial == 1)
-            & (User.created_at >= created_at)
-        )
+        .where((User.source_code == code) & (User.trial == 1) & (User.created_at >= created_at))
         .group_by(month_expr_trials)
         .order_by(month_expr_trials)
     )

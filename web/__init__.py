@@ -1,9 +1,10 @@
 from aiohttp.web_urldispatcher import UrlDispatcher
 
+from utils.modules_loader import load_module_webhooks
+
 from .heleket_payment import heleket_payment_webhook
 from .kassai_payment import kassai_payment_webhook
 from .wata_payment import wata_payment_webhook
-from utils.modules_loader import load_module_webhooks
 
 
 WATA_WEBHOOK_PATH = "/wata/webhook"
@@ -18,7 +19,7 @@ async def register_web_routes(router: UrlDispatcher) -> None:
 
     try:
         module_webhooks = load_module_webhooks()
-        
+
         for webhook_data in module_webhooks:
             path = webhook_data.get("path")
             handler = webhook_data.get("handler")

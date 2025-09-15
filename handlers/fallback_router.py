@@ -3,10 +3,10 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import SUPPORT_CHAT_URL
+from database import async_session_maker
 from handlers.buttons import MAIN_MENU, SUPPORT
 from handlers.texts import FALLBACK_MESSAGE
 from hooks.hooks import run_hooks
-from database import async_session_maker
 
 
 fallback_router = Router()
@@ -23,9 +23,9 @@ async def handle_unhandled_messages(message: Message):
             first_name=message.from_user.first_name,
             last_name=message.from_user.last_name,
             session=session,
-            message=message
+            message=message,
         )
-    
+
     keyboard = InlineKeyboardBuilder()
     keyboard.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     keyboard.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))

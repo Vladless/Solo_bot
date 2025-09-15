@@ -47,13 +47,12 @@ from handlers.texts import (
     get_renewal_message,
 )
 from handlers.utils import format_hours, format_minutes, get_russian_month
+from hooks.hooks import run_hooks
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
 from .notify_utils import send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
-
-from hooks.hooks import run_hooks
 
 
 router = Router()
@@ -135,42 +134,35 @@ async def notify_24h_keys(
     threshold_time_24h: int,
     keys: list,
 ):
-    """
-    Отправляет уведомления пользователям о том, что их подписка истекает через 24 часа.
-    """
     logger.info("Начало проверки подписок, истекающих через 24 часа.")
-
     expiring_keys = [key for key in keys if key.expiry_time and current_time < key.expiry_time <= threshold_time_24h]
     logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через 24 часа.")
 
-    tg_ids = [key["tg_id"] for key in expiring_keys]
+    tg_ids = [getattr(key, "tg_id", key["tg_id"]) for key in expiring_keys]
     emails = [key.email or "" for key in expiring_keys]
+    allowed = await check_notifications_bulk(session, "key_24h", 24, tg_ids=tg_ids, emails=emails)
 
-    users = await check_notifications_bulk(session, "key_24h", 24, tg_ids=tg_ids, emails=emails)
-
+    allowed_set = {(u["tg_id"], u["email"]) for u in allowed}
     messages = []
 
     for key in expiring_keys:
-        tg_id = key["tg_id"]
+        tg_id = getattr(key, "tg_id", key["tg_id"])
         email = key.email or ""
+        if (tg_id, email) not in allowed_set:
+            continue
+
         notification_id = f"{email}_key_24h"
-
-        can_notify = await check_notification_time(session, tg_id, notification_id, hours=24)
-        if not can_notify:
-            continue
-
-        user = next((u for u in users if u["tg_id"] == tg_id and u["email"] == email), None)
-        if not user:
-            continue
-
         expiry_timestamp = key.expiry_time
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
         hours_left_formatted = (
             f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
         )
-
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
         formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
+
+        can_notify = await check_notification_time(session, tg_id, notification_id, hours=24)
+        if not can_notify:
+            continue
 
         notification_text = KEY_EXPIRY_24H.format(
             email=email,
@@ -211,10 +203,10 @@ async def notify_24h_keys(
             if result:
                 await add_notification(session, tg_id, msg["notification_id"])
                 sent_count += 1
-                logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+                logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
                 logger.warning(
-                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                    f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
                 )
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 24 часа.")
 
@@ -230,35 +222,28 @@ async def notify_10h_keys(
     keys: list,
 ):
     logger.info("Начало проверки подписок, истекающих через 10 часов.")
-
     expiring_keys = [key for key in keys if key.expiry_time and current_time < key.expiry_time <= threshold_time_10h]
     logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через 10 часов.")
 
     tg_ids = [key.tg_id for key in expiring_keys]
     emails = [key.email or "" for key in expiring_keys]
+    allowed = await check_notifications_bulk(session, "key_10h", 10, tg_ids=tg_ids, emails=emails)
 
-    users = await check_notifications_bulk(session, "key_10h", 10, tg_ids=tg_ids, emails=emails)
+    allowed_set = {(u["tg_id"], u["email"]) for u in allowed}
     messages = []
 
     for key in expiring_keys:
         tg_id = key.tg_id
         email = key.email or ""
+        if (tg_id, email) not in allowed_set:
+            continue
+
         notification_id = f"{email}_key_10h"
-
-        can_notify = await check_notification_time(session, tg_id, notification_id, hours=10)
-        if not can_notify:
-            continue
-
-        user = next((u for u in users if u["tg_id"] == tg_id and u["email"] == email), None)
-        if not user:
-            continue
-
         expiry_timestamp = key.expiry_time
         hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
         hours_left_formatted = (
             f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
         )
-
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
         formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
@@ -267,6 +252,10 @@ async def notify_10h_keys(
             hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
         )
+
+        can_notify = await check_notification_time(session, tg_id, notification_id, hours=10)
+        if not can_notify:
+            continue
 
         if NOTIFY_RENEW:
             try:
@@ -301,10 +290,10 @@ async def notify_10h_keys(
             if result:
                 await add_notification(session, tg_id, msg["notification_id"])
                 sent_count += 1
-                logger.info(f"📢 Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
+                logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
                 logger.warning(
-                    f"📢 Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
+                    f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
                 )
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 10 часов.")
 

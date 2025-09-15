@@ -40,8 +40,8 @@ from handlers.utils import (
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
-from hooks.hooks import run_hooks
 from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 
@@ -173,7 +173,9 @@ async def key_cluster_mode(
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     try:
-        hook_commands = await run_hooks("key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name)
+        hook_commands = await run_hooks(
+            "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
+        )
         if hook_commands:
             builder = insert_hook_buttons(builder, hook_commands)
     except Exception as e:

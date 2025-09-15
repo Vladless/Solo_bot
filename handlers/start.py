@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from typing import Any
@@ -43,7 +44,6 @@ from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
-from hooks.hook_buttons import insert_hook_buttons
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -52,6 +52,7 @@ from handlers.texts import (
     WELCOME_TEXT,
     get_about_vpn,
 )
+from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from logger import logger
 
@@ -115,6 +116,8 @@ async def process_start_logic(
     if text.startswith("/start "):
         text = text.split(maxsplit=1)[1]
 
+    await state.update_data(original_text=text, user_data=user_data)
+
     gift_detected = False
     for part in text.split("-"):
         await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
@@ -138,16 +141,18 @@ async def process_start_logic(
     if not await check_user_exists(session, user_data["tg_id"]):
         await add_user(session=session, **user_data)
 
-    trial_status = await get_trial(session, user_data["tg_id"])
-    key_count = await get_key_count(session, user_data["tg_id"])
+    trial_status, key_count = await asyncio.gather(
+        get_trial(session, user_data["tg_id"]),
+        get_key_count(session, user_data["tg_id"]),
+    )
 
     if SHOW_START_MENU_ONCE:
         if key_count > 0 or trial_status != 0:
             await process_callback_view_profile(message, state, admin, session)
         else:
-            await show_start_menu(message, admin, session)
+            await show_start_menu(message, admin, session, trial_status=trial_status)
     else:
-        await show_start_menu(message, admin, session)
+        await show_start_menu(message, admin, session, trial_status=trial_status)
 
 
 async def handle_coupon_link(part, message, state, session, admin, user_data):
@@ -173,12 +178,8 @@ async def handle_gift(part, message, state, session, user_data):
 
     processing_gifts.add(gift_id)
     try:
-        gift_results = await run_hooks("gift_activation", 
-            gift_id=gift_id, 
-            message=message, 
-            state=state, 
-            session=session, 
-            user_data=user_data
+        gift_results = await run_hooks(
+            "gift_activation", gift_id=gift_id, message=message, state=state, session=session, user_data=user_data
         )
 
         if gift_results and "SUCCESS" in gift_results:
@@ -232,11 +233,13 @@ async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, se
         await add_user(session=session, source_code=utm_code, **user_data)
 
 
-async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
+async def show_start_menu(message: Message, admin: bool, session: AsyncSession, trial_status: int | None = None):
     image_path = os.path.join("img", "pic.jpg")
     kb = InlineKeyboardBuilder()
 
-    trial_status = await get_trial(session, message.chat.id) if session else None
+    if trial_status is None:
+        trial_status = await get_trial(session, message.chat.id) if session else None
+
     show_trial = trial_status == 0 and not TRIAL_TIME_DISABLE
     show_profile = not SHOW_START_MENU_ONCE or trial_status != 0 or TRIAL_TIME_DISABLE
 
@@ -292,9 +295,5 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
         text = text_hooks[0]
 
     await edit_or_send_message(
-        callback.message,
-        text,
-        reply_markup=kb.as_markup(),
-        media_path=os.path.join("img", "pic.jpg"),
-        force_text=False
+        callback.message, text, reply_markup=kb.as_markup(), media_path=os.path.join("img", "pic.jpg"), force_text=False
     )

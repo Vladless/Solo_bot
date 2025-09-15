@@ -10,8 +10,8 @@ from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.formatting import Text, Bold, BlockQuote
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.utils.formatting import BlockQuote, Bold, Text
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -549,39 +549,35 @@ async def handle_key_edit(
     update: bool = False,
 ):
     email = callback_data.data
-    key_details = await get_key_details(session, email)
+    result = await session.execute(select(Key).where(Key.email == email))
+    key_obj: Key | None = result.scalar_one_or_none()
 
-    if not key_details:
+    if not key_obj:
         await callback_query.message.edit_text(
             text="🚫 Информация о ключе не найдена.",
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
 
-    key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
-    alias = key_details.get("alias")
+    key_value = key_obj.key or key_obj.remnawave_link or "—"
+    alias_part = f" (<i>{key_obj.alias}</i>)" if key_obj.alias else ""
 
-    created_at_raw = key_details.get("created_at")
-    if created_at_raw:
-        created_at_dt = datetime.fromtimestamp(int(created_at_raw) / 1000) + timedelta(hours=3)
+    if key_obj.created_at:
+        created_at_dt = datetime.fromtimestamp(int(key_obj.created_at) / 1000) + timedelta(hours=3)
         created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
     else:
         created_at = "—"
 
-
-    expiry_time_raw = key_details.get("expiry_time")
-    if expiry_time_raw:
-        expiry_dt = datetime.fromtimestamp(int(expiry_time_raw) / 1000)
+    if key_obj.expiry_time:
+        expiry_dt = datetime.fromtimestamp(int(key_obj.expiry_time) / 1000)
         expiry_date = expiry_dt.strftime("%d %B %Y года %H:%M")
     else:
         expiry_date = "—"
 
     tariff_name = "—"
     subgroup_title = "—"
-    if key_details.get("tariff_id"):
-        result = await session.execute(
-            select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_details["tariff_id"])
-        )
+    if key_obj.tariff_id:
+        result = await session.execute(select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_obj.tariff_id))
         row = result.first()
         if row:
             tariff_name = row[0]
@@ -590,20 +586,18 @@ async def handle_key_edit(
     text = (
         "<b>🔑 Информация о подписке</b>\n\n"
         "<blockquote>"
-        f"🔗 <b>Ключ:</b> <code>{key_value}</code>\n"
+        f"🔗 <b>Ключ{alias_part}:</b> <code> {key_value}</code>\n"
         f"📆 <b>Создан:</b> {created_at} (МСК)\n"
         f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
-        f"🌐 <b>Кластер:</b> {key_details.get('cluster_name', '—')}\n"
-        f"🆔 <b>ID клиента:</b> {key_details.get('tg_id', '—')}\n"
+        f"🌐 <b>Кластер:</b> {key_obj.server_id or '—'}\n"
+        f"🆔 <b>ID клиента:</b> {key_obj.tg_id or '—'}\n"
         f"📁 <b>Группа:</b> {subgroup_title}\n"
         f"📦 <b>Тариф:</b> {tariff_name}\n"
+        "</blockquote>"
     )
-    if alias:
-        text += f"🏷️ <b>Имя подписки:</b> {alias}\n"
-    text += "</blockquote>"
 
     if not update or not callback_data.edit:
-        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_details, email))
+        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_obj.__dict__, email))
     else:
         await callback_query.message.edit_text(
             text=text,
@@ -1163,7 +1157,7 @@ async def process_user_search(
         result_referrer = await session.execute(stmt_referrer)
         ref_username = result_referrer.scalar_one_or_none()
         if ref_username:
-            referrer_text = f"🤝 Пригласил: @{ref_username}"
+            referrer_text = f"🤝 Пригласил: @{ref_username} ({referrer_tg_id})"
         else:
             referrer_text = f"🤝 Пригласил: {referrer_tg_id}"
 
@@ -1201,29 +1195,18 @@ async def process_user_search(
     if referrer_text:
         body += Text(referrer_text, "\n")
 
-    text_builder = Text(
-        Bold("📊 Информация о пользователе"), "\n\n",
-        BlockQuote(body)
-    )
+    text_builder = Text(Bold("📊 Информация о пользователе"), "\n\n", BlockQuote(body))
 
     text = text_builder.as_html()
     kb = await build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
 
     if edit:
         try:
-            await message.edit_text(
-                text=text,
-                reply_markup=kb,
-                disable_web_page_preview=True
-            )
+            await message.edit_text(text=text, reply_markup=kb, disable_web_page_preview=True)
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(
-            text=text,
-            reply_markup=kb,
-            disable_web_page_preview=True
-        )
+        await message.answer(text=text, reply_markup=kb, disable_web_page_preview=True)
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:

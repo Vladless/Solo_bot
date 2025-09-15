@@ -38,8 +38,8 @@ from handlers.texts import (
     SUBSCRIPTION_DESCRIPTION,
 )
 from handlers.utils import edit_or_send_message
-from hooks.hooks import run_hooks
 from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 
@@ -63,10 +63,12 @@ async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSes
             hook_builder = InlineKeyboardBuilder()
             hook_builder.attach(builder)
 
-            hook_commands = await run_hooks("connect_device_menu", chat_id=callback_query.from_user.id, admin=False, session=session)
+            hook_commands = await run_hooks(
+                "connect_device_menu", chat_id=callback_query.from_user.id, admin=False, session=session
+            )
             if hook_commands:
                 hook_builder = insert_hook_buttons(hook_builder, hook_commands)
-            
+
             final_markup = hook_builder.as_markup()
         except Exception as e:
             logger.warning(f"[CONNECT_DEVICE] Ошибка при применении хуков: {e}")

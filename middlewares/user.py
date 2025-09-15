@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from time import monotonic
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -9,10 +10,9 @@ from logger import logger
 
 
 class UserMiddleware(BaseMiddleware):
-    """
-    Middleware для обработки информации о пользователе.
-    Сохраняет или обновляет данные пользователя в базе данных.
-    """
+    def __init__(self, debounce_sec: float = 60.0) -> None:
+        self._debounce = float(debounce_sec)
+        self._cache: dict[int, tuple[str, float, dict | None]] = {}
 
     async def __call__(
         self,
@@ -21,30 +21,30 @@ class UserMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         try:
-            if user := data.get("event_from_user"):
+            user: User | None = data.get("event_from_user")
+            if user and not user.is_bot:
                 session = data.get("session")
                 db_user = await self._process_user(user, session)
                 if db_user:
                     data["user"] = db_user
         except Exception as e:
             logger.error(f"Ошибка при обработке пользователя: {e}")
-
         return await handler(event, data)
 
-    async def _process_user(self, user: User, session: Any = None) -> dict:
-        """
-        Обрабатывает информацию о пользователе и сохраняет её в базу данных.
+    async def _process_user(self, user: User, session: Any = None) -> dict | None:
+        uid = user.id
+        fp = self._fingerprint(user)
+        now = monotonic()
 
-        Args:
-            user (User): Объект пользователя Telegram
-            session (Any, optional): Сессия базы данных, если доступна
+        cached = self._cache.get(uid)
+        if cached:
+            cached_fp, ts, cached_db_user = cached
+            if fp == cached_fp and now - ts < self._debounce:
+                return cached_db_user
 
-        Returns:
-            dict: Словарь с информацией о пользователе из базы данных
-        """
-        logger.debug(f"Обработка пользователя: {user.id}")
-        user_data = await upsert_user(
-            tg_id=user.id,
+        logger.debug(f"Обработка пользователя: {uid}")
+        db_user = await upsert_user(
+            tg_id=uid,
             username=user.username,
             first_name=user.first_name,
             last_name=user.last_name,
@@ -53,6 +53,17 @@ class UserMiddleware(BaseMiddleware):
             session=session,
             only_if_exists=True,
         )
+        self._cache[uid] = (fp, now, db_user)
+        if db_user:
+            logger.debug(f"Получены данные пользователя из БД: {uid}")
+        return db_user
 
-        logger.debug(f"Получены данные пользователя из БД: {user.id}")
-        return user_data
+    def _fingerprint(self, user: User) -> str:
+        return "|".join([
+            str(user.id),
+            user.username or "",
+            user.first_name or "",
+            user.last_name or "",
+            user.language_code or "",
+            "1" if user.is_bot else "0",
+        ])

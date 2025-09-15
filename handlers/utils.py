@@ -309,15 +309,15 @@ def format_discount_time_left(last_time: datetime, discount_hours: int) -> str:
     expires_at = last_time + timedelta(hours=discount_hours)
     current_time = datetime.utcnow()
     time_left = expires_at - current_time
-    
+
     if time_left.total_seconds() <= 0:
         return "⏳ Время истекло"
-    
+
     total_seconds = int(time_left.total_seconds())
     days = total_seconds // 86400
     hours = (total_seconds % 86400) // 3600
     minutes = (total_seconds % 3600) // 60
-    
+
     if days > 0:
         return format_days(days)
     elif hours > 0:

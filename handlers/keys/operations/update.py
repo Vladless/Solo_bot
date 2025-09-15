@@ -10,8 +10,8 @@ from database import get_servers, store_key
 from database.models import Key, Tariff
 from handlers.utils import get_least_loaded_cluster
 from logger import logger
+from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import ClientConfig, add_client, get_xui_instance
 
 from .deletion import delete_key_from_cluster
 

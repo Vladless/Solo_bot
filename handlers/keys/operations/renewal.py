@@ -10,8 +10,8 @@ from database import delete_notification, get_servers
 from database.models import Key, Server, Tariff
 from database.notifications import clear_hot_lead_notifications
 from logger import logger
+from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
-from panels.three_xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 
 
 async def renew_key_in_cluster(
@@ -134,11 +134,12 @@ async def renew_key_in_cluster(
                 else:
                     logger.error("Не удалось войти в Remnawave API")
 
+        tasks = []
+
         for server_info in cluster:
             if server_info.get("panel_type", "3x-ui").lower() != "3x-ui":
                 continue
 
-            xui = await get_xui_instance(server_info["api_url"])
             inbound_id = server_info.get("inbound_id")
             server_name = server_info.get("server_name", "unknown")
 
@@ -155,21 +156,34 @@ async def renew_key_in_cluster(
 
             traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
 
-            async def update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name):
-                updated = await extend_client_key(
-                    xui=xui,
-                    inbound_id=int(inbound_id),
-                    email=unique_email,
-                    new_expiry_time=new_expiry_time,
-                    client_id=client_id,
-                    total_gb=traffic_bytes,
-                    sub_id=sub_id,
-                    tg_id=tg_id,
-                    limit_ip=hwid_device_limit,
-                )
+            async def process_server(server_info, inbound_id, unique_email, sub_id, server_name):
+                try:
+                    xui = await get_xui_instance(server_info["api_url"])
+                except Exception as e:
+                    logger.warning(f"[{server_name}] недоступна панель 3x-ui: {e}")
+                    return server_name, False, f"api_unavailable: {e}"
 
-                if not updated:
-                    logger.warning(f"Не удалось обновить клиента {unique_email}, пробуем создать")
+                try:
+                    updated = await extend_client_key(
+                        xui=xui,
+                        inbound_id=int(inbound_id),
+                        email=unique_email,
+                        new_expiry_time=new_expiry_time,
+                        client_id=client_id,
+                        total_gb=traffic_bytes,
+                        sub_id=sub_id,
+                        tg_id=tg_id,
+                        limit_ip=hwid_device_limit,
+                    )
+                except Exception as e:
+                    logger.warning(f"[{server_name}] ошибка при продлении: {e}")
+                    updated = False
+
+                if updated:
+                    return server_name, True, None
+
+                logger.warning(f"[{server_name}] не удалось обновить {unique_email}, пробуем создать")
+                try:
                     config = ClientConfig(
                         client_id=client_id,
                         email=unique_email,
@@ -183,8 +197,29 @@ async def renew_key_in_cluster(
                         sub_id=sub_id,
                     )
                     await add_client(xui, config)
+                    return server_name, True, None
+                except Exception as e:
+                    logger.warning(f"[{server_name}] не удалось создать клиента: {e}")
+                    return server_name, False, f"create_failed: {e}"
 
-            tasks.append(update_or_create_client(xui, inbound_id, unique_email, sub_id, server_name))
+            tasks.append(process_server(server_info, inbound_id, unique_email, sub_id, server_name))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        failed = []
+        succeeded = []
+        for r in results:
+            if isinstance(r, Exception):
+                failed.append(("unknown", f"task_exception: {r}"))
+                continue
+            name, ok, err = r
+            if ok:
+                succeeded.append(name)
+            else:
+                failed.append((name, err or "unknown_error"))
+        if succeeded:
+            logger.info(f"3x-ui продлено на: {', '.join(succeeded)}")
+        if failed:
+            logger.warning("3x-ui не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
 
         await asyncio.gather(*tasks, return_exceptions=True)
 

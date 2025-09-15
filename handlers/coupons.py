@@ -29,6 +29,7 @@ from database import (
 )
 from handlers.buttons import MAIN_MENU
 from handlers.keys.operations import renew_key_in_cluster
+from handlers.payments.currency_rates import format_for_user
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     COUPONS_DAYS_MESSAGE,
@@ -98,6 +99,7 @@ async def activate_coupon(
         return
 
     user = user_data or message.from_user or message.chat
+    language_code = user.get("language_code") if isinstance(user, dict) else getattr(user, "language_code", None)
     user_id = user["tg_id"] if isinstance(user, dict) else user.id
 
     usage = await check_coupon_usage(session, coupon.id, user_id)
@@ -127,7 +129,8 @@ async def activate_coupon(
             await update_coupon_usage_count(session, coupon.id)
             await create_coupon_usage(session, coupon.id, user_id)
             await add_payment(session, tg_id=user_id, amount=coupon.amount, payment_system="coupon")
-            await message.answer(f"✅ Купон активирован, на баланс начислено {coupon.amount} рублей.")
+            amount_txt = await format_for_user(session, user_id, coupon.amount, language_code)
+            await message.answer(f"✅ Купон активирован, на баланс начислено {amount_txt}.")
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при активации купона на баланс: {e}")

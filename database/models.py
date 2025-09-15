@@ -3,18 +3,8 @@ import uuid
 
 from datetime import datetime
 
-from sqlalchemy import (
-    JSON,
-    BigInteger,
-    Boolean,
-    Column,
-    DateTime,
-    Float,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
 
 
@@ -43,14 +33,16 @@ class User(DictLikeMixin, Base):
     is_bot = Column(Boolean, default=False)
     balance = Column(Float, default=0.0)
     trial = Column(Integer, default=0)
+    preferred_currency = Column(String(10), nullable=False, server_default="RUB", index=True)
     source_code = Column(
         String,
         ForeignKey(
             "tracking_sources.code",
             ondelete="SET NULL",
-            onupdate="CASCADE", 
+            onupdate="CASCADE",
         ),
-        nullable=True, )
+        nullable=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -114,6 +106,10 @@ class Payment(DictLikeMixin, Base):
     payment_system = Column(String)
     status = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    original_amount = Column(Numeric(18, 8), nullable=True)
+    currency = Column(String(10), nullable=False, server_default="RUB")
+    payment_id = Column(String(128), nullable=True, index=True)
+    metadata_ = Column("metadata", JSONB, nullable=True)
 
 
 class Coupon(DictLikeMixin, Base):
@@ -131,11 +127,7 @@ class Coupon(DictLikeMixin, Base):
 class CouponUsage(DictLikeMixin, Base):
     __tablename__ = "coupon_usages"
 
-    coupon_id = Column(
-        Integer,
-        ForeignKey("coupons.id", ondelete="CASCADE"),
-        primary_key=True
-    )
+    coupon_id = Column(Integer, ForeignKey("coupons.id", ondelete="CASCADE"), primary_key=True)
     user_id = Column(BigInteger, primary_key=True)
     used_at = Column(DateTime, default=datetime.utcnow)
 

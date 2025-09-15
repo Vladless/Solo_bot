@@ -10,10 +10,10 @@ from aiogram.types import BufferedInputFile, ErrorEvent
 from aiogram.utils.markdown import hbold
 
 from config import ADMIN_ID, API_TOKEN
+from database import async_session_maker
 from filters.private import IsPrivateFilter
 from logger import logger
 from utils.modules_loader import load_modules_from_folder
-from database import async_session_maker
 
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -129,4 +129,3 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
         logger.warning(f"Не удалось отправить детали ошибки: {exception}")
     except Exception as exception:
         logger.error(f"Неожиданная ошибка в error handler: {exception}")
-
