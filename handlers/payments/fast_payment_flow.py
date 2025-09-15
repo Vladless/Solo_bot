@@ -39,7 +39,6 @@ async def _run_provider_flow(
     if not fast_name:
         return False
 
-    # Используем поле module из конфигурации, если есть
     module_name_from_config = cfg.get("module")
     if module_name_from_config:
         module_name = f"handlers.payments.{module_name_from_config}.handlers"
