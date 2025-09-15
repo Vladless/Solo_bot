@@ -39,7 +39,6 @@ async def _run_provider_flow(
     if not fast_name:
         return False
 
-    # Специальная логика для KassaI - оба метода в одном модуле
     if up.startswith("KASSAI_"):
         module_name = "handlers.payments.kassai.handlers"
     else:
