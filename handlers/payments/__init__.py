@@ -9,8 +9,8 @@ from .cryptobot import router as cryptobot_router
 from .fast_payment_flow import router as fast_payment_flow_router
 from .freekassa.freekassa_pay import router as freekassa_router
 from .gift import router as gift_router
-from .heleket.heleket import router as heleket_router
-from .kassai.kassai import router as kassai_router
+from .heleket import router as heleket_router
+from .kassai import router as kassai_router
 from .pay import router as pay_router
 from .robokassa import router as robokassa_router
 from .stars import router as stars_router

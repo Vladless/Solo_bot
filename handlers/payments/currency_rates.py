@@ -69,7 +69,8 @@ async def get_rub_rate(quote: str, *, session: aiohttp.ClientSession | None = No
     rate = _q(Decimal("1") / rub_per_unit)
 
     if code != "RUB" and FX_MARKUP:
-        rate = _q(rate * (Decimal("1") + Decimal(str(FX_MARKUP))))
+        pct = Decimal(str(FX_MARKUP)) / Decimal("100")
+        rate = _q(rate * (Decimal("1") + pct))
 
     cache[code] = (now, rate)
     return rate

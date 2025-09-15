@@ -15,8 +15,6 @@ from database import get_last_payments
 from database.models import User
 from handlers import buttons as btn
 
-from handlers.payments.heleket.heleket import process_callback_pay_heleket
-from handlers.payments.kassai.kassai import process_callback_pay_kassai
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
 from handlers.payments.wata.wata import process_callback_pay_wata
@@ -180,22 +178,6 @@ async def handle_pay_wata_sbp(callback_query: CallbackQuery, state: FSMContext, 
 @router.callback_query(F.data == "pay_wata_int")
 async def handle_pay_wata_int(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_wata(callback_query, state, session, cassa_name="int")
-
-
-@router.callback_query(F.data == "pay_kassai_cards")
-async def handle_pay_kassai_cards(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_kassai(callback_query, state, session, method_name="cards")
-
-
-@router.callback_query(F.data == "pay_kassai_sbp")
-async def handle_pay_kassai_sbp(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_kassai(callback_query, state, session, method_name="sbp")
-
-
-@router.callback_query(F.data == "pay_heleket_crypto")
-async def handle_pay_heleket_crypto(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_heleket(callback_query, state, session, method_name="crypto")
-
 
 @router.callback_query(F.data == "pay_tribute")
 async def handle_pay_tribute(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):

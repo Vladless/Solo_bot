@@ -15,7 +15,6 @@ from config import (
     KASSAI_DOMAIN,
     KASSAI_FAILURE_URL,
     KASSAI_IP,
-    KASSAI_SECRET_KEY,
     KASSAI_SHOP_ID,
     KASSAI_SUCCESS_URL,
     PROVIDERS_ENABLED,
@@ -379,21 +378,3 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
     except Exception as e:
         logger.error(f"Error creating KassaAI order: {e}")
         return "https://fk.life/"
-
-
-def verify_kassai_signature(data: dict, signature: str) -> bool:
-    """
-    Проверка подписи вебхука FreeKassa (используемой KassaAI):
-    MERCHANT_ID:AMOUNT:SECRET_KEY2:MERCHANT_ORDER_ID
-    """
-    try:
-        sign_string = f"{KASSAI_SHOP_ID}:{data.get('AMOUNT', '')}:{KASSAI_SECRET_KEY}:{data.get('MERCHANT_ORDER_ID', '')}"
-        expected_signature = hashlib.md5(sign_string.encode("utf-8")).hexdigest()
-        result = signature.upper() == expected_signature.upper()
-        if not result:
-            logger.error(f"KassaAI signature mismatch. Expected: {expected_signature}, Got: {signature}")
-            logger.error(f"Sign string: {sign_string}")
-        return result
-    except Exception as e:
-        logger.error(f"Ошибка проверки подписи KassaAI: {e}")
-        return False
