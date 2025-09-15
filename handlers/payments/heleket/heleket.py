@@ -59,7 +59,6 @@ async def process_callback_pay_heleket(
         logger.info(f"User {tg_id} initiated Heleket payment.")
         await state.clear()
 
-        # Если метод не указан, а активен ровно один метод — пропускаем выбор метода
         if not method_name:
             enabled_methods = [m["name"] for m in HELEKET_PAYMENT_METHODS if m["enable"]]
             if len(enabled_methods) == 1:
