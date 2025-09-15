@@ -39,7 +39,11 @@ async def _run_provider_flow(
     if not fast_name:
         return False
 
-    module_name = f"handlers.payments.{up.lower()}.handlers"
+    # Специальная логика для KassaI - оба метода в одном модуле
+    if up.startswith("KASSAI_"):
+        module_name = "handlers.payments.kassai.handlers"
+    else:
+        module_name = f"handlers.payments.{up.lower()}.handlers"
 
     try:
         module = importlib.import_module(module_name)
