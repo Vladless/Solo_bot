@@ -20,12 +20,12 @@ PROVIDERS_BASE: Dict[str, dict] = {
     "KASSAI_CARDS": {
         "currency": "RUB",
         "value": "pay_kassai_cards",
-        "fast": None,
+        "fast": "handle_custom_amount_input_kassai_cards",
     },
     "KASSAI_SBP": {
         "currency": "RUB",
         "value": "pay_kassai_sbp",
-        "fast": None,
+        "fast": "handle_custom_amount_input_kassai_sbp",
     },
     "WATA_RU": {
         "currency": "RUB",
@@ -45,7 +45,7 @@ PROVIDERS_BASE: Dict[str, dict] = {
     "HELEKET": {
         "currency": "USD",
         "value": "pay_heleket_crypto",
-        "fast": None,
+        "fast": "handle_custom_amount_input_heleket",
     },
     "CRYPTOBOT": {
         "currency": "USD",

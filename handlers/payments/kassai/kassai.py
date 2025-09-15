@@ -21,8 +21,9 @@ from config import (
     PROVIDERS_ENABLED,
 )
 from handlers.payments.providers import get_providers
-from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
+from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2, MAIN_MENU
 from handlers.texts import (
+    DEFAULT_PAYMENT_MESSAGE,
     ENTER_SUM,
     KASSAI_CARDS_DESCRIPTION,
     KASSAI_PAYMENT_MESSAGE,
@@ -30,6 +31,8 @@ from handlers.texts import (
     PAYMENT_OPTIONS,
 )
 from handlers.utils import edit_or_send_message
+from handlers.payments.currency_rates import format_for_user
+from database import get_temporary_data
 from logger import logger
 
 router = Router()
@@ -397,3 +400,143 @@ def verify_kassai_signature(data: dict, signature: str) -> bool:
     except Exception as e:
         logger.error(f"Ошибка проверки подписи KassaAI: {e}")
         return False
+
+
+async def handle_custom_amount_input_kassai_cards(
+    event: types.Message | types.CallbackQuery,
+    session: AsyncSession,
+    pay_button_text: str = PAY_2,
+    main_menu_text: str = MAIN_MENU,
+):
+    """
+    Функция быстрого потока для KassaI Cards - принимает недостающую сумму и формирует платеж картами.
+    Работает с временными данными из fast_payment_flow для создания/продления/подарка.
+    """
+    if isinstance(event, types.CallbackQuery):
+        message = event.message
+        from_user = event.from_user
+        tg_id = from_user.id
+        temp_data = await get_temporary_data(session, tg_id)
+        if not temp_data or temp_data["state"] not in ["waiting_for_payment", "waiting_for_renewal_payment", "waiting_for_gift_payment"]:
+            await edit_or_send_message(target_message=message, text="❌ Не удалось получить данные для оплаты.")
+            return
+        amount = int(temp_data["data"].get("required_amount", 0))
+        if amount <= 0:
+            await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
+            return
+        method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "cards" and m["enable"]), None)
+        if not method:
+            await edit_or_send_message(target_message=message, text="❌ Оплата картами KassaAI временно недоступна.")
+            return
+    else:
+        message = event
+        from_user = message.from_user
+        tg_id = from_user.id
+        text = message.text
+        if not text or not text.isdigit():
+            await message.answer("Введите корректную сумму числом.")
+            return
+        amount = int(text)
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше нуля.")
+            return
+        method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "cards" and m["enable"]), None)
+        if not method:
+            await message.answer("❌ Оплата картами KassaAI временно недоступна.")
+            return
+
+    try:
+        payment_url = await generate_kassai_payment_link(amount, tg_id, method)
+
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=pay_button_text, url=payment_url)],
+                [InlineKeyboardButton(text=main_menu_text, callback_data="profile")],
+            ]
+        )
+
+        language_code = getattr(from_user, "language_code", None)
+        amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
+        text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
+
+        await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Ошибка при создании платежа KassaAI Cards для пользователя {tg_id}: {e}")
+        await edit_or_send_message(
+            target_message=message,
+            text="Произошла ошибка при создании платежа. Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+        )
+
+
+async def handle_custom_amount_input_kassai_sbp(
+    event: types.Message | types.CallbackQuery,
+    session: AsyncSession,
+    pay_button_text: str = PAY_2,
+    main_menu_text: str = MAIN_MENU,
+):
+    """
+    Функция быстрого потока для KassaI SBP - принимает недостающую сумму и формирует платеж через СБП.
+    Работает с временными данными из fast_payment_flow для создания/продления/подарка.
+    """
+    if isinstance(event, types.CallbackQuery):
+        message = event.message
+        from_user = event.from_user
+        tg_id = from_user.id
+        temp_data = await get_temporary_data(session, tg_id)
+        if not temp_data or temp_data["state"] not in ["waiting_for_payment", "waiting_for_renewal_payment", "waiting_for_gift_payment"]:
+            await edit_or_send_message(target_message=message, text="❌ Не удалось получить данные для оплаты.")
+            return
+        amount = int(temp_data["data"].get("required_amount", 0))
+        if amount <= 0:
+            await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
+            return
+        if amount < 10:
+            await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты через СБП — 10 рублей.")
+            return
+        method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "sbp" and m["enable"]), None)
+        if not method:
+            await edit_or_send_message(target_message=message, text="❌ Оплата через СБП KassaAI временно недоступна.")
+            return
+    else:
+        message = event
+        from_user = message.from_user
+        tg_id = from_user.id
+        text = message.text
+        if not text or not text.isdigit():
+            await message.answer("Введите корректную сумму числом.")
+            return
+        amount = int(text)
+        if amount <= 0:
+            await message.answer("Сумма должна быть больше нуля.")
+            return
+        if amount < 10:
+            await message.answer("Минимальная сумма для оплаты через СБП — 10 рублей.")
+            return
+        method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "sbp" and m["enable"]), None)
+        if not method:
+            await message.answer("❌ Оплата через СБП KassaAI временно недоступна.")
+            return
+
+    try:
+        payment_url = await generate_kassai_payment_link(amount, tg_id, method)
+
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=pay_button_text, url=payment_url)],
+                [InlineKeyboardButton(text=main_menu_text, callback_data="profile")],
+            ]
+        )
+
+        language_code = getattr(from_user, "language_code", None)
+        amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
+        text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
+
+        await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Ошибка при создании платежа KassaAI SBP для пользователя {tg_id}: {e}")
+        await edit_or_send_message(
+            target_message=message,
+            text="Произошла ошибка при создании платежа. Попробуйте позже.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+        )
