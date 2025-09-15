@@ -51,8 +51,6 @@ HELEKET_PAYMENT_METHODS = [
     },
 ]
 
-
-@router.callback_query(F.data == "pay_heleket_crypto")
 async def process_callback_pay_heleket(
     callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession, method_name: str = None
 ):
@@ -60,6 +58,12 @@ async def process_callback_pay_heleket(
         tg_id = callback_query.message.chat.id
         logger.info(f"User {tg_id} initiated Heleket payment.")
         await state.clear()
+
+        # Если метод не указан, а активен ровно один метод — пропускаем выбор метода
+        if not method_name:
+            enabled_methods = [m["name"] for m in HELEKET_PAYMENT_METHODS if m["enable"]]
+            if len(enabled_methods) == 1:
+                method_name = enabled_methods[0]
 
         if method_name:
             method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
@@ -175,7 +179,7 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
                 )
             )
     builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"heleket_custom_amount|{method_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_heleket_crypto"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -193,7 +197,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     await state.update_data(heleket_method=method_name)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"pay_heleket_{method_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_heleket_crypto"))
 
     await edit_or_send_message(
         target_message=callback_query.message,
