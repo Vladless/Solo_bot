@@ -14,8 +14,6 @@ from .service import HELEKET_PAYMENT_METHODS, generate_heleket_payment_link, pro
 from .service import router as service_router
 
 router = Router(name="heleket_router")
-
-# Подключаем роутер из service.py для обработки всех callback'ов
 router.include_router(service_router)
 
 
@@ -48,17 +46,15 @@ async def handle_custom_amount_input_heleket(
         await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
         return
     
-    # Проверяем минимальную сумму для криптоплатежей
     if amount < 10:
         await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты криптовалютой — 10 рублей.")
         return
     
-    # Выбираем единственный доступный метод Heleket (crypto)
     enabled_methods = [m for m in HELEKET_PAYMENT_METHODS if m["enable"]]
     if not enabled_methods:
         await edit_or_send_message(target_message=message, text="❌ Способ оплаты Heleket временно недоступен.")
         return
-    method = enabled_methods[0]  # Всегда crypto
+    method = enabled_methods[0]
 
     try:
         payment_url = await generate_heleket_payment_link(amount, tg_id, method)
@@ -71,7 +67,6 @@ async def handle_custom_amount_input_heleket(
         )
 
         language_code = getattr(from_user, "language_code", None)
-        # Для Heleket показываем сумму в рублях, но платёж идёт в USD
         amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
         text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
 

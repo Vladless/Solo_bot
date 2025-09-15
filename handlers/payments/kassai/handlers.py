@@ -14,8 +14,6 @@ from .service import KASSAI_PAYMENT_METHODS, generate_kassai_payment_link, proce
 from .service import router as service_router
 
 router = Router(name="kassai_router")
-
-# Подключаем роутер из service.py для обработки всех callback'ов
 router.include_router(service_router)
 
 
@@ -53,7 +51,6 @@ async def handle_custom_amount_input_kassai_cards(
         await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
         return
     
-    # Используем метод карт
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "cards" and m["enable"]), None)
     if not method:
         await edit_or_send_message(target_message=message, text="❌ Оплата картами KassaAI временно недоступна.")
@@ -107,12 +104,10 @@ async def handle_custom_amount_input_kassai_sbp(
         await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
         return
     
-    # Проверяем минимальную сумму для СБП
     if amount < 10:
         await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты через СБП — 10 рублей.")
         return
     
-    # Используем метод СБП
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "sbp" and m["enable"]), None)
     if not method:
         await edit_or_send_message(target_message=message, text="❌ Оплата через СБП KassaAI временно недоступна.")
