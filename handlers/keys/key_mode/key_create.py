@@ -39,6 +39,8 @@ from handlers.texts import (
     SELECT_TARIFF_PLAN_MSG,
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 from .key_cluster_mode import key_cluster_mode
@@ -239,6 +241,9 @@ async def handle_key_creation(
                     callback_data=f"tariff_subgroup_user|{subgroup_hash}",
                 )
             )
+
+        tariff_menu_buttons = await run_hooks("tariff_menu", group_code=group_code, cluster_name=cluster_name, tg_id=tg_id, session=session)
+        builder = insert_hook_buttons(builder, tariff_menu_buttons)
 
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

@@ -78,16 +78,23 @@ async def key_country_mode(
         target_message = message_or_query
         safe_to_edit = True
 
-    try:
-        least_loaded_cluster = await get_least_loaded_cluster(session)
-    except ValueError as e:
-        logger.error(f"Нет доступных кластеров: {e}")
-        text = str(e)
-        if safe_to_edit:
-            await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
-        else:
-            await bot.send_message(chat_id=tg_id, text=text)
-        return
+    data = await state.get_data() if state else {}
+
+    forced_cluster_results = await run_hooks("cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan)
+    
+    if forced_cluster_results and forced_cluster_results[0]:
+        least_loaded_cluster = forced_cluster_results[0]
+    else:
+        try:
+            least_loaded_cluster = await get_least_loaded_cluster(session)
+        except ValueError as e:
+            logger.error(f"Нет доступных кластеров: {e}")
+            text = str(e)
+            if safe_to_edit:
+                await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
+            else:
+                await bot.send_message(chat_id=tg_id, text=text)
+            return
 
     result = await session.execute(
         select(
