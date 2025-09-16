@@ -167,6 +167,11 @@ async def back_to_currency(callback_query: CallbackQuery, state: FSMContext, ses
     )
 
 
+@router.callback_query(F.data == "back_to_pay")
+async def back_to_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
+    return await balance_handler(callback_query, session)
+
+
 @router.callback_query(F.data == "pay_wata_ru")
 async def handle_pay_wata_ru(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await process_callback_pay_wata(callback_query, state, session, cassa_name="ru")
