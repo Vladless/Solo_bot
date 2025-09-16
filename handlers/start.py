@@ -147,12 +147,12 @@ async def process_start_logic(
     )
 
     if SHOW_START_MENU_ONCE:
-        if key_count > 0 or trial_status != 0:
+        if key_count > 0 or trial_status == 1:
             await process_callback_view_profile(message, state, admin, session)
         else:
-            await show_start_menu(message, admin, session, trial_status=trial_status)
+            await show_start_menu(message, admin, session)
     else:
-        await show_start_menu(message, admin, session, trial_status=trial_status)
+        await show_start_menu(message, admin, session)
 
 
 async def handle_coupon_link(part, message, state, session, admin, user_data):
@@ -233,15 +233,14 @@ async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, se
         await add_user(session=session, source_code=utm_code, **user_data)
 
 
-async def show_start_menu(message: Message, admin: bool, session: AsyncSession, trial_status: int | None = None):
+async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     image_path = os.path.join("img", "pic.jpg")
     kb = InlineKeyboardBuilder()
 
-    if trial_status is None:
-        trial_status = await get_trial(session, message.chat.id) if session else None
+    trial_status = await get_trial(session, message.chat.id) if session else None
 
-    show_trial = trial_status == 0 and not TRIAL_TIME_DISABLE
-    show_profile = not SHOW_START_MENU_ONCE or trial_status != 0 or TRIAL_TIME_DISABLE
+    show_trial = (trial_status == 0) and (not TRIAL_TIME_DISABLE)
+    show_profile = ((not SHOW_START_MENU_ONCE) or (trial_status != 0) or TRIAL_TIME_DISABLE) and (trial_status != -1) and (not show_trial)
 
     if show_trial:
         kb.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
