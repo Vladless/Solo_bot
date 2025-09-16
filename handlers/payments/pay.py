@@ -56,8 +56,10 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         )
         return
 
-    if len(payment_handlers) == 1 and not has_extra_menu_items:
-        return await payment_handlers[0](callback_query, state, session)
+    if not has_extra_menu_items:
+        enabled_providers_count = sum(1 for _k, _cfg in PROVIDERS.items() if _cfg.get("enabled"))
+        if enabled_providers_count == 1 and len(payment_handlers) == 1:
+            return await payment_handlers[0](callback_query, state, session)
 
     builder = InlineKeyboardBuilder()
     for key, cfg in PROVIDERS.items():
