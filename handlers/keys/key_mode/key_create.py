@@ -37,6 +37,9 @@ from handlers.texts import (
     CREATING_CONNECTION_MSG,
     INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
+    DISCOUNT_OFFER_MESSAGE,
+    DISCOUNT_OFFER_STEP2,
+    DISCOUNT_OFFER_STEP3,
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from hooks.hook_buttons import insert_hook_buttons
@@ -252,16 +255,10 @@ async def handle_key_creation(
         discount_message = ""
 
         if discount_info and discount_info.get("available"):
-            discount_message = "\n\n🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n<blockquote>"
-            if discount_info["type"] == "hot_lead_step_2":
-                discount_message += "💎 <b>Вам открыт доступ к специальным тарифам</b>\n"
-                discount_message += "🚀 <b>Эксклюзивные предложения</b> - доступны только для вас!\n"
-            else:
-                discount_message += "💎 <b>Вам открыт доступ к МАКСИМАЛЬНО выгодным тарифам</b>\n"
-                discount_message += "🚀 <b>VIP предложения</b> - максимальная выгода!\n"
-
+            offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
-            discount_message += f"</blockquote>\n⏰ <b>Предложение действует только: {format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)}</b>, не упустите свой шанс!"
+            time_left = format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)
+            discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
         await edit_or_send_message(
             target_message=target_message,

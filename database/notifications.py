@@ -96,26 +96,6 @@ async def check_hot_lead_discount(session: AsyncSession, tg_id: int) -> dict:
         return {"available": False}
 
 
-async def clear_hot_lead_notifications(session: AsyncSession, tg_id: int):
-    try:
-        await session.execute(
-            delete(Notification).where(
-                Notification.tg_id == tg_id,
-                Notification.notification_type.in_([
-                    "hot_lead_step_1",
-                    "hot_lead_step_2",
-                    "hot_lead_step_3",
-                    "hot_lead_step_2_expired",
-                ]),
-            )
-        )
-        await session.commit()
-        logger.info(f"✅ Уведомления о скидках горячих лидов очищены для пользователя {tg_id}")
-    except SQLAlchemyError as e:
-        logger.error(f"❌ Ошибка при очистке уведомлений о скидках для {tg_id}: {e}")
-        await session.rollback()
-
-
 async def check_notifications_bulk(
     session: AsyncSession,
     notification_type: str,

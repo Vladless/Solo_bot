@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import delete_notification, get_servers
 from database.models import Key, Server, Tariff
-from database.notifications import clear_hot_lead_notifications
 from logger import logger
 from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
@@ -229,10 +228,6 @@ async def renew_key_in_cluster(
             await delete_notification(session, tg_id, notification_id)
         logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
 
-        try:
-            await clear_hot_lead_notifications(session, tg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось очистить уведомления о скидках для {tg_id} при продлении: {e}")
 
     except Exception as e:
         logger.error(f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")

@@ -5,7 +5,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, User
-from database.notifications import clear_hot_lead_notifications
 from logger import logger
 
 
@@ -43,10 +42,6 @@ async def store_key(
         await session.commit()
         logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
 
-        try:
-            await clear_hot_lead_notifications(session, tg_id)
-        except Exception:
-            pass
 
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")

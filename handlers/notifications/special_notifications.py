@@ -30,6 +30,8 @@ from handlers.texts import (
     ZERO_TRAFFIC_MSG,
 )
 from handlers.utils import format_days, is_full_remnawave_cluster
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 
@@ -167,6 +169,16 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
             builder.row(InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
             builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+            try:
+                hook_commands = await run_hooks(
+                    "zero_traffic_notification", chat_id=tg_id, admin=False, session=session, email=email
+                )
+                if hook_commands:
+                    builder = insert_hook_buttons(builder, hook_commands)
+            except Exception as e:
+                logger.warning(f"[ZERO_TRAFFIC_NOTIFICATION] Ошибка при применении хуков: {e}")
+            
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)
             messages.append({

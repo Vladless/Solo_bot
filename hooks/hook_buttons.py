@@ -12,6 +12,9 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
     - {"insert_at": int, "button": InlineKeyboardButton} — вставить по индексу (0 = начало)
     - {"remove": str | list[str]} — удалить кнопки с указанным callback_data
     - {"remove_prefix": str} — удалить кнопки, у которых callback_data начинается с префикса
+    - {"remove_url": str | list[str]} — удалить кнопки с указанным URL
+    - {"remove_url_prefix": str} — удалить кнопки, у которых URL начинается с префикса
+    - {"replace_keyboard": InlineKeyboardBuilder} — полностью заменить клавиатуру
     """
     markup = builder.as_markup()
     new_rows = markup.inline_keyboard.copy()
@@ -24,7 +27,15 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
         else:
             flat_buttons.append(item)
 
-    remove_operations = [b for b in flat_buttons if isinstance(b, dict) and ("remove" in b or "remove_prefix" in b)]
+    replace_operations = [b for b in flat_buttons if isinstance(b, dict) and "replace_keyboard" in b]
+    if replace_operations:
+        replace_data = replace_operations[0]["replace_keyboard"]
+        if isinstance(replace_data, InlineKeyboardBuilder):
+            return replace_data
+        else:
+            return builder
+
+    remove_operations = [b for b in flat_buttons if isinstance(b, dict) and ("remove" in b or "remove_prefix" in b or "remove_url" in b or "remove_url_prefix" in b)]
     for module in remove_operations:
         removes = module.get("remove")
         if isinstance(removes, str):
@@ -32,12 +43,28 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
         removes = set(removes or [])
         prefix = module.get("remove_prefix")
 
+        remove_urls = module.get("remove_url")
+        if isinstance(remove_urls, str):
+            remove_urls = [remove_urls]
+        remove_urls = set(remove_urls or [])
+        url_prefix = module.get("remove_url_prefix")
+
         filtered_rows = []
         for row in new_rows:
             filtered_row = []
             for btn in row:
                 cdata = getattr(btn, "callback_data", None)
-                if cdata and (cdata in removes or (prefix and cdata.startswith(prefix))):
+                url = getattr(btn, "url", None)
+                webapp_url = getattr(getattr(btn, "web_app", None), "url", None) if getattr(btn, "web_app", None) else None
+
+                should_remove_callback = cdata and (cdata in removes or (prefix and cdata.startswith(prefix)))
+
+                should_remove_url = (
+                    (url and (url in remove_urls or (url_prefix is not None and url.startswith(url_prefix)))) or
+                    (webapp_url and (webapp_url in remove_urls or (url_prefix is not None and webapp_url.startswith(url_prefix))))
+                )
+                
+                if should_remove_callback or should_remove_url:
                     continue
                 filtered_row.append(btn)
             if filtered_row:
