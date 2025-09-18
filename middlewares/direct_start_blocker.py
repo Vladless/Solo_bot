@@ -59,7 +59,9 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
             return exists
 
         if not text.startswith("/"):
-            return await handler(event, data)
+            if await user_exists_cached():
+                return await handler(event, data)
+            return
 
         parts = text.split(maxsplit=1)
         if parts[0] != "/start":

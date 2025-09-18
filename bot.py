@@ -43,7 +43,24 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
             or "message can't be deleted for everyone" in error_message
             or "message to delete not found" in error_message
         ):
-            logger.warning("Отправляем стартовое меню.")
+            try:
+                tb = "".join(traceback.format_exception(type(event.exception), event.exception, event.exception.__traceback__))
+                logger.warning(f"Показываем стартовое меню из-за TelegramBadRequest: {error_message}")
+                logger.error(f"Traceback:\n{tb}")
+
+                if ADMIN_ID:
+                    for admin_id in ADMIN_ID:
+                        await bot.send_document(
+                            chat_id=admin_id,
+                            document=BufferedInputFile(
+                                tb.encode(),
+                                filename=f"error_{event.update.update_id}.txt",
+                            ),
+                            caption=f"{hbold(type(event.exception).__name__)}: {error_message[:1021]}...",
+                        )
+            except Exception as e:
+                logger.error(f"Сбой при логировании/отправке ошибки админу: {e}", exc_info=True)
+
             try:
                 from handlers.start import start_entry
 
@@ -129,3 +146,5 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
         logger.warning(f"Не удалось отправить детали ошибки: {exception}")
     except Exception as exception:
         logger.error(f"Неожиданная ошибка в error handler: {exception}")
+
+    return True
