@@ -178,6 +178,18 @@ async def key_cluster_mode(
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     try:
+        intercept_results = await run_hooks(
+            "intercept_key_creation_message", 
+            chat_id=tg_id, 
+            session=session, 
+            target_message=target_message
+        )
+        if intercept_results and intercept_results[0]:
+            return
+    except Exception as e:
+        logger.warning(f"[INTERCEPT_KEY_CREATION] Ошибка при применении хуков: {e}")
+
+    try:
         hook_commands = await run_hooks(
             "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
         )
