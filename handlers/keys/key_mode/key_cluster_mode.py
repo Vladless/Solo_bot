@@ -182,7 +182,7 @@ async def key_cluster_mode(
             "intercept_key_creation_message", 
             chat_id=tg_id, 
             session=session, 
-            target_message=target_message
+            target_message=message_or_query
         )
         if intercept_results and intercept_results[0]:
             return

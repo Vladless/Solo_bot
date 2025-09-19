@@ -524,7 +524,7 @@ async def finalize_key_creation(
             "intercept_key_creation_message", 
             chat_id=tg_id, 
             session=session, 
-            target_message=callback_query.message
+            target_message=callback_query
         )
         if intercept_results and intercept_results[0]:
             return
