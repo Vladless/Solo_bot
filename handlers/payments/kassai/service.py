@@ -26,12 +26,22 @@ from handlers.texts import (
     KASSAI_CARDS_DESCRIPTION,
     KASSAI_PAYMENT_MESSAGE,
     KASSAI_SBP_DESCRIPTION,
-    PAYMENT_OPTIONS,
 )
+from handlers.payments.keyboards import build_amounts_keyboard, payment_options_for_user, parse_amount_from_callback, pay_keyboard
 from handlers.utils import edit_or_send_message
+from database.models import User
 from logger import logger
 
 router = Router()
+
+
+async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
+    """Получает язык пользователя из базы данных"""
+    from sqlalchemy import select
+    result = await session.execute(
+        select(User.language_code).where(User.tg_id == tg_id)
+    )
+    return result.scalar_one_or_none()
 
 
 class ReplenishBalanceKassaiState(StatesGroup):
@@ -66,7 +76,7 @@ async def process_callback_pay_kassai(
     callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession, method_name: str = None
 ):
     try:
-        tg_id = callback_query.message.chat.id
+        tg_id = callback_query.from_user.id
         logger.info(f"User {tg_id} initiated KassaAI payment.")
         await state.clear()
 
@@ -83,28 +93,15 @@ async def process_callback_pay_kassai(
                 )
                 return
 
-            builder = InlineKeyboardBuilder()
-            for i in range(0, len(PAYMENT_OPTIONS), 2):
-                if i + 1 < len(PAYMENT_OPTIONS):
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=PAYMENT_OPTIONS[i]["text"],
-                            callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]['callback_data'].split('|')[1]}",
-                        ),
-                        InlineKeyboardButton(
-                            text=PAYMENT_OPTIONS[i + 1]["text"],
-                            callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i + 1]['callback_data'].split('|')[1]}",
-                        ),
-                    )
-                else:
-                    builder.row(
-                        InlineKeyboardButton(
-                            text=PAYMENT_OPTIONS[i]["text"],
-                            callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]['callback_data'].split('|')[1]}",
-                        )
-                    )
-            builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
-            builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
+            language_code = await get_user_language(session, tg_id)
+            opts = await payment_options_for_user(session, tg_id, language_code)
+            builder = build_amounts_keyboard(
+                prefix=f"kassai_{method_name}",
+                pattern="{prefix}_amount|{price}",
+                back_cb="balance",
+                custom_cb=f"kassai_custom_amount|{method_name}",
+                opts=opts
+            )
 
             try:
                 await callback_query.message.delete()
@@ -112,7 +109,7 @@ async def process_callback_pay_kassai(
                 pass
             new_msg = await callback_query.message.answer(
                 text=method["desc"],
-                reply_markup=builder.as_markup(),
+                reply_markup=builder,
             )
             await state.update_data(
                 kassai_method=method_name,
@@ -145,7 +142,7 @@ async def process_callback_pay_kassai(
 
 
 @router.callback_query(F.data.startswith("kassai_method|"))
-async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
 
@@ -159,34 +156,22 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(kassai_method=method_name)
+    tg_id = callback_query.from_user.id
 
-    builder = InlineKeyboardBuilder()
-    for i in range(0, len(PAYMENT_OPTIONS), 2):
-        if i + 1 < len(PAYMENT_OPTIONS):
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]['callback_data'].split('|')[1]}",
-                ),
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i + 1]["text"],
-                    callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i + 1]['callback_data'].split('|')[1]}",
-                ),
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=PAYMENT_OPTIONS[i]["text"],
-                    callback_data=f"kassai_amount|{method_name}|{PAYMENT_OPTIONS[i]['callback_data'].split('|')[1]}",
-                )
-            )
-    builder.row(InlineKeyboardButton(text="Ввести сумму", callback_data=f"kassai_custom_amount|{method_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_kassai"))
+    language_code = await get_user_language(session, tg_id)
+    opts = await payment_options_for_user(session, tg_id, language_code)
+    builder = build_amounts_keyboard(
+        prefix=f"kassai_{method_name}",
+        pattern="{prefix}_amount|{price}",
+        back_cb="pay_kassai",
+        custom_cb=f"kassai_custom_amount|{method_name}",
+        opts=opts
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,
         text=method["desc"],
-        reply_markup=builder.as_markup(),
+        reply_markup=builder,
         force_text=True,
     )
     await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
@@ -194,16 +179,21 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
 
 
 @router.callback_query(F.data.startswith("kassai_custom_amount|"))
-async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_custom_amount_button(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
     await state.update_data(kassai_method=method_name)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"pay_kassai_{method_name}"))
 
+    from handlers.payments.currency_rates import pick_currency
+    language_code = await get_user_language(session, callback_query.from_user.id)
+    currency = pick_currency(language_code)
+    
+    currency_text = "рублях (₽)" if currency == "RUB" else "долларах ($)"
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=ENTER_SUM,
+        text=f"Пожалуйста, введите сумму пополнения в {currency_text}.",
         reply_markup=builder.as_markup(),
         force_text=True,
     )
@@ -211,7 +201,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
 
 
 @router.message(ReplenishBalanceKassaiState.entering_custom_amount)
-async def handle_custom_amount_input(message: types.Message, state: FSMContext):
+async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("kassai_method")
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
@@ -225,18 +215,26 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         )
         return
 
+    from handlers.payments.currency_rates import pick_currency
+    language_code = await get_user_language(session, message.from_user.id)
+    currency = pick_currency(language_code)
+
     try:
-        amount = int(message.text.strip())
-        if amount <= 0:
+        user_amount = int(message.text.strip())
+        if user_amount <= 0:
             raise ValueError
-        if method_name == "sbp" and amount < 10:
-            await edit_or_send_message(
-                target_message=message,
-                text="Минимальная сумма для оплаты через СБП — 10 рублей.",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-                force_text=True,
-            )
-            return
+        
+        if method_name == "sbp":
+            min_amount = 1 if currency == "USD" else 10
+            currency_symbol = "$" if currency == "USD" else "₽"
+            if user_amount < min_amount:
+                await edit_or_send_message(
+                    target_message=message,
+                    text=f"Минимальная сумма для оплаты через СБП — {currency_symbol}{min_amount}.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+                    force_text=True,
+                )
+                return
     except Exception:
         await edit_or_send_message(
             target_message=message,
@@ -246,19 +244,24 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
         )
         return
 
-    await state.update_data(amount=amount)
-    payment_url = await generate_kassai_payment_link(amount, message.chat.id, method)
+    from handlers.payments.currency_rates import to_rub, format_for_user
+    if currency == "RUB":
+        amount_rub = user_amount
+    else: 
+        async with aiohttp.ClientSession() as session_http:
+            amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
-    confirm_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="balance")],
-        ]
-    )
+    await state.update_data(amount=amount_rub)
+    payment_url = await generate_kassai_payment_link(amount_rub, message.chat.id, method)
+
+    confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
+
+    tg_id = message.from_user.id
+    amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code)
 
     await edit_or_send_message(
         target_message=message,
-        text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
+        text=KASSAI_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=confirm_keyboard,
         force_text=True,
     )
@@ -266,12 +269,19 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext):
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
 
-@router.callback_query(F.data.startswith("kassai_amount|"))
+@router.callback_query(F.data.startswith("kassai_cards_amount|") | F.data.startswith("kassai_sbp_amount|"))
 async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
-    parts = callback_query.data.split("|")
-    method_name = parts[1]
-    amount_str = parts[2]
+    amount = parse_amount_from_callback(callback_query.data, prefixes=["kassai_cards", "kassai_sbp"])
+    if amount is None:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="Некорректная сумма.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
 
+    method_name = "cards" if callback_query.data.startswith("kassai_cards") else "sbp"
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
 
     if not method or not method["enable"]:
@@ -283,28 +293,10 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         )
         return
 
-    try:
-        amount = int(amount_str)
-        if amount <= 0:
-            raise ValueError
-    except Exception:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="Некорректная сумма.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
-        )
-        return
-
     await state.update_data(amount=amount)
     payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method)
 
-    confirm_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=PAY_2, url=payment_url)],
-            [InlineKeyboardButton(text=BACK, callback_data="balance")],
-        ]
-    )
+    confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
     await edit_or_send_message(
         target_message=callback_query.message,
