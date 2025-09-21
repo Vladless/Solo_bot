@@ -66,8 +66,11 @@ async def handle_custom_amount_input_kassai_cards(
             ]
         )
 
-        language_code = getattr(from_user, "language_code", None)
-        amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
+        from database.models import User
+        from sqlalchemy import select
+        result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
+        language_code = result.scalar_one_or_none()
+        amount_text = await format_for_user(session, tg_id, float(amount), language_code)
         text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
 
         await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
@@ -123,8 +126,11 @@ async def handle_custom_amount_input_kassai_sbp(
             ]
         )
 
-        language_code = getattr(from_user, "language_code", None)
-        amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
+        from database.models import User
+        from sqlalchemy import select
+        result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
+        language_code = result.scalar_one_or_none()
+        amount_text = await format_for_user(session, tg_id, float(amount), language_code)
         text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
 
         await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
