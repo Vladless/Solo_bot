@@ -108,7 +108,7 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
                 else:
                     ok = (
                         await session.execute(
-                            select(Gift.id)
+                            select(Gift.gift_id)
                             .where(
                                 Gift.gift_id == gift_id,
                                 Gift.is_used.is_(False),

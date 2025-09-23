@@ -8,7 +8,14 @@ class PaymentBase(BaseModel):
     tg_id: int
     amount: float
     payment_system: str
-    status: Literal["success", "pending", "failed"]
+    status: Literal[
+        "awaiting_choice",
+        "issued",
+        "processing",
+        "success",
+        "failed",
+        "cancelled",
+    ]
 
 
 class PaymentResponse(PaymentBase):
