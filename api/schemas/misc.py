@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -8,14 +7,7 @@ class PaymentBase(BaseModel):
     tg_id: int
     amount: float
     payment_system: str
-    status: Literal[
-        "awaiting_choice",
-        "issued",
-        "pending",
-        "success",
-        "failed",
-        "cancelled",
-    ]
+    status: str
 
 
 class PaymentResponse(PaymentBase):
