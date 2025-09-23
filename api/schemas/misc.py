@@ -11,7 +11,7 @@ class PaymentBase(BaseModel):
     status: Literal[
         "awaiting_choice",
         "issued",
-        "processing",
+        "pending",
         "success",
         "failed",
         "cancelled",
