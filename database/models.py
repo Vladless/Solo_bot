@@ -3,9 +3,10 @@ import uuid
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column
+from sqlalchemy.orm import relationship
 
 
 Base = declarative_base()
@@ -80,6 +81,7 @@ class Tariff(DictLikeMixin, Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
     subgroup_title = Column(String, nullable=True)
     sort_order = Column(Integer, nullable=True)
+    vless = Column(Boolean, default=False)
 
 
 class Server(DictLikeMixin, Base):
@@ -95,6 +97,23 @@ class Server(DictLikeMixin, Base):
     max_keys = Column(Integer)
     tariff_group = Column(String)
     enabled = Column(Boolean, default=True)
+
+    subgroups = relationship("ServerSubgroup", back_populates="server", cascade="all, delete-orphan")
+
+
+class ServerSubgroup(DictLikeMixin, Base):
+    __tablename__ = "server_subgroups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), index=True, nullable=False)
+    group_code = Column(String, nullable=False)
+    subgroup_title = Column(String, nullable=False)
+
+    server = relationship("Server", back_populates="subgroups")
+
+    __table_args__ = (
+        UniqueConstraint("server_id", "subgroup_title", name="uq_server_subgroup"),
+    )
 
 
 class Payment(DictLikeMixin, Base):

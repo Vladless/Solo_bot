@@ -140,9 +140,6 @@ async def delete_client(
     email: str,
     client_id: str,
 ) -> bool:
-    """
-    Удаляет клиента с сервера 3x-ui.
-    """
     try:
         if SUPERNODE:
             await xui.client.delete(inbound_id, client_id)
@@ -221,3 +218,106 @@ async def toggle_client(
         status = "включении" if enable else "отключении"
         logger.error(f"Ошибка при {status} клиента с email {email} и ID {client_id}: {e}")
         return False
+
+
+def build_vless_link_from_inbound(
+    inbound: py3xui.Inbound,
+    user_uuid: str,
+    email: str,
+    external_host: str,
+    port: int,
+    remark: str | None = None,
+    client_flow: str | None = None,
+) -> str:
+    name = remark or email
+    security = (inbound.stream_settings.security or "").lower()
+    network = (inbound.stream_settings.network or "").lower()
+
+    def _first(val):
+        if isinstance(val, list) and val:
+            return val[0]
+        return val or ""
+
+    rs = inbound.stream_settings.reality_settings or {}
+    rs_settings = rs.get("settings") or {}
+
+    pbk = rs_settings.get("publicKey") or rs.get("publicKey") or ""
+    sni = _first(rs.get("serverNames") or rs_settings.get("serverNames") or rs.get("serverName") or rs_settings.get("serverName"))
+    sid = _first(rs.get("shortIds") or rs_settings.get("shortIds") or rs.get("shortId") or rs_settings.get("shortId"))
+    fp = rs.get("fingerprint") or rs_settings.get("fingerprint") or ""
+
+    if security == "reality" and network == "tcp":
+        parts = [
+            f"vless://{user_uuid}@{external_host}:{port}",
+            "?type=tcp&security=reality",
+            f"&pbk={pbk}" if pbk else "",
+            f"&fp={fp}" if fp else "",
+            f"&sni={sni}" if sni else "",
+            f"&sid={sid}" if sid else "",
+            "&spx=%2F",
+            f"&flow={client_flow}" if client_flow else "",
+            f"#{name}",
+        ]
+        return "".join(parts)
+
+    if network == "ws":
+        ws = inbound.stream_settings.ws_settings or {}
+        path = (ws.get("path") or "/").strip() or "/"
+        host_hdr = external_host
+        if security == "tls":
+            parts = [
+                f"vless://{user_uuid}@{external_host}:{port}",
+                "?type=ws&security=tls",
+                f"&host={host_hdr}",
+                f"&sni={external_host}",
+                f"&path={path}",
+                f"#{name}",
+            ]
+            return "".join(parts)
+        return f"vless://{user_uuid}@{external_host}:{port}?type=ws&path={path}#{name}"
+
+    if security == "tls":
+        return f"vless://{user_uuid}@{external_host}:{port}?type=tcp&security=tls&sni={external_host}#{name}"
+
+    return f"vless://{user_uuid}@{external_host}:{port}?type=tcp#{name}"
+
+
+async def get_vless_link_for_client(
+    xui: py3xui.AsyncApi,
+    inbound_id: int,
+    email: str,
+    external_host: str,
+    port: int,
+    remark: str | None = None,
+) -> str | None:
+    try:
+        inbound = await xui.inbound.get_by_id(inbound_id)
+        if not inbound:
+            logger.warning(f"Не удалось собрать VLESS ссылку: inbound_id={inbound_id}, email={email}")
+            return None
+
+        true_uuid = None
+        client_flow = None
+        if getattr(inbound, "settings", None) and getattr(inbound.settings, "clients", None):
+            for c in inbound.settings.clients:
+                if getattr(c, "email", None) == email:
+                    true_uuid = getattr(c, "id", None)
+                    client_flow = getattr(c, "flow", None)
+                    break
+
+        if not true_uuid:
+            logger.warning(f"Не удалось получить UUID клиента: inbound_id={inbound_id}, email={email}")
+            return None
+
+        return build_vless_link_from_inbound(
+            inbound,
+            true_uuid,
+            email,
+            external_host,
+            port,
+            remark,
+            client_flow,
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при сборке VLESS ссылки: {e}")
+        return None

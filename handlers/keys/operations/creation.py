@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, HAPP_CRYPTOLINK
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import check_server_key_limit
@@ -15,7 +15,8 @@ from panels._3xui import (
     add_client,
     get_xui_instance,
 )
-from panels.remnawave import RemnawaveAPI
+from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
+from .aggregated_links import make_aggregated_link
 
 
 async def create_key_on_cluster(
@@ -53,23 +54,30 @@ async def create_key_on_cluster(
             logger.warning(f"[Key Creation] Нет доступных серверов в кластере {cluster_id}")
             return
 
-        if plan is not None and traffic_limit_bytes is None:
+        tariff = None
+        subgroup_title = None
+        need_vless_key = False
+        if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
-            traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
+            if traffic_limit_bytes is None:
+                traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
             if hwid_limit is None and tariff.get("device_limit") is not None:
                 hwid_limit = int(tariff["device_limit"])
+            subgroup_title = tariff.get("subgroup_title")
+            need_vless_key = bool(tariff.get("vless"))
+
+        if subgroup_title:
+            subgroup_servers = [s for s in enabled_servers if subgroup_title in s.get("tariff_subgroups", [])]
+            if subgroup_servers:
+                enabled_servers = subgroup_servers
 
         remnawave_servers = [
-            s
-            for s in enabled_servers
-            if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, session)
+            s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, session)
         ]
         xui_servers = [
-            s
-            for s in enabled_servers
-            if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
+            s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
         ]
 
         if not remnawave_servers and not xui_servers:
@@ -89,14 +97,10 @@ async def create_key_on_cluster(
             else:
                 expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
                 inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
-
-                if not inbound_ids:
-                    logger.warning("Нет inbound_id у серверов Remnawave")
-                else:
+                if inbound_ids:
                     short_uuid = None
                     if remnawave_link and "/" in remnawave_link:
                         short_uuid = remnawave_link.rstrip("/").split("/")[-1]
-
                     user_data = {
                         "username": email,
                         "trafficLimitStrategy": "NO_RESET",
@@ -104,27 +108,30 @@ async def create_key_on_cluster(
                         "telegramId": tg_id,
                         "activeInternalSquads": inbound_ids,
                     }
-
                     if traffic_limit_bytes and traffic_limit_bytes > 0:
                         user_data["trafficLimitBytes"] = traffic_limit_bytes * 1024 * 1024 * 1024
-
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
                     if hwid_limit is not None:
                         user_data["hwidDeviceLimit"] = hwid_limit
                     logger.info(f"[Key Creation] Данные для создания клиента в Remnawave: {user_data}")
-
                     result = await remna.create_user(user_data)
-                    if not result:
-                        logger.error("Ошибка при создании пользователя в Remnawave")
-                    else:
+                    if result:
                         remnawave_created = True
-                        remnawave_key = result.get("subscriptionUrl")
                         remnawave_client_id = result.get("uuid")
+                        link_vless = None
+                        if need_vless_key:
+                            try:
+                                link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
+                            except Exception as e:
+                                logger.error(f"[Key Creation] Ошибка сборки VLESS Remnawave: {e}")
+                        remnawave_key = link_vless or (result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl"))
                         logger.info(f"[Key Creation] Пользователь создан в Remnawave: {result}")
+                else:
+                    logger.warning("Нет inbound_id у серверов Remnawave")
 
-        public_link = f"{PUBLIC_LINK}{email}/{tg_id}" if xui_servers else None
         final_client_id = remnawave_client_id or client_id
+
         logger.info(f"[Debug] 3x-ui servers для кластера {cluster_id}: {[s['server_name'] for s in xui_servers]}")
 
         if xui_servers:
@@ -160,6 +167,24 @@ async def create_key_on_cluster(
                     return_exceptions=True,
                 )
 
+        cluster_all = enabled_servers
+        subgroup_code = subgroup_title if subgroup_title else None
+
+        public_link = await make_aggregated_link(
+            session=session,
+            cluster_all=cluster_all,
+            cluster_id=server_id_to_store,
+            email=email,
+            client_id=final_client_id,
+            tg_id=tg_id,
+            subgroup_code=subgroup_code,
+            remna_link_override=remnawave_key,
+            plan=plan,
+        )
+
+        if not public_link:
+            public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
         if (remnawave_created and remnawave_client_id) or xui_servers:
             await store_key(
                 session=session,
@@ -172,7 +197,6 @@ async def create_key_on_cluster(
                 remnawave_link=remnawave_key,
                 tariff_id=plan,
             )
-
             await session.execute(update(User).where(User.tg_id == tg_id, User.trial.in_([0, -1])).values(trial=1))
             await session.commit()
 
@@ -192,9 +216,6 @@ async def create_client_on_server(
     session=None,
     is_trial: bool = False,
 ):
-    """
-    Создает клиента на указанном 3x-ui сервере с лимитом по тарифу или триалу.
-    """
     logger.info(
         f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
     )

@@ -426,25 +426,27 @@ async def complete_key_renewal(
     try:
         logger.info(f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)")
 
+        waiting_message = None
+        wait_text = "⏳ Подождите. Идет продление подписки…"
+
+        try:
+            if callback_query:
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=wait_text,
+                    reply_markup=None,
+                )
+            else:
+                waiting_message = await bot.send_message(tg_id, wait_text)
+        except Exception as e:
+            logger.warning(f"[Renew] Не удалось показать экран ожидания: {e}")
+
         tariff = await get_tariff_by_id(session, tariff_id)
         if not tariff:
             logger.error(f"[Error] Тариф с id={tariff_id} не найден.")
             return
 
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
-
-        try:
-            hook_commands = await run_hooks(
-                "renewal_complete", chat_id=tg_id, admin=False, session=session, email=email, client_id=client_id
-            )
-            if hook_commands:
-                builder = insert_hook_buttons(builder, hook_commands)
-        except Exception as e:
-            logger.warning(f"[RENEWAL_COMPLETE] Ошибка при применении хуков: {e}")
-
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
-
         formatted_expiry_date = formatted_expiry_date.replace(
             datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
             get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
@@ -458,48 +460,79 @@ async def complete_key_renewal(
             subgroup_title=tariff.get("subgroup_title", ""),
         )
 
-        if callback_query:
-            try:
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=response_message,
-                    reply_markup=builder.as_markup(),
-                )
-            except Exception as e:
-                logger.error(f"[Error] Ошибка при редактировании сообщения: {e}")
-                await callback_query.message.answer(response_message, reply_markup=builder.as_markup())
-        else:
-            await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
-
         key_info = await get_key_details(session, email)
         if not key_info:
             logger.error(f"[Error] Ключ с client_id={client_id} не найден в БД.")
             return
 
+        current_subgroup = None
+        try:
+            current_tariff_id = key_info.get("tariff_id")
+            if current_tariff_id:
+                current_tariff = await get_tariff_by_id(session, int(current_tariff_id))
+                if current_tariff:
+                    current_subgroup = current_tariff.get("subgroup_title")
+        except Exception as e:
+            logger.warning(f"[Renew] Не удалось определить текущую подгруппу: {e}")
+
+        target_subgroup = tariff.get("subgroup_title")
+        old_subgroup = current_subgroup if target_subgroup != current_subgroup else None
+
         server_or_cluster = key_info["server_id"]
         cluster_id = await resolve_cluster_name(session, server_or_cluster)
-
         if not cluster_id:
             logger.error(f"[Error] Кластер для {server_or_cluster} не найден.")
             return
 
         await renew_key_in_cluster(
-            cluster_id,
-            email,
-            client_id,
-            new_expiry_time,
-            total_gb,
-            session,
+            cluster_id=cluster_id,
+            email=email,
+            client_id=client_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=total_gb,
+            session=session,
             hwid_device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
+            reset_traffic=True,
+            target_subgroup=target_subgroup,
+            old_subgroup=old_subgroup,
+            plan=tariff_id
         )
 
         await update_key_expiry(session, client_id, new_expiry_time)
         await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
         await update_balance(session, tg_id, -cost)
 
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
+        try:
+            hook_commands = await run_hooks(
+                "renewal_complete", chat_id=tg_id, admin=False, session=session, email=email, client_id=client_id
+            )
+            if hook_commands:
+                builder = insert_hook_buttons(builder, hook_commands)
+        except Exception as e:
+            logger.warning(f"[RENEWAL_COMPLETE] Ошибка при применении хуков: {e}")
+
+        try:
+            if callback_query:
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=response_message,
+                    reply_markup=builder.as_markup(),
+                )
+            elif waiting_message:
+                await edit_or_send_message(
+                    target_message=waiting_message,
+                    text=response_message,
+                    reply_markup=builder.as_markup(),
+                )
+            else:
+                await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
+        except Exception as e:
+            logger.error(f"[Error] Ошибка при выводе финального сообщения: {e}")
+            await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())
+
         logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")
 
     except Exception as e:
-        logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")
-
         logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")

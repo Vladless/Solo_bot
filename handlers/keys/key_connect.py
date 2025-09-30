@@ -17,7 +17,7 @@ from config import (
     DOWNLOAD_IOS,
     INSTRUCTIONS_BUTTON,
 )
-from database.models import Key
+from database import Key, get_subscription_link
 from handlers.buttons import (
     ANDROID,
     BACK,
@@ -90,17 +90,12 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        row = result.scalar_one_or_none()
-
-        if not row:
+        key_link = await get_subscription_link(session, email)
+        if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
-        key_link = row
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email}: {e}")
+        logger.error(f"Ошибка при получении ссылки для {email}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 
@@ -132,15 +127,12 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        key_link = result.scalar_one_or_none()
-
+        key_link = await get_subscription_link(session, email)
         if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email} (iOS): {e}")
+        logger.error(f"Ошибка при получении ссылки для {email} (iOS): {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 
@@ -167,15 +159,12 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        key_link = result.scalar_one_or_none()
-
+        key_link = await get_subscription_link(session, email)
         if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email} (Android): {e}")
+        logger.error(f"Ошибка при получении ссылки для {email} (Android): {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 

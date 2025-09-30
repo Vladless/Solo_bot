@@ -27,6 +27,7 @@ from config import (
     RENEW_BUTTON_BEFORE_DAYS,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
+    REMNAWAVE_WEBAPP
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
@@ -46,6 +47,7 @@ from handlers.buttons import (
     RENEW_SUB,
     TV_BUTTON,
     UNFREEZE,
+    ROUTER_BUTTON
 )
 from handlers.texts import (
     DAYS_LEFT_MESSAGE,
@@ -267,6 +269,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     tariff = await tariff_task if tariff_task else None
 
     hwid_count = 0
+    remna_used_gb = None
     if is_full_remnawave and client_id:
         try:
             servers = await get_servers(session)
@@ -278,18 +281,24 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
                 if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                     devices = await api.get_user_hwid_devices(client_id)
                     hwid_count = len(devices or [])
+                    user_data = await api.get_user_by_uuid(client_id)
+                    if user_data:
+                        used_bytes = user_data.get("usedTrafficBytes", 0)
+                        remna_used_gb = round(used_bytes / 1073741824, 1)
         except Exception as e:
-            logger.error(f"Ошибка при получении HWID для {client_id}: {e}")
+            logger.error(f"Ошибка при получении данных Remnawave для {client_id}: {e}")
 
     tariff_name = ""
     traffic_limit = 0
     device_limit = 0
     subgroup_title = ""
+    vless_enabled = False
     if tariff:
         tariff_name = tariff["name"]
         traffic_limit = tariff.get("traffic_limit", 0)
         device_limit = tariff.get("device_limit", 0)
         subgroup_title = tariff.get("subgroup_title", "")
+        vless_enabled = bool(tariff.get("vless"))
 
     tariff_duration = tariff_name
 
@@ -304,13 +313,18 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         traffic_limit=traffic_limit,
         device_limit=device_limit,
         subgroup_title=subgroup_title,
+        is_remnawave=is_full_remnawave,
+        remna_used_gb=remna_used_gb,
     )
 
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
         builder.row(InlineKeyboardButton(text=RENEW_SUB, callback_data=f"update_subscription|{key_name}"))
 
-    if is_full_remnawave and final_link:
-        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+    if is_full_remnawave and final_link and REMNAWAVE_WEBAPP:
+        if vless_enabled:
+            builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+        else:
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
         builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
     else:
         if CONNECT_PHONE_BUTTON:
@@ -319,8 +333,13 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
                 InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
                 InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
             )
+            if vless_enabled:
+                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
-            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+            if vless_enabled:
+                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+            else:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
     if show_renew_btn:
         builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data=f"renew_key|{key_name}"))

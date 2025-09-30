@@ -262,6 +262,12 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"edit_field|{tariff_id}|device_limit",
                 )
             ],
+            [
+                InlineKeyboardButton(
+                    text="🔗 VLESS",
+                    callback_data=f"edit_field|{tariff_id}|vless",
+                )
+            ],
             [InlineKeyboardButton(text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}")],
             [
                 InlineKeyboardButton(

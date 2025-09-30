@@ -15,7 +15,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL
+from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL, REMNAWAVE_WEBAPP
 from database import (
     get_key_details,
     get_tariff_by_id,
@@ -68,7 +68,7 @@ async def key_cluster_mode(
         safe_to_edit = True
 
     while True:
-        key_name = generate_random_email()
+        key_name = await generate_random_email(session=session)
         existing_key = await get_key_details(session, key_name)
         if not existing_key:
             break
@@ -163,8 +163,11 @@ async def key_cluster_mode(
 
     builder = InlineKeyboardBuilder()
     if await is_full_remnawave_cluster(least_loaded_cluster, session):
-        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
-        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+        if REMNAWAVE_WEBAPP and final_link:
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+        else:
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
     elif CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(

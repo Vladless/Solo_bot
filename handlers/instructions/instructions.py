@@ -13,7 +13,7 @@ from config import (
     DOWNLOAD_PC,
     SUPPORT_CHAT_URL,
 )
-from database import get_key_details
+from database import get_key_details, get_subscription_link
 from handlers.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,
@@ -34,6 +34,7 @@ from handlers.texts import (
     INSTRUCTION_PC,
     KEY_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
+    ROUTER_MESSAGE
 )
 from handlers.utils import edit_or_send_message
 
@@ -95,14 +96,17 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("windows_menu|"))
 async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
-    key = record["key"]
-    key_message_text = KEY_MESSAGE.format(key)
+    key_link = await get_subscription_link(session, key_name)
+    if not key_link:
+        await callback_query.message.answer("❌ Ошибка: ключ не найден.")
+        return
+
+    key_message_text = KEY_MESSAGE.format(key_link)
     instruction_message = f"{key_message_text}{INSTRUCTION_PC}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
-    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key}"))
+    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{key_link}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -117,14 +121,17 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("macos_menu|"))
 async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
-    key = record["key"]
-    key_message_text = KEY_MESSAGE.format(key)
+    key_link = await get_subscription_link(session, key_name)
+    if not key_link:
+        await callback_query.message.answer("❌ Ошибка: ключ не найден.")
+        return
+
+    key_message_text = KEY_MESSAGE.format(key_link)
     instruction_message = f"{key_message_text}{INSTRUCTION_MACOS}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
-    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key}"))
+    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{key_link}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -164,6 +171,35 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=message_text,
+        reply_markup=builder.as_markup(),
+        media_path=None,
+    )
+
+
+@router.callback_query(F.data.startswith("connect_router|"))
+async def process_connect_router(callback_query: CallbackQuery, session: Any):
+    key_name = callback_query.data.split("|")[1]
+    record = await get_key_details(session, key_name)
+    if not record:
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Ключ не найден.",
+            reply_markup=builder.as_markup(),
+            media_path=None,
+        )
+        return
+
+    subscription_link = record.get("key") or record.get("remnawave_link")
+    message_text = ROUTER_MESSAGE.format(subscription_link=subscription_link)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
     await edit_or_send_message(
         target_message=callback_query.message,

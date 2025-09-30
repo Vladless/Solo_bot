@@ -1501,7 +1501,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         duration_days = tariff["duration_days"]
         client_id = str(uuid.uuid4())
-        email = generate_random_email()
+        email = await generate_random_email(session=session)
         expiry = datetime.now(tz=timezone.utc) + timedelta(days=duration_days)
         expiry_ms = int(expiry.timestamp() * 1000)
 

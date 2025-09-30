@@ -19,7 +19,7 @@ from config import (
     USE_COUNTRY_SELECTION,
 )
 from database import check_unique_server_name, get_servers, update_key_expiry
-from database.models import Key, Server, Tariff
+from database.models import Key, Server, Tariff, ServerSubgroup
 from filters.admin import IsAdminFilter
 from handlers.keys.operations import (
     create_client_on_server,
@@ -41,6 +41,8 @@ from .keyboard import (
     build_panel_type_kb,
     build_sync_cluster_kb,
     build_tariff_group_selection_kb,
+    build_tariff_subgroup_selection_kb,
+    build_select_subgroup_servers_kb
 )
 
 
@@ -320,8 +322,19 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
 
+    lines = []
+    for s in cluster_servers:
+        subs = s.get("tariff_subgroups") or []
+        subs_str = ", ".join(sorted(subs)) if subs else "—"
+        lines.append(f"• {s.get('server_name','?')} — {subs_str}")
+
+    details = "\n".join(lines) if lines else "нет серверов"
+
     await callback.message.edit_text(
-        text=f"<b>📡 Серверы в кластере {cluster_name}</b>",
+        text=(
+            f"<b>📡 Серверы в кластере {cluster_name}</b>\n"
+            f"<i>подгруппы:</i>\n<blockquote>{details}</blockquote>"
+        ),
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
 
@@ -1107,3 +1120,196 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
     except Exception as e:
         logger.error(f"Ошибка при применении тарифной группы: {e}")
         await callback.message.edit_text("❌ Произошла ошибка при установке тарифной группы.")
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "set_subgroup"))
+async def show_servers_for_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+    cluster_name = callback_data.data
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    data = await state.get_data()
+    selected = set(data.get(f"subgrp_sel:{cluster_name}", []))
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, selected),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_subgroup"))
+async def toggle_server_for_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+    cluster_name, idx_str = callback_data.data.split("|", 1)
+    i = int(idx_str)
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    names = []
+    for s in cluster_servers:
+        if isinstance(s, str):
+            names.append(s)
+        elif isinstance(s, dict):
+            names.append(s.get("server_name") or s.get("name") or str(s))
+        else:
+            names.append(getattr(s, "server_name", None) or getattr(s, "name", None) or str(s))
+    if i < 0 or i >= len(names):
+        await callback.answer("Сервер не найден", show_alert=True)
+        return
+    server_name = names[i]
+    key = f"subgrp_sel:{cluster_name}"
+    data = await state.get_data()
+    selected = set(data.get(key, []))
+    if server_name in selected:
+        selected.remove(server_name)
+    else:
+        selected.add(server_name)
+    await state.update_data({key: list(selected)})
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, selected),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_subgroup_selection"))
+async def reset_subgroup_selection(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+    cluster_name = callback_data.data
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    await state.update_data({f"subgrp_sel:{cluster_name}": []})
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, set()),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "choose_subgroup"))
+async def choose_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+    cluster_name = callback_data.data
+    key = f"subgrp_sel:{cluster_name}"
+    data = await state.get_data()
+    selected = set(data.get(key, []))
+    if not selected:
+        await callback.answer("Сначала выберите хотя бы один сервер", show_alert=True)
+        return
+
+    res = await session.execute(
+        select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct()
+    )
+    group_codes = [r[0] for r in res.fetchall() if r[0]]
+    if not group_codes:
+        await callback.answer("Сначала установите тарифную группу для этого кластера", show_alert=True)
+        return
+
+    group_code = group_codes[0]
+
+    res2 = await session.execute(
+        select(func.distinct(Tariff.subgroup_title))
+        .where(Tariff.group_code == group_code)
+        .where(Tariff.subgroup_title.isnot(None))
+        .order_by(Tariff.subgroup_title.asc())
+    )
+    subgroups = [r[0] for r in res2.fetchall()]
+    if not subgroups:
+        await callback.message.edit_text("❌ Для этой группы нет доступных подгрупп.")
+        return
+
+    await callback.message.edit_text(
+        f"<b>📚 Выберите подгруппу для {len(selected)} сервер(а/ов) кластера <code>{cluster_name}</code>:</b>",
+        reply_markup=build_tariff_subgroup_selection_kb(cluster_name, subgroups),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariff_subgroup"))
+async def apply_tariff_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+    try:
+        cluster_name, idx_str = callback_data.data.split("|", 1)
+        i = int(idx_str)
+
+        res = await session.execute(
+            select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct()
+        )
+        group_codes = [r[0] for r in res.fetchall() if r[0]]
+        if not group_codes:
+            await callback.answer("Не найдена тарифная группа кластера", show_alert=True)
+            return
+        group_code = group_codes[0]
+
+        res2 = await session.execute(
+            select(func.distinct(Tariff.subgroup_title))
+            .where(Tariff.group_code == group_code)
+            .where(Tariff.subgroup_title.isnot(None))
+            .order_by(Tariff.subgroup_title.asc())
+        )
+        subgroups = [r[0] for r in res2.fetchall()]
+        if i < 0 or i >= len(subgroups):
+            await callback.answer("Подгруппа не найдена", show_alert=True)
+            return
+        subgroup_title = subgroups[i]
+
+        key = f"subgrp_sel:{cluster_name}"
+        data = await state.get_data()
+        selected = set(data.get(key, []))
+        if not selected:
+            await callback.message.edit_text("❌ Не выбраны серверы для назначения подгруппы.")
+            return
+
+        servers_q = await session.execute(
+            select(Server.id, Server.server_name).where(Server.server_name.in_(selected))
+        )
+        id_by_name = {name: sid for sid, name in servers_q.fetchall()}
+        missing_ids = [id_by_name[n] for n in selected if n in id_by_name]
+        if not missing_ids:
+            await callback.answer("Серверы не найдены", show_alert=True)
+            return
+
+        existing_q = await session.execute(
+            select(ServerSubgroup.server_id)
+            .where(ServerSubgroup.server_id.in_(missing_ids))
+            .where(ServerSubgroup.subgroup_title == subgroup_title)
+        )
+        already = set(r[0] for r in existing_q.fetchall())
+        to_insert = [sid for sid in missing_ids if sid not in already]
+
+        if to_insert:
+            session.add_all([
+                ServerSubgroup(server_id=sid, group_code=group_code, subgroup_title=subgroup_title)
+                for sid in to_insert
+            ])
+            await session.commit()
+
+        await state.update_data({key: []})
+        applied = ", ".join(sorted(selected))
+        await callback.message.edit_text(
+            f"✅ Подгруппа <b>{subgroup_title}</b> назначена серверам:\n<blockquote>{applied}</blockquote>",
+            reply_markup=build_cluster_management_kb(cluster_name),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при применении подгруппы тарифов: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка при назначении подгруппы.")
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_subgroups"))
+async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession):
+    try:
+        cluster_name = callback_data.data
+
+        res = await session.execute(
+            select(Server.id).where(Server.cluster_name == cluster_name)
+        )
+        server_ids = [row[0] for row in res.fetchall()]
+        if not server_ids:
+            await callback.answer("В кластере нет серверов", show_alert=True)
+            return
+
+        await session.execute(
+            delete(ServerSubgroup).where(ServerSubgroup.server_id.in_(server_ids))
+        )
+        await session.commit()
+
+        servers = await get_servers(session=session, include_enabled=True)
+        cluster_servers = servers.get(cluster_name, [])
+
+        await callback.message.edit_text(
+            f"✅ Все подгруппы тарифов сброшены для кластера <b>{cluster_name}</b>.",
+            reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при сбросе подгрупп для кластера {cluster_name}: {e}")
+        await callback.message.edit_text("❌ Не удалось сбросить подгруппы.")

@@ -1,16 +1,160 @@
 import asyncio
-
 from datetime import datetime
 
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import delete_notification, get_servers
-from database.models import Key, Server, Tariff
+from database import (
+    get_key_details,
+    update_key_expiry,
+    resolve_device_limit_from_group,
+    delete_notification,
+    get_servers,
+    update_key_link,
+)
 from logger import logger
-from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
+from panels._3xui import extend_client_key, get_xui_instance
+from .subgroup_migration import migrate_between_subgroups
+from .aggregated_links import make_aggregated_link
 from panels.remnawave import RemnawaveAPI
+
+
+async def resolve_cluster(session: AsyncSession, cluster_id: str):
+    servers = await get_servers(session)
+    cluster = servers.get(cluster_id)
+    if cluster:
+        return cluster
+    found = []
+    for _key, server_list in servers.items():
+        for s in server_list:
+            if s.get("server_name", "").lower() == cluster_id.lower():
+                found.append(s)
+    if found:
+        return found
+    raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
+
+
+async def renew_on_remnawave(
+    cluster: list,
+    client_id: str,
+    email: str,
+    tg_id: int,
+    new_expiry_time: int,
+    total_gb: int,
+    hwid_device_limit: int,
+    session: AsyncSession,
+    reset_traffic: bool,
+    target_server_name: str | None = None,
+) -> bool:
+    remnawave_nodes = [
+        s for s in cluster
+        if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
+    ]
+    if not remnawave_nodes:
+        return False
+    if target_server_name:
+        remnawave_nodes = [s for s in remnawave_nodes if s.get("server_name") == target_server_name] or remnawave_nodes[:1]
+    remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
+    if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+        logger.error("Не удалось войти в Remnawave API")
+        return False
+    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
+    traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
+    active_inbounds = [s["inbound_id"] for s in remnawave_nodes]
+    updated = await remna.update_user(
+        uuid=client_id,
+        expire_at=expire_iso,
+        active_user_inbounds=active_inbounds,
+        traffic_limit_bytes=traffic_limit_bytes,
+        hwid_device_limit=hwid_device_limit,
+    )
+    if updated:
+        if reset_traffic:
+            try:
+                await remna.reset_user_traffic(client_id)
+            except Exception as e:
+                logger.warning(f"Remnawave reset_user_traffic: {e}")
+        logger.info(f"Подписка Remnawave {client_id} успешно продлена")
+        return True
+    logger.warning(f"Не удалось продлить подписку Remnawave {client_id}. Автосоздание отключено.")
+    return False
+
+
+async def renew_on_3xui(
+    cluster: list,
+    email: str,
+    client_id: str,
+    new_expiry_time: int,
+    total_gb: int,
+    hwid_device_limit: int,
+    tg_id: int,
+    update_links: bool = False,
+    target_server_name: str | None = None,
+):
+    tasks = []
+    for server_info in cluster:
+        if target_server_name and server_info.get("server_name") != target_server_name:
+            continue
+        if str(server_info.get("panel_type", "3x-ui")).lower() != "3x-ui":
+            continue
+        inbound_id = server_info.get("inbound_id")
+        server_name = server_info.get("server_name", "unknown")
+        if not inbound_id:
+            logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+            continue
+        if SUPERNODE:
+            unique_email = f"{email}_{server_name.lower()}"
+            sub_id_val = email if update_links else None
+        else:
+            unique_email = email
+            sub_id_val = unique_email if update_links else None
+        traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
+
+        async def process_server(si, inbound, uniq, sub, name):
+            try:
+                xui = await get_xui_instance(si["api_url"])
+            except Exception as e:
+                logger.warning(f"[{name}] недоступна панель 3x-ui: {e}")
+                return name, False, f"api_unavailable: {e}"
+            try:
+                updated = await extend_client_key(
+                    xui=xui,
+                    inbound_id=int(inbound),
+                    email=uniq,
+                    new_expiry_time=new_expiry_time,
+                    client_id=client_id,
+                    total_gb=traffic_bytes,
+                    sub_id=sub,
+                    tg_id=tg_id,
+                    limit_ip=hwid_device_limit,
+                )
+            except Exception as e:
+                logger.warning(f"[{name}] ошибка при продлении: {e}")
+                updated = False
+            if updated:
+                return name, True, None
+            logger.warning(f"[{name}] не удалось обновить {uniq}. Автосоздание отключено.")
+            return name, False, "no_autocreate"
+
+        tasks.append(process_server(server_info, inbound_id, unique_email, sub_id_val, server_name))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    failed = []
+    succeeded = []
+    for r in results:
+        if isinstance(r, Exception):
+            failed.append(("unknown", f"task_exception: {r}"))
+            continue
+        name, ok, err = r
+        if ok:
+            succeeded.append(name)
+        else:
+            failed.append((name, err or "unknown_error"))
+    if succeeded:
+        logger.info(f"3x-ui продлено на: {', '.join(succeeded)}")
+    if failed:
+        logger.warning("3x-ui не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
+    return succeeded, failed
 
 
 async def renew_key_in_cluster(
@@ -22,213 +166,109 @@ async def renew_key_in_cluster(
     session: AsyncSession,
     hwid_device_limit: int = 0,
     reset_traffic: bool = True,
+    target_subgroup: str | None = None,
+    old_subgroup: str | None = None,
+    plan=None,
 ):
     try:
-        servers = await get_servers(session)
-        cluster = servers.get(cluster_id)
+        servers_map = await get_servers(session)
 
-        if not cluster:
-            found_servers = []
-            for _key, server_list in servers.items():
-                for server_info in server_list:
-                    if server_info.get("server_name", "").lower() == cluster_id.lower():
-                        found_servers.append(server_info)
-            if found_servers:
-                cluster = found_servers
-            else:
-                raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
-
-        result = await session.execute(select(Key.tg_id, Key.server_id).where(Key.client_id == client_id).limit(1))
-        row = result.first()
-        if not row:
-            logger.error(f"Не найден пользователь с client_id={client_id} в таблице keys.")
+        kd = await get_key_details(session, email)
+        if not kd or kd.get("client_id") != client_id:
+            logger.error(f"Не найден ключ по email={email} и client_id={client_id}")
             return False
 
-        tg_id, server_id = row
+        tg_id = int(kd["tg_id"])
+        server_id = kd["server_id"]
 
-        result = await session.execute(select(Server.tariff_group).where(Server.server_name == server_id))
-        tariff_group_row = result.scalar_one_or_none()
+        single_server = None
+        if servers_map.get(server_id):
+            cluster = servers_map[server_id]
+        else:
+            for _k, sl in servers_map.items():
+                for s in sl:
+                    if s.get("server_name") == server_id:
+                        single_server = s
+                        break
+                if single_server:
+                    break
+            cluster = [single_server] if single_server else servers_map.get(cluster_id) or await resolve_cluster(session, cluster_id)
 
-        if tariff_group_row:
-            result = await session.execute(
-                select(Tariff)
-                .where(Tariff.group_code == tariff_group_row, Tariff.is_active.is_(True))
-                .order_by(Tariff.duration_days.desc())
-                .limit(1)
+        dl = await resolve_device_limit_from_group(session, server_id)
+        if dl is not None:
+            hwid_device_limit = dl
+
+        if target_subgroup and old_subgroup and target_subgroup != old_subgroup and not single_server:
+            new_client_id, remna_link = await migrate_between_subgroups(
+                session=session,
+                cluster_all=cluster,
+                cluster_id=cluster_id,
+                email=email,
+                client_id=client_id,
+                tg_id=tg_id,
+                new_expiry_time=new_expiry_time,
+                total_gb=total_gb,
+                hwid_device_limit=hwid_device_limit,
+                reset_traffic=reset_traffic,
+                old_subgroup=old_subgroup,
+                target_subgroup=target_subgroup,
             )
-            tariff = result.scalar_one_or_none()
-            if tariff and tariff.device_limit is not None:
-                hwid_device_limit = int(tariff.device_limit)
 
-        remnawave_inbound_ids = []
-        tasks = []
-        for server_info in cluster:
-            if server_info.get("panel_type", "3x-ui").lower() == "remnawave":
-                inbound_id = server_info.get("inbound_id")
-                if inbound_id:
-                    remnawave_inbound_ids.append(inbound_id)
+            await update_key_expiry(session, new_client_id or client_id, new_expiry_time)
+            for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
+                await delete_notification(session, tg_id, f"{email}_{prefix}")
 
-        if remnawave_inbound_ids:
-            remnawave_server = next(
-                (
-                    s
-                    for s in cluster
-                    if s.get("panel_type", "").lower() == "remnawave" and s.get("inbound_id") in remnawave_inbound_ids
-                ),
-                None,
-            )
-            if remnawave_server:
-                remna = RemnawaveAPI(remnawave_server["api_url"])
-                if await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
-                    traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
-                    updated = await remna.update_user(
-                        uuid=client_id,
-                        expire_at=expire_iso,
-                        active_user_inbounds=remnawave_inbound_ids,
-                        traffic_limit_bytes=traffic_limit_bytes,
-                        hwid_device_limit=hwid_device_limit,
-                    )
-                    if updated:
-                        logger.info(f"Подписка Remnawave {client_id} успешно продлена")
-                        if reset_traffic:
-                            await remna.reset_user_traffic(client_id)
-                    else:
-                        logger.warning(f"Не удалось продлить подписку Remnawave {client_id}, пробуем создать")
-                        result = await session.execute(
-                            select(Key.remnawave_link, Key.key).where(Key.client_id == client_id)
-                        )
-                        row = result.one_or_none()
-                        remnawave_link = row[0] if row else None
-                        row[1] if row else None
+            try:
+                key_link = await make_aggregated_link(
+                    session=session,
+                    cluster_all=cluster,
+                    cluster_id=cluster_id,
+                    email=email,
+                    client_id=new_client_id or client_id,
+                    tg_id=tg_id,
+                    subgroup_code=target_subgroup,
+                    remna_link_override=remna_link,
+                    plan=plan,
+                )
+                if key_link:
+                    await update_key_link(session, email, key_link)
+            except Exception as le:
+                logger.warning(f"[Link] ошибка генерации/сохранения после миграции: {le}")
 
-                        user_data = {
-                            "username": email,
-                            "trafficLimitStrategy": "NO_RESET",
-                            "expireAt": expire_iso,
-                            "telegramId": tg_id,
-                            "activeInternalSquads": remnawave_inbound_ids,
-                        }
-                        if remnawave_link and "/" in remnawave_link:
-                            user_data["shortUuid"] = remnawave_link.rstrip("/").split("/")[-1]
-                        if traffic_limit_bytes and traffic_limit_bytes > 0:
-                            user_data["trafficLimitBytes"] = traffic_limit_bytes
-                        if hwid_device_limit is not None:
-                            user_data["hwidDeviceLimit"] = hwid_device_limit
+            return True
 
-                        result = await remna.create_user(user_data)
-                        if result:
-                            new_client_id = result.get("uuid")
-                            new_remnawave_link = result.get("subscriptionUrl")
-                            logger.info(f"Пользователь Remnawave {client_id} успешно создан")
+        remna_ok = await renew_on_remnawave(
+            cluster=cluster,
+            client_id=client_id,
+            email=email,
+            tg_id=tg_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=total_gb,
+            hwid_device_limit=hwid_device_limit,
+            session=session,
+            reset_traffic=reset_traffic,
+            target_server_name=server_id if single_server else None,
+        )
 
-                            await session.execute(
-                                update(Key)
-                                .where(Key.client_id == client_id)
-                                .values(client_id=new_client_id, remnawave_link=new_remnawave_link)
-                            )
-                            await session.commit()
-                        else:
-                            logger.error(f"Не удалось создать пользователя Remnawave {client_id}")
-                else:
-                    logger.error("Не удалось войти в Remnawave API")
+        succeeded, _ = await renew_on_3xui(
+            cluster=cluster if not single_server else [single_server],
+            email=email,
+            client_id=client_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=total_gb,
+            hwid_device_limit=hwid_device_limit,
+            tg_id=tg_id,
+            update_links=False,
+            target_server_name=server_id if single_server else None,
+        )
 
-        tasks = []
+        if remna_ok or succeeded:
+            await update_key_expiry(session, client_id, new_expiry_time)
+            for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
+                await delete_notification(session, tg_id, f"{email}_{prefix}")
+            return True
 
-        for server_info in cluster:
-            if server_info.get("panel_type", "3x-ui").lower() != "3x-ui":
-                continue
-
-            inbound_id = server_info.get("inbound_id")
-            server_name = server_info.get("server_name", "unknown")
-
-            if not inbound_id:
-                logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
-                continue
-
-            if SUPERNODE:
-                unique_email = f"{email}_{server_name.lower()}"
-                sub_id = email
-            else:
-                unique_email = email
-                sub_id = unique_email
-
-            traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
-
-            async def process_server(server_info, inbound_id, unique_email, sub_id, server_name):
-                try:
-                    xui = await get_xui_instance(server_info["api_url"])
-                except Exception as e:
-                    logger.warning(f"[{server_name}] недоступна панель 3x-ui: {e}")
-                    return server_name, False, f"api_unavailable: {e}"
-
-                try:
-                    updated = await extend_client_key(
-                        xui=xui,
-                        inbound_id=int(inbound_id),
-                        email=unique_email,
-                        new_expiry_time=new_expiry_time,
-                        client_id=client_id,
-                        total_gb=traffic_bytes,
-                        sub_id=sub_id,
-                        tg_id=tg_id,
-                        limit_ip=hwid_device_limit,
-                    )
-                except Exception as e:
-                    logger.warning(f"[{server_name}] ошибка при продлении: {e}")
-                    updated = False
-
-                if updated:
-                    return server_name, True, None
-
-                logger.warning(f"[{server_name}] не удалось обновить {unique_email}, пробуем создать")
-                try:
-                    config = ClientConfig(
-                        client_id=client_id,
-                        email=unique_email,
-                        tg_id=tg_id,
-                        limit_ip=hwid_device_limit if hwid_device_limit is not None else 0,
-                        total_gb=traffic_bytes,
-                        expiry_time=new_expiry_time,
-                        enable=True,
-                        flow="xtls-rprx-vision",
-                        inbound_id=int(inbound_id),
-                        sub_id=sub_id,
-                    )
-                    await add_client(xui, config)
-                    return server_name, True, None
-                except Exception as e:
-                    logger.warning(f"[{server_name}] не удалось создать клиента: {e}")
-                    return server_name, False, f"create_failed: {e}"
-
-            tasks.append(process_server(server_info, inbound_id, unique_email, sub_id, server_name))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        failed = []
-        succeeded = []
-        for r in results:
-            if isinstance(r, Exception):
-                failed.append(("unknown", f"task_exception: {r}"))
-                continue
-            name, ok, err = r
-            if ok:
-                succeeded.append(name)
-            else:
-                failed.append((name, err or "unknown_error"))
-        if succeeded:
-            logger.info(f"3x-ui продлено на: {', '.join(succeeded)}")
-        if failed:
-            logger.warning("3x-ui не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
-
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        notification_prefixes = ["key_24h", "key_10h", "key_expired", "renew"]
-        for notif in notification_prefixes:
-            notification_id = f"{email}_{notif}"
-            await delete_notification(session, tg_id, notification_id)
-        logger.info(f"🧹 Уведомления для ключа {email} очищены при продлении.")
-
-
+        return False
     except Exception as e:
         logger.error(f"Не удалось продлить ключ {client_id} в кластере/на сервере {cluster_id}: {e}")
         raise

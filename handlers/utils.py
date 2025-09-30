@@ -25,11 +25,23 @@ from hooks.hooks import run_hooks
 from logger import logger
 
 
-def generate_random_email(length: int = 8) -> str:
-    """
-    Генерирует случайный email с заданной длиной.
-    """
-    return "".join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(length)) if length > 0 else ""
+async def generate_random_email(
+    length: int = 8,
+    session: AsyncSession | None = None,
+    max_attempts: int = 20,
+) -> str:
+    alphabet = string.ascii_lowercase + string.digits
+    for _ in range(max_attempts):
+        candidate = "".join(secrets.choice(alphabet) for _ in range(length)) if length > 0 else ""
+        if not session:
+            return candidate
+        exists = await session.execute(
+            select(Key.email).where(Key.email == candidate).limit(1)
+        )
+        if not exists.scalar_one_or_none():
+            return candidate
+    raise RuntimeError("Не удалось сгенерировать уникальный email после нескольких попыток")
+
 
 
 async def get_least_loaded_cluster(session: AsyncSession) -> str:

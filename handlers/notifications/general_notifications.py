@@ -42,8 +42,7 @@ from handlers.texts import (
     KEY_DELETED_MSG,
     KEY_EXPIRED_DELAY_MSG,
     KEY_EXPIRED_NO_DELAY_MSG,
-    KEY_EXPIRY_10H,
-    KEY_EXPIRY_24H,
+    KEY_EXPIRY,
     get_renewal_message,
 )
 from handlers.utils import format_hours, format_minutes, get_russian_month
@@ -164,10 +163,30 @@ async def notify_24h_keys(
         if not can_notify:
             continue
 
-        notification_text = KEY_EXPIRY_24H.format(
+        tariff_name = "—"
+        tariff_details = ""
+        if getattr(key, "tariff_id", None):
+            tariff = await get_tariff_by_id(session, key.tariff_id)
+            if tariff:
+                tariff_name = tariff.get("name") or "—"
+                traffic_limit = tariff.get("traffic_limit") or 0
+                device_limit = tariff.get("device_limit") or 0
+                subgroup_title = tariff.get("subgroup_title", "")
+                traffic_text = "безлимит" if traffic_limit <= 0 else f"{traffic_limit} ГБ"
+                devices_text = "безлимит" if device_limit <= 0 else str(device_limit)
+                lines = []
+                if subgroup_title:
+                    lines.append(subgroup_title)
+                lines.append(f"Трафик: {traffic_text}")
+                lines.append(f"Устройств: {devices_text}")
+                tariff_details = "\n" + "\n".join(lines)
+
+        notification_text = KEY_EXPIRY.format(
             email=email,
             hours_left_formatted=hours_left_formatted,
             formatted_expiry_date=formatted_expiry_date,
+            tariff_name=tariff_name,
+            tariff_details=tariff_details,
         )
 
         if NOTIFY_RENEW:
@@ -205,9 +224,7 @@ async def notify_24h_keys(
                 sent_count += 1
                 logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
-                logger.warning(
-                    f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
-                )
+                logger.warning(f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 24 часа.")
 
     logger.info("Обработка всех уведомлений за 24 часа завершена.")
@@ -247,15 +264,35 @@ async def notify_10h_keys(
         expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
         formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
-        notification_text = KEY_EXPIRY_10H.format(
-            email=email,
-            hours_left_formatted=hours_left_formatted,
-            formatted_expiry_date=formatted_expiry_date,
-        )
-
         can_notify = await check_notification_time(session, tg_id, notification_id, hours=10)
         if not can_notify:
             continue
+
+        tariff_name = "—"
+        tariff_details = ""
+        if key.tariff_id:
+            tariff = await get_tariff_by_id(session, key.tariff_id)
+            if tariff:
+                tariff_name = tariff.get("name") or "—"
+                traffic_limit = tariff.get("traffic_limit") or 0
+                device_limit = tariff.get("device_limit") or 0
+                subgroup_title = tariff.get("subgroup_title", "")
+                traffic_text = "безлимит" if traffic_limit <= 0 else f"{traffic_limit} ГБ"
+                devices_text = "безлимит" if device_limit <= 0 else str(device_limit)
+                lines = []
+                if subgroup_title:
+                    lines.append(subgroup_title)
+                lines.append(f"Трафик: {traffic_text}")
+                lines.append(f"Устройств: {devices_text}")
+                tariff_details = "\n" + "\n".join(lines)
+
+        notification_text = KEY_EXPIRY.format(
+            email=email,
+            hours_left_formatted=hours_left_formatted,
+            formatted_expiry_date=formatted_expiry_date,
+            tariff_name=tariff_name,
+            tariff_details=tariff_details,
+        )
 
         if NOTIFY_RENEW:
             try:
@@ -292,9 +329,7 @@ async def notify_10h_keys(
                 sent_count += 1
                 logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
-                logger.warning(
-                    f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
-                )
+                logger.warning(f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
         logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 10 часов.")
 
     logger.info("Обработка всех уведомлений за 10 часов завершена.")

@@ -121,7 +121,7 @@ async def update_key_expiry(session: AsyncSession, client_id: str, new_expiry_ti
     await session.execute(
         update(Key)
         .where(Key.client_id == client_id)
-        .values(expiry_time=new_expiry_time, notified=False, notified_24h=False)
+        .values(expiry_time=new_expiry_time)
     )
     await session.commit()
     logger.info(f"Срок действия ключа {client_id} обновлён до {new_expiry_time}")
@@ -171,3 +171,32 @@ async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: in
     await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
     await session.commit()
     logger.info(f"Тариф ключа {client_id} обновлён на {tariff_id}")
+
+
+async def get_subscription_link(session: AsyncSession, email: str) -> str | None:
+    result = await session.execute(
+        select(func.coalesce(Key.key, Key.remnawave_link)).where(Key.email == email)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_key_client_id(session: AsyncSession, email: str, new_client_id: str):
+    await session.execute(
+        update(Key)
+        .where(Key.email == email)
+        .values(client_id=new_client_id)
+    )
+    await session.commit()
+    logger.info(f"client_id обновлён для {email} -> {new_client_id}")
+
+
+async def update_key_link(session: AsyncSession, email: str, link: str) -> bool:
+    q = (
+        update(Key)
+        .where(Key.email == email)
+        .values(key=link)
+        .returning(Key.client_id)
+    )
+    res = await session.execute(q)
+    await session.commit()
+    return res.scalar_one_or_none() is not None

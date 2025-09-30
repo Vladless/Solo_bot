@@ -13,6 +13,7 @@ from config import (
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     SUPPORT_CHAT_URL,
+    REMNAWAVE_WEBAPP
 )
 from database import (
     add_notification,
@@ -152,7 +153,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 is_full_remnawave = await is_full_remnawave_cluster(server_id, session)
                 final_link = key.key or key.remnawave_link
 
-                if is_full_remnawave and final_link:
+                if is_full_remnawave and final_link and REMNAWAVE_WEBAPP:
                     builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 else:
                     if CONNECT_PHONE_BUTTON:

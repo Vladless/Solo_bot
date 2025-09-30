@@ -54,6 +54,7 @@ class TariffCreateState(StatesGroup):
     traffic = State()
     confirm_more = State()
     device_limit = State()
+    vless = State()
 
 
 class TariffEditState(StatesGroup):
@@ -217,7 +218,7 @@ async def process_tariff_traffic(message: Message, state: FSMContext):
 
 
 @router.message(TariffCreateState.device_limit, IsAdminFilter())
-async def process_tariff_device_limit(message: Message, state: FSMContext, session: AsyncSession):
+async def process_tariff_device_limit(message: Message, state: FSMContext):
     try:
         device_limit = int(message.text.strip())
         if device_limit < 0:
@@ -225,6 +226,28 @@ async def process_tariff_device_limit(message: Message, state: FSMContext, sessi
     except ValueError:
         await message.answer("❌ Введите корректный лимит устройств (целое число 0 или больше):")
         return
+
+    await state.update_data(device_limit=device_limit if device_limit > 0 else None)
+    await state.set_state(TariffCreateState.vless)
+
+    await message.answer(
+        "🔗 Этот тариф для VLESS?",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Да (VLESS)", callback_data="create_vless|1"),
+                    InlineKeyboardButton(text="❌ Нет", callback_data="create_vless|0"),
+                ],
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_tariff_creation")],
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith("create_vless|"), TariffCreateState.vless, IsAdminFilter())
+async def select_vless_creation(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, flag = callback.data.split("|", 1)
+    vless_flag = flag == "1"
 
     data = await state.get_data()
 
@@ -236,12 +259,13 @@ async def process_tariff_device_limit(message: Message, state: FSMContext, sessi
             "duration_days": data["duration_days"],
             "price_rub": data["price_rub"],
             "traffic_limit": data["traffic_limit"],
-            "device_limit": device_limit if device_limit > 0 else None,
+            "device_limit": data.get("device_limit"),
+            "vless": vless_flag,
         },
     )
 
     await state.set_state(TariffCreateState.confirm_more)
-    await message.answer(
+    await callback.message.edit_text(
         f"✅ Тариф <b>{new_tariff.name}</b> добавлен в группу <code>{data['group_code']}</code>.\n\n"
         "➕ Хотите добавить ещё один тариф в эту группу?",
         reply_markup=InlineKeyboardMarkup(
@@ -559,18 +583,63 @@ async def ask_new_value(callback: CallbackQuery, state: FSMContext):
     await state.update_data(field=field)
     await state.set_state(TariffEditState.editing_value)
 
+    if field == "vless":
+        data = await state.get_data()
+        tariff_id = int(data["tariff_id"])
+        await callback.message.edit_text(
+            "🔗 Установить флаг VLESS:",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="✅ Да (VLESS)", callback_data=f"set_vless|{tariff_id}|1"),
+                        InlineKeyboardButton(text="❌ Нет", callback_data=f"set_vless|{tariff_id}|0"),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="⬅️ Назад",
+                            callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack(),
+                        )
+                    ],
+                ]
+            ),
+        )
+        return
+
     field_names = {
         "name": "название тарифа",
         "duration_days": "длительность в днях",
         "price_rub": "цену в рублях",
         "traffic_limit": "лимит трафика в ГБ (0 — безлимит)",
         "device_limit": "лимит устройств (0 — безлимит)",
+        "vless": "VLESS (да/нет)",
     }
 
     await callback.message.edit_text(
         f"✏️ Введите новое значение для <b>{field_names.get(field, field)}</b>:",
         reply_markup=build_cancel_kb(),
     )
+
+
+@router.callback_query(F.data.startswith("set_vless|"), TariffEditState.editing_value, IsAdminFilter())
+async def set_vless_flag(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    _, tariff_id_str, flag = callback.data.split("|", 2)
+    tariff_id = int(tariff_id_str)
+    vless_flag = flag == "1"
+
+    result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
+    tariff = result.scalar_one_or_none()
+    if not tariff:
+        await callback.message.edit_text("❌ Тариф не найден.")
+        await state.clear()
+        return
+
+    tariff.vless = vless_flag
+    tariff.updated_at = datetime.utcnow()
+    await session.commit()
+    await state.clear()
+
+    text, markup = render_tariff_card(tariff)
+    await callback.message.edit_text(text=text, reply_markup=markup)
 
 
 @router.message(TariffEditState.editing_value, IsAdminFilter())
@@ -655,6 +724,7 @@ def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
     traffic_text = f"{tariff.traffic_limit} ГБ" if tariff.traffic_limit else "Безлимит"
     device_text = f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
     sort_order = getattr(tariff, "sort_order", 1)
+    vless_text = "Да" if getattr(tariff, "vless", False) else "Нет"
 
     text = (
         f"<b>📄 Тариф: {tariff.name}</b>\n\n"
@@ -663,6 +733,7 @@ def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
         f"💰 Стоимость: <b>{tariff.price_rub}₽</b>\n"
         f"📦 Трафик: <b>{traffic_text}</b>\n"
         f"📱 Устройств: <b>{device_text}</b>\n"
+        f"🔗 VLESS: <b>{vless_text}</b>\n"
         f"🔢 Позиция: <b>{sort_order}</b>\n"
         f"{'✅ Активен' if tariff.is_active else '⛔ Отключен'}"
     )

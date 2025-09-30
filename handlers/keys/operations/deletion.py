@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
@@ -63,3 +65,43 @@ async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, s
     except Exception as e:
         logger.error(f"❌ Ошибка при удалении ключа {client_id} из кластера/сервера {cluster_id}: {e}")
         raise
+
+
+async def delete_on_3xui(servers: list, email: str, client_id: str):
+    tasks = []
+    for s in servers:
+        name = s.get("server_name", "unknown")
+        inbound_id = s.get("inbound_id")
+        if not inbound_id:
+            logger.warning(f"[{name}] INBOUND_ID отсутствует при удалении")
+            continue
+        try:
+            xui = await get_xui_instance(s["api_url"])
+        except Exception as e:
+            logger.warning(f"[{name}] недоступна панель 3x-ui при удалении: {e}")
+            continue
+        tasks.append(
+            delete_client(
+                xui=xui,
+                inbound_id=int(inbound_id),
+                email=email,
+                client_id=client_id,
+            )
+        )
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def delete_on_remnawave(servers: list, client_id: str):
+    if not client_id:
+        return
+    for s in servers:
+        api = RemnawaveAPI(s["api_url"])
+        try:
+            ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+            if not ok:
+                logger.warning(f"[{s.get('server_name','unknown')}] Remnawave API недоступен при удалении")
+                continue
+            await api.delete_user(client_id)
+        except Exception as e:
+            logger.warning(f"[{s.get('server_name','unknown')}] ошибка удаления Remnawave: {e}")
