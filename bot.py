@@ -44,7 +44,9 @@ async def errors_handler(event: ErrorEvent, bot: Bot) -> bool:
             or "message to delete not found" in error_message
         ):
             try:
-                tb = "".join(traceback.format_exception(type(event.exception), event.exception, event.exception.__traceback__))
+                tb = "".join(
+                    traceback.format_exception(type(event.exception), event.exception, event.exception.__traceback__)
+                )
                 logger.warning(f"Показываем стартовое меню из-за TelegramBadRequest: {error_message}")
                 logger.error(f"Traceback:\n{tb}")
 

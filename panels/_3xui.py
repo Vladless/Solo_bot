@@ -242,7 +242,9 @@ def build_vless_link_from_inbound(
     rs_settings = rs.get("settings") or {}
 
     pbk = rs_settings.get("publicKey") or rs.get("publicKey") or ""
-    sni = _first(rs.get("serverNames") or rs_settings.get("serverNames") or rs.get("serverName") or rs_settings.get("serverName"))
+    sni = _first(
+        rs.get("serverNames") or rs_settings.get("serverNames") or rs.get("serverName") or rs_settings.get("serverName")
+    )
     sid = _first(rs.get("shortIds") or rs_settings.get("shortIds") or rs.get("shortId") or rs_settings.get("shortId"))
     fp = rs.get("fingerprint") or rs_settings.get("fingerprint") or ""
 

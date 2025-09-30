@@ -19,7 +19,7 @@ from config import (
     USE_COUNTRY_SELECTION,
 )
 from database import check_unique_server_name, get_servers, update_key_expiry
-from database.models import Key, Server, Tariff, ServerSubgroup
+from database.models import Key, Server, ServerSubgroup, Tariff
 from filters.admin import IsAdminFilter
 from handlers.keys.operations import (
     create_client_on_server,
@@ -39,10 +39,10 @@ from .keyboard import (
     build_clusters_editor_kb,
     build_manage_cluster_kb,
     build_panel_type_kb,
+    build_select_subgroup_servers_kb,
     build_sync_cluster_kb,
     build_tariff_group_selection_kb,
     build_tariff_subgroup_selection_kb,
-    build_select_subgroup_servers_kb
 )
 
 
@@ -326,15 +326,12 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
     for s in cluster_servers:
         subs = s.get("tariff_subgroups") or []
         subs_str = ", ".join(sorted(subs)) if subs else "—"
-        lines.append(f"• {s.get('server_name','?')} — {subs_str}")
+        lines.append(f"• {s.get('server_name', '?')} — {subs_str}")
 
     details = "\n".join(lines) if lines else "нет серверов"
 
     await callback.message.edit_text(
-        text=(
-            f"<b>📡 Серверы в кластере {cluster_name}</b>\n"
-            f"<i>подгруппы:</i>\n<blockquote>{details}</blockquote>"
-        ),
+        text=(f"<b>📡 Серверы в кластере {cluster_name}</b>\n<i>подгруппы:</i>\n<blockquote>{details}</blockquote>"),
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
 
@@ -1123,7 +1120,9 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "set_subgroup"))
-async def show_servers_for_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+async def show_servers_for_subgroup(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
     cluster_name = callback_data.data
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
@@ -1136,7 +1135,9 @@ async def show_servers_for_subgroup(callback: CallbackQuery, callback_data: Admi
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_subgroup"))
-async def toggle_server_for_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+async def toggle_server_for_subgroup(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
     cluster_name, idx_str = callback_data.data.split("|", 1)
     i = int(idx_str)
     servers = await get_servers(session=session, include_enabled=True)
@@ -1168,7 +1169,9 @@ async def toggle_server_for_subgroup(callback: CallbackQuery, callback_data: Adm
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "reset_subgroup_selection"))
-async def reset_subgroup_selection(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+async def reset_subgroup_selection(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
     cluster_name = callback_data.data
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
@@ -1180,7 +1183,9 @@ async def reset_subgroup_selection(callback: CallbackQuery, callback_data: Admin
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "choose_subgroup"))
-async def choose_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+async def choose_subgroup(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
     cluster_name = callback_data.data
     key = f"subgrp_sel:{cluster_name}"
     data = await state.get_data()
@@ -1189,9 +1194,7 @@ async def choose_subgroup(callback: CallbackQuery, callback_data: AdminClusterCa
         await callback.answer("Сначала выберите хотя бы один сервер", show_alert=True)
         return
 
-    res = await session.execute(
-        select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct()
-    )
+    res = await session.execute(select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct())
     group_codes = [r[0] for r in res.fetchall() if r[0]]
     if not group_codes:
         await callback.answer("Сначала установите тарифную группу для этого кластера", show_alert=True)
@@ -1217,14 +1220,14 @@ async def choose_subgroup(callback: CallbackQuery, callback_data: AdminClusterCa
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariff_subgroup"))
-async def apply_tariff_subgroup(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext):
+async def apply_tariff_subgroup(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
     try:
         cluster_name, idx_str = callback_data.data.split("|", 1)
         i = int(idx_str)
 
-        res = await session.execute(
-            select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct()
-        )
+        res = await session.execute(select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct())
         group_codes = [r[0] for r in res.fetchall() if r[0]]
         if not group_codes:
             await callback.answer("Не найдена тарифная группа кластера", show_alert=True)
@@ -1250,9 +1253,7 @@ async def apply_tariff_subgroup(callback: CallbackQuery, callback_data: AdminClu
             await callback.message.edit_text("❌ Не выбраны серверы для назначения подгруппы.")
             return
 
-        servers_q = await session.execute(
-            select(Server.id, Server.server_name).where(Server.server_name.in_(selected))
-        )
+        servers_q = await session.execute(select(Server.id, Server.server_name).where(Server.server_name.in_(selected)))
         id_by_name = {name: sid for sid, name in servers_q.fetchall()}
         missing_ids = [id_by_name[n] for n in selected if n in id_by_name]
         if not missing_ids:
@@ -1264,13 +1265,12 @@ async def apply_tariff_subgroup(callback: CallbackQuery, callback_data: AdminClu
             .where(ServerSubgroup.server_id.in_(missing_ids))
             .where(ServerSubgroup.subgroup_title == subgroup_title)
         )
-        already = set(r[0] for r in existing_q.fetchall())
+        already = {r[0] for r in existing_q.fetchall()}
         to_insert = [sid for sid in missing_ids if sid not in already]
 
         if to_insert:
             session.add_all([
-                ServerSubgroup(server_id=sid, group_code=group_code, subgroup_title=subgroup_title)
-                for sid in to_insert
+                ServerSubgroup(server_id=sid, group_code=group_code, subgroup_title=subgroup_title) for sid in to_insert
             ])
             await session.commit()
 
@@ -1290,17 +1290,13 @@ async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminC
     try:
         cluster_name = callback_data.data
 
-        res = await session.execute(
-            select(Server.id).where(Server.cluster_name == cluster_name)
-        )
+        res = await session.execute(select(Server.id).where(Server.cluster_name == cluster_name))
         server_ids = [row[0] for row in res.fetchall()]
         if not server_ids:
             await callback.answer("В кластере нет серверов", show_alert=True)
             return
 
-        await session.execute(
-            delete(ServerSubgroup).where(ServerSubgroup.server_id.in_(server_ids))
-        )
+        await session.execute(delete(ServerSubgroup).where(ServerSubgroup.server_id.in_(server_ids)))
         await session.commit()
 
         servers = await get_servers(session=session, include_enabled=True)

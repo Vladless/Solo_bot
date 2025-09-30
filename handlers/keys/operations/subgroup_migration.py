@@ -1,16 +1,17 @@
 import asyncio
+
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, HAPP_CRYPTOLINK
+from config import HAPP_CRYPTOLINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, update_key_client_id
 from logger import logger
-from panels._3xui import get_xui_instance, extend_client_key, add_client, ClientConfig
-
-from .utils import bytes_from_gb, split_by_panel
-from .deletion import delete_on_3xui, delete_on_remnawave
+from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
+
+from .deletion import delete_on_3xui, delete_on_remnawave
+from .utils import bytes_from_gb, split_by_panel
 
 
 async def ensure_on_remnawave(
@@ -72,9 +73,7 @@ async def ensure_on_remnawave(
         if isinstance(created, dict):
             if HAPP_CRYPTOLINK:
                 remna_link = (
-                    created.get("happ", {}).get("cryptoLink")
-                    if isinstance(created.get("happ"), dict)
-                    else None
+                    created.get("happ", {}).get("cryptoLink") if isinstance(created.get("happ"), dict) else None
                 )
             if not remna_link:
                 remna_link = created.get("subscriptionUrl")
@@ -84,7 +83,9 @@ async def ensure_on_remnawave(
         return None, None
 
 
-async def ensure_on_3xui(servers: list, email: str, client_id: str, tg_id: int, new_expiry_time: int, total_gb: int, hwid_device_limit: int):
+async def ensure_on_3xui(
+    servers: list, email: str, client_id: str, tg_id: int, new_expiry_time: int, total_gb: int, hwid_device_limit: int
+):
     tasks = []
     traffic = bytes_from_gb(total_gb)
     for s in servers:

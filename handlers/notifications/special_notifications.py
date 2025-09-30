@@ -12,8 +12,8 @@ from config import (
     NOTIFY_EXTRA_DAYS,
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
+    REMNAWAVE_WEBAPP,
     SUPPORT_CHAT_URL,
-    REMNAWAVE_WEBAPP
 )
 from database import (
     add_notification,
@@ -179,7 +179,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                     builder = insert_hook_buttons(builder, hook_commands)
             except Exception as e:
                 logger.warning(f"[ZERO_TRAFFIC_NOTIFICATION] Ошибка при применении хуков: {e}")
-            
+
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)
             messages.append({

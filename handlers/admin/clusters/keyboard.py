@@ -82,7 +82,9 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
     return builder.as_markup()
 
 
-def build_select_subgroup_servers_kb(cluster_name: str, cluster_servers: list, selected: set[str]) -> InlineKeyboardMarkup:
+def build_select_subgroup_servers_kb(
+    cluster_name: str, cluster_servers: list, selected: set[str]
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     names = []
     for s in cluster_servers:

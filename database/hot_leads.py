@@ -7,11 +7,7 @@ from database.models import Key, Payment, User
 async def get_hot_leads(session: AsyncSession):
     now_ms = func.extract("epoch", func.now()) * 1000
 
-    sub_active = (
-        select(Key.tg_id)
-        .where(Key.expiry_time > now_ms)
-        .distinct()
-    )
+    sub_active = select(Key.tg_id).where(Key.expiry_time > now_ms).distinct()
 
     stmt = (
         select(Payment.tg_id)

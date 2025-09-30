@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE, HAPP_CRYPTOLINK
+from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import check_server_key_limit
@@ -16,6 +16,7 @@ from panels._3xui import (
     get_xui_instance,
 )
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
+
 from .aggregated_links import make_aggregated_link
 
 
@@ -74,10 +75,14 @@ async def create_key_on_cluster(
                 enabled_servers = subgroup_servers
 
         remnawave_servers = [
-            s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, session)
+            s
+            for s in enabled_servers
+            if s.get("panel_type", "3x-ui").lower() == "remnawave" and await check_server_key_limit(s, session)
         ]
         xui_servers = [
-            s for s in enabled_servers if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
+            s
+            for s in enabled_servers
+            if s.get("panel_type", "3x-ui").lower() == "3x-ui" and await check_server_key_limit(s, session)
         ]
 
         if not remnawave_servers and not xui_servers:
@@ -125,7 +130,9 @@ async def create_key_on_cluster(
                                 link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
                                 logger.error(f"[Key Creation] Ошибка сборки VLESS Remnawave: {e}")
-                        remnawave_key = link_vless or (result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl"))
+                        remnawave_key = link_vless or (
+                            result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl")
+                        )
                         logger.info(f"[Key Creation] Пользователь создан в Remnawave: {result}")
                 else:
                     logger.warning("Нет inbound_id у серверов Remnawave")

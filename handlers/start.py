@@ -240,7 +240,9 @@ async def show_start_menu(message: Message, admin: bool, session: AsyncSession):
     trial_status = await get_trial(session, message.chat.id) if session else None
 
     show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE)
-    show_profile = ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial)
+    show_profile = ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (
+        not show_trial
+    )
 
     if show_trial:
         kb.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))

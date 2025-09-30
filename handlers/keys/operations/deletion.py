@@ -100,8 +100,8 @@ async def delete_on_remnawave(servers: list, client_id: str):
         try:
             ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
             if not ok:
-                logger.warning(f"[{s.get('server_name','unknown')}] Remnawave API недоступен при удалении")
+                logger.warning(f"[{s.get('server_name', 'unknown')}] Remnawave API недоступен при удалении")
                 continue
             await api.delete_user(client_id)
         except Exception as e:
-            logger.warning(f"[{s.get('server_name','unknown')}] ошибка удаления Remnawave: {e}")
+            logger.warning(f"[{s.get('server_name', 'unknown')}] ошибка удаления Remnawave: {e}")

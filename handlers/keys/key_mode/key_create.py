@@ -35,11 +35,11 @@ from handlers.payments.currency_rates import format_for_user
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
-    INSUFFICIENT_FUNDS_MSG,
-    SELECT_TARIFF_PLAN_MSG,
     DISCOUNT_OFFER_MESSAGE,
     DISCOUNT_OFFER_STEP2,
     DISCOUNT_OFFER_STEP3,
+    INSUFFICIENT_FUNDS_MSG,
+    SELECT_TARIFF_PLAN_MSG,
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from hooks.hook_buttons import insert_hook_buttons
@@ -245,7 +245,9 @@ async def handle_key_creation(
                 )
             )
 
-        tariff_menu_buttons = await run_hooks("tariff_menu", group_code=group_code, cluster_name=cluster_name, tg_id=tg_id, session=session)
+        tariff_menu_buttons = await run_hooks(
+            "tariff_menu", group_code=group_code, cluster_name=cluster_name, tg_id=tg_id, session=session
+        )
         builder = insert_hook_buttons(builder, tariff_menu_buttons)
 
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -257,7 +259,9 @@ async def handle_key_creation(
         if discount_info and discount_info.get("available"):
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
-            time_left = format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)
+            time_left = format_discount_time_left(
+                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+            )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
         await edit_or_send_message(

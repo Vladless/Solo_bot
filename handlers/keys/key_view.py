@@ -24,10 +24,10 @@ from config import (
     QRCODE,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
+    REMNAWAVE_WEBAPP,
     RENEW_BUTTON_BEFORE_DAYS,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
-    REMNAWAVE_WEBAPP
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
@@ -45,9 +45,9 @@ from handlers.buttons import (
     QR,
     RENEW_KEY,
     RENEW_SUB,
+    ROUTER_BUTTON,
     TV_BUTTON,
     UNFREEZE,
-    ROUTER_BUTTON
 )
 from handlers.texts import (
     DAYS_LEFT_MESSAGE,

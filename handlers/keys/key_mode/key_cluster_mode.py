@@ -15,7 +15,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, SUPPORT_CHAT_URL, REMNAWAVE_WEBAPP
+from config import CONNECT_PHONE_BUTTON, REMNAWAVE_WEBAPP, SUPPORT_CHAT_URL
 from database import (
     get_key_details,
     get_tariff_by_id,
@@ -92,8 +92,10 @@ async def key_cluster_mode(
                 if tariff.get("traffic_limit") is not None:
                     traffic_limit_gb = int(tariff["traffic_limit"])
 
-        forced_cluster_results = await run_hooks("cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan)
-        
+        forced_cluster_results = await run_hooks(
+            "cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan
+        )
+
         if forced_cluster_results and forced_cluster_results[0]:
             least_loaded_cluster = forced_cluster_results[0]
         else:
@@ -182,10 +184,7 @@ async def key_cluster_mode(
 
     try:
         intercept_results = await run_hooks(
-            "intercept_key_creation_message", 
-            chat_id=tg_id, 
-            session=session, 
-            target_message=message_or_query
+            "intercept_key_creation_message", chat_id=tg_id, session=session, target_message=message_or_query
         )
         if intercept_results and intercept_results[0]:
             return

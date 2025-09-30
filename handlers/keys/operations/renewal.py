@@ -1,22 +1,24 @@
 import asyncio
+
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import (
-    get_key_details,
-    update_key_expiry,
-    resolve_device_limit_from_group,
     delete_notification,
+    get_key_details,
     get_servers,
+    resolve_device_limit_from_group,
+    update_key_expiry,
     update_key_link,
 )
 from logger import logger
 from panels._3xui import extend_client_key, get_xui_instance
-from .subgroup_migration import migrate_between_subgroups
-from .aggregated_links import make_aggregated_link
 from panels.remnawave import RemnawaveAPI
+
+from .aggregated_links import make_aggregated_link
+from .subgroup_migration import migrate_between_subgroups
 
 
 async def resolve_cluster(session: AsyncSession, cluster_id: str):
@@ -47,13 +49,14 @@ async def renew_on_remnawave(
     target_server_name: str | None = None,
 ) -> bool:
     remnawave_nodes = [
-        s for s in cluster
-        if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
+        s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
     ]
     if not remnawave_nodes:
         return False
     if target_server_name:
-        remnawave_nodes = [s for s in remnawave_nodes if s.get("server_name") == target_server_name] or remnawave_nodes[:1]
+        remnawave_nodes = [s for s in remnawave_nodes if s.get("server_name") == target_server_name] or remnawave_nodes[
+            :1
+        ]
     remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         logger.error("Не удалось войти в Remnawave API")
@@ -192,7 +195,11 @@ async def renew_key_in_cluster(
                         break
                 if single_server:
                     break
-            cluster = [single_server] if single_server else servers_map.get(cluster_id) or await resolve_cluster(session, cluster_id)
+            cluster = (
+                [single_server]
+                if single_server
+                else servers_map.get(cluster_id) or await resolve_cluster(session, cluster_id)
+            )
 
         dl = await resolve_device_limit_from_group(session, server_id)
         if dl is not None:

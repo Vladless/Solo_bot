@@ -33,8 +33,8 @@ from handlers.texts import (
     INSTRUCTION_MACOS,
     INSTRUCTION_PC,
     KEY_MESSAGE,
+    ROUTER_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
-    ROUTER_MESSAGE
 )
 from handlers.utils import edit_or_send_message
 

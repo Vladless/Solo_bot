@@ -3,10 +3,22 @@ import uuid
 
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, declarative_base, mapped_column
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
 
 Base = declarative_base()
@@ -111,9 +123,7 @@ class ServerSubgroup(DictLikeMixin, Base):
 
     server = relationship("Server", back_populates="subgroups")
 
-    __table_args__ = (
-        UniqueConstraint("server_id", "subgroup_title", name="uq_server_subgroup"),
-    )
+    __table_args__ = (UniqueConstraint("server_id", "subgroup_title", name="uq_server_subgroup"),)
 
 
 class Payment(DictLikeMixin, Base):

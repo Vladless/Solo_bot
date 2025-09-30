@@ -35,7 +35,12 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
         else:
             return builder
 
-    remove_operations = [b for b in flat_buttons if isinstance(b, dict) and ("remove" in b or "remove_prefix" in b or "remove_url" in b or "remove_url_prefix" in b)]
+    remove_operations = [
+        b
+        for b in flat_buttons
+        if isinstance(b, dict)
+        and ("remove" in b or "remove_prefix" in b or "remove_url" in b or "remove_url_prefix" in b)
+    ]
     for module in remove_operations:
         removes = module.get("remove")
         if isinstance(removes, str):
@@ -55,15 +60,19 @@ def insert_hook_buttons(builder: InlineKeyboardBuilder, buttons: list) -> Inline
             for btn in row:
                 cdata = getattr(btn, "callback_data", None)
                 url = getattr(btn, "url", None)
-                webapp_url = getattr(getattr(btn, "web_app", None), "url", None) if getattr(btn, "web_app", None) else None
+                webapp_url = (
+                    getattr(getattr(btn, "web_app", None), "url", None) if getattr(btn, "web_app", None) else None
+                )
 
                 should_remove_callback = cdata and (cdata in removes or (prefix and cdata.startswith(prefix)))
 
                 should_remove_url = (
-                    (url and (url in remove_urls or (url_prefix is not None and url.startswith(url_prefix)))) or
-                    (webapp_url and (webapp_url in remove_urls or (url_prefix is not None and webapp_url.startswith(url_prefix))))
+                    url and (url in remove_urls or (url_prefix is not None and url.startswith(url_prefix)))
+                ) or (
+                    webapp_url
+                    and (webapp_url in remove_urls or (url_prefix is not None and webapp_url.startswith(url_prefix)))
                 )
-                
+
                 if should_remove_callback or should_remove_url:
                     continue
                 filtered_row.append(btn)

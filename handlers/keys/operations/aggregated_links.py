@@ -1,15 +1,17 @@
 import asyncio
+
 from typing import Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, SUPERNODE, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, HAPP_CRYPTOLINK, LEGACY_LINKS
+from config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_id
 from logger import logger
-from panels._3xui import get_xui_instance, get_vless_link_for_client
+from panels._3xui import get_vless_link_for_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 from servers import extract_host
-from .utils import split_by_panel, is_plan_vless, score_vless_url
+
+from .utils import is_plan_vless, score_vless_url, split_by_panel
 
 
 async def _is_vless_tariff(session: AsyncSession, email: str) -> bool:
@@ -22,7 +24,7 @@ async def _is_vless_tariff(session: AsyncSession, email: str) -> bool:
     return is_plan_vless(tariff)
 
 
-async def _try_build_remna_vless(servers: list, email: str) -> Tuple[Optional[str], Optional[str]]:
+async def _try_build_remna_vless(servers: list, email: str) -> tuple[str | None, str | None]:
     si = servers[0]
     remna = RemnawaveAPI(si["api_url"])
     ok = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
@@ -57,8 +59,8 @@ async def _try_build_remna_vless(servers: list, email: str) -> Tuple[Optional[st
     return best, sub_url
 
 
-async def _try_build_3xui_vless(servers: list, email: str) -> Optional[str]:
-    async def one(si: dict) -> Optional[str]:
+async def _try_build_3xui_vless(servers: list, email: str) -> str | None:
+    async def one(si: dict) -> str | None:
         name = si.get("server_name", "unknown")
         inbound_id = si.get("inbound_id")
         if not inbound_id:
@@ -101,8 +103,12 @@ async def make_aggregated_link(
     subgroup_code: str | None = None,
     remna_link_override: str | None = None,
     plan=None,
-) -> Optional[str]:
-    servers = await filter_cluster_by_subgroup(session, cluster_all, subgroup_code, cluster_id) if subgroup_code else cluster_all
+) -> str | None:
+    servers = (
+        await filter_cluster_by_subgroup(session, cluster_all, subgroup_code, cluster_id)
+        if subgroup_code
+        else cluster_all
+    )
     if not servers:
         logger.info("[agg_link] servers=0 after DB filter")
         return None
@@ -158,7 +164,9 @@ async def make_aggregated_link(
             logger.info("[agg_link] LEGACY non-vless -> base link")
             return f"{base}/{email}/{tg_id}"
         best_vless, sub_url = await _try_build_remna_vless(remna, email)
-        if remna_link_override and (remna_link_override.lower().startswith("vless://") or remna_link_override.startswith("http")):
+        if remna_link_override and (
+            remna_link_override.lower().startswith("vless://") or remna_link_override.startswith("http")
+        ):
             logger.info("[agg_link] choose override Remnawave (non-vless)")
             return remna_link_override
         kd = await get_key_details(session, email)

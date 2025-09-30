@@ -32,13 +32,13 @@ from handlers.keys.operations import renew_key_in_cluster
 from handlers.payments.currency_rates import format_for_user
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.texts import (
+    DISCOUNT_OFFER_MESSAGE,
+    DISCOUNT_OFFER_STEP2,
+    DISCOUNT_OFFER_STEP3,
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
     PLAN_SELECTION_MSG,
     get_renewal_message,
-    DISCOUNT_OFFER_MESSAGE,
-    DISCOUNT_OFFER_STEP2,
-    DISCOUNT_OFFER_STEP3,
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_russian_month
 from hooks.hook_buttons import insert_hook_buttons
@@ -162,7 +162,9 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         if discount_info.get("available"):
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
-            time_left = format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)
+            time_left = format_discount_time_left(
+                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+            )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
         response_message = (
@@ -280,7 +282,9 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         if discount_info.get("available"):
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
-            time_left = format_discount_time_left(expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS)
+            time_left = format_discount_time_left(
+                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+            )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
         await edit_or_send_message(
@@ -495,7 +499,7 @@ async def complete_key_renewal(
             reset_traffic=True,
             target_subgroup=target_subgroup,
             old_subgroup=old_subgroup,
-            plan=tariff_id
+            plan=tariff_id,
         )
 
         await update_key_expiry(session, client_id, new_expiry_time)

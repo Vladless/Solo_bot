@@ -20,27 +20,28 @@ from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
     CONNECT_PHONE_BUTTON,
+    HAPP_CRYPTOLINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
-    SUPPORT_CHAT_URL,
     REMNAWAVE_WEBAPP,
-    HAPP_CRYPTOLINK
+    SUPPORT_CHAT_URL,
 )
 from database import (
     add_user,
     check_server_name_by_cluster,
     check_user_exists,
+    filter_cluster_by_subgroup,
     get_key_details,
+    get_servers,
+    get_tariff_by_id,
     get_trial,
     update_balance,
     update_trial,
-    get_tariff_by_id,
-    get_servers,
-    filter_cluster_by_subgroup
 )
 from database.models import Key, Server, Tariff
 from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
 from handlers.keys.operations import create_client_on_server
+from handlers.keys.operations.aggregated_links import make_aggregated_link
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
     edit_or_send_message,
@@ -53,7 +54,6 @@ from hooks.hooks import run_hooks
 from logger import logger
 from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
-from handlers.keys.operations.aggregated_links import make_aggregated_link
 
 
 router = Router()
@@ -85,7 +85,9 @@ async def key_country_mode(
 
     data = await state.get_data() if state else {}
 
-    forced_cluster_results = await run_hooks("cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan)
+    forced_cluster_results = await run_hooks(
+        "cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan
+    )
     if forced_cluster_results and forced_cluster_results[0]:
         least_loaded_cluster = forced_cluster_results[0]
     else:
@@ -412,12 +414,18 @@ async def finalize_key_creation(
                         if old_server_info.panel_type.lower() == "3x-ui":
                             xui = await get_xui_instance(old_server_info.api_url)
                             await delete_client(xui, old_server_info.inbound_id, email, client_id)
-                            await session.execute(update(Key).where(Key.tg_id == tg_id, Key.email == email).values(key=None))
+                            await session.execute(
+                                update(Key).where(Key.tg_id == tg_id, Key.email == email).values(key=None)
+                            )
                         elif old_server_info.panel_type.lower() == "remnawave":
                             remna_del = RemnawaveAPI(old_server_info.api_url)
                             if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                                 await remna_del.delete_user(client_id)
-                                await session.execute(update(Key).where(Key.tg_id == tg_id, Key.email == email).values(remnawave_link=None))
+                                await session.execute(
+                                    update(Key)
+                                    .where(Key.tg_id == tg_id, Key.email == email)
+                                    .values(remnawave_link=None)
+                                )
                     except Exception as e:
                         logger.warning(f"[Delete] Ошибка при удалении клиента: {e}")
 
@@ -465,7 +473,9 @@ async def finalize_key_creation(
                 if sub:
                     if need_vless_key and not remnawave_link:
                         links = sub.get("links") or []
-                        remnawave_link = next((l for l in links if isinstance(l, str) and l.lower().startswith("vless://")), None)
+                        remnawave_link = next(
+                            (l for l in links if isinstance(l, str) and l.lower().startswith("vless://")), None
+                        )
 
                     if not remnawave_link:
                         if HAPP_CRYPTOLINK:
@@ -475,7 +485,9 @@ async def finalize_key_creation(
                             remnawave_link = sub.get("subscriptionUrl")
 
             if old_key_name:
-                await session.execute(update(Key).where(Key.tg_id == tg_id, Key.email == email).values(client_id=client_id))
+                await session.execute(
+                    update(Key).where(Key.tg_id == tg_id, Key.email == email).values(client_id=client_id)
+                )
 
         if panel_type == "3x-ui":
             semaphore = asyncio.Semaphore(2)
@@ -560,7 +572,10 @@ async def finalize_key_creation(
         builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
     elif CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-        builder.row(InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"), InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+        builder.row(
+            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+        )
     else:
         builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
@@ -569,14 +584,18 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     try:
-        intercept_results = await run_hooks("intercept_key_creation_message", chat_id=tg_id, session=session, target_message=callback_query)
+        intercept_results = await run_hooks(
+            "intercept_key_creation_message", chat_id=tg_id, session=session, target_message=callback_query
+        )
         if intercept_results and intercept_results[0]:
             return
     except Exception as e:
         logger.warning(f"[INTERCEPT_KEY_CREATION] Ошибка при применении хуков: {e}")
 
     try:
-        hook_commands = await run_hooks("key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name)
+        hook_commands = await run_hooks(
+            "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
+        )
         if hook_commands:
             builder = insert_hook_buttons(builder, hook_commands)
     except Exception as e:
@@ -587,7 +606,13 @@ async def finalize_key_creation(
     traffic = tariff.traffic_limit if tariff and tariff.traffic_limit else 0
     devices = tariff.device_limit if tariff and tariff.device_limit else 0
 
-    key_message_text = key_message_success(public_link or remnawave_link or "Ссылка не найдена", tariff_name=t, traffic_limit=traffic, device_limit=devices, subgroup_title=subgroup_title)
+    key_message_text = key_message_success(
+        public_link or remnawave_link or "Ссылка не найдена",
+        tariff_name=t,
+        traffic_limit=traffic,
+        device_limit=devices,
+        subgroup_title=subgroup_title,
+    )
 
     await edit_or_send_message(
         target_message=callback_query.message,

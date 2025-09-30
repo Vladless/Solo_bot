@@ -2,8 +2,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Server, Tariff, ServerSubgroup
-
+from database.models import Key, Server, ServerSubgroup, Tariff
 from logger import logger
 
 
@@ -227,13 +226,13 @@ async def update_server_cluster(session: AsyncSession, server_name: str, new_clu
 
         if server_id is not None and new_tariff_group is not None:
             await session.execute(
-                update(ServerSubgroup)
-                .where(ServerSubgroup.server_id == server_id)
-                .values(group_code=new_tariff_group)
+                update(ServerSubgroup).where(ServerSubgroup.server_id == server_id).values(group_code=new_tariff_group)
             )
 
         await session.commit()
-        logger.info(f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы и привязок подгрупп")
+        logger.info(
+            f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы и привязок подгрупп"
+        )
         return True
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при обновлении кластера сервера {server_name}: {e}")
@@ -256,7 +255,9 @@ async def resolve_device_limit_from_group(session: AsyncSession, server_id: str)
     return int(dl) if dl is not None else None
 
 
-async def filter_cluster_by_subgroup(session: AsyncSession, cluster: list, target_subgroup: str, cluster_id: str) -> list:
+async def filter_cluster_by_subgroup(
+    session: AsyncSession, cluster: list, target_subgroup: str, cluster_id: str
+) -> list:
     names = [s.get("server_name") for s in cluster if s.get("server_name")]
     if not names:
         return []
@@ -275,9 +276,7 @@ async def filter_cluster_by_subgroup(session: AsyncSession, cluster: list, targe
         return [s for s in cluster if s.get("server_name") in allowed]
 
     total_for_subgroup = await session.scalar(
-        select(func.count())
-        .select_from(ServerSubgroup)
-        .where(ServerSubgroup.subgroup_title == target_subgroup)
+        select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title == target_subgroup)
     )
     if not total_for_subgroup:
         logger.info(f"Для подгруппы {target_subgroup} нет ни одного сервера. Используем весь кластер {cluster_id}.")
