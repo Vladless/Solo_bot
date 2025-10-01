@@ -141,10 +141,8 @@ async def process_start_logic(
     if not await check_user_exists(session, user_data["tg_id"]):
         await add_user(session=session, **user_data)
 
-    trial_status, key_count = await asyncio.gather(
-        get_trial(session, user_data["tg_id"]),
-        get_key_count(session, user_data["tg_id"]),
-    )
+    trial_status = await get_trial(session, user_data["tg_id"])
+    key_count = await get_key_count(session, user_data["tg_id"])
 
     if SHOW_START_MENU_ONCE:
         if key_count > 0 or trial_status == 1:

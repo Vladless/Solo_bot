@@ -28,6 +28,7 @@ from config import (
     RENEW_BUTTON_BEFORE_DAYS,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
+    HAPP_CRYPTOLINK
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
@@ -320,7 +321,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
         builder.row(InlineKeyboardButton(text=RENEW_SUB, callback_data=f"update_subscription|{key_name}"))
 
-    if is_full_remnawave and final_link and REMNAWAVE_WEBAPP:
+    if is_full_remnawave and final_link and REMNAWAVE_WEBAPP and not HAPP_CRYPTOLINK:
         if vless_enabled:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
