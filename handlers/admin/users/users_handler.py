@@ -1310,24 +1310,32 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
 
     await callback_query.message.edit_text(
         text="⚠ Вы уверены, что хотите восстановить пробники для пользователей? \n\n"
-        "Только для тех, у кого нет активной подписки!",
+        "Только для тех, у кого нет подписок (активных или истекших)!",
         reply_markup=builder.as_markup(),
     )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "confirm_restore_trials"), IsAdminFilter())
 async def restore_trials(callback_query: types.CallbackQuery, session: AsyncSession):
-    active_keys_subq = select(Key.tg_id).where(Key.expiry_time > func.extract("epoch", func.now()) * 1000).subquery()
-    stmt = update(User).where(~User.tg_id.in_(select(active_keys_subq.c.tg_id))).where(User.trial != 0).values(trial=0)
+    users_result = await session.execute(select(User.tg_id).where(User.trial == 1))
+    users_with_trial_used = [row[0] for row in users_result.all()]
 
-    await session.execute(stmt)
-    await session.commit()
+    users_to_reset = []
+    for tg_id in users_with_trial_used:
+        has_keys = await session.execute(select(Key.tg_id).where(Key.tg_id == tg_id).limit(1))
+        if not has_keys.scalar():
+            users_to_reset.append(tg_id)
+
+    if users_to_reset:
+        stmt = update(User).where(User.tg_id.in_(users_to_reset)).values(trial=0)
+        await session.execute(stmt)
+        await session.commit()
 
     builder = InlineKeyboardBuilder()
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text="✅ Пробники успешно восстановлены для пользователей без активных подписок.",
+        text=f"✅ Пробники восстановлены для {len(users_to_reset)} пользователей без подписок.",
         reply_markup=builder.as_markup(),
     )
 
