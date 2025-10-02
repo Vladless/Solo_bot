@@ -108,7 +108,7 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
 
-    if key_link and key_link.startswith("happ://crypt3/"):
+    if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe='')
     else:
         processed_link = key_link
@@ -139,7 +139,7 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
 
-    if key_link and key_link.startswith("happ://crypt3/"):
+    if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe='')
     else:
         processed_link = key_link

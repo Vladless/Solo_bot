@@ -107,7 +107,7 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
         InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
         InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
     )
-    if key_link and key_link.startswith("happ://crypt3/"):
+    if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe='')
     else:
         processed_link = key_link
@@ -147,7 +147,7 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
 
-    if key_link and key_link.startswith("happ://crypt3/"):
+    if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe='')
     else:
         processed_link = key_link
@@ -185,7 +185,7 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
 
-    if key_link and key_link.startswith("happ://crypt3/"):
+    if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe='')
     else:
         processed_link = key_link
