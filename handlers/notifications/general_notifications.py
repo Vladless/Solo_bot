@@ -510,7 +510,23 @@ async def process_auto_renew_or_notify(
         else:
             if await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
-                if current_tariff["group_code"] in ["discounts", "discounts_max", "gifts", "trial"]:
+
+                forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+
+                try:
+                    hook_results = await run_hooks(
+                        "renewal_forbidden_groups", 
+                        chat_id=tg_id, 
+                        admin=False, 
+                        session=conn
+                    )
+                    for hook_result in hook_results:
+                        additional_groups = hook_result.get("additional_groups", [])
+                        forbidden_groups.extend(additional_groups)
+                except Exception as e:
+                    logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {e}")
+                
+                if current_tariff["group_code"] in forbidden_groups:
                     cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
                     if cluster_tariffs:
                         cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]

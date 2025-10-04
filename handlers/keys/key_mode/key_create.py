@@ -166,6 +166,25 @@ async def handle_key_creation(
                 else:
                     await state.update_data(discount_info=None)
 
+                try:
+                    hook_results = await run_hooks(
+                        "purchase_tariff_group_override", 
+                        chat_id=tg_id, 
+                        admin=False, 
+                        session=session,
+                        original_group=group_code
+                    )
+                    for hook_result in hook_results:
+                        if hook_result.get("override_group"):
+                            group_code = hook_result["override_group"]
+                            logger.info(f"[PURCHASE] Тарифная группа переопределена хуком: {group_code}")
+                            
+                            if hook_result.get("discount_info"):
+                                await state.update_data(discount_info=hook_result["discount_info"])
+                            break
+                except Exception as e:
+                    logger.warning(f"[PURCHASE] Ошибка при применении хуков переопределения группы: {e}")
+
                 tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
                 tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
                 subgroup_weights = tariffs_data["subgroup_weights"]
@@ -370,6 +389,29 @@ async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state:
             )
             await callback_query.answer()
             return
+
+    try:
+        hook_results = await run_hooks(
+            "check_discount_validity", 
+            chat_id=tg_id, 
+            admin=False, 
+            session=session,
+            tariff_group=tariff.get("group_code")
+        )
+        for hook_result in hook_results:
+            if not hook_result.get("valid", True):
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text=hook_result.get("message", "❌ Скидка недоступна. Пожалуйста, выберите тариф заново."),
+                    reply_markup=builder.as_markup(),
+                )
+                await callback_query.answer()
+                return
+    except Exception as e:
+        logger.warning(f"[PURCHASE] Ошибка при проверке скидок через хуки: {e}")
+
 
     duration_days = tariff["duration_days"]
     price_rub = tariff["price_rub"]

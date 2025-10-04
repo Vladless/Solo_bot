@@ -95,13 +95,45 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         if tariff_id:
             if await check_tariff_exists(session, tariff_id):
                 current_tariff = await get_tariff_by_id(session, tariff_id)
-                if current_tariff["group_code"] not in ["discounts", "discounts_max", "gifts", "trial"]:
+
+                forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+
+                try:
+                    hook_results = await run_hooks(
+                        "renewal_forbidden_groups", 
+                        chat_id=tg_id, 
+                        admin=False, 
+                        session=session
+                    )
+                    for hook_result in hook_results:
+                        additional_groups = hook_result.get("additional_groups", [])
+                        forbidden_groups.extend(additional_groups)
+                except Exception as e:
+                    logger.warning(f"[RENEW] Ошибка при получении дополнительных групп: {e}")
+                
+                if current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
 
         discount_info = await check_hot_lead_discount(session, tg_id)
 
         if discount_info.get("available"):
             group_code = discount_info["tariff_group"]
+
+        try:
+            hook_results = await run_hooks(
+                "purchase_tariff_group_override", 
+                chat_id=tg_id, 
+                admin=False, 
+                session=session,
+                original_group=group_code
+            )
+            for hook_result in hook_results:
+                if hook_result.get("override_group"):
+                    group_code = hook_result["override_group"]
+                    logger.info(f"[RENEW] Тарифная группа переопределена хуком для продления: {group_code}")
+                    break
+        except Exception as e:
+            logger.warning(f"[RENEW] Ошибка при применении хуков переопределения группы: {e}")
 
         tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
         tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
@@ -233,6 +265,22 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         if discount_info.get("available"):
             group_code = discount_info["tariff_group"]
+
+        try:
+            hook_results = await run_hooks(
+                "purchase_tariff_group_override", 
+                chat_id=tg_id, 
+                admin=False, 
+                session=session,
+                original_group=group_code
+            )
+            for hook_result in hook_results:
+                if hook_result.get("override_group"):
+                    group_code = hook_result["override_group"]
+                    logger.info(f"[RENEW_SUBGROUP] Тарифная группа переопределена хуком: {group_code}")
+                    break
+        except Exception as e:
+            logger.warning(f"[RENEW_SUBGROUP] Ошибка при применении хуков переопределения группы: {e}")
 
         subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
         if not subgroup:
