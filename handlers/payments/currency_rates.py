@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 import time
 from decimal import ROUND_HALF_UP, Decimal
 import aiohttp
-from config import MULTICURRENCY_ENABLE, FX_MARKUP
+from config import MULTICURRENCY_ENABLE, FX_MARKUP, RUB_TO_USD
 
 
 CBR_URL = "https://www.cbr-xml-daily.ru/daily_json.js"
@@ -33,14 +33,14 @@ async def to_rub(amount: float | Decimal, base: str, *, session: aiohttp.ClientS
 
 
 async def get_rub_rate(quote: str, *, session: aiohttp.ClientSession | None = None) -> Decimal:
-    """
-    Возвращает курс 'QUOTE per RUB' (сколько единиц валюты QUOTE приходится на 1 рубль).
-    Пример: для USD при 100 RUB за 1 USD вернёт 0.01 USD/RUB.
-    Здесь же применяется наценка FX_MARKUP (если задана и валюта не RUB).
-    """
     code = quote.upper()
     if code == "RUB":
         return Decimal("1")
+
+    if code == "USD" and RUB_TO_USD not in (False, None, 0):
+        rate = _q(Decimal("1") / Decimal(str(RUB_TO_USD)))
+        cache[code] = (time.time(), rate)
+        return rate
 
     now = time.time()
     cached = cache.get(code)

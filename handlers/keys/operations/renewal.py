@@ -107,10 +107,10 @@ async def renew_on_3xui(
             continue
         if SUPERNODE:
             unique_email = f"{email}_{server_name.lower()}"
-            sub_id_val = email if update_links else None
+            sub_id_val = email
         else:
             unique_email = email
-            sub_id_val = unique_email if update_links else None
+            sub_id_val = unique_email
         traffic_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
 
         async def process_server(si, inbound, uniq, sub, name):
