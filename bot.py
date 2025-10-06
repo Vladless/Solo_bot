@@ -13,17 +13,16 @@ from config import ADMIN_ID, API_TOKEN
 from database import async_session_maker
 from filters.private import IsPrivateFilter
 from logger import logger
-from utils.modules_loader import load_modules_from_folder
+from utils.modules_loader import load_modules_from_folder, modules_hub
 
 
 bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(bot=bot, storage=storage)
 
+dp.include_router(modules_hub)
 
-for mod_router in load_modules_from_folder():
-    dp.include_router(mod_router)
-
+load_modules_from_folder()
 
 dp.message.filter(IsPrivateFilter())
 dp.callback_query.filter(IsPrivateFilter())

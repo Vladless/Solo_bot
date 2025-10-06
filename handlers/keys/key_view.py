@@ -20,6 +20,7 @@ from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
     ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
+    HAPP_CRYPTOLINK,
     HWID_RESET_BUTTON,
     QRCODE,
     REMNAWAVE_LOGIN,
@@ -28,7 +29,6 @@ from config import (
     RENEW_BUTTON_BEFORE_DAYS,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
-    HAPP_CRYPTOLINK
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key

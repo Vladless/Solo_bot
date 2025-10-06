@@ -29,9 +29,9 @@ from handlers.buttons import (
     MAIN_MENU,
     MY_SUB,
     PC_BUTTON,
+    ROUTER_BUTTON,
     SUPPORT,
     TV_BUTTON,
-    ROUTER_BUTTON
 )
 from handlers.keys.operations import create_key_on_cluster
 from handlers.texts import key_message_success

@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.texts import FAST_PAY_NOT_ENOUGH
 from handlers.buttons import RUB_CURRENCY, USD_CURRENCY, STARS, MAIN_MENU
+from config import TRIBUTE_LINK
 from .currency_rates import format_for_user
 
 
@@ -11,8 +12,17 @@ def build_currency_choice_kb(show_stars: bool, *, prefix: str = "choose_payment_
     kb = InlineKeyboardBuilder()
     kb.row(InlineKeyboardButton(text=RUB_CURRENCY, callback_data=f"{prefix}|RUB"))
     kb.row(InlineKeyboardButton(text=USD_CURRENCY, callback_data=f"{prefix}|USD"))
+    trib = (TRIBUTE_LINK or "").strip()
+
     if show_stars:
-        kb.row(InlineKeyboardButton(text=STARS, callback_data=f"{prefix}|STARS"))
+        row = [InlineKeyboardButton(text=STARS, callback_data=f"{prefix}|STARS")]
+        if trib.startswith("https://"):
+            row.append(InlineKeyboardButton(text="TRIBUTE", url=trib))
+        kb.row(*row)
+    else:
+        if trib.startswith("https://"):
+            kb.row(InlineKeyboardButton(text="TRIBUTE", url=trib))
+
     kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     return kb
 

@@ -60,3 +60,4 @@ setup.py
 .ruff_cache
 .github/workflows/
 modules/
+storage/

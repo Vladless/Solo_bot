@@ -109,10 +109,10 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
 
     if key_link and "happ://crypt" in key_link:
-        processed_link = urllib.parse.quote(key_link, safe='')
+        processed_link = urllib.parse.quote(key_link, safe="")
     else:
         processed_link = key_link
-    
+
     builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{processed_link}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
@@ -140,10 +140,10 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
 
     if key_link and "happ://crypt" in key_link:
-        processed_link = urllib.parse.quote(key_link, safe='')
+        processed_link = urllib.parse.quote(key_link, safe="")
     else:
         processed_link = key_link
-    
+
     builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{processed_link}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))

@@ -51,11 +51,10 @@ try:
 except Exception:
     pass
 
+console = Console()
 ensure_utf8_locale()
 
-console = Console()
-
-BACK_DIR = os.path.expanduser("~/.solobot_backup")
+BACK_DIR = os.path.expanduser("~/.solobot_backups")
 TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 IS_ROOT_DIR = PROJECT_DIR == "/root"
@@ -97,29 +96,74 @@ def print_logo():
     console.print(f"[bold green]Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
 
 
+def list_backups():
+    if not os.path.isdir(BACK_DIR):
+        return []
+    pairs = []
+    for name in os.listdir(BACK_DIR):
+        path = os.path.join(BACK_DIR, name)
+        if os.path.isdir(path):
+            try:
+                mtime = os.path.getmtime(path)
+            except Exception:
+                mtime = 0
+            pairs.append((mtime, path))
+    pairs.sort(reverse=True)
+    return [p for _, p in pairs]
+
+
+def prune_old_backups():
+    backups = list_backups()
+    for path in backups[3:]:
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+        except Exception:
+            subprocess.run(["sudo", "rm", "-rf", path])
+
+
 def backup_project():
+    from datetime import datetime
+
+    os.makedirs(BACK_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dst = os.path.join(BACK_DIR, f"backup-{ts}")
     console.print("[yellow]Создаётся резервная копия проекта...[/yellow]")
     with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
-        subprocess.run(["rm", "-rf", BACK_DIR])
-        subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
-    console.print(f"[green]Бэкап сохранён в: {BACK_DIR}[/green]")
+        subprocess.run(["cp", "-r", PROJECT_DIR, dst])
+    console.print(f"[green]Бэкап сохранён в: {dst}[/green]")
+    prune_old_backups()
 
 
 def restore_from_backup():
-    if not os.path.isdir(BACK_DIR):
-        console.print(f"[red]❌ Бэкап не найден: {BACK_DIR}[/red]")
+    from datetime import datetime
+
+    backups = list_backups()[:3]
+    if not backups:
+        console.print(f"[red]❌ Бэкапы не найдены: {BACK_DIR}[/red]")
         return
 
+    console.print("\n[bold green]Доступные бэкапы:[/bold green]")
+    shown = []
+    for idx, path in enumerate(backups, 1):
+        try:
+            mtime = os.path.getmtime(path)
+            dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            dt = "unknown"
+        console.print(f"[cyan]{idx}.[/cyan] {os.path.basename(path)}  [dim]{dt}[/dim]")
+        shown.append((idx, path))
+
     try:
-        mtime = os.path.getmtime(BACK_DIR)
-        from datetime import datetime
-
-        dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-        console.print(f"[cyan]Обнаружен бэкап от: {dt}[/cyan]")
+        choice = Prompt.ask(
+            "[bold blue]Выберите номер бэкапа[/bold blue]",
+            choices=[str(i) for i, _ in shown],
+        )
     except Exception:
-        pass
+        return
 
-    console.print("[red]Внимание: текущие файлы проекта будут перезаписаны содержимым бэкапа.[/red]")
+    sel_path = shown[int(choice) - 1][1]
+
+    console.print("[red]Внимание: текущие файлы проекта будут перезаписаны выбранным бэкапом.[/red]")
     if not Confirm.ask("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
         return
 
@@ -130,7 +174,7 @@ def restore_from_backup():
     install_rsync_if_needed()
 
     console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
-    rc = subprocess.run(f"rsync -a --delete {BACK_DIR}/ {PROJECT_DIR}/", shell=True).returncode
+    rc = subprocess.run(f"rsync -a --delete {sel_path}/ {PROJECT_DIR}/", shell=True).returncode
     if rc != 0:
         console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
         return
@@ -142,7 +186,6 @@ def restore_from_backup():
 
 
 def auto_update_cli():
-    """Обновляет CLI, если отличается от последней версии. Перезапускает при необходимости."""
     console.print("[yellow]Проверка обновлений CLI...[/yellow]")
     try:
         url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
@@ -170,7 +213,6 @@ def auto_update_cli():
 
 
 def fix_permissions():
-    """Устанавливает корректные права на все файлы и папки проекта"""
     console.print("[yellow]Восстанавливаю владельца и права доступа к проекту...[/yellow]")
 
     try:

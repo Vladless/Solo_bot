@@ -100,17 +100,14 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
                 try:
                     hook_results = await run_hooks(
-                        "renewal_forbidden_groups", 
-                        chat_id=tg_id, 
-                        admin=False, 
-                        session=session
+                        "renewal_forbidden_groups", chat_id=tg_id, admin=False, session=session
                     )
                     for hook_result in hook_results:
                         additional_groups = hook_result.get("additional_groups", [])
                         forbidden_groups.extend(additional_groups)
                 except Exception as e:
                     logger.warning(f"[RENEW] Ошибка при получении дополнительных групп: {e}")
-                
+
                 if current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
 
@@ -121,11 +118,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
         try:
             hook_results = await run_hooks(
-                "purchase_tariff_group_override", 
-                chat_id=tg_id, 
-                admin=False, 
-                session=session,
-                original_group=group_code
+                "purchase_tariff_group_override", chat_id=tg_id, admin=False, session=session, original_group=group_code
             )
             for hook_result in hook_results:
                 if hook_result.get("override_group"):
@@ -268,11 +261,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         try:
             hook_results = await run_hooks(
-                "purchase_tariff_group_override", 
-                chat_id=tg_id, 
-                admin=False, 
-                session=session,
-                original_group=group_code
+                "purchase_tariff_group_override", chat_id=tg_id, admin=False, session=session, original_group=group_code
             )
             for hook_result in hook_results:
                 if hook_result.get("override_group"):

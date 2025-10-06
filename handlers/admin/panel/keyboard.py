@@ -48,6 +48,10 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
         )
         builder.button(
+            text="🧩 Мои модули",
+            callback_data=AdminPanelCallback(action="modules").pack(),
+        )
+        builder.button(
             text="🤖 Управление ботом",
             callback_data=AdminPanelCallback(action="management").pack(),
         )
@@ -70,9 +74,9 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     )
 
     if admin_role == "superadmin":
-        builder.adjust(1, 1, 1, 1, 2, 2, 1, 2, 1)
+        builder.adjust(1, 1, 1, 1, 2, 2, 1, 1, 2, 1)
     else:
-        builder.adjust(1, 1, 1, 2, 1, 1)
+        builder.adjust(1, 1, 1, 2, 1, 1, 1)
 
     return builder.as_markup()
 
