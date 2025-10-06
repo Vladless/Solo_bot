@@ -31,6 +31,7 @@ from handlers.buttons import (
     PC_BUTTON,
     SUPPORT,
     TV_BUTTON,
+    ROUTER_BUTTON
 )
 from handlers.keys.operations import create_key_on_cluster
 from handlers.texts import key_message_success
@@ -163,21 +164,35 @@ async def key_cluster_mode(
             await bot.send_message(chat_id=tg_id, text=error_message)
         return
 
+    vless_enabled = False
+    try:
+        if plan:
+            ti = await get_tariff_by_id(session, plan)
+            vless_enabled = bool(ti.get("vless")) if ti else False
+        elif key_record.get("tariff_id"):
+            ti = await get_tariff_by_id(session, key_record["tariff_id"])
+            vless_enabled = bool(ti.get("vless")) if ti else False
+    except Exception:
+        vless_enabled = False
+
     builder = InlineKeyboardBuilder()
-    if await is_full_remnawave_cluster(least_loaded_cluster, session):
-        if REMNAWAVE_WEBAPP and final_link:
-            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
-            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+    if vless_enabled:
+        builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+    else:
+        if await is_full_remnawave_cluster(least_loaded_cluster, session):
+            if REMNAWAVE_WEBAPP and final_link:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+                builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+            else:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+        elif CONNECT_PHONE_BUTTON:
+            builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
+            builder.row(
+                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
+                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
+            )
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-    elif CONNECT_PHONE_BUTTON:
-        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-        builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-        )
-    else:
-        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
