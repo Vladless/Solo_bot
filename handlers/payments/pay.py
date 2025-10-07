@@ -160,7 +160,10 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data == "back_to_currency")
 async def back_to_currency(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    kb = build_currency_choice_kb(show_stars=True, prefix="pay_currency")
+    PROVIDERS = await get_providers_with_hooks(PROVIDERS_ENABLED)
+    show_stars = bool((PROVIDERS.get("STARS") or {}).get("enabled"))
+    show_tribute = bool((PROVIDERS.get("TRIBUTE") or {}).get("enabled"))
+    kb = build_currency_choice_kb(show_stars=show_stars, prefix="pay_currency", show_tribute=show_tribute)
     kb.row(InlineKeyboardButton(text=btn.BACK, callback_data="back_to_pay"))
     await edit_or_send_message(
         target_message=callback_query.message,
