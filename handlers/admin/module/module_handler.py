@@ -46,26 +46,21 @@ def list_installed_modules() -> list[tuple[str, str | None]]:
 async def handle_modules(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     await state.clear()
 
-    data = callback_query.data or ""
-    try:
-        page = int(data.split("page=")[-1].split("&")[0]) if "page=" in data else 1
-    except Exception:
-        page = 1
+    packed = AdminPanelCallback.unpack(callback_query.data)
+    page = max(1, packed.page or 1)
 
     all_items = list_installed_modules()
     items = [(n, v) for n, v in all_items if n != "web_admin_panel"]
 
     per_page = 12
     total_pages = max(1, (len(items) + per_page - 1) // per_page)
-    page = max(1, min(page, total_pages))
+    page = min(page, total_pages)
     start = (page - 1) * per_page
-    chunk = items[start : start + per_page]
+    chunk = items[start:start + per_page]
 
     if chunk:
-
         def fmt(n, v):
             return f"{n} v{v}" if v else n
-
         lines = "\n".join(f"• {fmt(n, v)}" for n, v in chunk)
         text = f"🧩 Мои модули\n\nНайдено: {len(items)}\n<blockquote>{lines}</blockquote>"
     else:
@@ -76,8 +71,15 @@ async def handle_modules(callback_query: CallbackQuery, state: FSMContext, sessi
         await callback_query.message.edit_text(text=text, reply_markup=markup, disable_web_page_preview=True)
     except TelegramBadRequest as e:
         if "message is not modified" in str(e).lower():
-            return
-        raise
+            try:
+                await callback_query.message.edit_reply_markup(reply_markup=None)
+                await callback_query.message.edit_text(text=text, reply_markup=markup, disable_web_page_preview=True)
+            except TelegramBadRequest:
+                pass
+        else:
+            raise
+    finally:
+        await callback_query.answer()
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action.startswith("module_restart__")), IsAdminFilter())

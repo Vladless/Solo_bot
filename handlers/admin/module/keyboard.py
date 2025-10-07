@@ -9,39 +9,44 @@ from utils.modules_manager import manager
 def build_modules_kb(page: int, total_pages: int, items: list[tuple[str, str | None]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
+    row_buf = []
     for name, _ in items:
         label = name if manager.is_enabled(name) else f"{name} (off)"
-        builder.button(
-            text=label,
-            callback_data=AdminPanelCallback(action=f"module__{name}", page=page).pack(),
+        row_buf.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=AdminPanelCallback(action=f"module__{name}", page=page).pack(),
+            )
         )
-
-    if items:
-        builder.adjust(2)
+        if len(row_buf) == 2:
+            builder.row(*row_buf)
+            row_buf = []
+    if row_buf:
+        builder.row(*row_buf)
 
     if total_pages > 1:
-        row = []
+        nav = []
         if page > 1:
-            row.append(
+            nav.append(
                 InlineKeyboardButton(
                     text="⬅️ Назад",
                     callback_data=AdminPanelCallback(action="modules", page=page - 1).pack(),
                 )
             )
-        row.append(
+        nav.append(
             InlineKeyboardButton(
                 text=f"{page}/{total_pages}",
                 callback_data=AdminPanelCallback(action="modules", page=page).pack(),
             )
         )
         if page < total_pages:
-            row.append(
+            nav.append(
                 InlineKeyboardButton(
                     text="Вперед ➡️",
                     callback_data=AdminPanelCallback(action="modules", page=page + 1).pack(),
                 )
             )
-        builder.row(*row)
+        builder.row(*nav)
 
     builder.row(
         InlineKeyboardButton(
