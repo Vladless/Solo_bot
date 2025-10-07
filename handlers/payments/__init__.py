@@ -40,9 +40,8 @@ if PROVIDERS.get("KASSAI_CARDS", {}).get("enabled") or PROVIDERS.get("KASSAI_SBP
     router.include_router(kassai_router)
 if PROVIDERS.get("HELEKET", {}).get("enabled"):
     router.include_router(heleket_router)
-if PROVIDERS.get("TRIBUTE", {}).get("enabled"):
-    router.include_router(tribute_router)
 
+router.include_router(tribute_router)
 router.include_router(wata_router)
 router.include_router(gift_router)
 router.include_router(pay_router)
