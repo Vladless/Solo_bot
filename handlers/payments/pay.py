@@ -45,10 +45,12 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
             payment_handlers.append(fn)
 
     module_buttons = await run_hooks("pay_menu_buttons", chat_id=callback_query.from_user.id, admin=False, session=session)
-    has_extra_menu_items = bool(module_buttons) or bool(DONATIONS_ENABLE) or PROVIDERS.get("TRIBUTE", {}).get("enabled")
+    has_extra_menu_items = bool(module_buttons) or bool(DONATIONS_ENABLE) or bool((PROVIDERS.get("TRIBUTE") or {}).get("enabled"))
 
     if MULTICURRENCY_ENABLE:
-        kb = build_currency_choice_kb(show_stars=bool(PROVIDERS.get("STARS", {}).get("enabled")), prefix="pay_currency")
+        show_stars = bool((PROVIDERS.get("STARS") or {}).get("enabled"))
+        show_tribute = bool((PROVIDERS.get("TRIBUTE") or {}).get("enabled"))
+        kb = build_currency_choice_kb(show_stars=show_stars, prefix="pay_currency", show_tribute=show_tribute)
         await edit_or_send_message(
             target_message=callback_query.message,
             text=FAST_PAY_CHOOSE_CURRENCY,

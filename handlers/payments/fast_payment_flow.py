@@ -106,7 +106,8 @@ async def try_fast_payment_flow(
 
     if MULTICURRENCY_ENABLE:
         show_stars = bool((PROVIDERS.get("STARS") or {}).get("enabled"))
-        kb = build_currency_choice_kb(show_stars=show_stars)
+        show_tribute = bool((PROVIDERS.get("TRIBUTE") or {}).get("enabled"))
+        kb = build_currency_choice_kb(show_stars=show_stars, show_tribute=show_tribute)
         lead = await shortfall_lead_text(
             session, tg_id, required_amount, getattr(callback_query.from_user, "language_code", None)
         )
