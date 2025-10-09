@@ -2,6 +2,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
+from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, Message, Update
@@ -30,10 +31,24 @@ class SubscriptionMiddleware(BaseMiddleware):
         from_user = None
 
         if event.message:
+            if event.message.chat.type != ChatType.PRIVATE:
+                return await handler(event, data)
+            if not event.message.from_user:
+                return await handler(event, data)
+            if event.message.from_user.is_bot:
+                return await handler(event, data)
+            
             tg_id = event.message.from_user.id
             message = event.message
             from_user = event.message.from_user
         elif event.callback_query:
+            if event.callback_query.message and event.callback_query.message.chat.type != ChatType.PRIVATE:
+                return await handler(event, data)
+            if not event.callback_query.from_user:
+                return await handler(event, data)
+            if event.callback_query.from_user.is_bot:
+                return await handler(event, data)
+            
             tg_id = event.callback_query.from_user.id
             message = event.callback_query.message
             from_user = event.callback_query.from_user
