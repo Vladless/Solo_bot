@@ -29,22 +29,30 @@ class SubscriptionMiddleware(BaseMiddleware):
         tg_id = None
         message = None
         from_user = None
-        chat_type = None
 
         if event.message:
+            if event.message.chat.type != ChatType.PRIVATE:
+                return await handler(event, data)
+            if not event.message.from_user:
+                return await handler(event, data)
+            if event.message.from_user.is_bot:
+                return await handler(event, data)
+            
             tg_id = event.message.from_user.id
             message = event.message
             from_user = event.message.from_user
-            chat_type = event.message.chat.type
         elif event.callback_query:
+            if event.callback_query.message and event.callback_query.message.chat.type != ChatType.PRIVATE:
+                return await handler(event, data)
+            if not event.callback_query.from_user:
+                return await handler(event, data)
+            if event.callback_query.from_user.is_bot:
+                return await handler(event, data)
+            
             tg_id = event.callback_query.from_user.id
             message = event.callback_query.message
             from_user = event.callback_query.from_user
-            chat_type = event.callback_query.message.chat.type if event.callback_query.message else None
         else:
-            return await handler(event, data)
-
-        if chat_type and chat_type != ChatType.PRIVATE:
             return await handler(event, data)
 
         try:
