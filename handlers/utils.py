@@ -25,6 +25,9 @@ from hooks.hooks import run_hooks
 from logger import logger
 
 
+ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max"]
+
+
 async def generate_random_email(
     length: int = 8,
     session: AsyncSession | None = None,

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
-from handlers.utils import check_server_key_limit
+from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
 from logger import logger
 from panels._3xui import (
     ClientConfig,
@@ -73,6 +73,26 @@ async def create_key_on_cluster(
             subgroup_servers = [s for s in enabled_servers if subgroup_title in s.get("tariff_subgroups", [])]
             if subgroup_servers:
                 enabled_servers = subgroup_servers
+            else:
+                logger.warning(
+                    f"[Key Creation] В кластере {cluster_id} не найдено серверов для подгруппы '{subgroup_title}'. Использую весь кластер."
+                )
+
+        special = None
+        if is_trial:
+            special = "trial"
+        elif tariff:
+            gc = (tariff.get("group_code") or "").lower()
+            if gc in ALLOWED_GROUP_CODES:
+                special = gc
+        if special:
+            bound_servers = [s for s in enabled_servers if special in (s.get("special_groups") or [])]
+            if bound_servers:
+                enabled_servers = bound_servers
+            else:
+                logger.warning(
+                    f"[Key Creation] В кластере {cluster_id} нет серверов со спецгруппой '{special}'. Использую весь кластер."
+                )
 
         remnawave_servers = [
             s

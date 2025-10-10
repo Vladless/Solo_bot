@@ -9,16 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from config import (
     NOTIFICATION_TIME,
+    NOTIFY_10H_ENABLED,
+    NOTIFY_10H_HOURS,
+    NOTIFY_24H_ENABLED,
+    NOTIFY_24H_HOURS,
     NOTIFY_DELETE_DELAY,
     NOTIFY_DELETE_KEY,
     NOTIFY_HOT_LEADS,
     NOTIFY_INACTIVE_TRAFFIC,
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
-    NOTIFY_24H_ENABLED,
-    NOTIFY_24H_HOURS,
-    NOTIFY_10H_ENABLED,
-    NOTIFY_10H_HOURS,
     TRIAL_TIME_DISABLE,
 )
 from database import (
@@ -94,14 +94,18 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
 
                     if NOTIFY_24H_ENABLED:
                         try:
-                            threshold_24h = int((datetime.now(moscow_tz) + timedelta(hours=NOTIFY_24H_HOURS)).timestamp() * 1000)
+                            threshold_24h = int(
+                                (datetime.now(moscow_tz) + timedelta(hours=NOTIFY_24H_HOURS)).timestamp() * 1000
+                            )
                             await notify_24h_keys(bot, session, current_time, threshold_24h, keys)
                         except Exception as e:
                             logger.error(f"Ошибка в notify_24h_keys: {e}")
 
                     if NOTIFY_10H_ENABLED:
                         try:
-                            threshold_10h = int((datetime.now(moscow_tz) + timedelta(hours=NOTIFY_10H_HOURS)).timestamp() * 1000)
+                            threshold_10h = int(
+                                (datetime.now(moscow_tz) + timedelta(hours=NOTIFY_10H_HOURS)).timestamp() * 1000
+                            )
                             await notify_10h_keys(bot, session, current_time, threshold_10h, keys)
                         except Exception as e:
                             logger.error(f"Ошибка в notify_10h_keys: {e}")
@@ -165,7 +169,7 @@ async def notify_24h_keys(
             continue
 
         expiry_data = await prepare_key_expiry_data(key, session, current_time)
-        
+
         notification_text = KEY_EXPIRY.format(
             email=email,
             hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -249,7 +253,7 @@ async def notify_10h_keys(
             continue
 
         expiry_data = await prepare_key_expiry_data(key, session, current_time)
-        
+
         notification_text = KEY_EXPIRY.format(
             email=email,
             hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -486,15 +490,17 @@ async def process_auto_renew_or_notify(
 
         if not selected_tariff:
             expiry_data = await prepare_key_expiry_data(key, conn, int(datetime.now(moscow_tz).timestamp() * 1000))
-            
+
             use_change_tariff_kb = False
-            
+
             if tariff_id and await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
                 if current_tariff:
                     forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
                     try:
-                        hook_results = await run_hooks("renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn)
+                        hook_results = await run_hooks(
+                            "renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn
+                        )
                         for hook_result in hook_results:
                             additional_groups = hook_result.get("additional_groups", [])
                             forbidden_groups.extend(additional_groups)
@@ -526,7 +532,7 @@ async def process_auto_renew_or_notify(
                 keyboard = build_change_tariff_kb(email)
             else:
                 keyboard = build_notification_kb(email)
-            
+
             await add_notification(conn, tg_id, notification_id)
             await send_notification(bot, tg_id, standard_photo, message_text, keyboard)
             return

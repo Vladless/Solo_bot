@@ -37,7 +37,7 @@ class SubscriptionMiddleware(BaseMiddleware):
                 return await handler(event, data)
             if event.message.from_user.is_bot:
                 return await handler(event, data)
-            
+
             tg_id = event.message.from_user.id
             message = event.message
             from_user = event.message.from_user
@@ -48,7 +48,7 @@ class SubscriptionMiddleware(BaseMiddleware):
                 return await handler(event, data)
             if event.callback_query.from_user.is_bot:
                 return await handler(event, data)
-            
+
             tg_id = event.callback_query.from_user.id
             message = event.callback_query.message
             from_user = event.callback_query.from_user

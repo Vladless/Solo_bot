@@ -458,7 +458,7 @@ async def handle_balance_add(
     if amount is not None:
         amount = int(amount)
         old_balance = await get_balance(session, tg_id)
-        
+
         if amount >= 0:
             await update_balance(session, tg_id, amount)
             new_balance = old_balance + amount

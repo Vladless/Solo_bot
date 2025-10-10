@@ -111,6 +111,7 @@ class Server(DictLikeMixin, Base):
     enabled = Column(Boolean, default=True)
 
     subgroups = relationship("ServerSubgroup", back_populates="server", cascade="all, delete-orphan")
+    groups = relationship("ServerSpecialgroup", back_populates="server", cascade="all, delete-orphan")
 
 
 class ServerSubgroup(DictLikeMixin, Base):
@@ -124,6 +125,18 @@ class ServerSubgroup(DictLikeMixin, Base):
     server = relationship("Server", back_populates="subgroups")
 
     __table_args__ = (UniqueConstraint("server_id", "subgroup_title", name="uq_server_subgroup"),)
+
+
+class ServerSpecialgroup(DictLikeMixin, Base):
+    __tablename__ = "server_specialgroups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), index=True, nullable=False)
+    group_code = Column(String, nullable=False)
+
+    server = relationship("Server")
+
+    __table_args__ = (UniqueConstraint("server_id", "group_code", name="uq_server_group"),)
 
 
 class Payment(DictLikeMixin, Base):

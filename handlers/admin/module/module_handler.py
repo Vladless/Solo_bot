@@ -56,11 +56,13 @@ async def handle_modules(callback_query: CallbackQuery, state: FSMContext, sessi
     total_pages = max(1, (len(items) + per_page - 1) // per_page)
     page = min(page, total_pages)
     start = (page - 1) * per_page
-    chunk = items[start:start + per_page]
+    chunk = items[start : start + per_page]
 
     if chunk:
+
         def fmt(n, v):
             return f"{n} v{v}" if v else n
+
         lines = "\n".join(f"• {fmt(n, v)}" for n, v in chunk)
         text = f"🧩 Мои модули\n\nНайдено: {len(items)}\n<blockquote>{lines}</blockquote>"
     else:

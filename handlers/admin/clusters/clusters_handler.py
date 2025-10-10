@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from py3xui import AsyncApi
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
@@ -19,7 +19,7 @@ from config import (
     USE_COUNTRY_SELECTION,
 )
 from database import check_unique_server_name, get_servers, update_key_expiry
-from database.models import Key, Server, ServerSubgroup, Tariff
+from database.models import Key, Server, ServerSpecialgroup, ServerSubgroup, Tariff
 from filters.admin import IsAdminFilter
 from handlers.keys.operations import (
     create_client_on_server,
@@ -27,6 +27,7 @@ from handlers.keys.operations import (
     delete_key_from_cluster,
     renew_key_in_cluster,
 )
+from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 from utils.backup import create_backup_and_send_to_admins
@@ -35,12 +36,15 @@ from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminClusterCallback,
     AdminServerCallback,
+    build_attach_tariff_kb,
     build_cluster_management_kb,
     build_clusters_editor_kb,
     build_manage_cluster_kb,
     build_panel_type_kb,
+    build_select_group_servers_kb,
     build_select_subgroup_servers_kb,
     build_sync_cluster_kb,
+    build_tariff_group_selection_for_servers_kb,
     build_tariff_group_selection_kb,
     build_tariff_subgroup_selection_kb,
 )
@@ -322,16 +326,24 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
 
+    allowed = {"trial", "discounts", "discounts_max"}
     lines = []
     for s in cluster_servers:
         subs = s.get("tariff_subgroups") or []
         subs_str = ", ".join(sorted(subs)) if subs else "—"
-        lines.append(f"• {s.get('server_name', '?')} — {subs_str}")
+
+        grps = s.get("special_groups") or []
+        grps = [g for g in grps if g in allowed]
+        grps_str = ", ".join(sorted(grps)) if grps else "—"
+
+        lines.append(f"• {s.get('server_name', '?')} — {subs_str} | {grps_str}")
 
     details = "\n".join(lines) if lines else "нет серверов"
 
     await callback.message.edit_text(
-        text=(f"<b>📡 Серверы в кластере {cluster_name}</b>\n<i>подгруппы:</i>\n<blockquote>{details}</blockquote>"),
+        text=(
+            f"<b>📡 Серверы в кластере {cluster_name}</b>\n<i>подгруппы | спецгруппы:</i>\n<blockquote>{details}</blockquote>"
+        ),
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
 
@@ -1309,3 +1321,211 @@ async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminC
     except Exception as e:
         logger.error(f"Ошибка при сбросе подгрупп для кластера {cluster_name}: {e}")
         await callback.message.edit_text("❌ Не удалось сбросить подгруппы.")
+
+
+def render_attach_tariff_menu_text(cluster_name: str, cluster_servers: list[dict]) -> str:
+    sub_map: dict[str, list[str]] = {}
+    for s in cluster_servers:
+        for sg in s.get("tariff_subgroups") or []:
+            sub_map.setdefault(sg, []).append(s["server_name"])
+
+    allowed = ("trial", "discounts", "discounts_max")
+    spec_map: dict[str, list[str]] = {k: [] for k in allowed}
+    for s in cluster_servers:
+        for g in s.get("special_groups") or []:
+            if g in spec_map:
+                spec_map[g].append(s["server_name"])
+
+    lines = [f"<b>🧩 Привязки тарифов • {cluster_name}</b>"]
+
+    lines.append("<b>Подгруппы:</b>")
+    if sub_map:
+        subs_lines = []
+        for k in sorted(sub_map):
+            servers_list = ", ".join(sorted(set(sub_map[k])))
+            subs_lines.append(f"• <b>{k}</b>: {servers_list}")
+        lines.append("<blockquote>\n" + "\n".join(subs_lines) + "\n</blockquote>")
+    else:
+        lines.append("<blockquote>— нет привязок</blockquote>")
+
+    lines.append("<b>Спецгруппы:</b>")
+    has_spec = any(spec_map[k] for k in allowed)
+    if has_spec:
+        spec_lines = []
+        for k in allowed:
+            vals = sorted(set(spec_map[k]))
+            spec_lines.append(f"• <b>{k}</b>: {', '.join(vals) if vals else '—'}")
+        lines.append("<blockquote>\n" + "\n".join(spec_lines) + "\n</blockquote>")
+    else:
+        lines.append("<blockquote>— нет привязок</blockquote>")
+
+    return "\n".join(lines)
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "attach_tariff_menu"), IsAdminFilter())
+async def handle_attach_tariff_menu(callback: CallbackQuery, session: AsyncSession):
+    packed = AdminClusterCallback.unpack(callback.data)
+    cluster_name = packed.data
+
+    servers = await get_servers(session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+
+    text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
+    await callback.message.edit_text(
+        text=text,
+        reply_markup=build_attach_tariff_kb(cluster_name),
+        disable_web_page_preview=True,
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "set_group"))
+async def show_servers_for_group(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    cluster_name = callback_data.data
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    data = await state.get_data()
+    selected = set(data.get(f"grp_sel:{cluster_name}", []))
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения тарифной группы:</b>",
+        reply_markup=build_select_group_servers_kb(cluster_name, cluster_servers, selected),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_group"))
+async def toggle_server_for_group(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    cluster_name, idx_str = callback_data.data.split("|", 1)
+    i = int(idx_str)
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    names = []
+    for s in cluster_servers:
+        if isinstance(s, str):
+            names.append(s)
+        elif isinstance(s, dict):
+            names.append(s.get("server_name") or s.get("name") or str(s))
+        else:
+            names.append(getattr(s, "server_name", None) or getattr(s, "name", None) or str(s))
+    if i < 0 or i >= len(names):
+        await callback.answer("Сервер не найден", show_alert=True)
+        return
+    server_name = names[i]
+    key = f"grp_sel:{cluster_name}"
+    data = await state.get_data()
+    selected = set(data.get(key, []))
+    if server_name in selected:
+        selected.remove(server_name)
+    else:
+        selected.add(server_name)
+    await state.update_data({key: list(selected)})
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения тарифной группы:</b>",
+        reply_markup=build_select_group_servers_kb(cluster_name, cluster_servers, selected),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_group_selection"))
+async def reset_group_selection(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    cluster_name = callback_data.data
+    servers = await get_servers(session=session, include_enabled=True)
+    cluster_servers = servers.get(cluster_name, [])
+    await state.update_data({f"grp_sel:{cluster_name}": []})
+    await callback.message.edit_text(
+        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения тарифной группы:</b>",
+        reply_markup=build_select_group_servers_kb(cluster_name, cluster_servers, set()),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "choose_group"))
+async def choose_group(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    cluster_name = callback_data.data
+    key = f"grp_sel:{cluster_name}"
+    data = await state.get_data()
+    selected = set(data.get(key, []))
+    if not selected:
+        await callback.answer("Сначала выберите хотя бы один сервер", show_alert=True)
+        return
+    groups = [(i, code) for i, code in enumerate(ALLOWED_GROUP_CODES)]
+    await callback.message.edit_text(
+        f"<b>📚 Выберите группу для {len(selected)} сервер(а/ов) кластера <code>{cluster_name}</code>:</b>",
+        reply_markup=build_tariff_group_selection_for_servers_kb(cluster_name, groups),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_group_to_servers"))
+async def apply_group_to_servers(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    try:
+        cluster_name, idx_str = callback_data.data.split("|", 1)
+        i = int(idx_str)
+        groups = ALLOWED_GROUP_CODES
+        if i < 0 or i >= len(groups):
+            await callback.answer("Группа не найдена", show_alert=True)
+            return
+        group_code = groups[i]
+
+        key = f"grp_sel:{cluster_name}"
+        data = await state.get_data()
+        selected = set(data.get(key, []))
+        if not selected:
+            await callback.message.edit_text("❌ Не выбраны серверы для назначения группы.")
+            return
+
+        rows = await session.execute(select(Server.id, Server.server_name).where(Server.server_name.in_(selected)))
+        id_by_name = {name: sid for sid, name in rows.fetchall()}
+        server_ids = [id_by_name[n] for n in selected if n in id_by_name]
+        if not server_ids:
+            await callback.answer("Серверы не найдены", show_alert=True)
+            return
+
+        exist_rows = await session.execute(
+            select(ServerSpecialgroup.server_id).where(
+                and_(ServerSpecialgroup.server_id.in_(server_ids), ServerSpecialgroup.group_code == group_code)
+            )
+        )
+        already = {r[0] for r in exist_rows.fetchall()}
+        to_insert = [sid for sid in server_ids if sid not in already]
+
+        if to_insert:
+            session.add_all([ServerSpecialgroup(server_id=sid, group_code=group_code) for sid in to_insert])
+            await session.commit()
+
+        await state.update_data({key: []})
+        applied = ", ".join(sorted(selected))
+        await callback.message.edit_text(
+            f"✅ Группа <b>{group_code}</b> назначена серверам:\n<blockquote>{applied}</blockquote>",
+            reply_markup=build_cluster_management_kb(cluster_name),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при назначении группы тарифов: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка при назначении группы.")
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_groups"))
+async def reset_cluster_groups(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession):
+    try:
+        cluster_name = callback_data.data
+        res = await session.execute(select(Server.id).where(Server.cluster_name == cluster_name))
+        server_ids = [row[0] for row in res.fetchall()]
+        if not server_ids:
+            await callback.answer("В кластере нет серверов", show_alert=True)
+            return
+        await session.execute(delete(ServerSpecialgroup).where(ServerSpecialgroup.server_id.in_(server_ids)))
+        await session.commit()
+        servers = await get_servers(session=session, include_enabled=True)
+        cluster_servers = servers.get(cluster_name, [])
+        await callback.message.edit_text(
+            f"✅ Все привязки групп сброшены для кластера <b>{cluster_name}</b>.",
+            reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при сбросе групп для кластера {cluster_name}: {e}")
+        await callback.message.edit_text("❌ Не удалось сбросить привязки групп.")

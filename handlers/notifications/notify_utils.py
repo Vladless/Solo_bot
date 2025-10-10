@@ -1,5 +1,6 @@
 import asyncio
 import os
+
 from datetime import datetime
 
 import aiofiles
@@ -176,7 +177,7 @@ async def prepare_key_expiry_data(key, session: AsyncSession, current_time: int)
 
     tariff_name = "—"
     tariff_details = ""
-    
+
     if getattr(key, "tariff_id", None):
         tariff = await get_tariff_by_id(session, key.tariff_id)
         if tariff:
@@ -192,7 +193,7 @@ async def prepare_key_expiry_data(key, session: AsyncSession, current_time: int)
             lines.append(f"Трафик: {traffic_text}")
             lines.append(f"Устройств: {devices_text}")
             tariff_details = "\n" + "\n".join(lines)
-    
+
     return {
         "hours_left_formatted": hours_left_formatted,
         "formatted_expiry_date": formatted_expiry_date,

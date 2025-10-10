@@ -57,21 +57,12 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
             callback_data=AdminServerCallback(action="add", data=cluster_name).pack(),
         )
     )
-
     builder.row(
         InlineKeyboardButton(
-            text="🗂 Выбрать подгруппу тарифов",
-            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
+            text="💸 Тариф(Установить/изменить)",
+            callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🧹 Сбросить все подгруппы",
-            callback_data=AdminClusterCallback(action="reset_cluster_subgroups", data=cluster_name).pack(),
-        )
-    )
-
     builder.row(
         InlineKeyboardButton(
             text="🔙 Назад",
@@ -79,6 +70,37 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
         )
     )
 
+    return builder.as_markup()
+
+
+def build_attach_tariff_kb(cluster_name: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="🗂 Спецгруппы",
+            callback_data=AdminClusterCallback(action="set_group", data=cluster_name).pack(),
+        ),
+        InlineKeyboardButton(
+            text="🧹 Сбросить",
+            callback_data=AdminClusterCallback(action="reset_cluster_groups", data=cluster_name).pack(),
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🗂 Подгруппы",
+            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
+        ),
+        InlineKeyboardButton(
+            text="🧹 Сбросить",
+            callback_data=AdminClusterCallback(action="reset_cluster_subgroups", data=cluster_name).pack(),
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+        )
+    )
     return builder.as_markup()
 
 
@@ -238,6 +260,68 @@ def build_tariff_group_selection_kb(cluster_name: str, groups: list[tuple[int, s
         InlineKeyboardButton(
             text="⬅️ Назад",
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+        )
+    )
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def build_select_group_servers_kb(cluster_name: str, cluster_servers: list, selected: set[str]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    names = []
+    for s in cluster_servers:
+        if isinstance(s, str):
+            names.append(s)
+        elif isinstance(s, dict):
+            names.append(s.get("server_name") or s.get("name") or str(s))
+        else:
+            names.append(getattr(s, "server_name", None) or getattr(s, "name", None) or str(s))
+
+    for i, name in enumerate(names):
+        mark = "✅" if name in selected else "⬜️"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark} {name}",
+                callback_data=AdminClusterCallback(action="toggle_server_group", data=f"{cluster_name}|{i}").pack(),
+            )
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="📚 Выбрать спецгруппу",
+            callback_data=AdminClusterCallback(action="choose_group", data=cluster_name).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="♻️ Сбросить выбор",
+            callback_data=AdminClusterCallback(action="reset_group_selection", data=cluster_name).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+        )
+    )
+    return builder.as_markup()
+
+
+def build_tariff_group_selection_for_servers_kb(
+    cluster_name: str, groups: list[tuple[int, str]]
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for group_id, group_code in groups:
+        builder.button(
+            text=group_code,
+            callback_data=AdminClusterCallback(
+                action="apply_group_to_servers", data=f"{cluster_name}|{group_id}"
+            ).pack(),
+        )
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=AdminClusterCallback(action="set_group", data=cluster_name).pack(),
         )
     )
     builder.adjust(2, 1)

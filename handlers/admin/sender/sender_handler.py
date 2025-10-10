@@ -45,24 +45,24 @@ async def send_broadcast_batch(bot, messages, batch_size=15, session=None):
 
         try:
             if photo:
-                result = await bot.send_photo(
+                await bot.send_photo(
                     chat_id=tg_id, photo=photo, caption=text, parse_mode="HTML", reply_markup=keyboard
                 )
             else:
-                result = await bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
+                await bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
             results.append(True)
-            
+
         except TelegramRetryAfter as e:
             retry_in = int(e.retry_after) + 1
             logger.warning(f"⚠️ Flood control: повтор через {retry_in} сек. для пользователя {tg_id}")
             await asyncio.sleep(e.retry_after)
             try:
                 if photo:
-                    result = await bot.send_photo(
+                    await bot.send_photo(
                         chat_id=tg_id, photo=photo, caption=text, parse_mode="HTML", reply_markup=keyboard
                     )
                 else:
-                    result = await bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
+                    await bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
                 results.append(True)
             except TelegramForbiddenError:
                 logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
@@ -79,7 +79,7 @@ async def send_broadcast_batch(bot, messages, batch_size=15, session=None):
                 logger.error(f"❌ Ошибка повторной отправки пользователю {tg_id}: {retry_error}")
                 await try_add_blocked_user(tg_id, session)
                 results.append(False)
-                
+
         except TelegramForbiddenError:
             logger.warning(f"🚫 Бот заблокирован пользователем {tg_id}.")
             await try_add_blocked_user(tg_id, session)
@@ -147,9 +147,7 @@ async def get_recipients(session: AsyncSession, send_to: str, cluster_name: str 
             .where(~User.tg_id.in_(banned_tg_ids))
         )
     elif send_to == "hotleads":
-        subquery_active_keys = (
-            select(Key.tg_id).where(Key.expiry_time > now_ms).distinct()
-        )
+        subquery_active_keys = select(Key.tg_id).where(Key.expiry_time > now_ms).distinct()
         query = (
             select(distinct(User.tg_id))
             .join(Payment, User.tg_id == Payment.tg_id)

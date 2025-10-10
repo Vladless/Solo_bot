@@ -2,7 +2,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Server, ServerSubgroup, Tariff
+from database.models import Key, Server, ServerSpecialgroup, ServerSubgroup, Tariff
 from logger import logger
 
 
@@ -58,11 +58,24 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
             for sid, sg in r.all():
                 subs_map.setdefault(sid, []).append(sg)
 
+        groups_map = {}
+        if ids:
+            r2 = await session.execute(
+                select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                    ServerSpecialgroup.server_id.in_(ids)
+                )
+            )
+            for sid, gc in r2.all():
+                groups_map.setdefault(sid, []).append(gc)
+
+        allowed = {"trial", "discounts", "discounts_max"}
+
         grouped = {}
         for s in servers:
             if not include_enabled and not s.enabled:
                 continue
             cluster = s.cluster_name
+            special = sorted({g for g in groups_map.get(s.id, []) if g in allowed})
             grouped.setdefault(cluster, []).append({
                 "server_name": s.server_name,
                 "api_url": s.api_url,
@@ -73,6 +86,7 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
                 "max_keys": s.max_keys,
                 "tariff_group": s.tariff_group,
                 "tariff_subgroups": subs_map.get(s.id, []),
+                "special_groups": special,
                 "cluster_name": cluster,
             })
         return grouped

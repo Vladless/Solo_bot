@@ -13,7 +13,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW, RENEW_BUTTON_BEFORE_DAYS
+from config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
 from database import (
     check_tariff_exists,
     get_balance,
