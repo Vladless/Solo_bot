@@ -57,7 +57,6 @@ async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSes
         builder.row(InlineKeyboardButton(text=ANDROID, callback_data=f"connect_android|{key_name}"))
         builder.row(InlineKeyboardButton(text=PC, callback_data=f"connect_pc|{key_name}"))
         builder.row(InlineKeyboardButton(text=TV, callback_data=f"connect_tv|{key_name}"))
-        #    builder.row(InlineKeyboardButton(text=ROUTER, callback_data=f"connect_router|{key_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
         try:

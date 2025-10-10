@@ -26,7 +26,6 @@ from config import (
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
-    RENEW_BUTTON_BEFORE_DAYS,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
 )
@@ -244,7 +243,6 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
     now = datetime.utcnow()
     time_left = expiry_date - now
-    show_renew_btn = time_left.total_seconds() <= RENEW_BUTTON_BEFORE_DAYS * 86400
 
     if time_left.total_seconds() <= 0:
         days_left_message = DAYS_LEFT_MESSAGE
@@ -342,8 +340,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
             else:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
-    if show_renew_btn:
-        builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data=f"renew_key|{key_name}"))
+    builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data=f"renew_key|{key_name}"))
 
     if HWID_RESET_BUTTON and hwid_count > 0:
         builder.row(InlineKeyboardButton(text=HWID_BUTTON, callback_data=f"reset_hwid|{key_name}"))

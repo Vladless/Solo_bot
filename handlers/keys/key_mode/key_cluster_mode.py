@@ -242,11 +242,9 @@ async def key_cluster_mode(
             media_path=default_media_path,
         )
     else:
-        photo = FSInputFile(default_media_path)
-        await bot.send_photo(
+        await bot.send_message(
             chat_id=tg_id,
-            photo=photo,
-            caption=key_message_text,
+            text=key_message_text,
             reply_markup=builder.as_markup(),
         )
 

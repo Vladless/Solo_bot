@@ -13,7 +13,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW
+from config import DISCOUNT_ACTIVE_HOURS, USE_NEW_PAYMENT_FLOW, RENEW_BUTTON_BEFORE_DAYS
 from database import (
     check_tariff_exists,
     get_balance,
@@ -65,6 +65,21 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         expiry_time = record["expiry_time"]
         server_id = record["server_id"]
         tariff_id = record.get("tariff_id")
+
+        expiry_utc = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=pytz.UTC)
+        available_from_utc = expiry_utc - timedelta(days=RENEW_BUTTON_BEFORE_DAYS)
+        now_utc = datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+        if now_utc < available_from_utc:
+            dt_msk = available_from_utc.astimezone(moscow_tz).strftime("%d.%m.%Y %H:%M")
+            kb = InlineKeyboardBuilder()
+            kb.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text=f"Продление доступно с {dt_msk}",
+                reply_markup=kb.as_markup(),
+            )
+            return
 
         await state.update_data(renew_key_name=key_name, renew_client_id=client_id)
 
