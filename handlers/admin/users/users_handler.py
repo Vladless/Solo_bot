@@ -464,7 +464,13 @@ async def handle_balance_add(
             new_balance = max(0, current_balance + amount)
             await set_user_balance(session, tg_id, new_balance)
 
-        await handle_balance_change(callback_query, callback_data, session)
+        try:
+            await handle_balance_change(callback_query, callback_data, session)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                raise
         return
 
     await state.update_data(tg_id=tg_id, op_type="add")
