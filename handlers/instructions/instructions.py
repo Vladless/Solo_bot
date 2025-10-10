@@ -13,6 +13,7 @@ from config import (
     DOWNLOAD_MACOS,
     DOWNLOAD_PC,
     SUPPORT_CHAT_URL,
+    WEBHOOK_HOST,
 )
 from database import get_key_details, get_subscription_link
 from handlers.buttons import (
@@ -110,10 +111,12 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
 
     if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
+        windows_url = f"{WEBHOOK_HOST}/?url={processed_link}"
     else:
         processed_link = key_link
+        windows_url = f"{CONNECT_WINDOWS}{processed_link}"
 
-    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=f"{CONNECT_WINDOWS}{processed_link}"))
+    builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=windows_url))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 
@@ -141,10 +144,12 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
     if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
+        macos_url = f"{WEBHOOK_HOST}/?url={processed_link}"
     else:
         processed_link = key_link
+        macos_url = f"{CONNECT_MACOS}{processed_link}"
 
-    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=f"{CONNECT_MACOS}{processed_link}"))
+    builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=macos_url))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_pc|{key_name}"))
 

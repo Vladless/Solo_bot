@@ -148,7 +148,7 @@ async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSessi
             )
         )
 
-    await inline_query.answer(results=results, cache_time=86400, is_personal=True)
+    await inline_query.answer(results=results, cache_time=60, is_personal=True)
 
 
 @router.callback_query(F.data.startswith("show_referral_qr|"))

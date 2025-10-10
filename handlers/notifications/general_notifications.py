@@ -15,6 +15,10 @@ from config import (
     NOTIFY_INACTIVE_TRAFFIC,
     NOTIFY_RENEW,
     NOTIFY_RENEW_EXPIRED,
+    NOTIFY_24H_ENABLED,
+    NOTIFY_24H_HOURS,
+    NOTIFY_10H_ENABLED,
+    NOTIFY_10H_HOURS,
     TRIAL_TIME_DISABLE,
 )
 from database import (
@@ -35,10 +39,12 @@ from database import (
 )
 from handlers.keys.operations import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import (
+    build_change_tariff_kb,
     build_notification_expired_kb,
     build_notification_kb,
 )
 from handlers.texts import (
+    KEY_CANNOT_RENEW_CURRENT,
     KEY_DELETED_MSG,
     KEY_EXPIRED_DELAY_MSG,
     KEY_EXPIRED_NO_DELAY_MSG,
@@ -50,7 +56,7 @@ from hooks.hooks import run_hooks
 from logger import logger
 
 from .hot_leads_notifications import notify_hot_leads
-from .notify_utils import send_messages_with_limit, send_notification
+from .notify_utils import prepare_key_expiry_data, send_messages_with_limit, send_notification
 from .special_notifications import notify_inactive_trial_users, notify_users_no_traffic
 
 
@@ -72,8 +78,6 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                     logger.info("Запуск обработки уведомлений")
 
                     current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
-                    threshold_10h = int((datetime.now(moscow_tz) + timedelta(hours=10)).timestamp() * 1000)
-                    threshold_24h = int((datetime.now(moscow_tz) + timedelta(days=1)).timestamp() * 1000)
 
                     try:
                         keys = await get_all_keys(session=session)
@@ -88,15 +92,19 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                         except Exception as e:
                             logger.error(f"Ошибка в notify_inactive_trial_users: {e}")
 
-                    try:
-                        await notify_24h_keys(bot, session, current_time, threshold_24h, keys)
-                    except Exception as e:
-                        logger.error(f"Ошибка в notify_24h_keys: {e}")
+                    if NOTIFY_24H_ENABLED:
+                        try:
+                            threshold_24h = int((datetime.now(moscow_tz) + timedelta(hours=NOTIFY_24H_HOURS)).timestamp() * 1000)
+                            await notify_24h_keys(bot, session, current_time, threshold_24h, keys)
+                        except Exception as e:
+                            logger.error(f"Ошибка в notify_24h_keys: {e}")
 
-                    try:
-                        await notify_10h_keys(bot, session, current_time, threshold_10h, keys)
-                    except Exception as e:
-                        logger.error(f"Ошибка в notify_10h_keys: {e}")
+                    if NOTIFY_10H_ENABLED:
+                        try:
+                            threshold_10h = int((datetime.now(moscow_tz) + timedelta(hours=NOTIFY_10H_HOURS)).timestamp() * 1000)
+                            await notify_10h_keys(bot, session, current_time, threshold_10h, keys)
+                        except Exception as e:
+                            logger.error(f"Ошибка в notify_10h_keys: {e}")
 
                     try:
                         await handle_expired_keys(bot, session, current_time, keys)
@@ -133,13 +141,13 @@ async def notify_24h_keys(
     threshold_time_24h: int,
     keys: list,
 ):
-    logger.info("Начало проверки подписок, истекающих через 24 часа.")
+    logger.info(f"Начало проверки подписок, истекающих через {NOTIFY_24H_HOURS} часов.")
     expiring_keys = [key for key in keys if key.expiry_time and current_time < key.expiry_time <= threshold_time_24h]
-    logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через 24 часа.")
+    logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через {NOTIFY_24H_HOURS} часов.")
 
     tg_ids = [getattr(key, "tg_id", key["tg_id"]) for key in expiring_keys]
     emails = [key.email or "" for key in expiring_keys]
-    allowed = await check_notifications_bulk(session, "key_24h", 24, tg_ids=tg_ids, emails=emails)
+    allowed = await check_notifications_bulk(session, "key_24h", NOTIFY_24H_HOURS, tg_ids=tg_ids, emails=emails)
 
     allowed_set = {(u["tg_id"], u["email"]) for u in allowed}
     messages = []
@@ -151,42 +159,19 @@ async def notify_24h_keys(
             continue
 
         notification_id = f"{email}_key_24h"
-        expiry_timestamp = key.expiry_time
-        hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
-        hours_left_formatted = (
-            f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
-        )
-        expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
-        formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
-        can_notify = await check_notification_time(session, tg_id, notification_id, hours=24)
+        can_notify = await check_notification_time(session, tg_id, notification_id, hours=NOTIFY_24H_HOURS)
         if not can_notify:
             continue
 
-        tariff_name = "—"
-        tariff_details = ""
-        if getattr(key, "tariff_id", None):
-            tariff = await get_tariff_by_id(session, key.tariff_id)
-            if tariff:
-                tariff_name = tariff.get("name") or "—"
-                traffic_limit = tariff.get("traffic_limit") or 0
-                device_limit = tariff.get("device_limit") or 0
-                subgroup_title = tariff.get("subgroup_title", "")
-                traffic_text = "безлимит" if traffic_limit <= 0 else f"{traffic_limit} ГБ"
-                devices_text = "безлимит" if device_limit <= 0 else str(device_limit)
-                lines = []
-                if subgroup_title:
-                    lines.append(subgroup_title)
-                lines.append(f"Трафик: {traffic_text}")
-                lines.append(f"Устройств: {devices_text}")
-                tariff_details = "\n" + "\n".join(lines)
-
+        expiry_data = await prepare_key_expiry_data(key, session, current_time)
+        
         notification_text = KEY_EXPIRY.format(
             email=email,
-            hours_left_formatted=hours_left_formatted,
-            formatted_expiry_date=formatted_expiry_date,
-            tariff_name=tariff_name,
-            tariff_details=tariff_details,
+            hours_left_formatted=expiry_data["hours_left_formatted"],
+            formatted_expiry_date=expiry_data["formatted_expiry_date"],
+            tariff_name=expiry_data["tariff_name"],
+            tariff_details=expiry_data["tariff_details"],
         )
 
         if NOTIFY_RENEW:
@@ -227,9 +212,9 @@ async def notify_24h_keys(
                 logger.warning(
                     f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
                 )
-        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 24 часа.")
+        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через {NOTIFY_24H_HOURS} часов.")
 
-    logger.info("Обработка всех уведомлений за 24 часа завершена.")
+    logger.info(f"Обработка всех уведомлений за {NOTIFY_24H_HOURS} часов завершена.")
     await asyncio.sleep(1)
 
 
@@ -240,13 +225,13 @@ async def notify_10h_keys(
     threshold_time_10h: int,
     keys: list,
 ):
-    logger.info("Начало проверки подписок, истекающих через 10 часов.")
+    logger.info(f"Начало проверки подписок, истекающих через {NOTIFY_10H_HOURS} часов.")
     expiring_keys = [key for key in keys if key.expiry_time and current_time < key.expiry_time <= threshold_time_10h]
-    logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через 10 часов.")
+    logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через {NOTIFY_10H_HOURS} часов.")
 
     tg_ids = [key.tg_id for key in expiring_keys]
     emails = [key.email or "" for key in expiring_keys]
-    allowed = await check_notifications_bulk(session, "key_10h", 10, tg_ids=tg_ids, emails=emails)
+    allowed = await check_notifications_bulk(session, "key_10h", NOTIFY_10H_HOURS, tg_ids=tg_ids, emails=emails)
 
     allowed_set = {(u["tg_id"], u["email"]) for u in allowed}
     messages = []
@@ -258,42 +243,19 @@ async def notify_10h_keys(
             continue
 
         notification_id = f"{email}_key_10h"
-        expiry_timestamp = key.expiry_time
-        hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
-        hours_left_formatted = (
-            f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
-        )
-        expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
-        formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
 
-        can_notify = await check_notification_time(session, tg_id, notification_id, hours=10)
+        can_notify = await check_notification_time(session, tg_id, notification_id, hours=NOTIFY_10H_HOURS)
         if not can_notify:
             continue
 
-        tariff_name = "—"
-        tariff_details = ""
-        if key.tariff_id:
-            tariff = await get_tariff_by_id(session, key.tariff_id)
-            if tariff:
-                tariff_name = tariff.get("name") or "—"
-                traffic_limit = tariff.get("traffic_limit") or 0
-                device_limit = tariff.get("device_limit") or 0
-                subgroup_title = tariff.get("subgroup_title", "")
-                traffic_text = "безлимит" if traffic_limit <= 0 else f"{traffic_limit} ГБ"
-                devices_text = "безлимит" if device_limit <= 0 else str(device_limit)
-                lines = []
-                if subgroup_title:
-                    lines.append(subgroup_title)
-                lines.append(f"Трафик: {traffic_text}")
-                lines.append(f"Устройств: {devices_text}")
-                tariff_details = "\n" + "\n".join(lines)
-
+        expiry_data = await prepare_key_expiry_data(key, session, current_time)
+        
         notification_text = KEY_EXPIRY.format(
             email=email,
-            hours_left_formatted=hours_left_formatted,
-            formatted_expiry_date=formatted_expiry_date,
-            tariff_name=tariff_name,
-            tariff_details=tariff_details,
+            hours_left_formatted=expiry_data["hours_left_formatted"],
+            formatted_expiry_date=expiry_data["formatted_expiry_date"],
+            tariff_name=expiry_data["tariff_name"],
+            tariff_details=expiry_data["tariff_details"],
         )
 
         if NOTIFY_RENEW:
@@ -334,9 +296,9 @@ async def notify_10h_keys(
                 logger.warning(
                     f"Не удалось отправить уведомление об истекающей подписке {msg['email']} пользователю {tg_id}."
                 )
-        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через 10 часов.")
+        logger.info(f"Отправлено {sent_count} уведомлений об истечении подписки через {NOTIFY_10H_HOURS} часов.")
 
-    logger.info("Обработка всех уведомлений за 10 часов завершена.")
+    logger.info(f"Обработка всех уведомлений за {NOTIFY_10H_HOURS} часов завершена.")
     await asyncio.sleep(1)
 
 
@@ -500,13 +462,7 @@ async def process_auto_renew_or_notify(
         selected_tariff = None
 
         if not tariff_id:
-            cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
-            if cluster_tariffs:
-                cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
-                if cluster_tariffs_31:
-                    selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
-                else:
-                    selected_tariff = None
+            selected_tariff = None
         else:
             if await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
@@ -522,28 +478,57 @@ async def process_auto_renew_or_notify(
                     logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {e}")
 
                 if current_tariff["group_code"] in forbidden_groups:
-                    cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
-                    if cluster_tariffs:
-                        cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
-                        if cluster_tariffs_31:
-                            selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
-                        else:
-                            selected_tariff = None
+                    selected_tariff = None
                 elif balance >= current_tariff["price_rub"]:
                     selected_tariff = current_tariff
             else:
-                cluster_tariffs = [t for t in tariffs if t["is_active"] and balance >= t["price_rub"]]
-                if cluster_tariffs:
-                    cluster_tariffs_31 = [t for t in cluster_tariffs if t["duration_days"] <= 31]
-                    if cluster_tariffs_31:
-                        selected_tariff = max(cluster_tariffs_31, key=lambda x: x["duration_days"])
-                    else:
-                        selected_tariff = None
+                selected_tariff = None
 
         if not selected_tariff:
-            keyboard = build_notification_kb(email)
+            expiry_data = await prepare_key_expiry_data(key, conn, int(datetime.now(moscow_tz).timestamp() * 1000))
+            
+            use_change_tariff_kb = False
+            
+            if tariff_id and await check_tariff_exists(conn, tariff_id):
+                current_tariff = await get_tariff_by_id(conn, tariff_id)
+                if current_tariff:
+                    forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+                    try:
+                        hook_results = await run_hooks("renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn)
+                        for hook_result in hook_results:
+                            additional_groups = hook_result.get("additional_groups", [])
+                            forbidden_groups.extend(additional_groups)
+                    except Exception as e:
+                        logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {e}")
+
+                    if current_tariff["group_code"] in forbidden_groups:
+                        use_change_tariff_kb = True
+
+                        message_text = KEY_CANNOT_RENEW_CURRENT.format(
+                            email=email,
+                            hours_left_formatted=expiry_data["hours_left_formatted"],
+                            formatted_expiry_date=expiry_data["formatted_expiry_date"],
+                            tariff_name=expiry_data["tariff_name"],
+                            tariff_details=expiry_data["tariff_details"],
+                        )
+            else:
+                use_change_tariff_kb = True
+
+                message_text = KEY_CANNOT_RENEW_CURRENT.format(
+                    email=email,
+                    hours_left_formatted=expiry_data["hours_left_formatted"],
+                    formatted_expiry_date=expiry_data["formatted_expiry_date"],
+                    tariff_name=expiry_data["tariff_name"],
+                    tariff_details=expiry_data["tariff_details"],
+                )
+
+            if use_change_tariff_kb:
+                keyboard = build_change_tariff_kb(email)
+            else:
+                keyboard = build_notification_kb(email)
+            
             await add_notification(conn, tg_id, notification_id)
-            await send_notification(bot, tg_id, standard_photo, standard_caption, keyboard)
+            await send_notification(bot, tg_id, standard_photo, message_text, keyboard)
             return
 
         client_id = key.client_id

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
+    APP_URL,
     CONNECT_ANDROID,
     CONNECT_IOS,
     DOWNLOAD_ANDROID,
@@ -108,13 +109,17 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
     )
     if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
+        crypto_url = f"{APP_URL}/?url={processed_link}"
+        builder.row(
+            InlineKeyboardButton(text=IMPORT_IOS, url=crypto_url),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=crypto_url),
+        )
     else:
         processed_link = key_link
-
-    builder.row(
-        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{processed_link}"),
-        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{processed_link}"),
-    )
+        builder.row(
+            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{processed_link}"),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{processed_link}"),
+        )
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
@@ -148,10 +153,12 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
 
     if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
+        ios_url = f"{APP_URL}/?url={processed_link}"
     else:
         processed_link = key_link
+        ios_url = f"{CONNECT_IOS}{processed_link}"
 
-    builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{processed_link}"))
+    builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=ios_url))
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{email}"))
@@ -186,10 +193,12 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
 
     if key_link and "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
+        android_url = f"{APP_URL}/?url={processed_link}"
     else:
         processed_link = key_link
+        android_url = f"{CONNECT_ANDROID}{processed_link}"
 
-    builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{processed_link}"))
+    builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=android_url))
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{email}"))
