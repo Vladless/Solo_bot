@@ -457,14 +457,16 @@ async def handle_balance_add(
 
     if amount is not None:
         amount = int(amount)
+        old_balance = await get_balance(session, tg_id)
+        
         if amount >= 0:
             await update_balance(session, tg_id, amount)
+            new_balance = old_balance + amount
         else:
-            current_balance = await get_balance(session, tg_id)
-            new_balance = max(0, current_balance + amount)
+            new_balance = max(0, old_balance + amount)
             await set_user_balance(session, tg_id, new_balance)
-
-        await handle_balance_change(callback_query, callback_data, session)
+        if old_balance != new_balance:
+            await handle_balance_change(callback_query, callback_data, session)
         return
 
     await state.update_data(tg_id=tg_id, op_type="add")
