@@ -532,7 +532,7 @@ async def complete_key_renewal(
             logger.warning(f"[Renew] Не удалось определить текущую подгруппу: {e}")
 
         target_subgroup = tariff.get("subgroup_title")
-        old_subgroup = current_subgroup if target_subgroup != current_subgroup else None
+        old_subgroup = current_subgroup
 
         server_or_cluster = key_info["server_id"]
         cluster_id = await resolve_cluster_name(session, server_or_cluster)
@@ -554,8 +554,11 @@ async def complete_key_renewal(
             plan=tariff_id,
         )
 
-        await update_key_expiry(session, client_id, new_expiry_time)
-        await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
+        key_row = await get_key_details(session, email)
+        effective_client_id = key_row["client_id"] if key_row else client_id
+
+        await update_key_expiry(session, effective_client_id, new_expiry_time)
+        await session.execute(update(Key).where(Key.email == email).values(tariff_id=tariff_id))
         await update_balance(session, tg_id, -cost)
 
         builder = InlineKeyboardBuilder()

@@ -15,7 +15,7 @@ from config import (
     SUPPORT_CHAT_URL,
     WEBHOOK_HOST,
 )
-from database import get_key_details, get_subscription_link
+from database import get_subscription_link
 from handlers.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,
@@ -70,8 +70,8 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
 @router.callback_query(F.data.startswith("connect_pc|"))
 async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
-    if not record:
+    key_link = await get_subscription_link(session, key_name)
+    if not key_link:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         await edit_or_send_message(
@@ -109,7 +109,7 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_PC_BUTTON, url=DOWNLOAD_PC))
 
-    if key_link and "happ://crypt" in key_link:
+    if "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
         windows_url = f"{WEBHOOK_HOST}/?url={processed_link}"
     else:
@@ -142,7 +142,7 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_MACOS_BUTTON, url=DOWNLOAD_MACOS))
 
-    if key_link and "happ://crypt" in key_link:
+    if "happ://crypt" in key_link:
         processed_link = urllib.parse.quote(key_link, safe="")
         macos_url = f"{WEBHOOK_HOST}/?url={processed_link}"
     else:
@@ -182,9 +182,8 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("continue_tv|"))
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
-    subscription_link = record.get("key") or record.get("remnawave_link")
-    message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=subscription_link)
+    key_link = await get_subscription_link(session, key_name)
+    message_text = SUBSCRIPTION_DETAILS_TEXT.format(subscription_link=key_link)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_tv|{key_name}"))
@@ -201,8 +200,8 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
 @router.callback_query(F.data.startswith("connect_router|"))
 async def process_connect_router(callback_query: CallbackQuery, session: Any):
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
-    if not record:
+    key_link = await get_subscription_link(session, key_name)
+    if not key_link:
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         await edit_or_send_message(
@@ -213,8 +212,7 @@ async def process_connect_router(callback_query: CallbackQuery, session: Any):
         )
         return
 
-    subscription_link = record.get("key") or record.get("remnawave_link")
-    message_text = ROUTER_MESSAGE.format(subscription_link=subscription_link)
+    message_text = ROUTER_MESSAGE.format(subscription_link=key_link)
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))

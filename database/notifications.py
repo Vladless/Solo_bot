@@ -40,7 +40,7 @@ async def delete_notification(session: AsyncSession, tg_id: int, notification_ty
         )
     )
     await session.commit()
-    logger.info(f"🗑 Уведомление {notification_type} для пользователя {tg_id} удалено")
+    logger.debug(f"🗑 Уведомление {notification_type} для пользователя {tg_id} удалено")
 
 
 async def check_notification_time(session: AsyncSession, tg_id: int, notification_type: str, hours: int = 12) -> bool:

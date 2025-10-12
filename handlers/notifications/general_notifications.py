@@ -449,7 +449,7 @@ async def process_auto_renew_or_notify(
     try:
         can_renew = await check_notification_time(conn, tg_id, renew_notification_id, hours=24)
         if not can_renew:
-            logger.info(
+            logger.debug(
                 f"⏳ Подписка {email} уже продлевалась в течение последних 24 часов, повторное продление отменено."
             )
             return

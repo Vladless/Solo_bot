@@ -44,6 +44,8 @@ async def delete_server(session: AsyncSession, server_name: str):
 
 
 async def get_servers(session: AsyncSession, include_enabled: bool = False) -> dict:
+    from handlers.utils import ALLOWED_GROUP_CODES
+
     try:
         stmt = select(Server)
         result = await session.execute(stmt)
@@ -68,7 +70,7 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
             for sid, gc in r2.all():
                 groups_map.setdefault(sid, []).append(gc)
 
-        allowed = {"trial", "discounts", "discounts_max"}
+        allowed = set(ALLOWED_GROUP_CODES)
 
         grouped = {}
         for s in servers:

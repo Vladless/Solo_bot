@@ -3,8 +3,6 @@ import json
 import os
 import sys
 
-from typing import Optional
-
 from aiogram import Router
 
 from hooks.hooks import unregister_module_hooks

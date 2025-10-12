@@ -25,7 +25,7 @@ from hooks.hooks import run_hooks
 from logger import logger
 
 
-ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max"]
+ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max", "gifts"]
 
 
 async def generate_random_email(
@@ -90,7 +90,7 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
 
     least_loaded_cluster = min(available_clusters, key=lambda k: (available_clusters[k], k))
     logger.info(
-        f"✅ Выбран наименее загруженный кластер: {least_loaded_cluster} (загрузка: {available_clusters[least_loaded_cluster]})"
+        f"Выбран наименее загруженный кластер: {least_loaded_cluster} (загрузка: {available_clusters[least_loaded_cluster]})"
     )
     return least_loaded_cluster
 
@@ -341,3 +341,14 @@ def format_discount_time_left(last_time: datetime, discount_hours: int) -> str:
         return format_hours(hours)
     else:
         return format_minutes(minutes)
+
+
+def extract_user_data(user) -> dict:
+    return {
+        "tg_id": user.id,
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "language_code": user.language_code,
+        "is_bot": user.is_bot,
+    }

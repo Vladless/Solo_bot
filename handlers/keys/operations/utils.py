@@ -36,3 +36,18 @@ def score_vless_url(url: str) -> int:
     if "type=ws" in u:
         s += 1
     return s
+
+
+def norm_name(x: str | None) -> str:
+    return (x or "").strip().lower()
+
+
+def unique_by_api_url(servers: list) -> list:
+    seen = set()
+    out = []
+    for s in servers or []:
+        url = (s.get("api_url") or "").rstrip("/")
+        if url and url not in seen:
+            seen.add(url)
+            out.append(s)
+    return out

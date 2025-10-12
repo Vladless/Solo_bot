@@ -9,12 +9,12 @@ from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASS
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
-from logger import logger
-from panels._3xui import (
-    ClientConfig,
-    add_client,
-    get_xui_instance,
+from logger import (
+    CLOGGER as logger,
+    PANEL_REMNA,
+    PANEL_XUI,
 )
+from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
 
 from .aggregated_links import make_aggregated_link
@@ -90,7 +90,7 @@ async def create_key_on_cluster(
             if bound_servers:
                 enabled_servers = bound_servers
             else:
-                logger.warning(
+                logger.info(
                     f"[Key Creation] В кластере {cluster_id} нет серверов со спецгруппой '{special}'. Использую весь кластер."
                 )
 
@@ -118,7 +118,7 @@ async def create_key_on_cluster(
             remna = RemnawaveAPI(remnawave_servers[0]["api_url"])
             logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
             if not logged_in:
-                logger.error("Не удалось войти в Remnawave API")
+                logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
             else:
                 expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
                 inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
@@ -139,7 +139,7 @@ async def create_key_on_cluster(
                         user_data["shortUuid"] = short_uuid
                     if hwid_limit is not None:
                         user_data["hwidDeviceLimit"] = hwid_limit
-                    logger.info(f"[Key Creation] Данные для создания клиента в Remnawave: {user_data}")
+                    logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
                     result = await remna.create_user(user_data)
                     if result:
                         remnawave_created = True
@@ -149,17 +149,17 @@ async def create_key_on_cluster(
                             try:
                                 link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
-                                logger.error(f"[Key Creation] Ошибка сборки VLESS Remnawave: {e}")
+                                logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
                         remnawave_key = link_vless or (
                             result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl")
                         )
-                        logger.info(f"[Key Creation] Пользователь создан в Remnawave: {result}")
+                        logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
                 else:
-                    logger.warning("Нет inbound_id у серверов Remnawave")
+                    logger.warning(f"{PANEL_REMNA} Нет inbound_id у серверов")
 
         final_client_id = remnawave_client_id or client_id
 
-        logger.info(f"[Debug] 3x-ui servers для кластера {cluster_id}: {[s['server_name'] for s in xui_servers]}")
+        logger.debug(f"{PANEL_XUI} 3x-ui servers для кластера {cluster_id}: {[s['server_name'] for s in xui_servers]}")
 
         if xui_servers:
             if SUPERNODE:
@@ -243,8 +243,8 @@ async def create_client_on_server(
     session=None,
     is_trial: bool = False,
 ):
-    logger.info(
-        f"[Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
+    logger.debug(
+        f"{PANEL_XUI} [Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
     )
 
     async with semaphore:
@@ -253,7 +253,7 @@ async def create_client_on_server(
         server_name = server_info.get("server_name", "unknown")
 
         if not inbound_id:
-            logger.warning(f"[Client] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+            logger.warning(f"{PANEL_XUI} [Client] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             return
 
         if SUPERNODE:
@@ -268,16 +268,16 @@ async def create_client_on_server(
 
         if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
-            logger.info(f"[Tariff Debug] Получен тариф: {tariff}")
+            logger.debug(f"{PANEL_XUI} [Tariff Debug] Получен тариф: {tariff}")
             if not tariff:
-                raise ValueError(f"Тариф с id={plan} не найден.")
+                raise ValueError(f"{PANEL_XUI} Тариф с id={plan} не найден.")
 
             total_gb_value = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
             device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else 0
 
         try:
-            logger.info(
-                f"[Client] Вызов add_client: email={email}, client_id={client_id}, GB={total_gb_value}, Devices={device_limit_value}"
+            logger.debug(
+                f"{PANEL_XUI} [Client] Вызов add_client: email={email}, client_id={client_id}, GB={total_gb_value}, Devices={device_limit_value}"
             )
             traffic_limit_bytes = total_gb_value * 1024 * 1024 * 1024
             await add_client(
@@ -295,9 +295,9 @@ async def create_client_on_server(
                     sub_id=sub_id,
                 ),
             )
-            logger.info(f"[Client] Клиент успешно добавлен на сервер {server_name}")
+            logger.info(f"{PANEL_XUI} [Client] Клиент успешно добавлен на сервер {server_name}")
         except Exception as e:
-            logger.error(f"[Client Error] Не удалось создать клиента на {server_name}: {e}")
+            logger.error(f"{PANEL_XUI} [Client Error] Не удалось создать клиента на {server_name}: {e}")
 
         if SUPERNODE:
             await asyncio.sleep(0.7)

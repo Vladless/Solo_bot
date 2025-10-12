@@ -326,7 +326,7 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
 
-    allowed = {"trial", "discounts", "discounts_max"}
+    allowed = set(ALLOWED_GROUP_CODES)
     lines = []
     for s in cluster_servers:
         subs = s.get("tariff_subgroups") or []
@@ -1287,11 +1287,16 @@ async def apply_tariff_subgroup(
             await session.commit()
 
         await state.update_data({key: []})
-        applied = ", ".join(sorted(selected))
+
+        servers = await get_servers(session, include_enabled=True)
+        cluster_servers = servers.get(cluster_name, [])
+        text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
         await callback.message.edit_text(
-            f"✅ Подгруппа <b>{subgroup_title}</b> назначена серверам:\n<blockquote>{applied}</blockquote>",
-            reply_markup=build_cluster_management_kb(cluster_name),
+            text=text,
+            reply_markup=build_attach_tariff_kb(cluster_name),
+            disable_web_page_preview=True,
         )
+
     except Exception as e:
         logger.error(f"Ошибка при применении подгруппы тарифов: {e}")
         await callback.message.edit_text("❌ Произошла ошибка при назначении подгруппы.")
@@ -1329,7 +1334,7 @@ def render_attach_tariff_menu_text(cluster_name: str, cluster_servers: list[dict
         for sg in s.get("tariff_subgroups") or []:
             sub_map.setdefault(sg, []).append(s["server_name"])
 
-    allowed = ("trial", "discounts", "discounts_max")
+    allowed = tuple(ALLOWED_GROUP_CODES)
     spec_map: dict[str, list[str]] = {k: [] for k in allowed}
     for s in cluster_servers:
         for g in s.get("special_groups") or []:
@@ -1498,11 +1503,17 @@ async def apply_group_to_servers(
             session.add_all([ServerSpecialgroup(server_id=sid, group_code=group_code) for sid in to_insert])
             await session.commit()
 
+        logger.debug(f"[apply_group_to_servers] group={group_code} server_ids={server_ids}")
+
         await state.update_data({key: []})
-        applied = ", ".join(sorted(selected))
+
+        servers = await get_servers(session, include_enabled=True)
+        cluster_servers = servers.get(cluster_name, [])
+        text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
         await callback.message.edit_text(
-            f"✅ Группа <b>{group_code}</b> назначена серверам:\n<blockquote>{applied}</blockquote>",
-            reply_markup=build_cluster_management_kb(cluster_name),
+            text=text,
+            reply_markup=build_attach_tariff_kb(cluster_name),
+            disable_web_page_preview=True,
         )
     except Exception as e:
         logger.error(f"Ошибка при назначении группы тарифов: {e}")

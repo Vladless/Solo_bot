@@ -82,7 +82,7 @@ async def toggle_client_on_cluster(
 
         status = "включен" if enable else "отключен"
         logger.info(f"[Cluster Toggle] Клиент {email} {status} на серверах кластера {cluster_id}")
-        logger.info(f"[Cluster Toggle DEBUG] Результаты: {results}")
+        logger.debug(f"[Cluster Toggle DEBUG] Результаты: {results}")
 
         return {
             "status": "success" if any(results.values()) else "error",

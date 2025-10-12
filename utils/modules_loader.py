@@ -17,10 +17,6 @@ def load_modules_from_folder(folder: str = "modules") -> list[Router]:
     routers = []
     base_path = Path(folder)
 
-    if not base_path.exists():
-        logger.warning(f"[Modules] Папка {folder} не найдена, пропускаем загрузку модулей.")
-        return []
-
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
         if not manager.should_autostart(name):
             logger.info(f"[Modules] Пропуск автозапуска модуля '{name}' (отключён).")
@@ -45,9 +41,6 @@ def load_modules_from_folder(folder: str = "modules") -> list[Router]:
 def load_module_webhooks(folder: str = "modules") -> list[dict]:
     webhooks = []
     base_path = Path(folder)
-    if not base_path.exists():
-        logger.warning(f"[Modules] Папка {folder} не найдена, пропускаем загрузку вебхуков.")
-        return []
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
         if not manager.should_autostart(name):
@@ -70,9 +63,6 @@ def load_module_webhooks(folder: str = "modules") -> list[dict]:
 def load_module_fast_flow_handlers(folder: str = "modules") -> dict:
     handlers = {}
     base_path = Path(folder)
-    if not base_path.exists():
-        logger.warning(f"[Modules] Папка {folder} не найдена, пропускаем загрузку быстрого флоу.")
-        return {}
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
         if not manager.should_autostart(name):

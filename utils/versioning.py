@@ -63,7 +63,7 @@ def _get_git_commit_number_uncached() -> str:
         )
 
         if local_hash == remote_hash:
-            logger.info("[Git] Локальная версия актуальна")
+            logger.debug("[Git] Локальная версия актуальна")
             return "\n(Актуальная версия)"
 
         return (
@@ -92,4 +92,4 @@ def get_git_commit_number() -> str:
 
 
 def get_version() -> str:
-    return f"v.5-b300932 {get_git_commit_number()}"
+    return f"v.5-preRelease {get_git_commit_number()}"

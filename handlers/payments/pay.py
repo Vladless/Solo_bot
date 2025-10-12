@@ -71,7 +71,7 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
         builder.row(InlineKeyboardButton(text=text, callback_data=cfg["value"]))
 
     if DONATIONS_ENABLE:
-        builder.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+        builder.row(InlineKeyboardButton(text=btn.DONAT_BUTTON, callback_data="donate"))
 
     builder = insert_hook_buttons(builder, module_buttons)
     builder.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))

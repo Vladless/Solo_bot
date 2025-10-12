@@ -45,9 +45,7 @@ async def send_broadcast_batch(bot, messages, batch_size=15, session=None):
 
         try:
             if photo:
-                await bot.send_photo(
-                    chat_id=tg_id, photo=photo, caption=text, parse_mode="HTML", reply_markup=keyboard
-                )
+                await bot.send_photo(chat_id=tg_id, photo=photo, caption=text, parse_mode="HTML", reply_markup=keyboard)
             else:
                 await bot.send_message(chat_id=tg_id, text=text, parse_mode="HTML", reply_markup=keyboard)
             results.append(True)

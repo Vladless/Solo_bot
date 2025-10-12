@@ -34,6 +34,7 @@ from handlers.buttons import (
     ABOUT_VPN,
     BACK,
     CHANNEL,
+    DONAT_BUTTON,
     MAIN_MENU,
     SUB_CHANELL,
     SUB_CHANELL_DONE,
@@ -58,7 +59,7 @@ from logger import logger
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
-from .utils import edit_or_send_message
+from .utils import edit_or_send_message, extract_user_data
 
 
 router = Router()
@@ -205,17 +206,6 @@ async def prompt_subscription(callback: CallbackQuery):
     await callback.message.edit_text(SUBSCRIPTION_REQUIRED_MSG, reply_markup=kb.as_markup())
 
 
-def extract_user_data(user) -> dict:
-    return {
-        "tg_id": user.id,
-        "username": user.username,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "language_code": user.language_code,
-        "is_bot": user.is_bot,
-    }
-
-
 async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, session: AsyncSession, user_data: dict):
     user_id = user_data["tg_id"]
     result = await session.execute(select(TrackingSource).where(TrackingSource.code == utm_code))
@@ -277,7 +267,7 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
 
     kb = InlineKeyboardBuilder()
     if DONATIONS_ENABLE:
-        kb.row(InlineKeyboardButton(text="💰 Поддержать проект", callback_data="donate"))
+        kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
     kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if CHANNEL_EXISTS:

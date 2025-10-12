@@ -7,13 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import (
     delete_notification,
+    filter_cluster_by_subgroup,
     get_key_details,
     get_servers,
     resolve_device_limit_from_group,
     update_key_expiry,
     update_key_link,
 )
-from logger import logger
+from logger import (
+    CLOGGER as logger,
+    PANEL_REMNA,
+    PANEL_XUI,
+)
 from panels._3xui import extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
@@ -59,7 +64,7 @@ async def renew_on_remnawave(
         ]
     remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-        logger.error("Не удалось войти в Remnawave API")
+        logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
         return False
     expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
@@ -76,10 +81,10 @@ async def renew_on_remnawave(
             try:
                 await remna.reset_user_traffic(client_id)
             except Exception as e:
-                logger.warning(f"Remnawave reset_user_traffic: {e}")
-        logger.info(f"Подписка Remnawave {client_id} успешно продлена")
+                logger.warning(f"{PANEL_REMNA} reset_user_traffic: {e}")
+        logger.info(f"{PANEL_REMNA} Подписка {client_id} успешно продлена")
         return True
-    logger.warning(f"Не удалось продлить подписку Remnawave {client_id}. Автосоздание отключено.")
+    logger.debug(f"{PANEL_REMNA} Не удалось продлить {client_id}. Автосоздание отключено.")
     return False
 
 
@@ -103,7 +108,7 @@ async def renew_on_3xui(
         inbound_id = server_info.get("inbound_id")
         server_name = server_info.get("server_name", "unknown")
         if not inbound_id:
-            logger.warning(f"INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+            logger.warning(f"{PANEL_XUI} INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
             continue
         if SUPERNODE:
             unique_email = f"{email}_{server_name.lower()}"
@@ -117,7 +122,7 @@ async def renew_on_3xui(
             try:
                 xui = await get_xui_instance(si["api_url"])
             except Exception as e:
-                logger.warning(f"[{name}] недоступна панель 3x-ui: {e}")
+                logger.warning(f"{PANEL_XUI} [{name}] API недоступен: {e}")
                 return name, False, f"api_unavailable: {e}"
             try:
                 updated = await extend_client_key(
@@ -132,11 +137,11 @@ async def renew_on_3xui(
                     limit_ip=hwid_device_limit,
                 )
             except Exception as e:
-                logger.warning(f"[{name}] ошибка при продлении: {e}")
+                logger.warning(f"{PANEL_XUI} [{name}] ошибка продления: {e}")
                 updated = False
             if updated:
                 return name, True, None
-            logger.warning(f"[{name}] не удалось обновить {uniq}. Автосоздание отключено.")
+            logger.debug(f"{PANEL_XUI} [{name}] не удалось обновить {uniq}. Автосоздание отключено.")
             return name, False, "no_autocreate"
 
         tasks.append(process_server(server_info, inbound_id, unique_email, sub_id_val, server_name))
@@ -154,9 +159,9 @@ async def renew_on_3xui(
         else:
             failed.append((name, err or "unknown_error"))
     if succeeded:
-        logger.info(f"3x-ui продлено на: {', '.join(succeeded)}")
+        logger.info(f"{PANEL_XUI} продлено на: {', '.join(succeeded)}")
     if failed:
-        logger.warning("3x-ui не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
+        logger.debug(f"{PANEL_XUI} не продлено на: " + ", ".join([f"{n} ({e})" for n, e in failed]))
     return succeeded, failed
 
 
@@ -205,7 +210,7 @@ async def renew_key_in_cluster(
         if dl is not None:
             hwid_device_limit = dl
 
-        if target_subgroup and old_subgroup and target_subgroup != old_subgroup and not single_server:
+        if (target_subgroup or "") != (old_subgroup or "") and not single_server:
             new_client_id, remna_link = await migrate_between_subgroups(
                 session=session,
                 cluster_all=cluster,
@@ -244,8 +249,17 @@ async def renew_key_in_cluster(
 
             return True
 
+        if single_server:
+            cluster_scope = [single_server]
+        else:
+            if target_subgroup:
+                target = await filter_cluster_by_subgroup(session, cluster, target_subgroup, cluster_id)
+                cluster_scope = target if target else cluster
+            else:
+                cluster_scope = cluster
+
         remna_ok = await renew_on_remnawave(
-            cluster=cluster,
+            cluster=cluster_scope,
             client_id=client_id,
             email=email,
             tg_id=tg_id,
@@ -258,7 +272,7 @@ async def renew_key_in_cluster(
         )
 
         succeeded, _ = await renew_on_3xui(
-            cluster=cluster if not single_server else [single_server],
+            cluster=cluster_scope,
             email=email,
             client_id=client_id,
             new_expiry_time=new_expiry_time,

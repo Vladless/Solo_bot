@@ -1,7 +1,5 @@
 import asyncio
 
-from typing import Optional, Tuple
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
@@ -114,7 +112,7 @@ async def make_aggregated_link(
         return None
 
     xui, remna = split_by_panel(servers)
-    logger.info(f"[agg_link] subgroup='{subgroup_code}' xui={len(xui)} remna={len(remna)}")
+    logger.debug(f"[agg_link] subgroup='{subgroup_code}' xui={len(xui)} remna={len(remna)}")
 
     if plan is None:
         vless_needed = await _is_vless_tariff(session, email)

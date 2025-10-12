@@ -148,7 +148,6 @@ async def key_cluster_mode(
             tariff = await get_tariff_by_id(session, data["tariff_id"])
             if tariff:
                 await update_balance(session, tg_id, -tariff["price_rub"])
-                logger.info(f"[Database] Баланс обновлён для пользователя {tg_id}")
 
     except Exception as e:
         logger.error(f"[Error] Ошибка при создании ключа для пользователя {tg_id}: {e}")

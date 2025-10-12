@@ -485,7 +485,6 @@ async def create_key(
                 is_bot=from_user.is_bot,
                 session=session,
             )
-            logger.info(f"[User] Новый пользователь {tg_id} добавлен")
 
     if USE_COUNTRY_SELECTION:
         await key_country_mode(

@@ -9,7 +9,11 @@ from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers, store_key
 from database.models import Key, Tariff
 from handlers.utils import get_least_loaded_cluster
-from logger import logger
+from logger import (
+    CLOGGER as logger,
+    PANEL_REMNA,
+    PANEL_XUI,
+)
 from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
@@ -27,10 +31,6 @@ async def update_key_on_cluster(
     device_limit: int = None,
     remnawave_link: str = None,
 ):
-    """
-    Пересоздаёт ключ на всех серверах указанного кластера (или сервера, если передано имя).
-    Работает с панелями 3x-ui и Remnawave. Возвращает кортеж: (новый client_id, remnawave ссылка или None).
-    """
     try:
         servers = await get_servers(session)
         cluster = servers.get(cluster_id)
@@ -75,7 +75,7 @@ async def update_key_on_cluster(
                 short_uuid = None
                 if remnawave_link and "/" in remnawave_link:
                     short_uuid = remnawave_link.rstrip("/").split("/")[-1]
-                    logger.info(f"[Update] Извлечен short_uuid из ссылки: {short_uuid}")
+                    logger.debug(f"{PANEL_REMNA} Извлечен short_uuid: {short_uuid}")
 
                 user_data = {
                     "username": email,
@@ -90,20 +90,20 @@ async def update_key_on_cluster(
                     user_data["hwidDeviceLimit"] = device_limit
                 if short_uuid:
                     user_data["shortUuid"] = short_uuid
-                    logger.info(f"[Update] Добавлен short_uuid в user_data: {short_uuid}")
+                    logger.debug(f"{PANEL_REMNA} Добавлен short_uuid: {short_uuid}")
 
                 result = await remna.create_user(user_data)
                 if result:
                     remnawave_client_id = result.get("uuid")
                     remnawave_key = result.get("subscriptionUrl")
-                    logger.info(f"[Update] Remnawave: клиент заново создан, новый UUID: {remnawave_client_id}")
+                    logger.info(f"{PANEL_REMNA} Клиент заново создан, uuid={remnawave_client_id}")
                 else:
-                    logger.error("[Update] Ошибка создания Remnawave клиента")
+                    logger.error(f"{PANEL_REMNA} Ошибка создания клиента")
             else:
-                logger.error("[Update] Не удалось авторизоваться в Remnawave")
+                logger.error(f"{PANEL_REMNA} Не удалось авторизоваться")
 
         if not remnawave_client_id:
-            logger.warning(f"[Update] Remnawave client_id не получен. Используется исходный: {client_id}")
+            logger.warning(f"{PANEL_REMNA} client_id не получен, используем исходный {client_id}")
             remnawave_client_id = client_id
 
         tasks = []
@@ -112,7 +112,7 @@ async def update_key_on_cluster(
             inbound_id = server_info.get("inbound_id")
 
             if not inbound_id:
-                logger.warning(f"[Update] INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
+                logger.warning(f"{PANEL_XUI} INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
             xui = await get_xui_instance(server_info["api_url"])

@@ -40,7 +40,7 @@ async def store_key(
         )
         session.add(new_key)
         await session.commit()
-        logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+        logger.info(f"Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
 
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
