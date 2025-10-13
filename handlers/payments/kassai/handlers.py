@@ -51,6 +51,10 @@ async def handle_custom_amount_input_kassai_cards(
         await edit_or_send_message(target_message=message, text="❌ Не удалось определить сумму оплаты.")
         return
     
+    if amount < 50:
+        await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты картой — 50₽.")
+        return
+    
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "cards" and m["enable"]), None)
     if not method:
         await edit_or_send_message(target_message=message, text="❌ Оплата картами KassaAI временно недоступна.")
@@ -58,6 +62,13 @@ async def handle_custom_amount_input_kassai_cards(
 
     try:
         payment_url = await generate_kassai_payment_link(amount, tg_id, method)
+        
+        if not payment_url or payment_url == "https://fk.life/":
+            await edit_or_send_message(
+                target_message=message,
+                text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            )
+            return
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -108,7 +119,7 @@ async def handle_custom_amount_input_kassai_sbp(
         return
     
     if amount < 10:
-        await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты через СБП — 10 рублей.")
+        await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты через СБП — 10₽.")
         return
     
     method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == "sbp" and m["enable"]), None)
@@ -118,6 +129,13 @@ async def handle_custom_amount_input_kassai_sbp(
 
     try:
         payment_url = await generate_kassai_payment_link(amount, tg_id, method)
+        
+        if not payment_url or payment_url == "https://fk.life/":
+            await edit_or_send_message(
+                target_message=message,
+                text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            )
+            return
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
