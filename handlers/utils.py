@@ -4,6 +4,9 @@ import re
 import secrets
 import string
 
+from collections import OrderedDict
+import asyncio
+
 from datetime import datetime, timedelta
 
 import aiofiles
@@ -202,47 +205,74 @@ async def edit_or_send_message(
     disable_web_page_preview: bool = False,
     force_text: bool = False,
 ):
-    """
-    Универсальная функция для редактирования исходного сообщения target_message.
-    """
+    if not hasattr(edit_or_send_message, "cache"):
+        from collections import OrderedDict
+        import asyncio
+        edit_or_send_message.cache = OrderedDict()
+        edit_or_send_message.lock = asyncio.Lock()
+        edit_or_send_message.max = 256
+
     if media_path and os.path.isfile(media_path):
+        async with edit_or_send_message.lock:
+            cached_id = edit_or_send_message.cache.get(media_path)
+            if cached_id:
+                edit_or_send_message.cache.move_to_end(media_path)
+        if cached_id:
+            try:
+                await target_message.edit_media(InputMediaPhoto(media=cached_id, caption=text), reply_markup=reply_markup)
+                return
+            except Exception:
+                try:
+                    await target_message.answer_photo(
+                        photo=cached_id,
+                        caption=text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                    )
+                    return
+                except Exception:
+                    pass
+
         async with aiofiles.open(media_path, "rb") as f:
-            image_data = await f.read()
-        media = InputMediaPhoto(
-            media=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
-            caption=text,
-        )
+            data = await f.read()
+        upload = BufferedInputFile(data, filename=os.path.basename(media_path))
         try:
-            await target_message.edit_media(media=media, reply_markup=reply_markup)
-            return
+            msg = await target_message.edit_media(InputMediaPhoto(media=upload, caption=text), reply_markup=reply_markup)
         except Exception:
-            await target_message.answer_photo(
-                photo=BufferedInputFile(image_data, filename=os.path.basename(media_path)),
+            msg = await target_message.answer_photo(
+                photo=upload,
                 caption=text,
                 reply_markup=reply_markup,
                 disable_web_page_preview=disable_web_page_preview,
             )
-            return
-    else:
-        if not force_text and target_message.caption is not None:
-            try:
-                await target_message.edit_caption(caption=text, reply_markup=reply_markup)
-                return
-            except Exception as e:
-                logger.error(f"Ошибка редактирования подписи: {e}")
+        if getattr(msg, "photo", None):
+            fid = msg.photo[-1].file_id
+            async with edit_or_send_message.lock:
+                if media_path not in edit_or_send_message.cache:
+                    edit_or_send_message.cache[media_path] = fid
+                    if len(edit_or_send_message.cache) > edit_or_send_message.max:
+                        edit_or_send_message.cache.popitem(last=False)
+        return
+
+    if not force_text and target_message.caption is not None:
         try:
-            await target_message.edit_text(
-                text=text,
-                reply_markup=reply_markup,
-                disable_web_page_preview=disable_web_page_preview,
-            )
+            await target_message.edit_caption(caption=text, reply_markup=reply_markup)
             return
         except Exception:
-            await target_message.answer(
-                text=text,
-                reply_markup=reply_markup,
-                disable_web_page_preview=disable_web_page_preview,
-            )
+            pass
+    try:
+        await target_message.edit_text(
+            text=text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=disable_web_page_preview,
+        )
+        return
+    except Exception:
+        await target_message.answer(
+            text=text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=disable_web_page_preview,
+        )
 
 
 def convert_to_bytes(value: float, unit: str) -> int:
