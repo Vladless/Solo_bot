@@ -9,6 +9,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.payments.currency_rates import format_for_user
 
 from config import (
     KASSAI_API_KEY,
@@ -224,13 +225,24 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         if user_amount <= 0:
             raise ValueError
         
-        if method_name == "sbp":
+        if method_name == "cards":
+            min_amount = 1 if currency == "USD" else 50
+            currency_symbol = "$" if currency == "USD" else "₽"
+            if user_amount < min_amount:
+                await edit_or_send_message(
+                    target_message=message,
+                    text=f"❌ Минимальная сумма для оплаты картой — {currency_symbol}{min_amount}.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+                    force_text=True,
+                )
+                return
+        elif method_name == "sbp":
             min_amount = 1 if currency == "USD" else 10
             currency_symbol = "$" if currency == "USD" else "₽"
             if user_amount < min_amount:
                 await edit_or_send_message(
                     target_message=message,
-                    text=f"Минимальная сумма для оплаты через СБП — {currency_symbol}{min_amount}.",
+                    text=f"❌ Минимальная сумма для оплаты через СБП — {currency_symbol}{min_amount}.",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
                     force_text=True,
                 )
@@ -238,7 +250,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     except Exception:
         await edit_or_send_message(
             target_message=message,
-            text="Некорректная сумма. Введите целое число больше 0.",
+            text="❌ Некорректная сумма. Введите целое число больше 0.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
@@ -253,6 +265,15 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     await state.update_data(amount=amount_rub)
     payment_url = await generate_kassai_payment_link(amount_rub, message.chat.id, method)
+
+    if not payment_url or payment_url == "https://fk.life/":
+        await edit_or_send_message(
+            target_message=message,
+            text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
@@ -270,7 +291,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
 
 @router.callback_query(F.data.startswith("kassai_cards_amount|") | F.data.startswith("kassai_sbp_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["kassai_cards", "kassai_sbp"])
     if amount is None:
         await edit_or_send_message(
@@ -293,14 +314,44 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         )
         return
 
+    if method_name == "cards" and amount < 50:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Минимальная сумма для оплаты картой — 50₽.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
+    elif method_name == "sbp" and amount < 10:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Минимальная сумма для оплаты через СБП — 10₽.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
+
     await state.update_data(amount=amount)
     payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method)
 
+    if not payment_url or payment_url == "https://fk.life/":
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
+
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
+
+    tg_id = callback_query.from_user.id
+    language_code = await get_user_language(session, tg_id)
+    amount_text = await format_for_user(session, tg_id, float(amount), language_code)
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=KASSAI_PAYMENT_MESSAGE.format(amount=amount),
+        text=KASSAI_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=confirm_keyboard,
         force_text=True,
     )

@@ -47,7 +47,7 @@ async def handle_custom_amount_input_heleket(
         return
     
     if amount < 10:
-        await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты криптовалютой — 10 рублей.")
+        await edit_or_send_message(target_message=message, text="❌ Минимальная сумма для оплаты криптовалютой — 10₽ (≈0.1$).")
         return
     
     enabled_methods = [m for m in HELEKET_PAYMENT_METHODS if m["enable"]]
@@ -58,6 +58,13 @@ async def handle_custom_amount_input_heleket(
 
     try:
         payment_url = await generate_heleket_payment_link(amount, tg_id, method)
+        
+        if not payment_url or payment_url == "https://heleket.com/":
+            await edit_or_send_message(
+                target_message=message,
+                text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            )
+            return
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[

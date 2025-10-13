@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.payments.currency_rates import format_for_user
 
 from config import (
     HELEKET_API_KEY,
@@ -21,7 +22,7 @@ from config import (
     PROVIDERS_ENABLED,
 )
 from handlers.payments.providers import get_providers
-from ..currency_rates import get_rub_rate
+from handlers.payments.currency_rates import get_rub_rate
 from handlers.buttons import BACK, HELEKET, PAY_2
 from handlers.texts import ENTER_SUM, HELEKET_CRYPTO_DESCRIPTION, HELEKET_PAYMENT_MESSAGE
 from handlers.payments.keyboards import build_amounts_keyboard, payment_options_for_user, parse_amount_from_callback, pay_keyboard
@@ -229,7 +230,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         if user_amount < min_amount:
             await edit_or_send_message(
                 target_message=message,
-                text=f"Минимальная сумма для оплаты криптовалютой — {currency_symbol}{min_amount}.",
+                text=f"❌ Минимальная сумма для оплаты криптовалютой — {currency_symbol}{min_amount}.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
                 force_text=True,
             )
@@ -237,7 +238,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     except Exception:
         await edit_or_send_message(
             target_message=message,
-            text="Некорректная сумма. Введите целое число больше 0.",
+            text="❌ Некорректная сумма. Введите целое число больше 0.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
             force_text=True,
         )
@@ -252,6 +253,15 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     await state.update_data(amount=amount_rub)
     payment_url = await generate_heleket_payment_link(amount_rub, message.chat.id, method)
+
+    if not payment_url or payment_url == "https://heleket.com/":
+        await edit_or_send_message(
+            target_message=message,
+            text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
@@ -269,56 +279,8 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
 
 
-async def process_fast_flow_heleket(
-    callback_query: types.CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    amount: int,
-    method_name: str = "crypto",
-):
-    method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
-    if not method:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="Ошибка: выбранный способ оплаты недоступен.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
-        )
-        return
-
-    if amount <= 0:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="Некорректная сумма.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
-        )
-        return
-    if amount < 10:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="Минимальная сумма для оплаты криптовалютой — 10 рублей.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
-        )
-        return
-
-    await state.update_data(heleket_method=method_name, amount=amount)
-    payment_url = await generate_heleket_payment_link(amount, callback_query.message.chat.id, method)
-
-    confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
-
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=HELEKET_PAYMENT_MESSAGE.format(amount=amount),
-        reply_markup=confirm_keyboard,
-        force_text=True,
-    )
-    await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
-
-
 @router.callback_query(F.data.startswith("heleket_crypto_amount|"))
-async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
+async def process_amount_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     amount = parse_amount_from_callback(callback_query.data, prefixes=["heleket_crypto"])
     if amount is None:
         await edit_or_send_message(
@@ -341,14 +303,36 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         )
         return
 
+    if amount < 10:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Минимальная сумма для оплаты криптовалютой — 10₽ (≈0.1$).",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
+
     await state.update_data(amount=amount)
     payment_url = await generate_heleket_payment_link(amount, callback_query.message.chat.id, method)
 
+    if not payment_url or payment_url == "https://heleket.com/":
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
+            force_text=True,
+        )
+        return
+
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
+
+    tg_id = callback_query.from_user.id
+    language_code = await get_user_language(session, tg_id)
+    amount_text = await format_for_user(session, tg_id, float(amount), language_code)
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=HELEKET_PAYMENT_MESSAGE.format(amount=amount),
+        text=HELEKET_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=confirm_keyboard,
         force_text=True,
     )
