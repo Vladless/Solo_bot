@@ -534,7 +534,8 @@ async def process_auto_renew_or_notify(
                 keyboard = build_notification_kb(email)
 
             await add_notification(conn, tg_id, notification_id)
-            await send_notification(bot, tg_id, standard_photo, message_text, keyboard)
+            text_to_send = message_text if 'message_text' in locals() else standard_caption
+            await send_notification(bot, tg_id, standard_photo, text_to_send, keyboard)
             return
 
         client_id = key.client_id
