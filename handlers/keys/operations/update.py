@@ -1,23 +1,19 @@
 import asyncio
-
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import get_servers, store_key
+from database import get_servers, store_key, filter_cluster_by_subgroup
 from database.models import Key, Tariff
 from handlers.utils import get_least_loaded_cluster
-from logger import (
-    CLOGGER as logger,
-    PANEL_REMNA,
-    PANEL_XUI,
-)
+from logger import CLOGGER as logger, PANEL_REMNA, PANEL_XUI
 from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
 from .deletion import delete_key_from_cluster
+from .aggregated_links import make_aggregated_link
 
 
 async def update_key_on_cluster(
@@ -30,6 +26,7 @@ async def update_key_on_cluster(
     traffic_limit: int = None,
     device_limit: int = None,
     remnawave_link: str = None,
+    subgroup_code: str | None = None,
 ):
     try:
         servers = await get_servers(session)
@@ -45,6 +42,13 @@ async def update_key_on_cluster(
                 cluster = found_servers
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
+
+        if subgroup_code:
+            filtered = await filter_cluster_by_subgroup(session, cluster, subgroup_code, cluster_id)
+            if not filtered:
+                logger.warning(f"[Update] Нет серверов для подгруппы {subgroup_code} в кластере {cluster_id}.")
+                return client_id, remnawave_link
+            cluster = filtered
 
         expire_iso = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=timezone.utc).isoformat()
 
@@ -64,13 +68,12 @@ async def update_key_on_cluster(
                 if not group_code:
                     raise ValueError("У Remnawave-сервера отсутствует tariff_group")
 
-                result = await session.execute(
+                _ = await session.execute(
                     select(Tariff)
                     .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
                     .order_by(Tariff.duration_days.desc())
                     .limit(1)
                 )
-                result.scalar_one_or_none()
 
                 short_uuid = None
                 if remnawave_link and "/" in remnawave_link:
@@ -124,13 +127,12 @@ async def update_key_on_cluster(
             if not group_code:
                 raise ValueError(f"У сервера {server_name} отсутствует tariff_group")
 
-            result = await session.execute(
+            _ = await session.execute(
                 select(Tariff)
                 .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
                 .order_by(Tariff.duration_days.desc())
                 .limit(1)
             )
-            result.scalar_one_or_none()
 
             total_gb_bytes = int(traffic_limit * 1024**3) if traffic_limit is not None else 0
             device_limit_value = device_limit if device_limit is not None else 0
@@ -153,7 +155,7 @@ async def update_key_on_cluster(
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-        logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на всех серверах кластера {cluster_id}")
+        logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на серверах подгруппы в {cluster_id}")
         return remnawave_client_id, remnawave_key
 
     except Exception as e:
@@ -171,7 +173,6 @@ async def update_subscription(
 ) -> None:
     result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.email == email))
     record = result.scalar_one_or_none()
-
     if not record:
         raise ValueError(f"The key {email} does not exist in database")
 
@@ -183,16 +184,17 @@ async def update_subscription(
     remnawave_link = remnawave_link or record.remnawave_link
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
 
-    traffic_limit = None
-    device_limit = None
+    tariff = None
+    subgroup_code = getattr(record, "subgroup_code", None)
+
     if tariff_id:
-        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True)))
-        tariff = result.scalar_one_or_none()
-        if tariff:
-            traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
-            device_limit = int(tariff.device_limit) if tariff.device_limit is not None else 0
-        else:
+        q = await session.execute(select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True)))
+        tariff = q.scalar_one_or_none()
+        if tariff is None:
             logger.warning(f"[LOG] update_subscription: тариф с id={tariff_id} не найден!")
+        else:
+            if not subgroup_code:
+                subgroup_code = getattr(tariff, "subgroup_code", None) or getattr(tariff, "subgroup_title", None)
     else:
         logger.warning("[LOG] update_subscription: tariff_id отсутствует!")
 
@@ -209,18 +211,6 @@ async def update_subscription(
             logger.warning("[Update] Нет доступных кластеров, оставляем на старом")
             new_cluster_id = old_cluster_id
 
-    new_client_id, remnawave_key = await update_key_on_cluster(
-        tg_id=tg_id,
-        client_id=client_id,
-        email=email,
-        expiry_time=expiry_time,
-        cluster_id=new_cluster_id,
-        session=session,
-        traffic_limit=traffic_limit,
-        device_limit=device_limit,
-        remnawave_link=remnawave_link,
-    )
-
     servers = await get_servers(session)
     cluster_servers = servers.get(new_cluster_id)
 
@@ -235,8 +225,45 @@ async def update_subscription(
         else:
             cluster_servers = []
 
-    has_xui = any(s.get("panel_type", "").lower() == "3x-ui" for s in cluster_servers)
-    final_key_link = public_link if has_xui else None
+    if subgroup_code:
+        prefiltered = await filter_cluster_by_subgroup(session, cluster_servers, subgroup_code, new_cluster_id)
+        if not prefiltered:
+            logger.warning(f"[Update] Пересоздание пропущено: нет серверов под подгруппу {subgroup_code} в {new_cluster_id}.")
+            return
+        cluster_servers = prefiltered
+
+    traffic_limit = None
+    device_limit = None
+    if tariff:
+        traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
+        device_limit = int(tariff.device_limit) if tariff.device_limit is not None else 0
+
+    new_client_id, remnawave_key = await update_key_on_cluster(
+        tg_id=tg_id,
+        client_id=client_id,
+        email=email,
+        expiry_time=expiry_time,
+        cluster_id=new_cluster_id,
+        session=session,
+        traffic_limit=traffic_limit,
+        device_limit=device_limit,
+        remnawave_link=remnawave_link,
+        subgroup_code=subgroup_code,
+    )
+
+    aggregated = await make_aggregated_link(
+        session=session,
+        cluster_all=cluster_servers,
+        cluster_id=new_cluster_id,
+        email=email,
+        client_id=new_client_id,
+        tg_id=tg_id,
+        subgroup_code=subgroup_code,
+        remna_link_override=remnawave_key,
+        plan=tariff_id,
+    )
+
+    final_key_link = aggregated or public_link
 
     await store_key(
         session=session,

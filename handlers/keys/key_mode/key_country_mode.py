@@ -39,7 +39,7 @@ from database import (
     update_trial,
 )
 from database.models import Key, Server, Tariff
-from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON
+from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON, ROUTER_BUTTON
 from handlers.keys.operations import create_client_on_server
 from handlers.keys.operations.aggregated_links import make_aggregated_link
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
@@ -567,9 +567,15 @@ async def finalize_key_creation(
 
     builder = InlineKeyboardBuilder()
     is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
-    if (panel_type == "remnawave" or is_full_remnawave) and public_link and REMNAWAVE_WEBAPP:
-        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=public_link)))
-        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
+    is_vless = bool(public_link and public_link.lower().startswith("vless://")) or bool(need_vless_key)
+
+    if panel_type == "remnawave" or is_full_remnawave:
+        if is_vless:
+            builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+        else:
+            if REMNAWAVE_WEBAPP:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=REMNAWAVE_WEBAPP)))
+            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
     elif CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
         builder.row(

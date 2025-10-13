@@ -324,16 +324,18 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
-        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
+            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
     else:
         if CONNECT_PHONE_BUTTON:
             builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-            builder.row(
-                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-            )
             if vless_enabled:
+                builder.row(InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"))
                 builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
+                )
         else:
             if vless_enabled:
                 builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
