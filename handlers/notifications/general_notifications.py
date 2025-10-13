@@ -208,8 +208,9 @@ async def notify_24h_keys(
         sent_count = 0
         for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
+
+            await add_notification(session, tg_id, msg["notification_id"])
             if result:
-                await add_notification(session, tg_id, msg["notification_id"])
                 sent_count += 1
                 logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
@@ -292,8 +293,9 @@ async def notify_10h_keys(
         sent_count = 0
         for msg, result in zip(messages, results, strict=False):
             tg_id = msg["tg_id"]
+
+            await add_notification(session, tg_id, msg["notification_id"])
             if result:
-                await add_notification(session, tg_id, msg["notification_id"])
                 sent_count += 1
                 logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {tg_id}.")
             else:
