@@ -36,14 +36,10 @@ async def kassai_webhook(request: web.Request):
         
         amount_raw = data.get('AMOUNT')
         order_id = data.get('MERCHANT_ORDER_ID')
-        status = data.get('STATUS', '')
         
         if not amount_raw or not order_id:
             logger.error("KassaAI webhook: отсутствуют обязательные параметры")
             return web.Response(status=400)
-        if status.upper() != 'SUCCESS':
-            logger.warning(f"KassaAI webhook: неуспешный статус {status} для заказа {order_id}")
-            return web.Response(text="OK")
         
         amount = float(amount_raw)
         
@@ -65,6 +61,9 @@ async def kassai_webhook(request: web.Request):
                 if not ok:
                     logger.error(f"KassaAI: не удалось обновить статус платежа {order_id}")
                     return web.Response(status=500)
+                await update_balance(session, tg_id, amount)
+                await send_payment_success_notification(tg_id, amount, session)
+                await session.commit()
             else:
                 await add_payment(
                     session=session,
@@ -76,10 +75,9 @@ async def kassai_webhook(request: web.Request):
                     payment_id=order_id,
                     metadata=None,
                 )
-            
-            await update_balance(session, tg_id, amount)
-            await send_payment_success_notification(tg_id, amount, session)
-            await session.commit()
+                await update_balance(session, tg_id, amount)
+                await send_payment_success_notification(tg_id, amount, session)
+                await session.commit()
         logger.info(f"KassaAI: платёж {order_id} успешно обработан, баланс пользователя {tg_id} пополнен на {amount} RUB")
         return web.Response(text="OK")
     except Exception as e:
