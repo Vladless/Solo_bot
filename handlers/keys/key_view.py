@@ -96,7 +96,7 @@ async def process_callback_or_message_view_keys(callback_query_or_message: Messa
             await render_key_info(target_message, session, key_name, image_path)
             return
 
-        inline_keyboard, response_message = build_keys_response(records)
+        inline_keyboard, response_message = await build_keys_response(records, session)
         image_path = os.path.join("img", "pic_keys.jpg")
 
         await edit_or_send_message(
@@ -110,7 +110,7 @@ async def process_callback_or_message_view_keys(callback_query_or_message: Messa
         await target_message.answer(text=error_message)
 
 
-def build_keys_response(records):
+async def build_keys_response(records, session):
     """
     Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
     """
@@ -133,7 +133,18 @@ def build_keys_response(records):
             else:
                 formatted_date_full = "без срока действия"
 
-            key_button = InlineKeyboardButton(text=f"🔑 {key_display}", callback_data=f"view_key|{email}")
+            is_vless = False
+            if hasattr(record, 'tariff_id') and record.tariff_id:
+                try:
+                    tariff = await get_tariff_by_id(session, record.tariff_id)
+                    if tariff and tariff.get("vless"):
+                        is_vless = True
+                except:
+                    pass
+
+            icon = "📶" if is_vless else "🔑"
+            
+            key_button = InlineKeyboardButton(text=f"{icon} {key_display}", callback_data=f"view_key|{email}")
             rename_button = InlineKeyboardButton(text=ALIAS, callback_data=f"rename_key|{client_id}")
             builder.row(key_button, rename_button)
 
