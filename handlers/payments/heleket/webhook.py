@@ -1,9 +1,11 @@
 import base64
 import hashlib
 import json
+from aiohttp import web
 from logger import logger
 from config import HELEKET_API_KEY
-from database import async_session_maker, update_payment_status, add_balance_to_user
+from database import async_session_maker, update_payment_status, update_balance, add_payment, get_payment_by_payment_id
+from handlers.payments.utils import send_payment_success_notification
 
 
 def verify_heleket_signature(data: dict) -> bool:
@@ -77,17 +79,42 @@ async def process_heleket_webhook(data: dict) -> bool:
                 return False
             balance_amount = rub_amount if rub_amount else float(merchant_amount)
             async with async_session_maker() as session:
-                await update_payment_status(session, order_id, "success")
-                await add_balance_to_user(session, tg_id, balance_amount)
-                await session.commit()
+                payment = await get_payment_by_payment_id(session, order_id)
+                if payment:
+                    if payment.get("status") == "success":
+                        logger.info(f"Heleket: платёж {order_id} уже обработан")
+                        return True
+                    ok = await update_payment_status(session=session, internal_id=int(payment["id"]), new_status="success")
+                    if not ok:
+                        logger.error(f"Heleket: не удалось обновить статус платежа {order_id}")
+                        return False
+                    await update_balance(session, tg_id, balance_amount)
+                    await send_payment_success_notification(tg_id, balance_amount, session)
+                    await session.commit()
+                else:
+                    await add_payment(
+                        session=session,
+                        tg_id=tg_id,
+                        amount=balance_amount,
+                        payment_system="HELEKET",
+                        status="success",
+                        currency="USD",
+                        payment_id=order_id,
+                        metadata=None,
+                    )
+                    await update_balance(session, tg_id, balance_amount)
+                    await send_payment_success_notification(tg_id, balance_amount, session)
+                    await session.commit()
             logger.info(f"Heleket: платёж {order_id} для пользователя {tg_id} успешно обработан, баланс пополнен на {balance_amount} RUB")
             return True
         elif status in ['fail', 'wrong_amount', 'cancel', 'system_fail']:
             logger.warning(f"Heleket: неудачный платёж {order_id}, статус: {status}")
             
             async with async_session_maker() as session:
-                await update_payment_status(session, order_id, "failed")
-                await session.commit()
+                payment = await get_payment_by_payment_id(session, order_id)
+                if payment:
+                    await update_payment_status(session=session, internal_id=int(payment["id"]), new_status="failed")
+                    await session.commit()
             return True
         else:
             logger.info(f"Heleket: промежуточный статус {status} для платежа {order_id}")
@@ -95,3 +122,23 @@ async def process_heleket_webhook(data: dict) -> bool:
     except Exception as e:
         logger.error(f"Ошибка обработки Heleket webhook: {e}")
         return False
+
+
+async def heleket_webhook(request: web.Request):
+    """Обработчик вебхука Heleket для aiohttp"""
+    try:
+        data = await request.json()
+        logger.info(f"Heleket webhook received from {request.remote}")
+        
+        if not verify_heleket_signature(data):
+            logger.error("Heleket webhook: неверная подпись")
+            return web.Response(status=400, text="Invalid signature")
+        
+        success = await process_heleket_webhook(data)
+        if success:
+            return web.Response(status=200, text="OK")
+        else:
+            return web.Response(status=400, text="Processing failed")
+    except Exception as e:
+        logger.error(f"Ошибка обработки Heleket webhook: {e}")
+        return web.Response(status=500, text="Internal server error")
