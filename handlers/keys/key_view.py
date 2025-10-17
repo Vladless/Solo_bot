@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
-    ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
     HAPP_CRYPTOLINK,
     HWID_RESET_BUTTON,
     QRCODE,
@@ -44,7 +43,6 @@ from handlers.buttons import (
     PC_BUTTON,
     QR,
     RENEW_KEY,
-    RENEW_SUB,
     ROUTER_BUTTON,
     TV_BUTTON,
     UNFREEZE,
@@ -315,9 +313,6 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         is_remnawave=is_full_remnawave,
         remna_used_gb=remna_used_gb,
     )
-
-    if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
-        builder.row(InlineKeyboardButton(text=RENEW_SUB, callback_data=f"update_subscription|{key_name}"))
 
     if is_full_remnawave and final_link and REMNAWAVE_WEBAPP and not HAPP_CRYPTOLINK:
         if vless_enabled:

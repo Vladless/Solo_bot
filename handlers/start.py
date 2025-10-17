@@ -227,13 +227,15 @@ async def show_start_menu(
         snap = await get_user_snapshot(session, message.chat.id)
         if snap is None:
             trial_status = 0
+            key_cnt = 0
         else:
             trial_status, key_cnt = snap
     else:
         trial_status = trial
+        key_cnt = key_count or 0
 
-    show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE)
-    show_profile = ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial)
+    show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE) and (key_cnt == 0)
+    show_profile = (key_cnt > 0) or (((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial))
 
     if show_trial:
         kb.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))

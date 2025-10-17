@@ -34,37 +34,11 @@ async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, s
         remna_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
         xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
 
-        remna_servers = unique_by_api_url(remna_servers)
-
-        for server_info in remna_servers:
-            server_name = server_info.get("server_name", "unknown")
-            remna = RemnawaveAPI(server_info["api_url"])
-            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                logger.error(f"{PANEL_REMNA} Не удалось войти на сервер {server_name}")
-                continue
-            success = await remna.delete_user(client_id)
-            if success:
-                logger.info(f"{PANEL_REMNA} Клиент {client_id} удалён с {server_name}")
-            else:
-                logger.warning(f"{PANEL_REMNA} Не удалось удалить клиента {client_id} с {server_name}")
-
-        for server_info in xui_servers:
-            server_name = server_info.get("server_name", "unknown")
-            inbound_id = server_info.get("inbound_id")
-            if not inbound_id:
-                logger.warning(f"{PANEL_XUI} INBOUND_ID отсутствует на сервере {server_name}. Пропуск.")
-                continue
-            try:
-                xui = await get_xui_instance(server_info["api_url"])
-            except Exception as e:
-                logger.warning(f"{PANEL_XUI} [{server_name}] недоступна панель 3x-ui при удалении: {e}")
-                continue
-            await delete_client(
-                xui=xui,
-                inbound_id=int(inbound_id),
-                email=email,
-                client_id=client_id,
-            )
+        await asyncio.gather(
+            delete_on_3xui(xui_servers, email, client_id),
+            delete_on_remnawave(remna_servers, client_id),
+            return_exceptions=True,
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при удалении ключа {client_id} из кластера/сервера {cluster_id}: {e}")

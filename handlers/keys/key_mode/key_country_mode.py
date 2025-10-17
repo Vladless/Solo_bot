@@ -32,7 +32,6 @@ from database import (
     check_user_exists,
     filter_cluster_by_subgroup,
     get_key_details,
-    get_servers,
     get_tariff_by_id,
     get_trial,
     update_balance,
@@ -508,9 +507,15 @@ async def finalize_key_creation(
                 is_trial=is_trial,
             )
 
-        servers_map = await get_servers(session=session, include_enabled=True)
-        cluster_all = servers_map.get(cluster_name, [])
         subgroup_code = tariff.subgroup_title if tariff and tariff.subgroup_title else None
+        cluster_all = [{
+            "server_name": server_info.server_name,
+            "api_url": server_info.api_url,
+            "panel_type": server_info.panel_type,
+            "inbound_id": getattr(server_info, "inbound_id", None),
+            "enabled": True,
+            "max_keys": getattr(server_info, "max_keys", None),
+        }]
 
         link_to_show = await make_aggregated_link(
             session=session,
@@ -568,13 +573,17 @@ async def finalize_key_creation(
     builder = InlineKeyboardBuilder()
     is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
     is_vless = bool(public_link and public_link.lower().startswith("vless://")) or bool(need_vless_key)
+    final_link = public_link or remnawave_link
+    webapp_url = final_link if isinstance(final_link, str) and final_link.strip().lower().startswith(("http://", "https://")) else None
 
     if panel_type == "remnawave" or is_full_remnawave:
         if is_vless:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
-            if REMNAWAVE_WEBAPP:
-                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=REMNAWAVE_WEBAPP)))
+            if REMNAWAVE_WEBAPP and webapp_url:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
+            else:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
             builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
     elif CONNECT_PHONE_BUTTON:
         builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
