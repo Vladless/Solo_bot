@@ -224,6 +224,7 @@ async def edit_or_send_message(
     media_path: str = None,
     disable_web_page_preview: bool = False,
     force_text: bool = False,
+    disable_cache: bool = False,
 ):
     if not hasattr(edit_or_send_message, "cache"):
         from collections import OrderedDict
@@ -254,10 +255,12 @@ async def edit_or_send_message(
         if actual_media_path:
             media_type = get_media_type(actual_media_path)
             
-            async with edit_or_send_message.lock:
-                cached_id = edit_or_send_message.cache.get(actual_media_path)
-                if cached_id:
-                    edit_or_send_message.cache.move_to_end(actual_media_path)
+            cached_id = None
+            if not disable_cache:
+                async with edit_or_send_message.lock:
+                    cached_id = edit_or_send_message.cache.get(actual_media_path)
+                    if cached_id:
+                        edit_or_send_message.cache.move_to_end(actual_media_path)
             
             if cached_id:
                 try:
@@ -307,7 +310,7 @@ async def edit_or_send_message(
             elif hasattr(msg, 'animation') and msg.animation:
                 file_id = msg.animation.file_id
                 
-            if file_id:
+            if file_id and not disable_cache:
                 async with edit_or_send_message.lock:
                     if actual_media_path not in edit_or_send_message.cache:
                         edit_or_send_message.cache[actual_media_path] = file_id

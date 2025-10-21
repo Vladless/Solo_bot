@@ -22,19 +22,23 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
 async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.button(
-        text="👤 Поиск пользователя",
-        callback_data=AdminPanelCallback(action="search_user").pack(),
-    )
-    builder.button(
-        text="🔑 Поиск по подписке",
-        callback_data=AdminPanelCallback(action="search_key").pack(),
+    builder.row(
+        InlineKeyboardButton(text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack()),
+        InlineKeyboardButton(text="🔑 Поиск подписок", callback_data=AdminPanelCallback(action="search_key").pack()),
     )
 
     if admin_role == "superadmin":
         builder.button(
             text="🖥️ Управление серверами",
             callback_data=AdminPanelCallback(action="clusters").pack(),
+        )
+        builder.button(
+            text="💸Управление тарифами",
+            callback_data=AdminPanelCallback(action="tariffs").pack(),
+        )
+        builder.button(
+            text="🤖 Управление ботом",
+            callback_data=AdminPanelCallback(action="management").pack(),
         )
 
     builder.row(
@@ -44,16 +48,8 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
 
     if admin_role == "superadmin":
         builder.row(
-            InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
             InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
-        )
-        builder.button(
-            text="🧩 Мои модули",
-            callback_data=AdminPanelCallback(action="modules").pack(),
-        )
-        builder.button(
-            text="🤖 Управление ботом",
-            callback_data=AdminPanelCallback(action="management").pack(),
+            InlineKeyboardButton(text="🧩 Мои модули", callback_data=AdminPanelCallback(action="modules").pack()),
         )
         builder.row(
             InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
@@ -74,9 +70,9 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     )
 
     if admin_role == "superadmin":
-        builder.adjust(1, 1, 1, 1, 2, 2, 1, 1, 2, 1)
+        builder.adjust(2, 1, 1, 1, 2, 2, 2, 1)
     else:
-        builder.adjust(1, 1, 1, 2, 1, 1, 1)
+        builder.adjust(2, 2, 1, 1)
 
     return builder.as_markup()
 

@@ -252,6 +252,7 @@ async def show_qr_code(callback_query: types.CallbackQuery, session: AsyncSessio
             text="🔲 <b>Ваш QR-код для подключения</b>",
             reply_markup=builder.as_markup(),
             media_path=qr_path,
+            disable_cache=True,
         )
 
         os.remove(qr_path)
