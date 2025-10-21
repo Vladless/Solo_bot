@@ -566,6 +566,8 @@ async def process_auto_renew_or_notify(
             f"Продление подписки {email} на {duration_days} дней для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
+        key_subgroup = selected_tariff.get('subgroup_title')
+
         await renew_key_in_cluster(
             cluster_id=server_id,
             email=email,
@@ -574,6 +576,8 @@ async def process_auto_renew_or_notify(
             total_gb=total_gb,
             hwid_device_limit=device_limit,
             session=conn,
+            target_subgroup=key_subgroup,
+            old_subgroup=key_subgroup,
         )
         await update_balance(conn, tg_id, -renewal_cost)
         await update_key_expiry(conn, client_id, int(new_expiry_time))

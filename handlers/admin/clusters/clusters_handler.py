@@ -615,6 +615,7 @@ async def handle_sync_cluster(
 
                     traffic_limit_bytes = 0
                     hwid_limit = 0
+                    subgroup_title = None
                     if key["tariff_id"]:
                         tariff = await session.get(Tariff, key["tariff_id"])
                         if tariff:
@@ -623,12 +624,22 @@ async def handle_sync_cluster(
                             else:
                                 traffic_limit_bytes = 0
                             hwid_limit = tariff.device_limit
+                            subgroup_title = tariff.subgroup_title
                         else:
                             logger.warning(
                                 f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — обновим без лимитов"
                             )
 
-                    inbound_ids = [s["inbound_id"] for s in cluster_servers if s.get("inbound_id")]
+                    filtered_servers = cluster_servers
+                    if subgroup_title:
+                        filtered_servers = [s for s in cluster_servers if subgroup_title in s.get("tariff_subgroups", [])]
+                        if not filtered_servers:
+                            logger.warning(
+                                f"[Sync] В кластере {cluster_name} не найдено серверов для подгруппы '{subgroup_title}'. Использую весь кластер."
+                            )
+                            filtered_servers = cluster_servers
+
+                    inbound_ids = [s["inbound_id"] for s in filtered_servers if s.get("inbound_id")]
 
                     success = await remna.update_user(
                         uuid=key["client_id"],
@@ -765,9 +776,10 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
 
             traffic_limit = 0
             device_limit = 0
+            key_subgroup = None
             if key.tariff_id:
                 result = await session.execute(
-                    select(Tariff.traffic_limit, Tariff.device_limit).where(
+                    select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(
                         Tariff.id == key.tariff_id, Tariff.is_active.is_(True)
                     )
                 )
@@ -775,6 +787,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 if tariff:
                     traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
                     device_limit = int(tariff[1]) if tariff[1] is not None else 0
+                    key_subgroup = tariff[2]
 
             await renew_key_in_cluster(
                 cluster_name,
@@ -785,6 +798,8 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 session=session,
                 hwid_device_limit=device_limit,
                 reset_traffic=False,
+                target_subgroup=key_subgroup,
+                old_subgroup=key_subgroup,
             )
             await update_key_expiry(session, key.client_id, new_expiry)
 

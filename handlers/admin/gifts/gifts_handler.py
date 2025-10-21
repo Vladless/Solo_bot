@@ -249,7 +249,6 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
         f"ID: <code>{gift.gift_id}</code>\n"
         f"Срок: <b>{duration_text}</b>\n"
         f"Активаций: <b>{usage_text}</b>\n"
-        f"Истекает: <i>{gift.expiry_time.strftime('%d.%m.%Y')}</i>\n"
         f"<b>Ссылка для активации:</b>\n<blockquote>{gift.gift_link}</blockquote>"
     )
 

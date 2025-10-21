@@ -225,6 +225,10 @@ async def handle_key_extension(
         total_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
         device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
+        key_subgroup = None
+        if tariff:
+            key_subgroup = tariff.get('subgroup_title')
+
         await renew_key_in_cluster(
             cluster_id=key.server_id,
             email=key.email,
@@ -234,6 +238,8 @@ async def handle_key_extension(
             session=session,
             hwid_device_limit=device_limit,
             reset_traffic=False,
+            target_subgroup=key_subgroup,
+            old_subgroup=key_subgroup,
         )
         await update_key_expiry(session, client_id, new_expiry)
         await update_coupon_usage_count(session, coupon.id)
