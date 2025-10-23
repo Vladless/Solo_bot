@@ -132,6 +132,7 @@ async def create_key_on_cluster(
                         "expireAt": expire_at,
                         "telegramId": tg_id,
                         "activeInternalSquads": inbound_ids,
+                        "uuid": client_id,
                     }
                     if traffic_limit_bytes and traffic_limit_bytes > 0:
                         user_data["trafficLimitBytes"] = traffic_limit_bytes * 1024 * 1024 * 1024

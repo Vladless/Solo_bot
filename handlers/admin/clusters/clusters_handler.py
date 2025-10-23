@@ -534,25 +534,66 @@ async def handle_sync_server(
         for key in keys_to_sync:
             try:
                 if key["panel_type"] == "remnawave":
-                    continue
+                    expire_iso = (
+                        datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
+                    )
+                    
+                    remna = RemnawaveAPI(key["api_url"])
+                    if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                        logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
+                        continue
 
-                await create_client_on_server(
-                    {
-                        "api_url": key["api_url"],
-                        "inbound_id": key["inbound_id"],
-                        "server_name": key["server_name"],
-                    },
-                    key["tg_id"],
-                    key["client_id"],
-                    key["email"],
-                    key["expiry_time"],
-                    semaphore,
-                    plan=key["tariff_id"],
-                    session=session,
-                )
+                    traffic_limit_bytes = 0
+                    hwid_limit = 0
+                    if key["tariff_id"]:
+                        tariff = await session.get(Tariff, key["tariff_id"])
+                        if tariff:
+                            if tariff.traffic_limit is not None:
+                                traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                            hwid_limit = tariff.device_limit
+
+                    success = await remna.update_user(
+                        uuid=key["client_id"],
+                        expire_at=expire_iso,
+                        telegram_id=key["tg_id"],
+                        email=f"{key['email']}@fake.local",
+                        active_user_inbounds=[key["inbound_id"]],
+                        traffic_limit_bytes=traffic_limit_bytes,
+                        hwid_device_limit=hwid_limit,
+                    )
+                    
+                    if not success:
+                        logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
+
+                        await delete_key_from_cluster(server_name, key["email"], key["client_id"], session)
+
+                        await create_key_on_cluster(
+                            cluster_id=server_name,
+                            tg_id=key["tg_id"],
+                            client_id=key["client_id"],
+                            email=key["email"],
+                            expiry_timestamp=key["expiry_time"],
+                            plan=key["tariff_id"],
+                            session=session,
+                        )
+                else:
+                    await create_client_on_server(
+                        {
+                            "api_url": key["api_url"],
+                            "inbound_id": key["inbound_id"],
+                            "server_name": key["server_name"],
+                        },
+                        key["tg_id"],
+                        key["client_id"],
+                        key["email"],
+                        key["expiry_time"],
+                        semaphore,
+                        plan=key["tariff_id"],
+                        session=session,
+                    )
                 await asyncio.sleep(0.6)
             except Exception as e:
-                logger.error(f"Ошибка при добавлении ключа {key['client_id']} в сервер {server_name}: {e}")
+                logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в сервер {server_name}: {e}")
 
         await callback_query.message.edit_text(
             text=f"✅ Ключи успешно синхронизированы для сервера {server_name}",

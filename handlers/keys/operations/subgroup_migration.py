@@ -71,6 +71,7 @@ async def ensure_on_remnawave(
                 "expireAt": expire_iso,
                 "telegramId": tg_id,
                 "activeInternalSquads": inbounds,
+                "uuid": client_id,
             }
             if traffic_bytes > 0:
                 payload["trafficLimitBytes"] = traffic_bytes

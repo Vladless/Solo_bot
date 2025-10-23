@@ -442,6 +442,7 @@ async def finalize_key_creation(
                 "expireAt": expire_at,
                 "telegramId": tg_id,
                 "activeInternalSquads": [server_info.inbound_id],
+                "uuid": client_id,
             }
             if traffic_limit_bytes:
                 user_data["trafficLimitBytes"] = traffic_limit_bytes

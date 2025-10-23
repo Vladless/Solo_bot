@@ -86,6 +86,7 @@ async def update_key_on_cluster(
                     "expireAt": expire_iso,
                     "telegramId": tg_id,
                     "activeInternalSquads": inbound_ids,
+                    "uuid": client_id,
                 }
                 if traffic_limit is not None:
                     user_data["trafficLimitBytes"] = traffic_limit * 1024**3
