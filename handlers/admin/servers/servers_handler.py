@@ -136,10 +136,19 @@ async def process_callback_delete_server(
         if all_servers:
             builder = InlineKeyboardBuilder()
             for s_name, key_count in all_servers:
+                callback_data = f"transfer_to_server|{s_name}|{server_name}"
+                if len(callback_data.encode('utf-8')) > 64:
+                    await callback_query.message.edit_text(
+                        text=f"❌ Ошибка: название сервера '{s_name}' слишком длинное.\n\n"
+                             f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                        reply_markup=build_admin_back_kb("clusters"),
+                    )
+                    return
+                
                 builder.row(
                     InlineKeyboardButton(
                         text=f"{s_name} ({key_count})",
-                        callback_data=f"transfer_to_server|{s_name}|{server_name}",
+                        callback_data=callback_data,
                     )
                 )
             builder.row(
@@ -189,10 +198,19 @@ async def process_callback_delete_server(
 
                 builder = InlineKeyboardBuilder()
                 for cl_name, key_count in all_clusters:
+                    callback_data = f"transfer_to_cluster|{cl_name}|{cluster_name}|{server_name}"
+                    if len(callback_data.encode('utf-8')) > 64:
+                        await callback_query.message.edit_text(
+                            text=f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.\n\n"
+                                 f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                            reply_markup=build_admin_back_kb("clusters"),
+                        )
+                        return
+                    
                     builder.row(
                         InlineKeyboardButton(
                             text=f"{cl_name} ({key_count})",
-                            callback_data=f"transfer_to_cluster|{cl_name}|{cluster_name}|{server_name}",
+                            callback_data=callback_data,
                         )
                     )
                 builder.row(
@@ -424,6 +442,13 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
     value = message.text.strip()
 
     if field == "server_name":
+        if len(value) > 12:
+            await message.answer(
+                text="❌ Имя сервера не должно превышать 12 символов. Попробуйте снова.",
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
+            
         success = await update_server_name_with_keys(session, server_name, value)
         if success:
             server_name = value

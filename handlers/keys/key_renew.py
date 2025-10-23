@@ -74,6 +74,19 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             dt_msk = available_from_utc.astimezone(moscow_tz).strftime("%d.%m.%Y %H:%M")
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+
+            try:
+                hook_commands = await run_hooks(
+                    "process_callback_renew_key", 
+                    callback_query=callback_query, 
+                    state=state, 
+                    session=session
+                )
+                if hook_commands:
+                    kb = insert_hook_buttons(kb, hook_commands)
+            except Exception as e:
+                logger.warning(f"[RENEW] Ошибка при применении хуков: {e}")
+            
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text=f"Продление доступно с {dt_msk}",
