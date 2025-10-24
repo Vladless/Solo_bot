@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
+    HAPP_CRYPTOLINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     USE_COUNTRY_SELECTION,
@@ -27,6 +28,7 @@ from handlers.keys.operations import (
     delete_key_from_cluster,
     renew_key_in_cluster,
 )
+from handlers.keys.operations.aggregated_links import make_aggregated_link
 from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
 from panels.remnawave import RemnawaveAPI
@@ -512,6 +514,7 @@ async def handle_sync_server(
                 Key.email,
                 Key.expiry_time,
                 Key.tariff_id,
+                Key.remnawave_link,
             )
             .join(Key, Server.cluster_name == Key.server_id)
             .where(Server.server_name == server_name)
@@ -562,6 +565,48 @@ async def handle_sync_server(
                         hwid_device_limit=hwid_limit,
                     )
 
+                    if success:
+                        try:
+                            sub = await remna.get_subscription_by_username(key["email"])
+                            if sub:
+                                new_remnawave_link = sub.get("subscriptionUrl")
+                                if HAPP_CRYPTOLINK:
+                                    happ = sub.get("happ") or {}
+                                    new_remnawave_link = happ.get("cryptoLink") or happ.get("link") or new_remnawave_link
+                                
+                                if new_remnawave_link:
+                                    server_result = await session.execute(
+                                        select(Server.cluster_name).where(Server.server_name == server_name)
+                                    )
+                                    cluster_name = server_result.scalar()
+                                    
+                                    servers = await get_servers(session)
+                                    cluster_servers = servers.get(cluster_name, [])
+                                    
+                                    key_value = await make_aggregated_link(
+                                        session=session,
+                                        cluster_all=cluster_servers,
+                                        cluster_id=cluster_name,
+                                        email=key["email"],
+                                        client_id=key["client_id"],
+                                        tg_id=key["tg_id"],
+                                        remna_link_override=new_remnawave_link,
+                                        plan=key["tariff_id"],
+                                    )
+                                    
+                                    await session.execute(
+                                        update(Key)
+                                        .where(Key.tg_id == key["tg_id"], Key.client_id == key["client_id"])
+                                        .values(
+                                            remnawave_link=new_remnawave_link,
+                                            key=key_value
+                                        )
+                                    )
+                                    await session.commit()
+                                    logger.info(f"[Sync] Обновлена ссылка для {key['email']}: {new_remnawave_link}")
+                        except Exception as e:
+                            logger.warning(f"[Sync] Не удалось получить ссылку для {key['email']}: {e}")
+
                     if not success:
                         logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
 
@@ -575,6 +620,7 @@ async def handle_sync_server(
                             expiry_timestamp=key["expiry_time"],
                             plan=key["tariff_id"],
                             session=session,
+                            remnawave_link=key["remnawave_link"],
                         )
                 else:
                     await create_client_on_server(
@@ -693,6 +739,43 @@ async def handle_sync_cluster(
                         traffic_limit_bytes=traffic_limit_bytes,
                         hwid_device_limit=hwid_limit,
                     )
+
+                    if success:
+                        try:
+                            sub = await remna.get_subscription_by_username(key["email"])
+                            if sub:
+                                new_remnawave_link = sub.get("subscriptionUrl")
+                                if HAPP_CRYPTOLINK:
+                                    happ = sub.get("happ") or {}
+                                    new_remnawave_link = happ.get("cryptoLink") or happ.get("link") or new_remnawave_link
+                                
+                                if new_remnawave_link:
+                                    servers = await get_servers(session)
+                                    cluster_servers = servers.get(cluster_name, [])
+                                    
+                                    key_value = await make_aggregated_link(
+                                        session=session,
+                                        cluster_all=cluster_servers,
+                                        cluster_id=cluster_name,
+                                        email=key["email"],
+                                        client_id=key["client_id"],
+                                        tg_id=key["tg_id"],
+                                        remna_link_override=new_remnawave_link,
+                                        plan=key["tariff_id"],
+                                    )
+                                    
+                                    await session.execute(
+                                        update(Key)
+                                        .where(Key.tg_id == key["tg_id"], Key.client_id == key["client_id"])
+                                        .values(
+                                            remnawave_link=new_remnawave_link,
+                                            key=key_value
+                                        )
+                                    )
+                                    await session.commit()
+                                    logger.info(f"[Sync] Обновлена ссылка для {key['email']}: {new_remnawave_link}")
+                        except Exception as e:
+                            logger.warning(f"[Sync] Не удалось получить ссылку для {key['email']}: {e}")
 
                     if not success:
                         logger.warning("[Sync] ошибка обновления, пробуем пересоздать")

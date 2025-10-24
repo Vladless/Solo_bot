@@ -22,25 +22,40 @@ async def store_key(
 ):
     try:
         exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
-        if exists.scalar_one_or_none():
-            logger.info(f"[Store Key] Ключ уже существует — пропускаем: tg_id={tg_id}, client_id={client_id}")
-            return
-
-        new_key = Key(
-            tg_id=tg_id,
-            client_id=client_id,
-            email=email,
-            created_at=int(datetime.utcnow().timestamp() * 1000),
-            expiry_time=expiry_time,
-            key=key,
-            server_id=server_id,
-            remnawave_link=remnawave_link,
-            tariff_id=tariff_id,
-            alias=alias,
-        )
-        session.add(new_key)
+        existing_key = exists.scalar_one_or_none()
+        
+        if existing_key:
+            await session.execute(
+                update(Key)
+                .where(Key.tg_id == tg_id, Key.client_id == client_id)
+                .values(
+                    email=email,
+                    expiry_time=expiry_time,
+                    key=key,
+                    server_id=server_id,
+                    remnawave_link=remnawave_link,
+                    tariff_id=tariff_id,
+                    alias=alias,
+                )
+            )
+            logger.info(f"[Store Key] Ключ обновлён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+        else:
+            new_key = Key(
+                tg_id=tg_id,
+                client_id=client_id,
+                email=email,
+                created_at=int(datetime.utcnow().timestamp() * 1000),
+                expiry_time=expiry_time,
+                key=key,
+                server_id=server_id,
+                remnawave_link=remnawave_link,
+                tariff_id=tariff_id,
+                alias=alias,
+            )
+            session.add(new_key)
+            logger.info(f"[Store Key] Ключ создан: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+        
         await session.commit()
-        logger.info(f"Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
 
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")

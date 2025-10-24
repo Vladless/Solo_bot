@@ -163,7 +163,9 @@ async def make_aggregated_link(
             return f"{base}/{email}/{tg_id}"
         best_vless, sub_url = await _try_build_remna_vless(remna, email)
         if remna_link_override and (
-            remna_link_override.lower().startswith("vless://") or remna_link_override.startswith("http")
+            remna_link_override.lower().startswith("vless://") or 
+            remna_link_override.startswith("http") or 
+            remna_link_override.startswith("happ://")
         ):
             logger.info("[agg_link] choose override Remnawave (non-vless)")
             return remna_link_override
