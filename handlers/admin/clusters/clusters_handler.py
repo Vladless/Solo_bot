@@ -537,6 +537,28 @@ async def handle_sync_server(
         for key in keys_to_sync:
             try:
                 if key["panel_type"] == "remnawave":
+                    tariff = None
+                    if key["tariff_id"]:
+                        tariff = await session.get(Tariff, key["tariff_id"])
+                        if tariff:
+                            servers = await get_servers(session)
+                            server_info = None
+                            for cluster_servers in servers.values():
+                                for s in cluster_servers:
+                                    if s.get("server_name") == server_name:
+                                        server_info = s
+                                        break
+                                if server_info:
+                                    break
+                            
+                            if server_info:
+                                if tariff.subgroup_title and tariff.subgroup_title not in server_info.get("tariff_subgroups", []):
+                                    continue
+
+                                if tariff.group_code and tariff.group_code.lower() in ALLOWED_GROUP_CODES:
+                                    if tariff.group_code.lower() not in server_info.get("special_groups", []):
+                                        continue
+
                     expire_iso = (
                         datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
                     )
@@ -548,12 +570,10 @@ async def handle_sync_server(
 
                     traffic_limit_bytes = 0
                     hwid_limit = 0
-                    if key["tariff_id"]:
-                        tariff = await session.get(Tariff, key["tariff_id"])
-                        if tariff:
-                            if tariff.traffic_limit is not None:
-                                traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
-                            hwid_limit = tariff.device_limit
+                    if tariff:
+                        if tariff.traffic_limit is not None:
+                            traffic_limit_bytes = int(tariff.traffic_limit * 1024**3)
+                        hwid_limit = tariff.device_limit
 
                     success = await remna.update_user(
                         uuid=key["client_id"],
@@ -727,6 +747,19 @@ async def handle_sync_cluster(
                                 f"[Sync] В кластере {cluster_name} не найдено серверов для подгруппы '{subgroup_title}'. Использую весь кластер."
                             )
                             filtered_servers = cluster_servers
+
+                    if tariff and tariff.group_code:
+                        group_code = tariff.group_code.lower()
+                        if group_code in ALLOWED_GROUP_CODES:
+                            special_filtered = [
+                                s for s in filtered_servers if group_code in (s.get("special_groups") or [])
+                            ]
+                            if special_filtered:
+                                filtered_servers = special_filtered
+                            else:
+                                logger.warning(
+                                    f"[Sync] В кластере {cluster_name} нет серверов со спецгруппой '{group_code}'. Использую весь кластер."
+                                )
 
                     inbound_ids = [s["inbound_id"] for s in filtered_servers if s.get("inbound_id")]
 

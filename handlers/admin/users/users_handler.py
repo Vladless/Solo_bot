@@ -700,6 +700,13 @@ async def handle_user_renew_confirm(
     stmt = update(Key).where(Key.tg_id == tg_id, Key.email == email).values(tariff_id=tariff_id)
     await session.execute(stmt)
     await session.commit()
+
+    await update_subscription(
+        tg_id=tg_id,
+        email=email,
+        session=session
+    )
+    
     await state.clear()
 
     callback_data = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
