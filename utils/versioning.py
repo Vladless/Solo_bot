@@ -92,4 +92,4 @@ def get_git_commit_number() -> str:
 
 
 def get_version() -> str:
-    return f"v.5-preRelease {get_git_commit_number()}"
+    return f"v.5-Release {get_git_commit_number()}"
