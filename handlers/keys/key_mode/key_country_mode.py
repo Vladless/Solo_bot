@@ -38,7 +38,17 @@ from database import (
     update_trial,
 )
 from database.models import Key, Server, Tariff
-from handlers.buttons import BACK, CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, MY_SUB, PC_BUTTON, SUPPORT, TV_BUTTON, ROUTER_BUTTON
+from handlers.buttons import (
+    BACK,
+    CONNECT_DEVICE,
+    CONNECT_PHONE,
+    MAIN_MENU,
+    MY_SUB,
+    PC_BUTTON,
+    ROUTER_BUTTON,
+    SUPPORT,
+    TV_BUTTON,
+)
 from handlers.keys.operations import create_client_on_server
 from handlers.keys.operations.aggregated_links import make_aggregated_link
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
@@ -509,14 +519,16 @@ async def finalize_key_creation(
             )
 
         subgroup_code = tariff.subgroup_title if tariff and tariff.subgroup_title else None
-        cluster_all = [{
-            "server_name": server_info.server_name,
-            "api_url": server_info.api_url,
-            "panel_type": server_info.panel_type,
-            "inbound_id": getattr(server_info, "inbound_id", None),
-            "enabled": True,
-            "max_keys": getattr(server_info, "max_keys", None),
-        }]
+        cluster_all = [
+            {
+                "server_name": server_info.server_name,
+                "api_url": server_info.api_url,
+                "panel_type": server_info.panel_type,
+                "inbound_id": getattr(server_info, "inbound_id", None),
+                "enabled": True,
+                "max_keys": getattr(server_info, "max_keys", None),
+            }
+        ]
 
         link_to_show = await make_aggregated_link(
             session=session,
@@ -575,7 +587,11 @@ async def finalize_key_creation(
     is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
     is_vless = bool(public_link and public_link.lower().startswith("vless://")) or bool(need_vless_key)
     final_link = public_link or remnawave_link
-    webapp_url = final_link if isinstance(final_link, str) and final_link.strip().lower().startswith(("http://", "https://")) else None
+    webapp_url = (
+        final_link
+        if isinstance(final_link, str) and final_link.strip().lower().startswith(("http://", "https://"))
+        else None
+    )
 
     if panel_type == "remnawave" or is_full_remnawave:
         if is_vless:

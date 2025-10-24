@@ -1,3 +1,4 @@
+import asyncio
 import html
 import os
 import re
@@ -5,8 +6,6 @@ import secrets
 import string
 
 from collections import OrderedDict
-import asyncio
-
 from datetime import datetime, timedelta
 
 import aiofiles
@@ -14,9 +13,9 @@ import aiofiles
 from aiogram.types import (
     BufferedInputFile,
     InlineKeyboardMarkup,
+    InputMediaAnimation,
     InputMediaPhoto,
     InputMediaVideo,
-    InputMediaAnimation,
     Message,
 )
 from sqlalchemy import func, select
@@ -201,20 +200,20 @@ def format_hours(hours: int) -> str:
 
 def get_media_type(media_path: str) -> str:
     if not media_path:
-        return 'photo'
-    
+        return "photo"
+
     ext = os.path.splitext(media_path.lower())[1]
 
-    if ext in ['.jpg', '.jpeg', '.png', '.webp']:
-        return 'photo'
+    if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+        return "photo"
 
-    if ext in ['.mp4', '.mov', '.avi']:
-        return 'video'
+    if ext in [".mp4", ".mov", ".avi"]:
+        return "video"
 
-    if ext == '.gif':
-        return 'animation'
-    
-    return 'photo'
+    if ext == ".gif":
+        return "animation"
+
+    return "photo"
 
 
 async def edit_or_send_message(
@@ -227,8 +226,10 @@ async def edit_or_send_message(
     disable_cache: bool = False,
 ):
     if not hasattr(edit_or_send_message, "cache"):
-        from collections import OrderedDict
         import asyncio
+
+        from collections import OrderedDict
+
         edit_or_send_message.cache = OrderedDict()
         edit_or_send_message.lock = asyncio.Lock()
         edit_or_send_message.max = 256
@@ -236,49 +237,70 @@ async def edit_or_send_message(
     def find_media_file(original_path: str) -> str | None:
         if not original_path:
             return None
-            
+
         if os.path.isfile(original_path):
             return original_path
 
         base_name = os.path.splitext(original_path)[0]
-        supported_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.mov', '.avi']
-        
+        supported_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"]
+
         for ext in supported_extensions:
             fallback_path = base_name + ext
             if os.path.isfile(fallback_path):
                 return fallback_path
-                
+
         return None
 
     if media_path:
         actual_media_path = find_media_file(media_path)
         if actual_media_path:
             media_type = get_media_type(actual_media_path)
-            
+
             cached_id = None
             if not disable_cache:
                 async with edit_or_send_message.lock:
                     cached_id = edit_or_send_message.cache.get(actual_media_path)
                     if cached_id:
                         edit_or_send_message.cache.move_to_end(actual_media_path)
-            
+
             if cached_id:
                 try:
-                    if media_type == 'photo':
-                        await target_message.edit_media(InputMediaPhoto(media=cached_id, caption=text), reply_markup=reply_markup)
-                    elif media_type == 'video':
-                        await target_message.edit_media(InputMediaVideo(media=cached_id, caption=text), reply_markup=reply_markup)
-                    elif media_type == 'animation':
-                        await target_message.edit_media(InputMediaAnimation(media=cached_id, caption=text), reply_markup=reply_markup)
+                    if media_type == "photo":
+                        await target_message.edit_media(
+                            InputMediaPhoto(media=cached_id, caption=text), reply_markup=reply_markup
+                        )
+                    elif media_type == "video":
+                        await target_message.edit_media(
+                            InputMediaVideo(media=cached_id, caption=text), reply_markup=reply_markup
+                        )
+                    elif media_type == "animation":
+                        await target_message.edit_media(
+                            InputMediaAnimation(media=cached_id, caption=text), reply_markup=reply_markup
+                        )
                     return
                 except Exception:
                     try:
-                        if media_type == 'photo':
-                            await target_message.answer_photo(photo=cached_id, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
-                        elif media_type == 'video':
-                            await target_message.answer_video(video=cached_id, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
-                        elif media_type == 'animation':
-                            await target_message.answer_animation(animation=cached_id, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
+                        if media_type == "photo":
+                            await target_message.answer_photo(
+                                photo=cached_id,
+                                caption=text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=disable_web_page_preview,
+                            )
+                        elif media_type == "video":
+                            await target_message.answer_video(
+                                video=cached_id,
+                                caption=text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=disable_web_page_preview,
+                            )
+                        elif media_type == "animation":
+                            await target_message.answer_animation(
+                                animation=cached_id,
+                                caption=text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=disable_web_page_preview,
+                            )
                         return
                     except Exception:
                         pass
@@ -286,30 +308,51 @@ async def edit_or_send_message(
             async with aiofiles.open(actual_media_path, "rb") as f:
                 data = await f.read()
             upload = BufferedInputFile(data, filename=os.path.basename(actual_media_path))
-            
+
             try:
-                if media_type == 'photo':
-                    msg = await target_message.edit_media(InputMediaPhoto(media=upload, caption=text), reply_markup=reply_markup)
-                elif media_type == 'video':
-                    msg = await target_message.edit_media(InputMediaVideo(media=upload, caption=text), reply_markup=reply_markup)
-                elif media_type == 'animation':
-                    msg = await target_message.edit_media(InputMediaAnimation(media=upload, caption=text), reply_markup=reply_markup)
+                if media_type == "photo":
+                    msg = await target_message.edit_media(
+                        InputMediaPhoto(media=upload, caption=text), reply_markup=reply_markup
+                    )
+                elif media_type == "video":
+                    msg = await target_message.edit_media(
+                        InputMediaVideo(media=upload, caption=text), reply_markup=reply_markup
+                    )
+                elif media_type == "animation":
+                    msg = await target_message.edit_media(
+                        InputMediaAnimation(media=upload, caption=text), reply_markup=reply_markup
+                    )
             except Exception:
-                if media_type == 'photo':
-                    msg = await target_message.answer_photo(photo=upload, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
-                elif media_type == 'video':
-                    msg = await target_message.answer_video(video=upload, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
-                elif media_type == 'animation':
-                    msg = await target_message.answer_animation(animation=upload, caption=text, reply_markup=reply_markup, disable_web_page_preview=disable_web_page_preview)
+                if media_type == "photo":
+                    msg = await target_message.answer_photo(
+                        photo=upload,
+                        caption=text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                    )
+                elif media_type == "video":
+                    msg = await target_message.answer_video(
+                        video=upload,
+                        caption=text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                    )
+                elif media_type == "animation":
+                    msg = await target_message.answer_animation(
+                        animation=upload,
+                        caption=text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
+                    )
 
             file_id = None
-            if hasattr(msg, 'photo') and msg.photo:
+            if hasattr(msg, "photo") and msg.photo:
                 file_id = msg.photo[-1].file_id
-            elif hasattr(msg, 'video') and msg.video:
+            elif hasattr(msg, "video") and msg.video:
                 file_id = msg.video.file_id
-            elif hasattr(msg, 'animation') and msg.animation:
+            elif hasattr(msg, "animation") and msg.animation:
                 file_id = msg.animation.file_id
-                
+
             if file_id and not disable_cache:
                 async with edit_or_send_message.lock:
                     if actual_media_path not in edit_or_send_message.cache:

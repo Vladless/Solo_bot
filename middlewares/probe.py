@@ -1,10 +1,12 @@
 import time
+
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
+
 from logger import logger
 
 
 class StreamProbeMiddleware(BaseMiddleware):
-    def __init__(self, name: str = "global"):
+    def __init__(self, name: str = "global") -> None:
         self.name = name
 
     async def __call__(self, handler, event, data):
@@ -21,7 +23,7 @@ class StreamProbeMiddleware(BaseMiddleware):
 
 
 class MiddlewareProbe(BaseMiddleware):
-    def __init__(self, inner: BaseMiddleware, name: str):
+    def __init__(self, inner: BaseMiddleware, name: str) -> None:
         self.inner = inner
         self.name = name
 
@@ -29,7 +31,7 @@ class MiddlewareProbe(BaseMiddleware):
         now = time.perf_counter()
         t0 = data.setdefault("_mw_t0", now)
         prev = data.setdefault("_mw_prev", now)
-        logger.info(f"[mw:{self.name}] +{(now - prev)*1000:.2f} ms total {(now - t0)*1000:.2f} ms")
+        logger.info(f"[mw:{self.name}] +{(now - prev) * 1000:.2f} ms total {(now - t0) * 1000:.2f} ms")
 
         downstream_ms = 0.0
 
@@ -54,14 +56,14 @@ class MiddlewareProbe(BaseMiddleware):
 
 
 class TailHandlerProbe(BaseMiddleware):
-    def __init__(self, name: str = "handler"):
+    def __init__(self, name: str = "handler") -> None:
         self.name = name
 
     async def __call__(self, handler, event, data):
         now = time.perf_counter()
         t0 = data.setdefault("_mw_t0", now)
         prev = data.setdefault("_mw_prev", now)
-        logger.info(f"[mw:{self.name}:enter] +{(now - prev)*1000:.2f} ms total {(now - t0)*1000:.2f} ms")
+        logger.info(f"[mw:{self.name}:enter] +{(now - prev) * 1000:.2f} ms total {(now - t0) * 1000:.2f} ms")
         start = time.perf_counter()
         try:
             return await handler(event, data)

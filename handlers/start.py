@@ -1,4 +1,5 @@
 import os
+
 from typing import Any
 
 from aiogram import F, Router
@@ -6,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
@@ -25,6 +27,7 @@ from database import (
     get_user_snapshot,
     upsert_source_if_empty,
 )
+from database.models import TrackingSource
 from handlers.buttons import (
     ABOUT_VPN,
     BACK,
@@ -55,8 +58,7 @@ from logger import logger
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
 from .utils import edit_or_send_message, extract_user_data
-from sqlalchemy import select
-from database.models import TrackingSource
+
 
 router = Router()
 processing_gifts = set()
@@ -235,7 +237,9 @@ async def show_start_menu(
         key_cnt = key_count or 0
 
     show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE) and (key_cnt == 0)
-    show_profile = (key_cnt > 0) or (((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial))
+    show_profile = (key_cnt > 0) or (
+        ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial)
+    )
 
     if show_trial:
         kb.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))

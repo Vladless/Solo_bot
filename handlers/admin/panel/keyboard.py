@@ -23,7 +23,9 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.row(
-        InlineKeyboardButton(text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack()),
+        InlineKeyboardButton(
+            text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack()
+        ),
         InlineKeyboardButton(text="🔑 Поиск подписок", callback_data=AdminPanelCallback(action="search_key").pack()),
     )
 

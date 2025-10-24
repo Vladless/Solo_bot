@@ -3,17 +3,16 @@ from collections.abc import Iterable
 from aiogram import Dispatcher
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
-from config import DISABLE_DIRECT_START, CHANNEL_REQUIRED
-
+from config import CHANNEL_REQUIRED, DISABLE_DIRECT_START
 from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
 
-from .probe import StreamProbeMiddleware, MiddlewareProbe, TailHandlerProbe
 from .admin import AdminMiddleware
 from .answer import CallbackAnswerMiddleware
 from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware
 from .maintenance import MaintenanceModeMiddleware
+from .probe import MiddlewareProbe, StreamProbeMiddleware, TailHandlerProbe
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware

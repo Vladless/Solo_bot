@@ -537,7 +537,7 @@ async def handle_sync_server(
                     expire_iso = (
                         datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
                     )
-                    
+
                     remna = RemnawaveAPI(key["api_url"])
                     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                         logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
@@ -561,7 +561,7 @@ async def handle_sync_server(
                         traffic_limit_bytes=traffic_limit_bytes,
                         hwid_device_limit=hwid_limit,
                     )
-                    
+
                     if not success:
                         logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
 
@@ -673,7 +673,9 @@ async def handle_sync_cluster(
 
                     filtered_servers = cluster_servers
                     if subgroup_title:
-                        filtered_servers = [s for s in cluster_servers if subgroup_title in s.get("tariff_subgroups", [])]
+                        filtered_servers = [
+                            s for s in cluster_servers if subgroup_title in s.get("tariff_subgroups", [])
+                        ]
                         if not filtered_servers:
                             logger.warning(
                                 f"[Sync] В кластере {cluster_name} не найдено серверов для подгруппы '{subgroup_title}'. Использую весь кластер."

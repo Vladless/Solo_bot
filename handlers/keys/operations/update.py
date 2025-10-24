@@ -1,19 +1,24 @@
 import asyncio
+
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import get_servers, store_key, filter_cluster_by_subgroup
+from database import filter_cluster_by_subgroup, get_servers, store_key
 from database.models import Key, Tariff
 from handlers.utils import get_least_loaded_cluster
-from logger import CLOGGER as logger, PANEL_REMNA, PANEL_XUI
+from logger import (
+    CLOGGER as logger,
+    PANEL_REMNA,
+    PANEL_XUI,
+)
 from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
-from .deletion import delete_key_from_cluster
 from .aggregated_links import make_aggregated_link
+from .deletion import delete_key_from_cluster
 
 
 async def update_key_on_cluster(
@@ -229,7 +234,9 @@ async def update_subscription(
     if subgroup_code:
         prefiltered = await filter_cluster_by_subgroup(session, cluster_servers, subgroup_code, new_cluster_id)
         if not prefiltered:
-            logger.warning(f"[Update] Пересоздание пропущено: нет серверов под подгруппу {subgroup_code} в {new_cluster_id}.")
+            logger.warning(
+                f"[Update] Пересоздание пропущено: нет серверов под подгруппу {subgroup_code} в {new_cluster_id}."
+            )
             return
         cluster_servers = prefiltered
 

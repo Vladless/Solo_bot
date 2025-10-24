@@ -134,7 +134,7 @@ async def build_keys_response(records, session):
                 formatted_date_full = "без срока действия"
 
             is_vless = False
-            if hasattr(record, 'tariff_id') and record.tariff_id:
+            if hasattr(record, "tariff_id") and record.tariff_id:
                 try:
                     tariff = await get_tariff_by_id(session, record.tariff_id)
                     if tariff and tariff.get("vless"):
@@ -143,7 +143,7 @@ async def build_keys_response(records, session):
                     pass
 
             icon = "📶" if is_vless else "🔑"
-            
+
             key_button = InlineKeyboardButton(text=f"{icon} {key_display}", callback_data=f"view_key|{email}")
             rename_button = InlineKeyboardButton(text=ALIAS, callback_data=f"rename_key|{client_id}")
             builder.row(key_button, rename_button)

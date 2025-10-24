@@ -137,14 +137,14 @@ async def process_callback_delete_server(
             builder = InlineKeyboardBuilder()
             for s_name, key_count in all_servers:
                 callback_data = f"transfer_to_server|{s_name}|{server_name}"
-                if len(callback_data.encode('utf-8')) > 64:
+                if len(callback_data.encode("utf-8")) > 64:
                     await callback_query.message.edit_text(
                         text=f"❌ Ошибка: название сервера '{s_name}' слишком длинное.\n\n"
-                             f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                        f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
                         reply_markup=build_admin_back_kb("clusters"),
                     )
                     return
-                
+
                 builder.row(
                     InlineKeyboardButton(
                         text=f"{s_name} ({key_count})",
@@ -199,14 +199,14 @@ async def process_callback_delete_server(
                 builder = InlineKeyboardBuilder()
                 for cl_name, key_count in all_clusters:
                     callback_data = f"transfer_to_cluster|{cl_name}|{cluster_name}|{server_name}"
-                    if len(callback_data.encode('utf-8')) > 64:
+                    if len(callback_data.encode("utf-8")) > 64:
                         await callback_query.message.edit_text(
                             text=f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.\n\n"
-                                 f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                            f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
                             reply_markup=build_admin_back_kb("clusters"),
                         )
                         return
-                    
+
                     builder.row(
                         InlineKeyboardButton(
                             text=f"{cl_name} ({key_count})",
@@ -448,7 +448,7 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
-            
+
         success = await update_server_name_with_keys(session, server_name, value)
         if success:
             server_name = value

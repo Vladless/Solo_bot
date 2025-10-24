@@ -536,7 +536,7 @@ async def process_auto_renew_or_notify(
                 keyboard = build_notification_kb(email)
 
             await add_notification(conn, tg_id, notification_id)
-            text_to_send = message_text if 'message_text' in locals() else standard_caption
+            text_to_send = message_text if "message_text" in locals() else standard_caption
             await send_notification(bot, tg_id, standard_photo, text_to_send, keyboard)
             return
 
@@ -566,7 +566,7 @@ async def process_auto_renew_or_notify(
             f"Продление подписки {email} на {duration_days} дней для пользователя {tg_id}. Баланс: {balance}, списываем: {renewal_cost}"
         )
 
-        key_subgroup = selected_tariff.get('subgroup_title')
+        key_subgroup = selected_tariff.get("subgroup_title")
 
         await renew_key_in_cluster(
             cluster_id=server_id,

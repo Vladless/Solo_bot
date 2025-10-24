@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import delete, exists, or_, select, update, func
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,12 +11,12 @@ from database.models import (
     CouponUsage,
     Gift,
     GiftUsage,
+    Key,
     Notification,
     Payment,
     Referral,
     TemporaryData,
     User,
-    Key,
 )
 from logger import logger
 
@@ -81,17 +81,13 @@ async def check_user_exists(session: AsyncSession, tg_id: int) -> bool:
 
 
 async def get_balance(session: AsyncSession, tg_id: int) -> float:
-    result = await session.execute(
-        select(func.coalesce(User.balance, 0.0)).where(User.tg_id == tg_id)
-    )
+    result = await session.execute(select(func.coalesce(User.balance, 0.0)).where(User.tg_id == tg_id))
     return round(float(result.scalar_one()), 1)
 
 
 async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) -> None:
     try:
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(balance=balance)
-        )
+        await session.execute(update(User).where(User.tg_id == tg_id).values(balance=balance))
         await session.commit()
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
@@ -100,9 +96,7 @@ async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) ->
 
 async def update_trial(session: AsyncSession, tg_id: int, status: int):
     try:
-        await session.execute(
-            update(User).where(User.tg_id == tg_id).values(trial=status)
-        )
+        await session.execute(update(User).where(User.tg_id == tg_id).values(trial=status))
         await session.commit()
         logger.info(f"[DB] Триал статус обновлён для пользователя {tg_id}: {status}")
     except SQLAlchemyError as e:
@@ -111,9 +105,7 @@ async def update_trial(session: AsyncSession, tg_id: int, status: int):
 
 
 async def get_trial(session: AsyncSession, tg_id: int) -> int:
-    result = await session.execute(
-        select(func.coalesce(User.trial, 0)).where(User.tg_id == tg_id)
-    )
+    result = await session.execute(select(func.coalesce(User.trial, 0)).where(User.tg_id == tg_id))
     return int(result.scalar_one())
 
 
@@ -189,19 +181,13 @@ async def delete_user_data(session: AsyncSession, tg_id: int):
     try:
         await session.execute(delete(Notification).where(Notification.tg_id == tg_id))
         await session.execute(
-            delete(GiftUsage).where(
-                GiftUsage.gift_id.in_(select(Gift.gift_id).where(Gift.sender_tg_id == tg_id))
-            )
+            delete(GiftUsage).where(GiftUsage.gift_id.in_(select(Gift.gift_id).where(Gift.sender_tg_id == tg_id)))
         )
         await session.execute(delete(Gift).where(Gift.sender_tg_id == tg_id))
-        await session.execute(
-            update(Gift).where(Gift.recipient_tg_id == tg_id).values(recipient_tg_id=None)
-        )
+        await session.execute(update(Gift).where(Gift.recipient_tg_id == tg_id).values(recipient_tg_id=None))
         await session.execute(delete(Payment).where(Payment.tg_id == tg_id))
         await session.execute(
-            delete(Referral).where(
-                or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id)
-            )
+            delete(Referral).where(or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id))
         )
         await session.execute(delete(CouponUsage).where(CouponUsage.user_id == tg_id))
         await delete_key(session, tg_id)

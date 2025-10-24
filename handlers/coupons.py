@@ -227,7 +227,7 @@ async def handle_key_extension(
 
         key_subgroup = None
         if tariff:
-            key_subgroup = tariff.get('subgroup_title')
+            key_subgroup = tariff.get("subgroup_title")
 
         await renew_key_in_cluster(
             cluster_id=key.server_id,

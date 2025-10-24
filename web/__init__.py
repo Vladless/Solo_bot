@@ -1,9 +1,9 @@
 from aiohttp.web_urldispatcher import UrlDispatcher
 
-from utils.modules_loader import load_module_webhooks
-
 from handlers.payments.heleket.webhook import heleket_webhook
 from handlers.payments.kassai.webhook import kassai_webhook
+from utils.modules_loader import load_module_webhooks
+
 from .wata_payment import wata_payment_webhook
 
 

@@ -1226,14 +1226,15 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
     key_subgroup = None
     if tariff_id:
         result = await session.execute(
-            select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
+            select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(
+                Tariff.id == tariff_id, Tariff.is_active.is_(True)
+            )
         )
         tariff = result.first()
         if tariff:
             traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
             device_limit = int(tariff[1]) if tariff[1] is not None else 0
             key_subgroup = tariff[2]
-
 
     servers = await get_servers(session=session)
 
