@@ -64,8 +64,8 @@ async def create_key_on_cluster(
                 raise ValueError(f"Тариф с id={plan} не найден.")
             if traffic_limit_bytes is None:
                 traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
-            if hwid_limit is None and tariff.get("device_limit") is not None:
-                hwid_limit = int(tariff["device_limit"])
+            if hwid_limit is None:
+                hwid_limit = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else 0
             subgroup_title = tariff.get("subgroup_title")
             need_vless_key = bool(tariff.get("vless"))
 
@@ -138,8 +138,7 @@ async def create_key_on_cluster(
                         user_data["trafficLimitBytes"] = traffic_limit_bytes * 1024 * 1024 * 1024
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
-                    if hwid_limit is not None:
-                        user_data["hwidDeviceLimit"] = hwid_limit
+                    user_data["hwidDeviceLimit"] = hwid_limit
                     logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
                     result = await remna.create_user(user_data)
                     if result:
