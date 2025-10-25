@@ -67,15 +67,15 @@ async def send_broadcast_batch(bot, messages, batch_size=15, session=None):
                 await try_add_blocked_user(tg_id, session)
                 results.append(False)
             except TelegramBadRequest as bad_request:
-                if "chat not found" in str(bad_request).lower():
+                error_msg = str(bad_request).lower()
+                if "chat not found" in error_msg:
                     logger.warning(f"🚫 Чат не найден для пользователя {tg_id}.")
+                    await try_add_blocked_user(tg_id, session)
                 else:
                     logger.warning(f"📩 Не удалось отправить сообщение пользователю {tg_id}: {bad_request}")
-                await try_add_blocked_user(tg_id, session)
                 results.append(False)
             except Exception as retry_error:
                 logger.error(f"❌ Ошибка повторной отправки пользователю {tg_id}: {retry_error}")
-                await try_add_blocked_user(tg_id, session)
                 results.append(False)
 
         except TelegramForbiddenError:
@@ -83,15 +83,15 @@ async def send_broadcast_batch(bot, messages, batch_size=15, session=None):
             await try_add_blocked_user(tg_id, session)
             results.append(False)
         except TelegramBadRequest as bad_request:
-            if "chat not found" in str(bad_request).lower():
+            error_msg = str(bad_request).lower()
+            if "chat not found" in error_msg:
                 logger.warning(f"🚫 Чат не найден для пользователя {tg_id}.")
+                await try_add_blocked_user(tg_id, session)
             else:
                 logger.warning(f"📩 Не удалось отправить сообщение пользователю {tg_id}: {bad_request}")
-            await try_add_blocked_user(tg_id, session)
             results.append(False)
         except Exception as e:
             logger.error(f"❌ Ошибка отправки сообщения пользователю {tg_id}: {e}")
-            await try_add_blocked_user(tg_id, session)
             results.append(False)
 
         await asyncio.sleep(min_interval)
