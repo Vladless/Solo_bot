@@ -5,9 +5,7 @@ from typing import Any
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import text
 
-from config import TRIAL_CONFIG
 from database import (
     get_key_details,
     get_servers,
@@ -16,7 +14,7 @@ from database import (
     mark_key_as_unfrozen,
 )
 from handlers.buttons import APPLY, BACK, CANCEL
-from handlers.keys.key_utils import renew_key_in_cluster, toggle_client_on_cluster
+from handlers.keys.operations import renew_key_in_cluster, toggle_client_on_cluster
 from handlers.texts import (
     FREEZE_SUBSCRIPTION_CONFIRM_MSG,
     SUBSCRIPTION_FROZEN_MSG,
@@ -89,9 +87,9 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
         tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
 
         if not tariff:
-            logger.info("[Unfreeze] Тариф не найден — возможно ключ триальный. Применяем дефолтные значения.")
-            total_gb = TRIAL_CONFIG["traffic_limit_gb"]
-            hwid_limit = TRIAL_CONFIG["hwid_limit"]
+            logger.info("[Unfreeze] Тариф не найден — применяем дефолтные значения.")
+            total_gb = 0
+            hwid_limit = 0
         else:
             total_gb = int(tariff.get("traffic_limit") or 0)
             hwid_limit = int(tariff.get("device_limit") or 0)

@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 
 from io import BytesIO
 
@@ -11,13 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
+    APP_URL,
     CONNECT_ANDROID,
     CONNECT_IOS,
     DOWNLOAD_ANDROID,
     DOWNLOAD_IOS,
     INSTRUCTIONS_BUTTON,
 )
-from database.models import Key
+from database import Key, get_subscription_link
 from handlers.buttons import (
     ANDROID,
     BACK,
@@ -38,6 +40,8 @@ from handlers.texts import (
     SUBSCRIPTION_DESCRIPTION,
 )
 from handlers.utils import edit_or_send_message
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 
@@ -45,7 +49,7 @@ router = Router()
 
 
 @router.callback_query(F.data.startswith("connect_device|"))
-async def handle_connect_device(callback_query: CallbackQuery):
+async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSession):
     try:
         key_name = callback_query.data.split("|")[1]
 
@@ -54,13 +58,27 @@ async def handle_connect_device(callback_query: CallbackQuery):
         builder.row(InlineKeyboardButton(text=ANDROID, callback_data=f"connect_android|{key_name}"))
         builder.row(InlineKeyboardButton(text=PC, callback_data=f"connect_pc|{key_name}"))
         builder.row(InlineKeyboardButton(text=TV, callback_data=f"connect_tv|{key_name}"))
-        #    builder.row(InlineKeyboardButton(text=ROUTER, callback_data=f"connect_router|{key_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
+
+        try:
+            hook_builder = InlineKeyboardBuilder()
+            hook_builder.attach(builder)
+
+            hook_commands = await run_hooks(
+                "connect_device_menu", chat_id=callback_query.from_user.id, admin=False, session=session
+            )
+            if hook_commands:
+                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+
+            final_markup = hook_builder.as_markup()
+        except Exception as e:
+            logger.warning(f"[CONNECT_DEVICE] Ошибка при применении хуков: {e}")
+            final_markup = builder.as_markup()
 
         await edit_or_send_message(
             target_message=callback_query.message,
             text=CHOOSE_DEVICE_TEXT,
-            reply_markup=builder.as_markup(),
+            reply_markup=final_markup,
             media_path=None,
         )
     except Exception as e:
@@ -73,17 +91,12 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        row = result.scalar_one_or_none()
-
-        if not row:
+        key_link = await get_subscription_link(session, email)
+        if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
-        key_link = row
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email}: {e}")
+        logger.error(f"Ошибка при получении ссылки для {email}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 
@@ -94,10 +107,19 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
         InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS),
         InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID),
     )
-    builder.row(
-        InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"),
-        InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"),
-    )
+    if key_link and "happ://crypt" in key_link:
+        processed_link = urllib.parse.quote(key_link, safe="")
+        crypto_url = f"{APP_URL}/?url={processed_link}"
+        builder.row(
+            InlineKeyboardButton(text=IMPORT_IOS, url=crypto_url),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=crypto_url),
+        )
+    else:
+        processed_link = key_link
+        builder.row(
+            InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{processed_link}"),
+            InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{processed_link}"),
+        )
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
@@ -115,15 +137,12 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        key_link = result.scalar_one_or_none()
-
+        key_link = await get_subscription_link(session, email)
         if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email} (iOS): {e}")
+        logger.error(f"Ошибка при получении ссылки для {email} (iOS): {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 
@@ -131,7 +150,15 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_IOS_BUTTON, url=DOWNLOAD_IOS))
-    builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{key_link}"))
+
+    if key_link and "happ://crypt" in key_link:
+        processed_link = urllib.parse.quote(key_link, safe="")
+        ios_url = f"{APP_URL}/?url={processed_link}"
+    else:
+        processed_link = key_link
+        ios_url = f"{CONNECT_IOS}{processed_link}"
+
+    builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=ios_url))
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{email}"))
@@ -150,15 +177,12 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
     email = callback_query.data.split("|")[1]
 
     try:
-        result = await session.execute(select(Key.key).where(Key.email == email))
-        key_link = result.scalar_one_or_none()
-
+        key_link = await get_subscription_link(session, email)
         if not key_link:
             await callback_query.message.answer("❌ Ошибка: ключ не найден.")
             return
-
     except Exception as e:
-        logger.error(f"Ошибка при получении ключа для {email} (Android): {e}")
+        logger.error(f"Ошибка при получении ссылки для {email} (Android): {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
         return
 
@@ -166,7 +190,15 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=DOWNLOAD_ANDROID_BUTTON, url=DOWNLOAD_ANDROID))
-    builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{key_link}"))
+
+    if key_link and "happ://crypt" in key_link:
+        processed_link = urllib.parse.quote(key_link, safe="")
+        android_url = f"{APP_URL}/?url={processed_link}"
+    else:
+        processed_link = key_link
+        android_url = f"{CONNECT_ANDROID}{processed_link}"
+
+    builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=android_url))
     if INSTRUCTIONS_BUTTON:
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{email}"))
@@ -220,6 +252,7 @@ async def show_qr_code(callback_query: types.CallbackQuery, session: AsyncSessio
             text="🔲 <b>Ваш QR-код для подключения</b>",
             reply_markup=builder.as_markup(),
             media_path=qr_path,
+            disable_cache=True,
         )
 
         os.remove(qr_path)

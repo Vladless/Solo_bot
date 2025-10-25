@@ -147,9 +147,11 @@ async def handle_delete_manual_banned(callback_query: CallbackQuery, session: As
 @router.callback_query(AdminPanelCallback.filter(F.action == "bans_preemptive"), IsAdminFilter())
 async def handle_preemptive_ban_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(PreemptiveBanStates.waiting_for_preemptive_ids)
+
     await callback.message.edit_text(
         "📥 Отправьте список Telegram ID (один на строке), которых нужно заранее забанить (теневой бан).\n\n"
-        "Пример:\n<code>123456789\n987654321</code>"
+        "Пример:\n<code>123456789\n987654321</code>",
+        reply_markup=build_admin_back_kb("bans"),
     )
 
 

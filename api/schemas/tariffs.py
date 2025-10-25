@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,6 +12,7 @@ class TariffBase(BaseModel):
     device_limit: int | None = None
     is_active: bool = True
     subgroup_title: str | None = None
+    sort_order: int | None = None
 
 
 class TariffResponse(TariffBase):
@@ -33,6 +33,7 @@ class TariffUpdate(BaseModel):
     device_limit: int | None = None
     is_active: bool | None = None
     subgroup_title: str | None = None
+    sort_order: int | None = None
 
     class Config:
         from_attributes = True

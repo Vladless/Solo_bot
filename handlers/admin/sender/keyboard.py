@@ -37,6 +37,12 @@ def build_sender_kb() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
+            text="🧪 Триал",
+            callback_data=AdminSenderCallback(type="trial").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="🔥 Горячие лиды",
             callback_data=AdminSenderCallback(type="hotleads").pack(),
         )

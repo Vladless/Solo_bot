@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -8,7 +7,7 @@ class PaymentBase(BaseModel):
     tg_id: int
     amount: float
     payment_system: str
-    status: Literal["success", "pending", "failed"]
+    status: str
 
 
 class PaymentResponse(PaymentBase):
@@ -94,6 +93,16 @@ class BlockedUserResponse(BaseModel):
         from_attributes = True
 
 
+class MonthlyStats(BaseModel):
+    month: str
+    registrations: int
+    trials: int
+    new_purchases_count: int
+    new_purchases_amount: float
+    repeat_purchases_count: int
+    repeat_purchases_amount: float
+
+
 class TrackingSourceResponse(BaseModel):
     id: int
     name: str
@@ -101,6 +110,13 @@ class TrackingSourceResponse(BaseModel):
     type: str
     created_by: int
     created_at: datetime
+
+    registrations: int = 0
+    trials: int = 0
+    payments: int = 0
+    total_amount: float = 0.0
+
+    monthly: list[MonthlyStats] = []
 
     class Config:
         from_attributes = True

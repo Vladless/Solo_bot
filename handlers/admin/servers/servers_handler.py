@@ -77,7 +77,7 @@ async def handle_server_manage(
             text += f"🌐 Subscription URL: <b>{subscription_url}</b>\n"
 
         text += (
-            f"🔑 Inbound ID: <b>{inbound_id}</b>\n"
+            f"🔑 Inbound ID/Squads: <b>{inbound_id}</b>\n"
             f"⚙️ Тип панели: <b>{panel_type}</b>\n"
             f"📈 Лимит ключей: <b>{limit_display}</b>\n"
         )
@@ -136,10 +136,19 @@ async def process_callback_delete_server(
         if all_servers:
             builder = InlineKeyboardBuilder()
             for s_name, key_count in all_servers:
+                callback_data = f"transfer_to_server|{s_name}|{server_name}"
+                if len(callback_data.encode("utf-8")) > 64:
+                    await callback_query.message.edit_text(
+                        text=f"❌ Ошибка: название сервера '{s_name}' слишком длинное.\n\n"
+                        f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                        reply_markup=build_admin_back_kb("clusters"),
+                    )
+                    return
+
                 builder.row(
                     InlineKeyboardButton(
                         text=f"{s_name} ({key_count})",
-                        callback_data=f"transfer_to_server|{s_name}|{server_name}",
+                        callback_data=callback_data,
                     )
                 )
             builder.row(
@@ -189,10 +198,19 @@ async def process_callback_delete_server(
 
                 builder = InlineKeyboardBuilder()
                 for cl_name, key_count in all_clusters:
+                    callback_data = f"transfer_to_cluster|{cl_name}|{cluster_name}|{server_name}"
+                    if len(callback_data.encode("utf-8")) > 64:
+                        await callback_query.message.edit_text(
+                            text=f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.\n\n"
+                            f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова.",
+                            reply_markup=build_admin_back_kb("clusters"),
+                        )
+                        return
+
                     builder.row(
                         InlineKeyboardButton(
                             text=f"{cl_name} ({key_count})",
-                            callback_data=f"transfer_to_cluster|{cl_name}|{cluster_name}|{server_name}",
+                            callback_data=callback_data,
                         )
                     )
                 builder.row(
@@ -258,7 +276,7 @@ async def toggle_server_enabled(
         f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
         f"<b>📡 API URL:</b> {server['api_url']}\n"
         f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-        f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+        f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
         f"<b>📈 Лимит ключей:</b> {limit_display}"
     )
 
@@ -311,7 +329,7 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
             f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
             f"<b>📡 API URL:</b> {server['api_url']}\n"
             f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-            f"<b>🔑 Inbound ID:</b> {server['inbound_id']}\n"
+            f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
             f"<b>📈 Лимит ключей:</b> {limit_display}"
         )
 
@@ -361,7 +379,7 @@ async def ask_new_field_value(callback: CallbackQuery, state: FSMContext, sessio
         "server_name": "имя сервера",
         "api_url": "API URL",
         "subscription_url": "Subscription URL",
-        "inbound_id": "Inbound ID",
+        "inbound_id": "Inbound ID/Squads",
     }
 
     await callback.message.edit_text(
@@ -424,6 +442,13 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
     value = message.text.strip()
 
     if field == "server_name":
+        if len(value) > 12:
+            await message.answer(
+                text="❌ Имя сервера не должно превышать 12 символов. Попробуйте снова.",
+                reply_markup=build_admin_back_kb("clusters"),
+            )
+            return
+
         success = await update_server_name_with_keys(session, server_name, value)
         if success:
             server_name = value
@@ -438,7 +463,7 @@ async def apply_field_edit(message: types.Message, state: FSMContext, session: A
             "server_name": "имя сервера",
             "api_url": "API URL",
             "subscription_url": "Subscription URL",
-            "inbound_id": "Inbound ID",
+            "inbound_id": "Inbound ID/Squads",
         }
 
         await message.answer(

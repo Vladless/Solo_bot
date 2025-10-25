@@ -5,6 +5,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.buttons import BACK, MAIN_MENU
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):
@@ -17,51 +19,63 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
         super().__init__(**data)
 
 
-def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
+async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="👤 Поиск пользователя",
-        callback_data=AdminPanelCallback(action="search_user").pack(),
-    )
-    builder.button(
-        text="🔑 Поиск по подписке",
-        callback_data=AdminPanelCallback(action="search_key").pack(),
-    )
 
-    builder.button(
-        text="🖥️ Управление серверами",
-        callback_data=AdminPanelCallback(action="clusters").pack(),
-    )
     builder.row(
-        InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
-        InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
-    )
-    builder.row(
-        InlineKeyboardButton(text="💸 Тарифы", callback_data=AdminPanelCallback(action="tariffs").pack()),
-        InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
+        InlineKeyboardButton(
+            text="👤 Поиск пользователя", callback_data=AdminPanelCallback(action="search_user").pack()
+        ),
+        InlineKeyboardButton(text="🔑 Поиск подписок", callback_data=AdminPanelCallback(action="search_key").pack()),
     )
 
     if admin_role == "superadmin":
         builder.button(
+            text="🖥️ Управление серверами",
+            callback_data=AdminPanelCallback(action="clusters").pack(),
+        )
+        builder.button(
+            text="💸Управление тарифами",
+            callback_data=AdminPanelCallback(action="tariffs").pack(),
+        )
+        builder.button(
             text="🤖 Управление ботом",
             callback_data=AdminPanelCallback(action="management").pack(),
         )
+
+    builder.row(
+        InlineKeyboardButton(text="📢 Рассылка", callback_data=AdminPanelCallback(action="sender").pack()),
+        InlineKeyboardButton(text="🎟️ Купоны", callback_data=AdminPanelCallback(action="coupons").pack()),
+    )
+
+    if admin_role == "superadmin":
         builder.row(
-            InlineKeyboardButton(
-                text="📊 Статистика",
-                callback_data=AdminPanelCallback(action="stats").pack(),
-            ),
-            InlineKeyboardButton(
-                text="📈 Аналитика",
-                callback_data=AdminPanelCallback(action="ads").pack(),
-            ),
+            InlineKeyboardButton(text="🎁 Подарки", callback_data=AdminPanelCallback(action="gifts").pack()),
+            InlineKeyboardButton(text="🧩 Мои модули", callback_data=AdminPanelCallback(action="modules").pack()),
         )
+        builder.row(
+            InlineKeyboardButton(text="📊 Статистика", callback_data=AdminPanelCallback(action="stats").pack()),
+            InlineKeyboardButton(text="📈 Аналитика", callback_data=AdminPanelCallback(action="ads").pack()),
+        )
+    else:
+        builder.button(
+            text="🎁 Подарки",
+            callback_data=AdminPanelCallback(action="gifts").pack(),
+        )
+
+    module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     builder.button(
         text=MAIN_MENU,
         callback_data="profile",
     )
-    builder.adjust(1, 1, 1, 2, 2, 1, 2 if admin_role == "superadmin" else 0, 1)
+
+    if admin_role == "superadmin":
+        builder.adjust(2, 1, 1, 1, 2, 2, 2, 1)
+    else:
+        builder.adjust(2, 2, 1, 1)
+
     return builder.as_markup()
 
 

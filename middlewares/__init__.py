@@ -3,17 +3,22 @@ from collections.abc import Iterable
 from aiogram import Dispatcher
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
-from logger import logger
+from config import CHANNEL_REQUIRED, DISABLE_DIRECT_START
 from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
 
 from .admin import AdminMiddleware
+from .answer import CallbackAnswerMiddleware
 from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware
 from .maintenance import MaintenanceModeMiddleware
+from .probe import MiddlewareProbe, StreamProbeMiddleware, TailHandlerProbe
 from .session import SessionMiddleware
 from .throttling import ThrottlingMiddleware
 from .user import UserMiddleware
+
+
+PROBE_LOGGING = False
 
 
 def register_middleware(
@@ -23,10 +28,19 @@ def register_middleware(
     pool=None,
     sessionmaker=None,
 ) -> None:
-    """Регистрирует middleware в диспетчере."""
-    direct_start_blocker = DirectStartBlockerMiddleware()
-    dispatcher.message.outer_middleware(direct_start_blocker)
-    dispatcher.callback_query.outer_middleware(direct_start_blocker)
+    def wrap(mw, name: str):
+        return MiddlewareProbe(mw, name) if PROBE_LOGGING else mw
+
+    if PROBE_LOGGING:
+        dispatcher.update.outer_middleware(StreamProbeMiddleware("global"))
+
+    if DISABLE_DIRECT_START:
+        dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
+
+    if sessionmaker:
+        if CHANNEL_REQUIRED:
+            dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
+        dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(sessionmaker), "ban_checker"))
 
     if middlewares is None:
         available_middlewares = {
@@ -36,24 +50,22 @@ def register_middleware(
             "logging": LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
+            "answer": CallbackAnswerMiddleware(),
         }
-
         exclude_set = set(exclude or [])
-        middlewares = [middleware for name, middleware in available_middlewares.items() if name not in exclude_set]
+        middlewares = [wrap(mw, name) for name, mw in available_middlewares.items() if name not in exclude_set]
+    else:
+        wrapped = []
+        for mw in middlewares:
+            inst = mw() if isinstance(mw, type) else mw
+            wrapped.append(wrap(inst, getattr(inst, "name", inst.__class__.__name__)))
+        middlewares = wrapped
 
-    if sessionmaker:
-        dispatcher.update.outer_middleware(SubscriptionMiddleware())
-        dispatcher.update.outer_middleware(BanCheckerMiddleware(sessionmaker))
-
-    handlers = [
-        dispatcher.message,
-        dispatcher.callback_query,
-        dispatcher.inline_query,
-    ]
-
+    handlers = [dispatcher.message, dispatcher.callback_query, dispatcher.inline_query]
     for middleware in middlewares:
-        if isinstance(middleware, type):
-            middleware = middleware()
+        for h in handlers:
+            h.outer_middleware(middleware)
 
-        for handler in handlers:
-            handler.outer_middleware(middleware)
+    if PROBE_LOGGING:
+        for h in handlers:
+            h.outer_middleware(TailHandlerProbe("handler"))

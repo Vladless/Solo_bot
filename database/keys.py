@@ -22,25 +22,41 @@ async def store_key(
 ):
     try:
         exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
-        if exists.scalar_one_or_none():
-            logger.info(f"[Store Key] Ключ уже существует — пропускаем: tg_id={tg_id}, client_id={client_id}")
-            return
-
-        new_key = Key(
-            tg_id=tg_id,
-            client_id=client_id,
-            email=email,
-            created_at=int(datetime.utcnow().timestamp() * 1000),
-            expiry_time=expiry_time,
-            key=key,
-            server_id=server_id,
-            remnawave_link=remnawave_link,
-            tariff_id=tariff_id,
-            alias=alias,
-        )
-        session.add(new_key)
+        existing_key = exists.scalar_one_or_none()
+        
+        if existing_key:
+            await session.execute(
+                update(Key)
+                .where(Key.tg_id == tg_id, Key.client_id == client_id)
+                .values(
+                    email=email,
+                    expiry_time=expiry_time,
+                    key=key,
+                    server_id=server_id,
+                    remnawave_link=remnawave_link,
+                    tariff_id=tariff_id,
+                    alias=alias,
+                )
+            )
+            logger.info(f"[Store Key] Ключ обновлён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+        else:
+            new_key = Key(
+                tg_id=tg_id,
+                client_id=client_id,
+                email=email,
+                created_at=int(datetime.utcnow().timestamp() * 1000),
+                expiry_time=expiry_time,
+                key=key,
+                server_id=server_id,
+                remnawave_link=remnawave_link,
+                tariff_id=tariff_id,
+                alias=alias,
+            )
+            session.add(new_key)
+            logger.info(f"[Store Key] Ключ создан: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+        
         await session.commit()
-        logger.info(f"✅ Ключ сохранён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
+
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
         await session.rollback()
@@ -116,11 +132,7 @@ async def delete_key(session: AsyncSession, identifier: int | str):
 
 
 async def update_key_expiry(session: AsyncSession, client_id: str, new_expiry_time: int):
-    await session.execute(
-        update(Key)
-        .where(Key.client_id == client_id)
-        .values(expiry_time=new_expiry_time, notified=False, notified_24h=False)
-    )
+    await session.execute(update(Key).where(Key.client_id == client_id).values(expiry_time=new_expiry_time))
     await session.commit()
     logger.info(f"Срок действия ключа {client_id} обновлён до {new_expiry_time}")
 
@@ -169,3 +181,21 @@ async def update_key_tariff(session: AsyncSession, client_id: str, tariff_id: in
     await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=tariff_id))
     await session.commit()
     logger.info(f"Тариф ключа {client_id} обновлён на {tariff_id}")
+
+
+async def get_subscription_link(session: AsyncSession, email: str) -> str | None:
+    result = await session.execute(select(func.coalesce(Key.key, Key.remnawave_link)).where(Key.email == email))
+    return result.scalar_one_or_none()
+
+
+async def update_key_client_id(session: AsyncSession, email: str, new_client_id: str):
+    await session.execute(update(Key).where(Key.email == email).values(client_id=new_client_id))
+    await session.commit()
+    logger.info(f"client_id обновлён для {email} -> {new_client_id}")
+
+
+async def update_key_link(session: AsyncSession, email: str, link: str) -> bool:
+    q = update(Key).where(Key.email == email).values(key=link).returning(Key.client_id)
+    res = await session.execute(q)
+    await session.commit()
+    return res.scalar_one_or_none() is not None

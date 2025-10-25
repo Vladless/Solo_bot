@@ -13,6 +13,7 @@ from api.schemas import (
     TemporaryDataResponse,
     TrackingSourceResponse,
 )
+from database import get_tracking_source_stats
 from database.models import (
     Admin,
     BlockedUser,
@@ -133,9 +134,38 @@ router.include_router(
         schema_create=None,
         schema_update=None,
         identifier_field="id",
-        enabled_methods=["get_all", "get_one", "delete"],
+        enabled_methods=["get_all", "delete"],
     ),
     prefix="/tracking-sources",
     tags=["TrackingSources"],
     dependencies=[Depends(verify_admin_token)],
 )
+
+
+@router.get(
+    "/tracking-sources/{code}", response_model=TrackingSourceResponse, dependencies=[Depends(verify_admin_token)]
+)
+async def get_tracking_source_with_stats(
+    code: str,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(TrackingSource).where(TrackingSource.code == code))
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Tracking source not found")
+
+    stats = await get_tracking_source_stats(session, code)
+
+    return TrackingSourceResponse(
+        id=source.id,
+        name=source.name,
+        code=source.code,
+        type=source.type,
+        created_by=source.created_by,
+        created_at=source.created_at,
+        registrations=(stats["registrations"] if stats else 0),
+        trials=(stats["trials"] if stats else 0),
+        payments=(stats["payments"] if stats else 0),
+        total_amount=(float(stats["total_amount"]) if stats else 0.0),
+        monthly=(stats["monthly"] if stats and "monthly" in stats else []),
+    )

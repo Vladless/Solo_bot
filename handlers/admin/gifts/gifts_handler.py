@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -7,7 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Gift, GiftUsage, Tariff
-from database.tariffs import create_subgroup_hash, find_subgroup_by_hash
+from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
 
@@ -32,9 +34,9 @@ async def admin_gift_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_gift_create")
 async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession):
-    stmt = select(Tariff).where(Tariff.group_code == "gifts", Tariff.is_active.is_(True)).order_by(Tariff.duration_days)
-    result = await session.execute(stmt)
-    tariffs = result.scalars().all()
+    tariffs_data = await get_tariffs(session, group_code="gifts", with_subgroup_weights=True)
+    tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+    subgroup_weights = tariffs_data["subgroup_weights"]
 
     if not tariffs:
         builder = InlineKeyboardBuilder()
@@ -42,23 +44,27 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
         await callback.message.edit_text("❌ Нет активных тарифов в группе 'gifts'.", reply_markup=builder.as_markup())
         return
 
-    from collections import defaultdict
-
     grouped_tariffs = defaultdict(list)
     for t in tariffs:
-        grouped_tariffs[t.subgroup_title].append(t)
+        grouped_tariffs[t.get("subgroup_title")].append(t)
 
     builder = InlineKeyboardBuilder()
 
     for t in grouped_tariffs.get(None, []):
-        if t.duration_days % 30 == 0:
-            duration_text = format_months(t.duration_days // 30)
+        if t.get("duration_days") % 30 == 0:
+            duration_text = format_months(t.get("duration_days") // 30)
         else:
-            duration_text = format_days(t.duration_days)
+            duration_text = format_days(t.get("duration_days"))
 
-        builder.button(text=f"{t.name} – {duration_text}", callback_data=f"admin_gift_select|{t.id}")
+        builder.row(
+            types.InlineKeyboardButton(
+                text=f"{t.get('name')} – {duration_text}", callback_data=f"admin_gift_select|{t.get('id')}"
+            )
+        )
 
-    for subgroup in sorted(k for k in grouped_tariffs if k):
+    sorted_subgroups = sorted([k for k in grouped_tariffs if k], key=lambda x: (subgroup_weights.get(x, 999999), x))
+
+    for subgroup in sorted_subgroups:
         subgroup_hash = create_subgroup_hash(subgroup, "gifts")
         builder.row(
             types.InlineKeyboardButton(
@@ -82,30 +88,23 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
             await callback.message.edit_text("❌ Подгруппа не найдена.")
             return
 
-        stmt = (
-            select(Tariff)
-            .where(Tariff.group_code == "gifts", Tariff.is_active.is_(True))
-            .order_by(Tariff.duration_days)
-        )
-        result = await session.execute(stmt)
-        tariffs = result.scalars().all()
-
-        filtered = [t for t in tariffs if t.subgroup_title == subgroup]
+        tariffs = await get_tariffs(session, group_code="gifts")
+        filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")]
         if not filtered:
             await callback.message.edit_text("❌ В этой подгруппе пока нет тарифов.")
             return
 
         builder = InlineKeyboardBuilder()
         for t in filtered:
-            if t.duration_days % 30 == 0:
-                duration_text = format_months(t.duration_days // 30)
+            if t.get("duration_days") % 30 == 0:
+                duration_text = format_months(t.get("duration_days") // 30)
             else:
-                duration_text = format_days(t.duration_days)
+                duration_text = format_days(t.get("duration_days"))
 
             builder.row(
                 types.InlineKeyboardButton(
-                    text=f"{t.name} – {duration_text}",
-                    callback_data=f"admin_gift_select|{t.id}",
+                    text=f"{t.get('name')} – {duration_text}",
+                    callback_data=f"admin_gift_select|{t.get('id')}",
                 )
             )
 
@@ -250,7 +249,6 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
         f"ID: <code>{gift.gift_id}</code>\n"
         f"Срок: <b>{duration_text}</b>\n"
         f"Активаций: <b>{usage_text}</b>\n"
-        f"Истекает: <i>{gift.expiry_time.strftime('%d.%m.%Y')}</i>\n"
         f"<b>Ссылка для активации:</b>\n<blockquote>{gift.gift_link}</blockquote>"
     )
 

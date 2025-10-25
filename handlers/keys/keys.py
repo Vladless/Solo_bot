@@ -1,14 +1,12 @@
-import asyncio
-
 from aiogram import F, Router, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import delete_key, get_key_details, get_servers
+from database import delete_key, get_key_details
 from handlers.buttons import APPLY, BACK, CANCEL
-from handlers.keys.key_utils import delete_key_from_cluster, update_subscription
 from handlers.keys.key_view import process_callback_view_key
+from handlers.keys.operations import delete_key_from_cluster, update_subscription
 from handlers.texts import DELETE_KEY_CONFIRM_MSG, KEY_DELETED_MSG_SIMPLE
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger

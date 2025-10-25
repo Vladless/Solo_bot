@@ -160,6 +160,7 @@ def clean_subscription_line(line: str) -> str:
         return line
     try:
         base, meta = line.split("#", 1)
+        meta = urllib.parse.unquote(meta).strip()
     except ValueError:
         return line
     parts = meta.split("-")
@@ -202,6 +203,7 @@ def prepare_headers(
             "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
             "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
             "subscription-userinfo": subscription_userinfo,
+            # "routing": "happ://routing/onadd/...",
         }
     elif "Hiddify" in user_agent:
         parts = subscription_info.split(" - ")[0].split(": ")

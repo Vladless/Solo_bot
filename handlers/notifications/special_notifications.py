@@ -12,8 +12,8 @@ from config import (
     NOTIFY_EXTRA_DAYS,
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
+    REMNAWAVE_WEBAPP,
     SUPPORT_CHAT_URL,
-    TRIAL_CONFIG,
 )
 from database import (
     add_notification,
@@ -21,9 +21,9 @@ from database import (
     mark_trial_extended,
     update_key_notified,
 )
-from database.models import Key
+from database.tariffs import get_tariffs
 from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
-from handlers.keys.key_utils import get_user_traffic
+from handlers.keys.operations import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
     TRIAL_INACTIVE_BONUS_MSG,
@@ -31,6 +31,8 @@ from handlers.texts import (
     ZERO_TRAFFIC_MSG,
 )
 from handlers.utils import format_days, is_full_remnawave_cluster
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
 
 
@@ -44,7 +46,12 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
     messages = []
 
-    trial_days = TRIAL_CONFIG["duration_days"]
+    trial_tariffs = await get_tariffs(session, group_code="trial")
+    if not trial_tariffs:
+        logger.error("[Notifications] Триальный тариф не найден")
+        return
+
+    trial_days = trial_tariffs[0]["duration_days"]
 
     for user in users:
         tg_id = user["tg_id"]
@@ -95,7 +102,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
                 await add_notification(session, msg["tg_id"], msg["notification_id"])
                 sent_count += 1
         logger.info(f"Отправлено {sent_count} уведомлений неактивным пользователям.")
-    logger.info("✅ Проверка пользователей с неактивным пробным периодом завершена.")
+    logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
 
 
 async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time: int, keys: list):
@@ -137,12 +144,6 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
             value if isinstance(value, int | float) else 0 for value in traffic_data.get("traffic", {}).values()
         )
 
-        try:
-            await update_key_notified(session, tg_id, client_id)
-        except Exception as e:
-            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {e}")
-            continue
-
         if total_traffic == 0:
             logger.info(f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление.")
             builder = InlineKeyboardBuilder()
@@ -152,7 +153,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 is_full_remnawave = await is_full_remnawave_cluster(server_id, session)
                 final_link = key.key or key.remnawave_link
 
-                if is_full_remnawave and final_link:
+                if is_full_remnawave and final_link and REMNAWAVE_WEBAPP:
                     builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 else:
                     if CONNECT_PHONE_BUTTON:
@@ -169,6 +170,16 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
             builder.row(InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
             builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+            try:
+                hook_commands = await run_hooks(
+                    "zero_traffic_notification", chat_id=tg_id, admin=False, session=session, email=email
+                )
+                if hook_commands:
+                    builder = insert_hook_buttons(builder, hook_commands)
+            except Exception as e:
+                logger.warning(f"[ZERO_TRAFFIC_NOTIFICATION] Ошибка при применении хуков: {e}")
+
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)
             messages.append({
@@ -177,6 +188,11 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 "keyboard": keyboard,
                 "client_id": client_id,
             })
+
+        try:
+            await update_key_notified(session, tg_id, client_id)
+        except Exception as e:
+            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {e}")
 
     if messages:
         results = await send_messages_with_limit(

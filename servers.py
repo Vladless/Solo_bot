@@ -43,12 +43,12 @@ async def check_tcp_connection(host: str, port: int) -> bool:
         await writer.wait_closed()
         return True
     except ssl.SSLError as e:
-        err_text = str(e)
-        if "hostname mismatch" in err_text or "certificate is not valid for" in err_text:
+        err_text = str(e).lower()
+        if "certificate has expired" in err_text:
+            logger.warning(f"[SSL Error] Сертификат сервера {host} просрочен: {e}")
+            await notify_ssl_error(host, str(e))
             return False
-        logger.warning(f"[SSL Error] Сертификат сервера {host} вызвал ошибку: {e}")
-        await notify_ssl_error(host, err_text)
-        return False
+        return True
     except Exception:
         return False
 
@@ -108,7 +108,7 @@ async def check_servers(session: AsyncSession):
                 server_info_list.append((server_name, server_host))
                 tasks.append(ping_server(server_host))
 
-        logger.info(f"🔍 Начинаем проверку {len(server_info_list)} серверов...")
+        logger.info(f"Начинаем проверку {len(server_info_list)} серверов...")
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

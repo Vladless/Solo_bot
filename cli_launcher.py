@@ -1,3 +1,4 @@
+import locale
 import os
 import re
 import shutil
@@ -18,19 +19,42 @@ from rich.table import Table
 from config import BOT_SERVICE
 
 
+def ensure_utf8_locale():
+    try:
+        current_locale = locale.getlocale()
+        if current_locale and current_locale[1] == "UTF-8":
+            return
+    except Exception:
+        pass
+
+    console.print("[yellow]⏳ Проверка и установка локали UTF-8...[/yellow]")
+
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+
+    result = subprocess.run(["locale", "-a"], capture_output=True, text=True)
+    if "en_US.utf8" not in result.stdout.lower():
+        console.print("[blue]Добавляю локаль en_US.UTF-8 в систему...[/blue]")
+        try:
+            subprocess.run(["sudo", "locale-gen", "en_US.UTF-8"], check=True)
+            subprocess.run(["sudo", "update-locale", "LANG=en_US.UTF-8"], check=True)
+            console.print("[green]Локаль успешно установлена.[/green]")
+        except Exception as e:
+            console.print(f"[red]❌ Ошибка при установке локали: {e}[/red]")
+    else:
+        console.print("[green]Локаль UTF-8 уже доступна в системе.[/green]")
+
+
 try:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
-if not os.environ.get("LC_ALL", "").endswith("UTF-8"):
-    os.environ["LC_ALL"] = "en_US.UTF-8"
-    os.environ["LANG"] = "en_US.UTF-8"
-
 console = Console()
+ensure_utf8_locale()
 
-BACK_DIR = os.path.expanduser("~/.solobot_backup")
+BACK_DIR = os.path.expanduser("~/.solobot_backups")
 TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 IS_ROOT_DIR = PROJECT_DIR == "/root"
@@ -72,16 +96,96 @@ def print_logo():
     console.print(f"[bold green]Директория бота:[/bold green] [yellow]{PROJECT_DIR}[/yellow]\n")
 
 
+def list_backups():
+    if not os.path.isdir(BACK_DIR):
+        return []
+    pairs = []
+    for name in os.listdir(BACK_DIR):
+        path = os.path.join(BACK_DIR, name)
+        if os.path.isdir(path):
+            try:
+                mtime = os.path.getmtime(path)
+            except Exception:
+                mtime = 0
+            pairs.append((mtime, path))
+    pairs.sort(reverse=True)
+    return [p for _, p in pairs]
+
+
+def prune_old_backups():
+    backups = list_backups()
+    for path in backups[3:]:
+        try:
+            shutil.rmtree(path, ignore_errors=True)
+        except Exception:
+            subprocess.run(["sudo", "rm", "-rf", path])
+
+
 def backup_project():
+    from datetime import datetime
+
+    os.makedirs(BACK_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dst = os.path.join(BACK_DIR, f"backup-{ts}")
     console.print("[yellow]Создаётся резервная копия проекта...[/yellow]")
     with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
-        subprocess.run(["rm", "-rf", BACK_DIR])
-        subprocess.run(["cp", "-r", PROJECT_DIR, BACK_DIR])
-    console.print(f"[green]Бэкап сохранён в: {BACK_DIR}[/green]")
+        subprocess.run(["cp", "-r", PROJECT_DIR, dst])
+    console.print(f"[green]Бэкап сохранён в: {dst}[/green]")
+    prune_old_backups()
+
+
+def restore_from_backup():
+    from datetime import datetime
+
+    backups = list_backups()[:3]
+    if not backups:
+        console.print(f"[red]❌ Бэкапы не найдены: {BACK_DIR}[/red]")
+        return
+
+    console.print("\n[bold green]Доступные бэкапы:[/bold green]")
+    shown = []
+    for idx, path in enumerate(backups, 1):
+        try:
+            mtime = os.path.getmtime(path)
+            dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            dt = "unknown"
+        console.print(f"[cyan]{idx}.[/cyan] {os.path.basename(path)}  [dim]{dt}[/dim]")
+        shown.append((idx, path))
+
+    try:
+        choice = Prompt.ask(
+            "[bold blue]Выберите номер бэкапа[/bold blue]",
+            choices=[str(i) for i, _ in shown],
+        )
+    except Exception:
+        return
+
+    sel_path = shown[int(choice) - 1][1]
+
+    console.print("[red]Внимание: текущие файлы проекта будут перезаписаны выбранным бэкапом.[/red]")
+    if not Confirm.ask("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
+        return
+
+    if is_service_exists(SERVICE_NAME):
+        console.print("[blue]Останавливаю службу перед восстановлением...[/blue]")
+        subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
+
+    install_rsync_if_needed()
+
+    console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
+    rc = subprocess.run(f"rsync -a --delete {sel_path}/ {PROJECT_DIR}/", shell=True).returncode
+    if rc != 0:
+        console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
+        return
+
+    install_dependencies()
+    fix_permissions()
+    restart_service()
+    console.print("[green]✅ Восстановление из бэкапа завершено[/green]")
 
 
 def auto_update_cli():
-    """Обновляет CLI, если отличается от последней версии. Перезапускает при необходимости."""
     console.print("[yellow]Проверка обновлений CLI...[/yellow]")
     try:
         url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
@@ -109,7 +213,6 @@ def auto_update_cli():
 
 
 def fix_permissions():
-    """Устанавливает корректные права на все файлы и папки проекта"""
     console.print("[yellow]Восстанавливаю владельца и права доступа к проекту...[/yellow]")
 
     try:
@@ -151,19 +254,28 @@ def install_rsync_if_needed():
 
 def clean_project_dir_safe(update_buttons=False, update_img=False):
     console.print("[yellow]Очистка проекта перед обновлением...[/yellow]")
-    preserved_paths = {
+
+    preserved_paths = set()
+
+    preserved_paths.update([
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
         os.path.join(PROJECT_DIR, ".git"),
-    }
+        os.path.join(PROJECT_DIR, "modules"),
+    ])
+
+    for root, dirs, files in os.walk(os.path.join(PROJECT_DIR, "modules")):
+        for name in dirs + files:
+            preserved_paths.add(os.path.join(root, name))
 
     if not update_buttons:
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
+
     if not update_img:
         preserved_paths.add(os.path.join(PROJECT_DIR, "img"))
-        for root, _, files in os.walk(os.path.join(PROJECT_DIR, "img")):
-            for file in files:
-                preserved_paths.add(os.path.join(root, file))
+        for root, dirs, files in os.walk(os.path.join(PROJECT_DIR, "img")):
+            for name in dirs + files:
+                preserved_paths.add(os.path.join(root, name))
 
     for root, dirs, files in os.walk(PROJECT_DIR, topdown=False):
         for file in files:
@@ -179,10 +291,17 @@ def clean_project_dir_safe(update_buttons=False, update_img=False):
 
         for dir in dirs:
             dir_path = os.path.join(root, dir)
-            if os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "handlers"):
+
+            if os.path.abspath(dir_path) in [
+                os.path.join(PROJECT_DIR, "handlers"),
+                os.path.join(PROJECT_DIR, "img"),
+                os.path.join(PROJECT_DIR, "modules"),
+            ]:
                 continue
-            if not update_img and os.path.abspath(dir_path) == os.path.join(PROJECT_DIR, "img"):
+
+            if os.path.abspath(dir_path).startswith(os.path.join(PROJECT_DIR, "modules") + os.sep):
                 continue
+
             try:
                 os.rmdir(dir_path)
             except Exception:
@@ -306,8 +425,18 @@ def update_from_beta():
         exclude_options += "--exclude=img "
     if not update_buttons:
         exclude_options += "--exclude=handlers/buttons.py "
+    exclude_options += "--exclude=modules "
 
     subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+
+    modules_path = os.path.join(PROJECT_DIR, "modules")
+    if not os.path.exists(modules_path):
+        console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+        try:
+            os.makedirs(modules_path, exist_ok=True)
+            console.print("[green]Папка modules успешно создана.[/green]")
+        except Exception as e:
+            console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
 
     if os.path.exists(os.path.join(TEMP_DIR, ".git")):
         subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
@@ -374,8 +503,18 @@ def update_from_release():
             exclude_options += "--exclude=img "
         if not update_buttons:
             exclude_options += "--exclude=handlers/buttons.py "
+        exclude_options += "--exclude=modules "
 
         subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+
+        modules_path = os.path.join(PROJECT_DIR, "modules")
+        if not os.path.exists(modules_path):
+            console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+            try:
+                os.makedirs(modules_path, exist_ok=True)
+                console.print("[green]Папка modules успешно создана.[/green]")
+            except Exception as e:
+                console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
 
         if os.path.exists(os.path.join(TEMP_DIR, ".git")):
             subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
@@ -414,7 +553,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.2.8", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.3", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -424,7 +563,8 @@ def show_menu():
     table.add_row("5", "Показать логи (80 строк)")
     table.add_row("6", "Показать статус")
     table.add_row("7", "Обновить Solobot")
-    table.add_row("8", "Выход")
+    table.add_row("8", "Восстановить из бэкапа")
+    table.add_row("9", "Выход")
     console.print(table)
 
 
@@ -437,7 +577,7 @@ def main():
             show_menu()
             choice = Prompt.ask(
                 "[bold blue]👉 Введите номер действия[/bold blue]",
-                choices=[str(i) for i in range(1, 9)],
+                choices=[str(i) for i in range(1, 10)],
                 show_choices=False,
             )
             if choice == "1":
@@ -481,6 +621,8 @@ def main():
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
+                restore_from_backup()
+            elif choice == "9":
                 console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
                 break
     except KeyboardInterrupt:

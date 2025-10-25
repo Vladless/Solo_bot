@@ -5,6 +5,7 @@ from sqlalchemy import select
 from config import ADMIN_ID
 from database.db import async_session_maker, engine
 from database.models import Admin, Base, User
+from database.tariffs import initialize_all_tariff_weights
 
 
 async def init_db():
@@ -34,3 +35,5 @@ async def init_db():
                     )
                 )
         await session.commit()
+
+        await initialize_all_tariff_weights(session)

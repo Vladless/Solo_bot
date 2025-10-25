@@ -20,15 +20,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import (
-    ADMIN_ID,
-    INLINE_MODE,
-    REFERRAL_BONUS_PERCENTAGES,
-    REFERRAL_QR,
-    TOP_REFERRAL_BUTTON,
-    TRIAL_CONFIG,
-    USERNAME_BOT,
-)
+from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, REFERRAL_QR, TOP_REFERRAL_BUTTON, USERNAME_BOT
 from database import (
     add_referral,
     add_user,
@@ -37,7 +29,9 @@ from database import (
     get_referral_stats,
 )
 from database.models import Referral
+from database.tariffs import get_tariffs
 from handlers.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
+from handlers.payments.currency_rates import format_for_user
 from handlers.texts import (
     INVITE_MESSAGE_TEMPLATE,
     INVITE_TEXT_NON_INLINE,
@@ -61,9 +55,11 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
     if isinstance(callback_query_or_message, CallbackQuery):
         chat_id = callback_query_or_message.message.chat.id
         target_message = callback_query_or_message.message
+        language_code = callback_query_or_message.from_user.language_code
     else:
         chat_id = callback_query_or_message.chat.id
         target_message = callback_query_or_message
+        language_code = callback_query_or_message.from_user.language_code
 
     referral_link = get_referral_link(chat_id)
     referral_stats = await get_referral_stats(session, chat_id)
@@ -73,7 +69,8 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
         if isinstance(value, float):
             bonuses_lines.append(f"{level} уровень: 🌟 {int(value * 100)}% бонуса")
         else:
-            bonuses_lines.append(f"{level} уровень: 💸 {int(value)}₽ бонуса")
+            value_txt = await format_for_user(session, chat_id, value, language_code)
+            bonuses_lines.append(f"{level} уровень: 💸 {value_txt} бонуса")
     bonuses_block = "\n".join(bonuses_lines)
 
     details_lines = []
@@ -82,16 +79,18 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
         if isinstance(bonus_value, float):
             bonus_str = f"{int(bonus_value * 100)}%"
         else:
-            bonus_str = f"{int(bonus_value)}₽"
+            bonus_str = await format_for_user(session, chat_id, bonus_value, language_code)
         details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_str}")
     details_block = "\n".join(details_lines)
+
+    total_bonus_txt = await format_for_user(session, chat_id, referral_stats["total_referral_bonus"], language_code)
 
     invite_message = INVITE_MESSAGE_TEMPLATE.format(
         referral_link=referral_link,
         bonuses_block=bonuses_block,
         total_referrals=referral_stats["total_referrals"],
         details_block=details_block,
-        total_referral_bonus=referral_stats["total_referral_bonus"],
+        total_referral_bonus=total_bonus_txt,
     )
     image_path = os.path.join("img", "pic_invite.jpg")
 
@@ -118,9 +117,15 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
 
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
-async def inline_referral_handler(inline_query: InlineQuery):
+async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSession):
     referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
-    trial_days = TRIAL_CONFIG["duration_days"]
+
+    trial_tariffs = await get_tariffs(session, group_code="trial")
+    if not trial_tariffs:
+        await inline_query.answer(results=[], cache_time=0)
+        return
+
+    trial_days = trial_tariffs[0]["duration_days"]
     trial_time_formatted = format_days(trial_days)
 
     results: list[InlineQueryResultArticle] = []
@@ -143,7 +148,7 @@ async def inline_referral_handler(inline_query: InlineQuery):
             )
         )
 
-    await inline_query.answer(results=results, cache_time=86400, is_personal=True)
+    await inline_query.answer(results=results, cache_time=60, is_personal=True)
 
 
 @router.callback_query(F.data.startswith("show_referral_qr|"))

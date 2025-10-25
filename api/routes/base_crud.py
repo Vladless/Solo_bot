@@ -1,5 +1,3 @@
-from typing import Any, Type, Union
-
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

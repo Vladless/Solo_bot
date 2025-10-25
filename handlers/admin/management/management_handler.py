@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_PORT, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.models import Admin, Key, Server, User
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import update_subscription
+from handlers.keys.operations import update_subscription
 from logger import logger
 from middlewares import maintenance
 from panels.remnawave import RemnawaveAPI
@@ -97,7 +98,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     """Обновляет домен в таблице keys."""
     new_domain = message.text.strip()
 
-    if not new_domain or " " in new_domain or not new_domain.replace(".", "").isalnum():
+    if not re.fullmatch(r"[a-zA-Z0-9.-]+", new_domain) or " " in new_domain:
         logger.warning("[DomainChange] Некорректный домен")
         await message.answer(
             "🚫 Некорректный домен! Введите домен без http:// и без пробелов.",
@@ -438,8 +439,6 @@ async def back_to_database_menu(callback: CallbackQuery):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
-    await callback.answer()
-
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
     servers = result.scalars().all()
 

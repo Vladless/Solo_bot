@@ -1,7 +1,10 @@
 import asyncio
 import os
 
+from datetime import datetime
+
 import aiofiles
+import pytz
 
 from aiogram import Bot
 from aiogram.exceptions import (
@@ -12,7 +15,8 @@ from aiogram.exceptions import (
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import create_blocked_user
+from database import create_blocked_user, get_tariff_by_id
+from handlers.utils import format_hours
 from logger import logger
 
 
@@ -157,3 +161,42 @@ async def _send_text_notification(
     except Exception as e:
         logger.error(f"Неизвестная ошибка при отправке сообщения для пользователя {tg_id}: {e}")
         return False
+
+
+async def prepare_key_expiry_data(key, session: AsyncSession, current_time: int) -> dict:
+    moscow_tz = pytz.timezone("Europe/Moscow")
+
+    expiry_timestamp = key.expiry_time
+    hours_left = int((expiry_timestamp - current_time) / (1000 * 3600))
+    hours_left_formatted = (
+        f"⏳ Осталось времени: {format_hours(hours_left)}" if hours_left > 0 else "⏳ Последний день подписки!"
+    )
+
+    expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
+    formatted_expiry_date = expiry_datetime.strftime("%d %B %Y, %H:%M (МСК)")
+
+    tariff_name = "—"
+    tariff_details = ""
+
+    if getattr(key, "tariff_id", None):
+        tariff = await get_tariff_by_id(session, key.tariff_id)
+        if tariff:
+            tariff_name = tariff.get("name") or "—"
+            traffic_limit = tariff.get("traffic_limit") or 0
+            device_limit = tariff.get("device_limit") or 0
+            subgroup_title = tariff.get("subgroup_title", "")
+            traffic_text = "безлимит" if traffic_limit <= 0 else f"{traffic_limit} ГБ"
+            devices_text = "безлимит" if device_limit <= 0 else str(device_limit)
+            lines = []
+            if subgroup_title:
+                lines.append(subgroup_title)
+            lines.append(f"Трафик: {traffic_text}")
+            lines.append(f"Устройств: {devices_text}")
+            tariff_details = "\n" + "\n".join(lines)
+
+    return {
+        "hours_left_formatted": hours_left_formatted,
+        "formatted_expiry_date": formatted_expiry_date,
+        "tariff_name": tariff_name,
+        "tariff_details": tariff_details,
+    }

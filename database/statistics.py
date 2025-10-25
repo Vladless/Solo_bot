@@ -34,11 +34,9 @@ async def count_active_keys(session: AsyncSession) -> int:
 
 
 async def count_trial_keys(session: AsyncSession) -> int:
-    subquery_success_payments = (
-        select(Payment.tg_id).where(and_(Payment.tg_id == Key.tg_id, Payment.status == "success")).exists()
-    )
+    trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
 
-    return await session.scalar(select(func.count()).select_from(Key).where(not_(subquery_success_payments)))
+    return await session.scalar(select(func.count()).select_from(Key).where(Key.tariff_id.in_(trial_tariffs_subquery)))
 
 
 async def get_tariff_distribution(
@@ -89,7 +87,11 @@ async def count_total_referrals(session: AsyncSession) -> int:
 async def sum_payments_since(session: AsyncSession, since: date) -> float:
     result = await session.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            and_(Payment.created_at >= since, Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+            and_(
+                Payment.created_at >= since,
+                Payment.status == "success",
+                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+            )
         )
     )
     return round(float(result), 2)
@@ -101,6 +103,7 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
             and_(
                 Payment.created_at >= start,
                 Payment.created_at < end,
+                Payment.status == "success",
                 Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
             )
         )
@@ -111,7 +114,10 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
 async def sum_total_payments(session: AsyncSession) -> float:
     result = await session.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
-            Payment.payment_system.notin_(["referral", "coupon", "cashback"])
+            and_(
+                Payment.status == "success",
+                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+            )
         )
     )
     return round(float(result), 2)

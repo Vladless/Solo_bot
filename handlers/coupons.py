@@ -28,7 +28,8 @@ from database import (
     update_key_expiry,
 )
 from handlers.buttons import MAIN_MENU
-from handlers.keys.key_utils import renew_key_in_cluster
+from handlers.keys.operations import renew_key_in_cluster
+from handlers.payments.currency_rates import format_for_user
 from handlers.profile import process_callback_view_profile
 from handlers.texts import (
     COUPONS_DAYS_MESSAGE,
@@ -69,7 +70,7 @@ async def handle_activate_coupon(callback_query_or_message: Message | CallbackQu
     await state.set_state(CouponActivationState.waiting_for_coupon_code)
 
 
-@router.message(CouponActivationState.waiting_for_coupon_code)
+@router.message(CouponActivationState.waiting_for_coupon_code, F.text)
 async def process_coupon_code(message: Message, state: FSMContext, session: Any):
     coupon_code = message.text.strip()
     await activate_coupon(message, state, session, coupon_code=coupon_code)
@@ -98,6 +99,7 @@ async def activate_coupon(
         return
 
     user = user_data or message.from_user or message.chat
+    language_code = user.get("language_code") if isinstance(user, dict) else getattr(user, "language_code", None)
     user_id = user["tg_id"] if isinstance(user, dict) else user.id
 
     usage = await check_coupon_usage(session, coupon.id, user_id)
@@ -127,7 +129,8 @@ async def activate_coupon(
             await update_coupon_usage_count(session, coupon.id)
             await create_coupon_usage(session, coupon.id, user_id)
             await add_payment(session, tg_id=user_id, amount=coupon.amount, payment_system="coupon")
-            await message.answer(f"✅ Купон активирован, на баланс начислено {coupon.amount} рублей.")
+            amount_txt = await format_for_user(session, user_id, coupon.amount, language_code)
+            await message.answer(f"✅ Купон активирован, на баланс начислено {amount_txt}.")
             await state.clear()
         except Exception as e:
             logger.error(f"Ошибка при активации купона на баланс: {e}")
@@ -222,6 +225,10 @@ async def handle_key_extension(
         total_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
         device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
+        key_subgroup = None
+        if tariff:
+            key_subgroup = tariff.get("subgroup_title")
+
         await renew_key_in_cluster(
             cluster_id=key.server_id,
             email=key.email,
@@ -231,6 +238,8 @@ async def handle_key_extension(
             session=session,
             hwid_device_limit=device_limit,
             reset_traffic=False,
+            target_subgroup=key_subgroup,
+            old_subgroup=key_subgroup,
         )
         await update_key_expiry(session, client_id, new_expiry)
         await update_coupon_usage_count(session, coupon.id)

@@ -11,6 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.utils.formatting import BlockQuote, Bold, Text
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -33,7 +34,7 @@ from database import (
 )
 from database.models import Key, ManualBan, Payment, Referral, Server, Tariff, User
 from filters.admin import IsAdminFilter
-from handlers.keys.key_utils import (
+from handlers.keys.operations import (
     create_key_on_cluster,
     delete_key_from_cluster,
     get_user_traffic,
@@ -456,14 +457,16 @@ async def handle_balance_add(
 
     if amount is not None:
         amount = int(amount)
+        old_balance = await get_balance(session, tg_id)
+
         if amount >= 0:
             await update_balance(session, tg_id, amount)
+            new_balance = old_balance + amount
         else:
-            current_balance = await get_balance(session, tg_id)
-            new_balance = max(0, current_balance + amount)
+            new_balance = max(0, old_balance + amount)
             await set_user_balance(session, tg_id, new_balance)
-
-        await handle_balance_change(callback_query, callback_data, session)
+        if old_balance != new_balance:
+            await handle_balance_change(callback_query, callback_data, session)
         return
 
     await state.update_data(tg_id=tg_id, op_type="add")
@@ -548,32 +551,35 @@ async def handle_key_edit(
     update: bool = False,
 ):
     email = callback_data.data
-    key_details = await get_key_details(session, email)
+    result = await session.execute(select(Key).where(Key.email == email))
+    key_obj: Key | None = result.scalar_one_or_none()
 
-    if not key_details:
+    if not key_obj:
         await callback_query.message.edit_text(
             text="🚫 Информация о ключе не найдена.",
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
 
-    key_value = key_details.get("key") or key_details.get("remnawave_link") or "—"
-    alias = key_details.get("alias")
-    utc_tz = pytz.utc
-    created_at_raw = key_details.get("created_at")
-    if created_at_raw:
-        created_at_dt = datetime.fromtimestamp(int(created_at_raw) / 1000, tz=utc_tz).astimezone(MOSCOW_TZ)
+    key_value = key_obj.key or key_obj.remnawave_link or "—"
+    alias_part = f" (<i>{key_obj.alias}</i>)" if key_obj.alias else ""
+
+    if key_obj.created_at:
+        created_at_dt = datetime.fromtimestamp(int(key_obj.created_at) / 1000) + timedelta(hours=3)
         created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
     else:
         created_at = "—"
 
-    expiry_date = key_details.get("expiry_date") or "—"
+    if key_obj.expiry_time:
+        expiry_dt = datetime.fromtimestamp(int(key_obj.expiry_time) / 1000)
+        expiry_date = expiry_dt.strftime("%d %B %Y года %H:%M")
+    else:
+        expiry_date = "—"
+
     tariff_name = "—"
     subgroup_title = "—"
-    if key_details.get("tariff_id"):
-        result = await session.execute(
-            select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_details["tariff_id"])
-        )
+    if key_obj.tariff_id:
+        result = await session.execute(select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_obj.tariff_id))
         row = result.first()
         if row:
             tariff_name = row[0]
@@ -582,20 +588,18 @@ async def handle_key_edit(
     text = (
         "<b>🔑 Информация о подписке</b>\n\n"
         "<blockquote>"
-        f"🔗 <b>Ключ:</b> <code>{key_value}</code>\n"
+        f"🔗 <b>Ключ{alias_part}:</b> <code>{key_value}</code>\n"
         f"📆 <b>Создан:</b> {created_at} (МСК)\n"
         f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
-        f"🌐 <b>Кластер:</b> {key_details.get('cluster_name', '—')}\n"
-        f"🆔 <b>ID клиента:</b> {key_details.get('tg_id', '—')}\n"
+        f"🌐 <b>Кластер:</b> {key_obj.server_id or '—'}\n"
+        f"🆔 <b>ID клиента:</b> {key_obj.tg_id or '—'}\n"
         f"📁 <b>Группа:</b> {subgroup_title}\n"
         f"📦 <b>Тариф:</b> {tariff_name}\n"
+        "</blockquote>"
     )
-    if alias:
-        text += f"🏷️ <b>Имя подписки:</b> {alias}\n"
-    text += "</blockquote>"
 
     if not update or not callback_data.edit:
-        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_details, email))
+        await callback_query.message.edit_text(text=text, reply_markup=build_key_edit_kb(key_obj.__dict__, email))
     else:
         await callback_query.message.edit_text(
             text=text,
@@ -696,6 +700,13 @@ async def handle_user_renew_confirm(
     stmt = update(Key).where(Key.tg_id == tg_id, Key.email == email).values(tariff_id=tariff_id)
     await session.execute(stmt)
     await session.commit()
+
+    await update_subscription(
+        tg_id=tg_id,
+        email=email,
+        session=session
+    )
+    
     await state.clear()
 
     callback_data = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
@@ -1106,12 +1117,13 @@ async def handle_delete_user_confirm(
 
         await callback_query.message.edit_text(
             text=f"🗑️ Пользователь с ID {tg_id} был удален.",
-            reply_markup=build_editor_kb(callback_data.tg_id),
+            reply_markup=build_admin_back_kb(),
         )
     except Exception as e:
         logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
+            text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова.",
+            reply_markup=build_admin_back_kb(),
         )
 
 
@@ -1148,15 +1160,22 @@ async def process_user_search(
     result_ref_by = await session.execute(stmt_ref_by)
     referrer_tg_id = result_ref_by.scalar_one_or_none()
 
-    referrer_text = ""
+    referrer_text = None
     if referrer_tg_id:
         stmt_referrer = select(User.username).where(User.tg_id == referrer_tg_id)
         result_referrer = await session.execute(stmt_referrer)
         ref_username = result_referrer.scalar_one_or_none()
         if ref_username:
-            referrer_text = f"\n🤝 Пригласил: <b>@{ref_username}</b>"
+            referrer_text = f"🤝 Пригласил: @{ref_username} ({referrer_tg_id})"
         else:
-            referrer_text = f"\n🤝 Пригласил: <b>{referrer_tg_id}</b>"
+            referrer_text = f"🤝 Пригласил: {referrer_tg_id}"
+
+    stmt = select(func.count(Payment.id), func.coalesce(func.sum(Payment.amount), 0)).where(
+        Payment.status == "success", Payment.tg_id == tg_id
+    )
+    result = await session.execute(stmt)
+    topups_amount, topups_sum = result.one_or_none() or (0, 0)
+
     stmt_keys = select(Key).where(Key.tg_id == tg_id)
     result_keys = await session.execute(stmt_keys)
     key_records = result_keys.scalars().all()
@@ -1171,27 +1190,32 @@ async def process_user_search(
     user_obj = await session.get(User, tg_id)
     full_name = user_obj.first_name if user_obj else None
 
-    text = (
-        f"<b>📊 Информация о пользователе</b>\n\n"
-        f"<blockquote>"
-        f"🆔 ID: <b>{tg_id}</b>\n"
-        f"📄 Логин: <b>@{username}</b>{f' ({full_name})' if full_name else ''}\n"
-        f"📅 Дата регистрации: <b>{created_at_str}</b>\n"
-        f"🏃 Дата активности: <b>{updated_at_str}</b>\n"
-        f"💰 Баланс: <b>{balance}</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>{referrer_text}"
-        f"</blockquote>"
+    body = Text(
+        f"🆔 ID: {tg_id}\n",
+        f"📄 Логин: @{username}" if username else "📄 Логин: —",
+        f"{f' ({full_name})' if full_name else ''}\n",
+        f"📅 Дата регистрации: {created_at_str}\n",
+        f"🏃 Дата активности: {updated_at_str}\n",
+        f"💰 Баланс: {balance} Р.\n",
+        f"💳 Пополнения: {topups_sum} Р. ({topups_amount} шт.)\n",
+        f"👥 Количество рефералов: {referral_count}\n",
     )
 
-    kb = build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
+    if referrer_text:
+        body += Text(referrer_text, "\n")
+
+    text_builder = Text(Bold("📊 Информация о пользователе"), "\n\n", BlockQuote(body))
+
+    text = text_builder.as_html()
+    kb = await build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
 
     if edit:
         try:
-            await message.edit_text(text=text, reply_markup=kb)
+            await message.edit_text(text=text, reply_markup=kb, disable_web_page_preview=True)
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(text=text, reply_markup=kb)
+        await message.answer(text=text, reply_markup=kb, disable_web_page_preview=True)
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:
@@ -1206,14 +1230,18 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
 
     traffic_limit = 0
     device_limit = None
+    key_subgroup = None
     if tariff_id:
         result = await session.execute(
-            select(Tariff.traffic_limit, Tariff.device_limit).where(Tariff.id == tariff_id, Tariff.is_active.is_(True))
+            select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(
+                Tariff.id == tariff_id, Tariff.is_active.is_(True)
+            )
         )
         tariff = result.first()
         if tariff:
             traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
             device_limit = int(tariff[1]) if tariff[1] is not None else 0
+            key_subgroup = tariff[2]
 
     servers = await get_servers(session=session)
 
@@ -1238,6 +1266,8 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
         session=session,
         hwid_device_limit=device_limit,
         reset_traffic=False,
+        target_subgroup=key_subgroup,
+        old_subgroup=key_subgroup,
     )
 
     await update_key_expiry(session, client_id, expiry_time)
@@ -1295,24 +1325,32 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
 
     await callback_query.message.edit_text(
         text="⚠ Вы уверены, что хотите восстановить пробники для пользователей? \n\n"
-        "Только для тех, у кого нет активной подписки!",
+        "Только для тех, у кого нет подписок (активных или истекших)!",
         reply_markup=builder.as_markup(),
     )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "confirm_restore_trials"), IsAdminFilter())
 async def restore_trials(callback_query: types.CallbackQuery, session: AsyncSession):
-    active_keys_subq = select(Key.tg_id).where(Key.expiry_time > func.extract("epoch", func.now()) * 1000).subquery()
-    stmt = update(User).where(~User.tg_id.in_(select(active_keys_subq.c.tg_id))).where(User.trial != 0).values(trial=0)
+    users_result = await session.execute(select(User.tg_id).where(User.trial == 1))
+    users_with_trial_used = [row[0] for row in users_result.all()]
 
-    await session.execute(stmt)
-    await session.commit()
+    users_to_reset = []
+    for tg_id in users_with_trial_used:
+        has_keys = await session.execute(select(Key.tg_id).where(Key.tg_id == tg_id).limit(1))
+        if not has_keys.scalar():
+            users_to_reset.append(tg_id)
+
+    if users_to_reset:
+        stmt = update(User).where(User.tg_id.in_(users_to_reset)).values(trial=0)
+        await session.execute(stmt)
+        await session.commit()
 
     builder = InlineKeyboardBuilder()
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text="✅ Пробники успешно восстановлены для пользователей без активных подписок.",
+        text=f"✅ Пробники восстановлены для {len(users_to_reset)} пользователей без подписок.",
         reply_markup=builder.as_markup(),
     )
 
@@ -1486,7 +1524,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
         duration_days = tariff["duration_days"]
         client_id = str(uuid.uuid4())
-        email = generate_random_email()
+        email = await generate_random_email(session=session)
         expiry = datetime.now(tz=timezone.utc) + timedelta(days=duration_days)
         expiry_ms = int(expiry.timestamp() * 1000)
 

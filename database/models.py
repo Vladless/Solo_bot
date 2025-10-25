@@ -12,10 +12,13 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, declarative_base, mapped_column
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
 
 
 Base = declarative_base()
@@ -43,7 +46,16 @@ class User(DictLikeMixin, Base):
     is_bot = Column(Boolean, default=False)
     balance = Column(Float, default=0.0)
     trial = Column(Integer, default=0)
-    source_code = Column(String, ForeignKey("tracking_sources.code"))
+    preferred_currency = Column(String(10), nullable=False, server_default="RUB", index=True)
+    source_code = Column(
+        String,
+        ForeignKey(
+            "tracking_sources.code",
+            ondelete="SET NULL",
+            onupdate="CASCADE",
+        ),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
@@ -80,6 +92,8 @@ class Tariff(DictLikeMixin, Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     subgroup_title = Column(String, nullable=True)
+    sort_order = Column(Integer, nullable=True)
+    vless = Column(Boolean, default=False)
 
 
 class Server(DictLikeMixin, Base):
@@ -96,6 +110,34 @@ class Server(DictLikeMixin, Base):
     tariff_group = Column(String)
     enabled = Column(Boolean, default=True)
 
+    subgroups = relationship("ServerSubgroup", back_populates="server", cascade="all, delete-orphan")
+    groups = relationship("ServerSpecialgroup", back_populates="server", cascade="all, delete-orphan")
+
+
+class ServerSubgroup(DictLikeMixin, Base):
+    __tablename__ = "server_subgroups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), index=True, nullable=False)
+    group_code = Column(String, nullable=False)
+    subgroup_title = Column(String, nullable=False)
+
+    server = relationship("Server", back_populates="subgroups")
+
+    __table_args__ = (UniqueConstraint("server_id", "subgroup_title", name="uq_server_subgroup"),)
+
+
+class ServerSpecialgroup(DictLikeMixin, Base):
+    __tablename__ = "server_specialgroups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    server_id = Column(Integer, ForeignKey("servers.id", ondelete="CASCADE"), index=True, nullable=False)
+    group_code = Column(String, nullable=False)
+
+    server = relationship("Server")
+
+    __table_args__ = (UniqueConstraint("server_id", "group_code", name="uq_server_group"),)
+
 
 class Payment(DictLikeMixin, Base):
     __tablename__ = "payments"
@@ -106,6 +148,10 @@ class Payment(DictLikeMixin, Base):
     payment_system = Column(String)
     status = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    original_amount = Column(Numeric(18, 8), nullable=True)
+    currency = Column(String(10), nullable=False, server_default="RUB")
+    payment_id = Column(String(128), nullable=True, index=True)
+    metadata_ = Column("metadata", JSONB, nullable=True)
 
 
 class Coupon(DictLikeMixin, Base):
@@ -123,7 +169,7 @@ class Coupon(DictLikeMixin, Base):
 class CouponUsage(DictLikeMixin, Base):
     __tablename__ = "coupon_usages"
 
-    coupon_id = Column(Integer, ForeignKey("coupons.id"), primary_key=True)
+    coupon_id = Column(Integer, ForeignKey("coupons.id", ondelete="CASCADE"), primary_key=True)
     user_id = Column(BigInteger, primary_key=True)
     used_at = Column(DateTime, default=datetime.utcnow)
 

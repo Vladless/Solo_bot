@@ -29,6 +29,7 @@ from database import (
     sum_total_payments,
 )
 from filters.admin import IsAdminFilter
+from hooks.hooks import run_hooks
 from logger import logger
 from utils.csv_export import (
     export_hot_leads_csv,
@@ -199,7 +200,23 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
         )
 
-        await callback_query.message.edit_text(text=stats_message, reply_markup=build_stats_kb())
+        extra_blocks = await run_hooks("admin_stats", session=session, now=now)
+        if extra_blocks:
+            stats_message += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
+
+        new_kb = build_stats_kb()
+        current_text = callback_query.message.html_text or callback_query.message.text or ""
+        cur_kb = callback_query.message.reply_markup
+        cur_kb_json = cur_kb.model_dump_json() if cur_kb else None
+        new_kb_json = new_kb.model_dump_json() if new_kb else None
+
+        if current_text == stats_message and cur_kb_json == new_kb_json:
+            try:
+                await callback_query.answer()
+            except Exception:
+                pass
+        else:
+            await callback_query.message.edit_text(text=stats_message, reply_markup=new_kb)
 
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):

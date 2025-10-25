@@ -2,7 +2,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Server
+from database.models import Key, Server, ServerSpecialgroup, ServerSubgroup, Tariff
 from logger import logger
 
 
@@ -44,16 +44,40 @@ async def delete_server(session: AsyncSession, server_name: str):
 
 
 async def get_servers(session: AsyncSession, include_enabled: bool = False) -> dict:
+    from handlers.utils import ALLOWED_GROUP_CODES
+
     try:
         stmt = select(Server)
         result = await session.execute(stmt)
         servers = result.scalars().all()
+
+        ids = [s.id for s in servers]
+        subs_map = {}
+        if ids:
+            r = await session.execute(
+                select(ServerSubgroup.server_id, ServerSubgroup.subgroup_title).where(ServerSubgroup.server_id.in_(ids))
+            )
+            for sid, sg in r.all():
+                subs_map.setdefault(sid, []).append(sg)
+
+        groups_map = {}
+        if ids:
+            r2 = await session.execute(
+                select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                    ServerSpecialgroup.server_id.in_(ids)
+                )
+            )
+            for sid, gc in r2.all():
+                groups_map.setdefault(sid, []).append(gc)
+
+        allowed = set(ALLOWED_GROUP_CODES)
 
         grouped = {}
         for s in servers:
             if not include_enabled and not s.enabled:
                 continue
             cluster = s.cluster_name
+            special = sorted({g for g in groups_map.get(s.id, []) if g in allowed})
             grouped.setdefault(cluster, []).append({
                 "server_name": s.server_name,
                 "api_url": s.api_url,
@@ -63,9 +87,10 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
                 "enabled": s.enabled,
                 "max_keys": s.max_keys,
                 "tariff_group": s.tariff_group,
+                "tariff_subgroups": subs_map.get(s.id, []),
+                "special_groups": special,
                 "cluster_name": cluster,
             })
-
         return grouped
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при получении серверов: {e}")
@@ -203,17 +228,88 @@ async def update_server_cluster(session: AsyncSession, server_name: str, new_clu
         result = await session.execute(stmt_new_cluster)
         new_tariff_group = result.scalar_one_or_none()
 
-        stmt_update = (
+        await session.execute(
             update(Server)
             .where(Server.server_name == server_name)
             .values(cluster_name=new_cluster, tariff_group=new_tariff_group)
         )
-        await session.execute(stmt_update)
-        await session.commit()
 
-        logger.info(f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы")
+        if server_data.get("id") is None:
+            rid = await session.execute(select(Server.id).where(Server.server_name == server_name).limit(1))
+            server_id = rid.scalar_one_or_none()
+        else:
+            server_id = server_data["id"]
+
+        if server_id is not None and new_tariff_group is not None:
+            await session.execute(
+                update(ServerSubgroup).where(ServerSubgroup.server_id == server_id).values(group_code=new_tariff_group)
+            )
+
+        await session.commit()
+        logger.info(
+            f"✅ Сервер {server_name} перемещен в кластер {new_cluster} с обновлением тарифной группы и привязок подгрупп"
+        )
         return True
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при обновлении кластера сервера {server_name}: {e}")
         await session.rollback()
         return False
+
+
+async def resolve_device_limit_from_group(session: AsyncSession, server_id: str) -> int | None:
+    r = await session.execute(select(Server.tariff_group).where(Server.server_name == server_id))
+    group = r.scalar_one_or_none()
+    if not group:
+        return None
+    q = await session.execute(
+        select(Tariff.device_limit)
+        .where(Tariff.group_code == group, Tariff.is_active.is_(True))
+        .order_by(Tariff.duration_days.desc())
+        .limit(1)
+    )
+    dl = q.scalar_one_or_none()
+    return int(dl) if dl is not None else None
+
+
+async def filter_cluster_by_subgroup(
+    session: AsyncSession, cluster: list, target_subgroup: str, cluster_id: str
+) -> list:
+    names = [s.get("server_name") for s in cluster if s.get("server_name")]
+    if not names:
+        return []
+
+    q_allowed = await session.execute(
+        select(Server.server_name)
+        .join(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+        .where(
+            Server.server_name.in_(names),
+            Server.enabled.is_(True),
+            ServerSubgroup.subgroup_title == target_subgroup,
+        )
+    )
+    allowed = {n for (n,) in q_allowed.all()}
+    if allowed:
+        return [s for s in cluster if s.get("server_name") in allowed]
+
+    total_for_subgroup = await session.scalar(
+        select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title == target_subgroup)
+    )
+    if not total_for_subgroup:
+        logger.info(f"Для подгруппы {target_subgroup} нет ни одного сервера. Используем весь кластер {cluster_id}.")
+        return cluster
+
+    q_any = await session.execute(
+        select(Server.server_name)
+        .join(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+        .where(
+            Server.server_name.in_(names),
+            Server.enabled.is_(True),
+        )
+    )
+    any_bound = {n for (n,) in q_any.all()}
+    if any_bound:
+        logger.warning(f"Нет серверов под подгруппу {target_subgroup} в кластере {cluster_id}. Продление пропущено.")
+        return []
+
+    logger.info(f"В кластере {cluster_id} нет привязок подгрупп. Продлеваем по всему кластеру.")
+    return cluster

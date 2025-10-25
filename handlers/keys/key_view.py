@@ -1,3 +1,4 @@
+import asyncio
 import html
 import os
 import re
@@ -18,16 +19,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import (
     CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
-    ENABLE_UPDATE_SUBSCRIPTION_BUTTON,
+    HAPP_CRYPTOLINK,
     HWID_RESET_BUTTON,
     QRCODE,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    REMNAWAVE_WEBAPP,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
 )
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
 from handlers.buttons import (
-    ADD_SUB,
     ALIAS,
     BACK,
     CHANGE_LOCATION,
@@ -39,7 +42,8 @@ from handlers.buttons import (
     MAIN_MENU,
     PC_BUTTON,
     QR,
-    RENEW_SUB,
+    RENEW_KEY,
+    ROUTER_BUTTON,
     TV_BUTTON,
     UNFREEZE,
 )
@@ -50,7 +54,6 @@ from handlers.texts import (
     KEYS_HEADER,
     NO_SUBSCRIPTIONS_MSG,
     RENAME_KEY_PROMPT,
-    SELECT_SUBS,
     key_message,
 )
 from handlers.utils import (
@@ -61,7 +64,10 @@ from handlers.utils import (
     get_russian_month,
     is_full_remnawave_cluster,
 )
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
 from logger import logger
+from panels.remnawave import RemnawaveAPI
 
 
 router = Router()
@@ -83,7 +89,14 @@ async def process_callback_or_message_view_keys(callback_query_or_message: Messa
 
     try:
         records = await get_keys(session, tg_id)
-        inline_keyboard, response_message = build_keys_response(records)
+
+        if records and len(records) == 1:
+            key_name = records[0].email
+            image_path = os.path.join("img", "pic_view.jpg")
+            await render_key_info(target_message, session, key_name, image_path)
+            return
+
+        inline_keyboard, response_message = await build_keys_response(records, session)
         image_path = os.path.join("img", "pic_keys.jpg")
 
         await edit_or_send_message(
@@ -97,7 +110,7 @@ async def process_callback_or_message_view_keys(callback_query_or_message: Messa
         await target_message.answer(text=error_message)
 
 
-def build_keys_response(records):
+async def build_keys_response(records, session):
     """
     Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
     """
@@ -120,7 +133,18 @@ def build_keys_response(records):
             else:
                 formatted_date_full = "без срока действия"
 
-            key_button = InlineKeyboardButton(text=f"🔑 {key_display}", callback_data=f"view_key|{email}")
+            is_vless = False
+            if hasattr(record, "tariff_id") and record.tariff_id:
+                try:
+                    tariff = await get_tariff_by_id(session, record.tariff_id)
+                    if tariff and tariff.get("vless"):
+                        is_vless = True
+                except:
+                    pass
+
+            icon = "📶" if is_vless else "🔑"
+
+            key_button = InlineKeyboardButton(text=f"{icon} {key_display}", callback_data=f"view_key|{email}")
             rename_button = InlineKeyboardButton(text=ALIAS, callback_data=f"rename_key|{client_id}")
             builder.row(key_button, rename_button)
 
@@ -155,7 +179,6 @@ async def handle_rename_key(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "cancel_and_back_to_view_keys")
 async def cancel_and_back(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     await state.clear()
-    await callback.answer()
     await process_callback_or_message_view_keys(callback, session)
 
 
@@ -199,16 +222,12 @@ async def process_callback_view_key(callback_query: CallbackQuery, session: Any)
 
 
 async def render_key_info(message: Message, session: Any, key_name: str, image_path: str):
-    from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-    from panels.remnawave import RemnawaveAPI
-
     record = await get_key_details(session, key_name)
     if not record:
         await message.answer("<b>Информация о подписке не найдена.</b>")
         return
 
     is_frozen = record["is_frozen"]
-    record["email"]
     client_id = record.get("client_id")
     remnawave_link = record.get("remnawave_link")
     key = record.get("key")
@@ -231,7 +250,8 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     expiry_time = record["expiry_time"]
     server_name = record["server_id"]
     expiry_date = datetime.utcfromtimestamp(expiry_time / 1000)
-    time_left = expiry_date - datetime.utcnow()
+    now = datetime.utcnow()
+    time_left = expiry_date - now
 
     if time_left.total_seconds() <= 0:
         days_left_message = DAYS_LEFT_MESSAGE
@@ -248,35 +268,45 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         f"{expiry_date.strftime('%d')} {get_russian_month(expiry_date)} {expiry_date.strftime('%Y')} года"
     )
 
+    is_full_task = asyncio.create_task(is_full_remnawave_cluster(server_name, session))
+    tariff_task = (
+        asyncio.create_task(get_tariff_by_id(session, record["tariff_id"])) if record.get("tariff_id") else None
+    )
+
+    is_full_remnawave = await is_full_task
+    tariff = await tariff_task if tariff_task else None
+
     hwid_count = 0
-    is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
+    remna_used_gb = None
     if is_full_remnawave and client_id:
         try:
             servers = await get_servers(session)
             remna_server = next(
-                (srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"),
-                None,
+                (srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None
             )
             if remna_server:
                 api = RemnawaveAPI(remna_server["api_url"])
                 if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                     devices = await api.get_user_hwid_devices(client_id)
                     hwid_count = len(devices or [])
+                    user_data = await api.get_user_by_uuid(client_id)
+                    if user_data:
+                        used_bytes = user_data.get("usedTrafficBytes", 0)
+                        remna_used_gb = round(used_bytes / 1073741824, 1)
         except Exception as e:
-            logger.error(f"Ошибка при получении HWID для {client_id}: {e}")
+            logger.error(f"Ошибка при получении данных Remnawave для {client_id}: {e}")
 
     tariff_name = ""
     traffic_limit = 0
     device_limit = 0
     subgroup_title = ""
-    tariff = None
-    if record.get("tariff_id"):
-        tariff = await get_tariff_by_id(session, record["tariff_id"])
-        if tariff:
-            tariff_name = tariff["name"]
-            traffic_limit = tariff.get("traffic_limit", 0)
-            device_limit = tariff.get("device_limit", 0)
-            subgroup_title = tariff.get("subgroup_title", "")
+    vless_enabled = False
+    if tariff:
+        tariff_name = tariff["name"]
+        traffic_limit = tariff.get("traffic_limit", 0)
+        device_limit = tariff.get("device_limit", 0)
+        subgroup_title = tariff.get("subgroup_title", "")
+        vless_enabled = bool(tariff.get("vless"))
 
     tariff_duration = tariff_name
 
@@ -291,44 +321,43 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         traffic_limit=traffic_limit,
         device_limit=device_limit,
         subgroup_title=subgroup_title,
+        is_remnawave=is_full_remnawave,
+        remna_used_gb=remna_used_gb,
     )
 
-    if ENABLE_UPDATE_SUBSCRIPTION_BUTTON:
-        builder.row(
-            InlineKeyboardButton(
-                text=RENEW_SUB,
-                callback_data=f"update_subscription|{key_name}",
-            )
-        )
-
-    if is_full_remnawave and final_link:
-        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
-        builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
+    if is_full_remnawave and final_link and REMNAWAVE_WEBAPP and not HAPP_CRYPTOLINK:
+        if vless_enabled:
+            builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+        else:
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
     else:
         if CONNECT_PHONE_BUTTON:
             builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-            builder.row(
-                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-            )
+            if vless_enabled:
+                builder.row(InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"))
+                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+            else:
+                builder.row(
+                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
+                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
+                )
         else:
-            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+            if vless_enabled:
+                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+            else:
+                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+
+    builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data=f"renew_key|{key_name}"))
 
     if HWID_RESET_BUTTON and hwid_count > 0:
-        builder.row(
-            InlineKeyboardButton(
-                text=HWID_BUTTON,
-                callback_data=f"reset_hwid|{key_name}",
-            )
-        )
+        builder.row(InlineKeyboardButton(text=HWID_BUTTON, callback_data=f"reset_hwid|{key_name}"))
 
     if QRCODE:
         builder.row(InlineKeyboardButton(text=QR, callback_data=f"show_qr|{key_name}"))
 
     if ENABLE_DELETE_KEY_BUTTON:
-        builder.row(
-            InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"),
-        )
+        builder.row(InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"))
 
     if USE_COUNTRY_SELECTION:
         builder.row(InlineKeyboardButton(text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"))
@@ -336,8 +365,9 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
     if TOGGLE_CLIENT:
         builder.row(InlineKeyboardButton(text=FREEZE, callback_data=f"freeze_subscription|{key_name}"))
 
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="view_keys"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    module_buttons = await run_hooks("view_key_menu", key_name=key_name, session=session)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     await edit_or_send_message(
         target_message=message,
@@ -349,11 +379,12 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
 @router.callback_query(F.data.startswith("reset_hwid|"))
 async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
-    from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-    from panels.remnawave import RemnawaveAPI
-
     key_name = callback_query.data.split("|")[1]
-    record = await get_key_details(session, key_name)
+
+    record_task = asyncio.create_task(get_key_details(session, key_name))
+    servers_task = asyncio.create_task(get_servers(session=session))
+
+    record = await record_task
     if not record:
         await callback_query.answer("❌ Ключ не найден.", show_alert=True)
         return
@@ -363,11 +394,8 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
         await callback_query.answer("❌ У ключа отсутствует client_id.", show_alert=True)
         return
 
-    servers = await get_servers(session=session)
-    remna_server = next(
-        (srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"),
-        None,
-    )
+    servers = await servers_task
+    remna_server = next((srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None)
     if not remna_server:
         await callback_query.answer("❌ Remnawave-сервер не найден.", show_alert=True)
         return
@@ -387,63 +415,17 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
                 deleted += 1
         await callback_query.answer(f"✅ Устройства сброшены ({deleted})", show_alert=True)
 
+    hook_result = await run_hooks(
+        "after_hwid_reset", chat_id=callback_query.from_user.id, admin=False, session=session, key_name=key_name
+    )
+    if hook_result and any("redirect_to_profile" in str(result) for result in hook_result):
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        if callback_query.message.text:
+            await callback_query.message.edit_text("✅ Устройства сброшены", reply_markup=kb.as_markup())
+        else:
+            await callback_query.message.edit_caption(caption="✅ Устройства сброшены", reply_markup=kb.as_markup())
+        return
+
     image_path = os.path.join("img", "pic_view.jpg")
     await render_key_info(callback_query.message, session, key_name, image_path)
-
-
-@router.callback_query(F.data == "renew_menu")
-@router.callback_query(F.data == "extend")
-@router.message(F.text == "/extend")
-async def process_renew_menu(callback_query_or_message: CallbackQuery | Message, session: Any):
-    try:
-        if isinstance(callback_query_or_message, CallbackQuery):
-            target_message = callback_query_or_message.message
-            tg_id = callback_query_or_message.from_user.id
-        else:
-            target_message = callback_query_or_message
-            tg_id = callback_query_or_message.from_user.id
-
-        records = await get_keys(session, tg_id)
-        servers_dict = await get_servers(session)
-        all_server_names = set()
-        for servers in servers_dict.values():
-            for s in servers:
-                all_server_names.add(s["server_name"])
-        builder = InlineKeyboardBuilder()
-        moscow_tz = pytz.timezone("Europe/Moscow")
-        if records:
-            for record in records:
-                if getattr(record, "is_frozen", False):
-                    continue
-                alias = record.alias
-                email = record.email
-                expiry_time = record.expiry_time
-                server_id = record.server_id
-                key_display = alias.strip() if alias else email
-
-                if expiry_time:
-                    expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
-                    now = datetime.now(moscow_tz)
-                    days_left = (expiry_date_full - now).days
-                    if (expiry_date_full - now).total_seconds() <= 0:
-                        days_text = "🔴 Истекла"
-                    else:
-                        days_text = format_days(days_left)
-                else:
-                    days_text = "истекла"
-                server_info = f" ({server_id})" if server_id in all_server_names else ""
-                btn_text = f"🔑 {key_display} (⏳{days_text}) {server_info}"
-                builder.row(InlineKeyboardButton(text=btn_text, callback_data=f"renew_key|{email}"))
-        text = SELECT_SUBS
-        builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        image_path = os.path.join("img", "pic_view.jpg")
-        await edit_or_send_message(
-            target_message=target_message,
-            text=text,
-            reply_markup=builder.as_markup(),
-            media_path=image_path,
-        )
-    except Exception as e:
-        error_message = f"Ошибка при получении подписок для продления: {e}"
-        await target_message.answer(text=error_message)

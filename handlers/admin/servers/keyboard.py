@@ -63,7 +63,9 @@ def build_edit_server_fields_kb(server_name: str, server_data: dict) -> InlineKe
             )
         )
 
-    builder.row(InlineKeyboardButton(text="🔑 Inbound ID", callback_data=f"edit_server_field|{server_name}|inbound_id"))
+    builder.row(
+        InlineKeyboardButton(text="🔑 Inbound ID/Squads", callback_data=f"edit_server_field|{server_name}|inbound_id")
+    )
 
     builder.row(InlineKeyboardButton(text="⚙️ Тип панели", callback_data=f"select_panel_type|{server_name}"))
 
