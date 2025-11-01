@@ -49,6 +49,7 @@ from .keyboard import (
     build_tariff_group_selection_for_servers_kb,
     build_tariff_group_selection_kb,
     build_tariff_subgroup_selection_kb,
+    build_availability_kb
 )
 
 
@@ -440,7 +441,10 @@ async def handle_cluster_availability(
             result_text += f"❌ <b>{prefix} {server_name}</b> - ошибка: {error_text}\n"
 
     result_text += f"\n👥 Всего пользователей онлайн: {total_online_users}"
-    await callback_query.message.edit_text(text=result_text, reply_markup=build_admin_back_kb("clusters"))
+    await callback_query.message.edit_text(
+        text=result_text,
+        reply_markup=build_availability_kb(cluster_name),
+    )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "backup"), IsAdminFilter())
