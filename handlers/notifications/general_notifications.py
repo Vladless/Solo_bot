@@ -355,7 +355,7 @@ async def handle_expired_keys(
                             subgroup_title=tariff.get("subgroup_title", ""),
                         ),
                     )
-                    continue
+
             except Exception as e:
                 logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {e}")
                 continue
@@ -530,6 +530,10 @@ async def process_auto_renew_or_notify(
                     tariff_details=expiry_data["tariff_details"],
                 )
 
+            last_notification_time = await get_last_notification_time(conn, tg_id, notification_id)
+            if last_notification_time is not None:
+                return
+            
             if use_change_tariff_kb:
                 keyboard = build_change_tariff_kb(email)
             else:
