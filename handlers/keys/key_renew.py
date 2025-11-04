@@ -277,6 +277,26 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         group_code = row[0]
 
+        tariff_id = record.get("tariff_id")
+        if tariff_id:
+            if await check_tariff_exists(session, tariff_id):
+                current_tariff = await get_tariff_by_id(session, tariff_id)
+
+                forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+
+                try:
+                    hook_results = await run_hooks(
+                        "renewal_forbidden_groups", chat_id=callback.from_user.id, admin=False, session=session
+                    )
+                    for hook_result in hook_results:
+                        additional_groups = hook_result.get("additional_groups", [])
+                        forbidden_groups.extend(additional_groups)
+                except Exception as e:
+                    logger.warning(f"[RENEW_SUBGROUP] Ошибка при получении дополнительных групп: {e}")
+
+                if current_tariff and current_tariff["group_code"] not in forbidden_groups:
+                    group_code = current_tariff["group_code"]
+
         tg_id = callback.from_user.id
         language_code = callback.from_user.language_code
         discount_info = await check_hot_lead_discount(session, tg_id)

@@ -33,10 +33,28 @@ async def count_active_keys(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Key).where(Key.expiry_time > current_time_ms))
 
 
-async def count_trial_keys(session: AsyncSession) -> int:
+async def count_active_paid_keys(session: AsyncSession) -> int:
+    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
+    
+    return await session.scalar(
+        select(func.count())
+        .select_from(Key)
+        .where(Key.expiry_time > current_time_ms)
+        .where(~Key.tariff_id.in_(trial_tariffs_subquery))
+    )
 
-    return await session.scalar(select(func.count()).select_from(Key).where(Key.tariff_id.in_(trial_tariffs_subquery)))
+
+async def count_active_trial_keys(session: AsyncSession) -> int:
+    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
+    
+    return await session.scalar(
+        select(func.count())
+        .select_from(Key)
+        .where(Key.expiry_time > current_time_ms)
+        .where(Key.tariff_id.in_(trial_tariffs_subquery))
+    )
 
 
 async def get_tariff_distribution(
@@ -77,6 +95,14 @@ async def get_tariff_durations(session: AsyncSession, tariff_ids: list[int]) -> 
         return {}
 
     result = await session.execute(select(Tariff.id, Tariff.duration_days).where(Tariff.id.in_(tariff_ids)))
+    return dict(result.all())
+
+
+async def get_tariff_subgroups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str | None]:
+    if not tariff_ids:
+        return {}
+
+    result = await session.execute(select(Tariff.id, Tariff.subgroup_title).where(Tariff.id.in_(tariff_ids)))
     return dict(result.all())
 
 

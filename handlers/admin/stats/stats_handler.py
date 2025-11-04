@@ -12,11 +12,12 @@ from bot import bot
 from config import ADMIN_ID
 from database import (
     count_active_keys,
+    count_active_paid_keys,
+    count_active_trial_keys,
     count_hot_leads,
     count_total_keys,
     count_total_referrals,
     count_total_users,
-    count_trial_keys,
     count_users_registered_between,
     count_users_registered_since,
     count_users_updated_today,
@@ -24,6 +25,7 @@ from database import (
     get_tariff_durations,
     get_tariff_groups,
     get_tariff_names,
+    get_tariff_subgroups,
     sum_payments_between,
     sum_payments_since,
     sum_total_payments,
@@ -92,20 +94,25 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         total_keys = await count_total_keys(session)
         active_keys = await count_active_keys(session)
+        active_paid_keys = await count_active_paid_keys(session)
+        active_trial_keys = await count_active_trial_keys(session)
         expired_keys = total_keys - active_keys
-        trial_keys_count = await count_trial_keys(session)
 
         tariff_counts, no_tariff_keys = await get_tariff_distribution(session, include_unbound=True)
         tariff_names = await get_tariff_names(session, [tid for tid, _ in tariff_counts])
         tariff_groups = await get_tariff_groups(session, [tid for tid, _ in tariff_counts])
+        tariff_subgroups = await get_tariff_subgroups(session, [tid for tid, _ in tariff_counts])
         tariff_durations = await get_tariff_durations(session, [tid for tid, _ in tariff_counts])
 
         grouped_tariffs = {}
         for tid, count in tariff_counts:
             group = tariff_groups.get(tid, "unknown")
+            subgroup = tariff_subgroups.get(tid)
             if group not in grouped_tariffs:
-                grouped_tariffs[group] = []
-            grouped_tariffs[group].append((tid, count))
+                grouped_tariffs[group] = {}
+            if subgroup not in grouped_tariffs[group]:
+                grouped_tariffs[group][subgroup] = []
+            grouped_tariffs[group][subgroup].append((tid, count))
 
         tariff_stats_text = ""
         duration_buckets = Counter()
@@ -137,12 +144,40 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         for name, count in sorted_buckets:
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
 
-        for group, tariffs in grouped_tariffs.items():
-            tariff_stats_text += f"Тариф {group}\n"
-            sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
-            for tid, count in sorted_tariffs:
-                name = tariff_names.get(tid, f"ID {tid}")
-                tariff_stats_text += f" ├ {name}: <b>{count}</b>\n"
+        for group_idx, (group, subgroups_dict) in enumerate(grouped_tariffs.items()):
+            group_total = 0
+            for tariffs_list in subgroups_dict.values():
+                group_total += sum(count for _, count in tariffs_list)
+            
+            tariff_stats_text += f"Тариф <b>{group}</b> (<b>{group_total}</b>)\n"
+            sorted_subgroups = sorted(
+                subgroups_dict.items(),
+                key=lambda x: (x[0] is None, x[0] or "")
+            )
+            for subgroup_idx, (subgroup, tariffs) in enumerate(sorted_subgroups):
+                sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
+                subgroup_total = sum(count for _, count in sorted_tariffs)
+                is_last_subgroup = subgroup_idx == len(sorted_subgroups) - 1
+                
+                if subgroup:
+                    prefix = "└─" if is_last_subgroup else "├─"
+                    tariff_stats_text += f" {prefix} Подгруппа: <b>{subgroup}</b> (<b>{subgroup_total}</b>)\n"
+                
+                for tariff_idx, (tid, count) in enumerate(sorted_tariffs):
+                    name = tariff_names.get(tid, f"ID {tid}")
+                    is_last_tariff = tariff_idx == len(sorted_tariffs) - 1
+                    
+                    if subgroup:
+                        if is_last_tariff and is_last_subgroup:
+                            prefix = "    └─"
+                        else:
+                            prefix = "    ├─"
+                    else:
+                        if is_last_tariff and is_last_subgroup:
+                            prefix = " └─"
+                        else:
+                            prefix = " ├─"
+                    tariff_stats_text += f"{prefix} {name}: <b>{count}</b>\n"
 
         tariff_stats_text = (
             "└ По тарифам и срокам:\n" + tariff_stats_text if tariff_stats_text else "└ Нет данных по тарифам\n"
@@ -183,8 +218,9 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             f"<blockquote>"
             f"├ 📦 Всего сгенерировано: <b>{total_keys}</b>\n"
             f"├ ✅ Активных: <b>{active_keys}</b>\n"
+            f"│  ├ 💰 Платных: <b>{active_paid_keys}</b>\n"
+            f"│  └ 🧪 Триальных: <b>{active_trial_keys}</b>\n"
             f"├ ❌ Просроченных: <b>{expired_keys}</b>\n"
-            f"├ 🧪 Триальных: <b>{trial_keys_count}</b>\n"
             f"{tariff_stats_text}"
             f"</blockquote>\n"
             f"💰 <b>Финансы:</b>\n"
