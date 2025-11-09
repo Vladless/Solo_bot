@@ -82,7 +82,8 @@ async def check_user_exists(session: AsyncSession, tg_id: int) -> bool:
 
 async def get_balance(session: AsyncSession, tg_id: int) -> float:
     result = await session.execute(select(func.coalesce(User.balance, 0.0)).where(User.tg_id == tg_id))
-    return round(float(result.scalar_one()), 1)
+    balance = result.scalar_one_or_none()
+    return round(float(balance or 0.0), 1)
 
 
 async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) -> None:
@@ -106,7 +107,8 @@ async def update_trial(session: AsyncSession, tg_id: int, status: int):
 
 async def get_trial(session: AsyncSession, tg_id: int) -> int:
     result = await session.execute(select(func.coalesce(User.trial, 0)).where(User.tg_id == tg_id))
-    return int(result.scalar_one())
+    trial = result.scalar_one_or_none()
+    return int(trial or 0)
 
 
 async def upsert_user(
