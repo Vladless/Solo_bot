@@ -15,7 +15,6 @@ from .pay import router as pay_router
 from .robokassa import router as robokassa_router
 from .stars import router as stars_router
 from .tribute import router as tribute_router
-from .wata.wata import router as wata_router
 from .yookassa import router as yookassa_router
 from .yoomoney import router as yoomoney_router
 
@@ -42,7 +41,6 @@ if PROVIDERS.get("HELEKET", {}).get("enabled"):
     router.include_router(heleket_router)
 
 router.include_router(tribute_router)
-router.include_router(wata_router)
 router.include_router(gift_router)
 router.include_router(pay_router)
 router.include_router(fast_payment_flow_router)
