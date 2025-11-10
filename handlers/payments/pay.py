@@ -17,7 +17,6 @@ from handlers import buttons as btn
 
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
-from handlers.payments.wata.wata import process_callback_pay_wata
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from handlers.payments.currency_rates import format_for_user
@@ -177,19 +176,6 @@ async def back_to_pay(callback_query: CallbackQuery, state: FSMContext, session:
     return await balance_handler(callback_query, session)
 
 
-@router.callback_query(F.data == "pay_wata_ru")
-async def handle_pay_wata_ru(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_wata(callback_query, state, session, cassa_name="ru")
-
-
-@router.callback_query(F.data == "pay_wata_sbp")
-async def handle_pay_wata_sbp(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_wata(callback_query, state, session, cassa_name="sbp")
-
-
-@router.callback_query(F.data == "pay_wata_int")
-async def handle_pay_wata_int(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await process_callback_pay_wata(callback_query, state, session, cassa_name="int")
 
 @router.callback_query(F.data == "pay_tribute")
 async def handle_pay_tribute(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):

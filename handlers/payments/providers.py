@@ -29,16 +29,6 @@ PROVIDERS_BASE: Dict[str, dict] = {
         "fast": "handle_custom_amount_input_kassai_sbp",
         "module": "kassai",
     },
-    "WATA_RU": {
-        "currency": "RUB",
-        "value": "pay_wata_ru",
-        "fast": None,
-    },
-    "WATA_SBP": {
-        "currency": "RUB",
-        "value": "pay_wata_sbp",
-        "fast": None,
-    },
     "TRIBUTE": {
         "currency": "RUB",
         "value": "pay_tribute",
@@ -57,11 +47,6 @@ PROVIDERS_BASE: Dict[str, dict] = {
     "FREEKASSA": {
         "currency": "USD",
         "value": "pay_freekassa",
-        "fast": None,
-    },
-    "WATA_INT": {
-        "currency": "USD",
-        "value": "pay_wata_int",
         "fast": None,
     },
     "STARS": {
