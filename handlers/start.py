@@ -125,28 +125,6 @@ async def process_start_logic(
     if text.startswith("/start "):
         text = text.split(maxsplit=1)[1]
 
-    # Прямой алиас для триала: https://t.me/<bot>?start=trial
-    if text.strip().lower() == "trial":
-        await confirm_create_new_key(message, state, session)
-        return
-    # Прямые ссылки на разделы:
-    tl = text.strip().lower()
-    if tl == "profile":
-        await process_callback_view_profile(message, state, admin, session)
-        return
-    if tl == "buy":
-        await confirm_create_new_key(message, state, session)
-        return
-    if tl == "subs":
-        await process_callback_or_message_view_keys(message, session)
-        return
-    if tl == "invite":
-        await invite_handler(message, session)
-        return
-    if tl == "instructions":
-        await send_instructions(message)
-        return
-
     await state.update_data(original_text=text, user_data=user_data)
 
     gift_detected = False
@@ -169,6 +147,26 @@ async def process_start_logic(
         return
 
     await add_user(session=session, **user_data)
+
+    tl = text.strip().lower()
+    if tl == "trial":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "profile":
+        await process_callback_view_profile(message, state, admin, session)
+        return
+    if tl == "buy":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "subs":
+        await process_callback_or_message_view_keys(message, session)
+        return
+    if tl == "invite":
+        await invite_handler(message, session)
+        return
+    if tl == "instructions":
+        await send_instructions(message)
+        return
 
     trial_key = await get_user_snapshot(session, user_data["tg_id"])
     trial = 0
