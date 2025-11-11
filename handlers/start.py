@@ -43,6 +43,10 @@ from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
+from handlers.keys.key_mode.key_create import confirm_create_new_key
+from handlers.keys.key_view import process_callback_or_message_view_keys
+from handlers.refferal import invite_handler
+from handlers.instructions.instructions import send_instructions
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -143,6 +147,26 @@ async def process_start_logic(
         return
 
     await add_user(session=session, **user_data)
+
+    tl = text.strip().lower()
+    if tl == "trial":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "profile":
+        await process_callback_view_profile(message, state, admin, session)
+        return
+    if tl == "buy":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "subs":
+        await process_callback_or_message_view_keys(message, session)
+        return
+    if tl == "invite":
+        await invite_handler(message, session)
+        return
+    if tl == "instructions":
+        await send_instructions(message)
+        return
 
     trial_key = await get_user_snapshot(session, user_data["tg_id"])
     trial = 0
