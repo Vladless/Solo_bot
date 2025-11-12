@@ -9,6 +9,7 @@ from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASS
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
+from hooks.hooks import run_hooks
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -150,8 +151,28 @@ async def create_key_on_cluster(
                                 link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
                                 logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
+
+                        use_crypto_link = HAPP_CRYPTOLINK
+                        try:
+                            hook_results = await run_hooks(
+                                "happ_cryptolink_override",
+                                cluster_id=cluster_id,
+                                plan=plan,
+                                session=session,
+                                email=email,
+                                tg_id=tg_id,
+                                happ_cryptolink=HAPP_CRYPTOLINK,
+                            )
+                            if hook_results:
+                                for hook_result in hook_results:
+                                    if hook_result is True or hook_result is False:
+                                        use_crypto_link = hook_result
+                                        break
+                        except Exception as e:
+                            logger.warning(f"[HAPP_CRYPTOLINK_OVERRIDE] Ошибка при применении хуков: {e}")
+                        
                         remnawave_key = link_vless or (
-                            result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl")
+                            result["happ"]["cryptoLink"] if use_crypto_link else result.get("subscriptionUrl")
                         )
                         logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
                 else:
