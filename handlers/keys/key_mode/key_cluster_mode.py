@@ -179,7 +179,27 @@ async def key_cluster_mode(
         builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
     else:
         if await is_full_remnawave_cluster(least_loaded_cluster, session):
+            use_webapp = REMNAWAVE_WEBAPP
             if REMNAWAVE_WEBAPP and final_link:
+                try:
+                    webapp_override_results = await run_hooks(
+                        "remnawave_webapp_override",
+                        remnawave_webapp=REMNAWAVE_WEBAPP,
+                        final_link=final_link,
+                        session=session,
+                    )
+                    if webapp_override_results:
+                        for hook_result in webapp_override_results:
+                            if hook_result is True or hook_result is False:
+                                use_webapp = hook_result
+                                break
+                            elif isinstance(hook_result, dict) and "override" in hook_result:
+                                use_webapp = hook_result["override"]
+                                break
+                except Exception as e:
+                    logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
+            
+            if use_webapp and final_link:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:

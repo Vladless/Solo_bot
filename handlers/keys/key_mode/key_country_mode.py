@@ -593,11 +593,31 @@ async def finalize_key_creation(
         else None
     )
 
+    use_webapp = REMNAWAVE_WEBAPP
+    if REMNAWAVE_WEBAPP and webapp_url:
+        try:
+            webapp_override_results = await run_hooks(
+                "remnawave_webapp_override",
+                remnawave_webapp=REMNAWAVE_WEBAPP,
+                final_link=final_link,
+                session=session,
+            )
+            if webapp_override_results:
+                for hook_result in webapp_override_results:
+                    if hook_result is True or hook_result is False:
+                        use_webapp = hook_result
+                        break
+                    elif isinstance(hook_result, dict) and "override" in hook_result:
+                        use_webapp = hook_result["override"]
+                        break
+        except Exception as e:
+            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
+
     if panel_type == "remnawave" or is_full_remnawave:
         if is_vless:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
-            if REMNAWAVE_WEBAPP and webapp_url:
+            if use_webapp and webapp_url:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
             else:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))

@@ -325,7 +325,27 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         remna_used_gb=remna_used_gb,
     )
 
+    use_webapp = REMNAWAVE_WEBAPP
     if is_full_remnawave and final_link and REMNAWAVE_WEBAPP and not HAPP_CRYPTOLINK:
+        try:
+            webapp_override_results = await run_hooks(
+                "remnawave_webapp_override",
+                remnawave_webapp=REMNAWAVE_WEBAPP,
+                final_link=final_link,
+                session=session,
+            )
+            if webapp_override_results:
+                for hook_result in webapp_override_results:
+                    if hook_result is True or hook_result is False:
+                        use_webapp = hook_result
+                        break
+                    elif isinstance(hook_result, dict) and "override" in hook_result:
+                        use_webapp = hook_result["override"]
+                        break
+        except Exception as e:
+            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
+    
+    if is_full_remnawave and final_link and use_webapp and not HAPP_CRYPTOLINK:
         if vless_enabled:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
