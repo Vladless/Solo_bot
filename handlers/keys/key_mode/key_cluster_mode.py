@@ -192,10 +192,8 @@ async def key_cluster_mode(
                         for hook_result in webapp_override_results:
                             if hook_result is True or hook_result is False:
                                 use_webapp = hook_result
-                                break
                             elif isinstance(hook_result, dict) and "override" in hook_result:
                                 use_webapp = hook_result["override"]
-                                break
                 except Exception as e:
                     logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
             
