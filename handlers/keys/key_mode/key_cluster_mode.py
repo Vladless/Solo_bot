@@ -7,7 +7,6 @@ import pytz
 from aiogram import Router
 from aiogram.types import (
     CallbackQuery,
-    FSInputFile,
     InlineKeyboardButton,
     Message,
     WebAppInfo,
@@ -15,7 +14,8 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CONNECT_PHONE_BUTTON, REMNAWAVE_WEBAPP, SUPPORT_CHAT_URL
+from config import REMNAWAVE_WEBAPP, SUPPORT_CHAT_URL
+from core.bootstrap import MODES_CONFIG
 from database import (
     get_key_details,
     get_tariff_by_id,
@@ -25,10 +25,8 @@ from database import (
 )
 from handlers.buttons import (
     CONNECT_DEVICE,
-    CONNECT_PHONE,
     MAIN_MENU,
     MY_SUB,
-    PC_BUTTON,
     ROUTER_BUTTON,
     SUPPORT,
     TV_BUTTON,
@@ -179,12 +177,12 @@ async def key_cluster_mode(
         builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
     else:
         if await is_full_remnawave_cluster(least_loaded_cluster, session):
-            use_webapp = REMNAWAVE_WEBAPP
-            if REMNAWAVE_WEBAPP and final_link:
+            use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+            if use_webapp and final_link:
                 try:
                     webapp_override_results = await run_hooks(
                         "remnawave_webapp_override",
-                        remnawave_webapp=REMNAWAVE_WEBAPP,
+                        remnawave_webapp=use_webapp,
                         final_link=final_link,
                         session=session,
                     )
@@ -196,20 +194,20 @@ async def key_cluster_mode(
                                 use_webapp = hook_result["override"]
                 except Exception as e:
                     logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
-            
-            if use_webapp and final_link:
+
+            if (
+                use_webapp
+                and final_link
+                and isinstance(final_link, str)
+                and final_link.startswith(("http://", "https://"))
+            ):
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-        elif CONNECT_PHONE_BUTTON:
-            builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-            builder.row(
-                InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-                InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-            )
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{key_name}"))
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))

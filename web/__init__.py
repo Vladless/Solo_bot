@@ -4,6 +4,7 @@ from handlers.payments.heleket.webhook import heleket_webhook
 from handlers.payments.kassai.webhook import kassai_webhook
 from utils.modules_loader import load_module_webhooks
 
+
 KASSAI_WEBHOOK_PATH = "/kassai/webhook"
 HELEKET_WEBHOOK_PATH = "/heleket/webhook"
 

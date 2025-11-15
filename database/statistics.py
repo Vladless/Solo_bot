@@ -36,7 +36,7 @@ async def count_active_keys(session: AsyncSession) -> int:
 async def count_active_paid_keys(session: AsyncSession) -> int:
     current_time_ms = int(datetime.utcnow().timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
-    
+
     return await session.scalar(
         select(func.count())
         .select_from(Key)
@@ -48,7 +48,7 @@ async def count_active_paid_keys(session: AsyncSession) -> int:
 async def count_active_trial_keys(session: AsyncSession) -> int:
     current_time_ms = int(datetime.utcnow().timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
-    
+
     return await session.scalar(
         select(func.count())
         .select_from(Key)

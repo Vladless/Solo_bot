@@ -14,6 +14,7 @@ from .panel import router as panel_router
 from .restart import router as restart_router
 from .sender import router as sender_router
 from .servers import router as servers_router
+from .settings import router as settings_router
 from .stats import router as stats_router
 from .tariffs import router as tariffs_router
 from .users import router as users_router
@@ -37,4 +38,5 @@ router.include_routers(
     ads_router,
     tariffs_router,
     gifts_router,
+    settings_router,
 )

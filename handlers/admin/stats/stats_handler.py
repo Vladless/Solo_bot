@@ -144,29 +144,26 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         for name, count in sorted_buckets:
             tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
 
-        for group_idx, (group, subgroups_dict) in enumerate(grouped_tariffs.items()):
+        for _group_idx, (group, subgroups_dict) in enumerate(grouped_tariffs.items()):
             group_total = 0
             for tariffs_list in subgroups_dict.values():
                 group_total += sum(count for _, count in tariffs_list)
-            
+
             tariff_stats_text += f"Тариф <b>{group}</b> (<b>{group_total}</b>)\n"
-            sorted_subgroups = sorted(
-                subgroups_dict.items(),
-                key=lambda x: (x[0] is None, x[0] or "")
-            )
+            sorted_subgroups = sorted(subgroups_dict.items(), key=lambda x: (x[0] is None, x[0] or ""))
             for subgroup_idx, (subgroup, tariffs) in enumerate(sorted_subgroups):
                 sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
                 subgroup_total = sum(count for _, count in sorted_tariffs)
                 is_last_subgroup = subgroup_idx == len(sorted_subgroups) - 1
-                
+
                 if subgroup:
                     prefix = "└─" if is_last_subgroup else "├─"
                     tariff_stats_text += f" {prefix} Подгруппа: <b>{subgroup}</b> (<b>{subgroup_total}</b>)\n"
-                
+
                 for tariff_idx, (tid, count) in enumerate(sorted_tariffs):
                     name = tariff_names.get(tid, f"ID {tid}")
                     is_last_tariff = tariff_idx == len(sorted_tariffs) - 1
-                    
+
                     if subgroup:
                         if is_last_tariff and is_last_subgroup:
                             prefix = "    └─"
@@ -328,7 +325,7 @@ async def send_daily_stats_report(session: AsyncSession):
             f"🗓️ <b>Сводка за {report_date.strftime('%d.%m.%Y')} с 00:00 до 23:59 МСК</b>\n\n"
             f"👤 Новых пользователей: <b>{registrations_today}</b>\n"
             f"💰 Оплачено: <b>{payments_today} ₽</b>\n"
-            f"🔐 Активных ключей: <b>{active_keys}</b>\n\n"
+            f"🔐 Активных подписок: <b>{active_keys}</b>\n\n"
             f"⏱️ <i>Отчёт сгенерирован: {update_time} МСК</i>"
         )
 

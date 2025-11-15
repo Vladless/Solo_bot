@@ -17,7 +17,6 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    CONNECT_PHONE_BUTTON,
     ENABLE_DELETE_KEY_BUTTON,
     HAPP_CRYPTOLINK,
     HWID_RESET_BUTTON,
@@ -28,6 +27,7 @@ from config import (
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
 )
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import get_key_details, get_keys, get_servers, get_tariff_by_id
 from database.models import Key
 from handlers.buttons import (
@@ -35,12 +35,10 @@ from handlers.buttons import (
     BACK,
     CHANGE_LOCATION,
     CONNECT_DEVICE,
-    CONNECT_PHONE,
     DELETE,
     FREEZE,
     HWID_BUTTON,
     MAIN_MENU,
-    PC_BUTTON,
     QR,
     RENEW_KEY,
     ROUTER_BUTTON,
@@ -71,6 +69,7 @@ from panels.remnawave import RemnawaveAPI
 
 
 router = Router()
+moscow_tz = pytz.timezone("Europe/Moscow")
 
 
 class RenameKeyState(StatesGroup):
@@ -105,17 +104,13 @@ async def process_callback_or_message_view_keys(callback_query_or_message: Messa
             reply_markup=inline_keyboard,
             media_path=image_path,
         )
-    except Exception as e:
-        error_message = f"Ошибка при получении ключей: {e}"
+    except Exception as error:
+        error_message = f"Ошибка при получении ключей: {error}"
         await target_message.answer(text=error_message)
 
 
 async def build_keys_response(records, session):
-    """
-    Формирует сообщение и клавиатуру для устройств с указанием срока действия подписки.
-    """
     builder = InlineKeyboardBuilder()
-    moscow_tz = pytz.timezone("Europe/Moscow")
 
     if records:
         response_message = KEYS_HEADER
@@ -139,7 +134,7 @@ async def build_keys_response(records, session):
                     tariff = await get_tariff_by_id(session, record.tariff_id)
                     if tariff and tariff.get("vless"):
                         is_vless = True
-                except:
+                except Exception:
                     pass
 
             icon = "📶" if is_vless else "🔑"
@@ -204,10 +199,9 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
             update(Key).where(Key.tg_id == message.chat.id, Key.client_id == client_id).values(alias=alias)
         )
         await session.commit()
-
-    except Exception as e:
+    except Exception as error:
         await message.answer("❌ Не удалось переименовать подписку.")
-        logger.error(f"Ошибка при обновлении alias: {e}")
+        logger.error(f"Ошибка при обновлении alias: {error}")
     finally:
         await state.clear()
 
@@ -293,8 +287,8 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
                     if user_data:
                         used_bytes = user_data.get("usedTrafficBytes", 0)
                         remna_used_gb = round(used_bytes / 1073741824, 1)
-        except Exception as e:
-            logger.error(f"Ошибка при получении данных Remnawave для {client_id}: {e}")
+        except Exception as error:
+            logger.error(f"Ошибка при получении данных Remnawave для {client_id}: {error}")
 
     tariff_name = ""
     traffic_limit = 0
@@ -310,12 +304,16 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     tariff_duration = tariff_name
 
+    country_selection_enabled = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+    remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
+
     response_message = key_message(
         final_link,
         formatted_expiry_date,
         days_left_message,
         server_name,
-        server_name if USE_COUNTRY_SELECTION else None,
+        server_name if country_selection_enabled else None,
         hwid_count=hwid_count if device_limit is not None else 0,
         tariff_name=tariff_duration,
         traffic_limit=traffic_limit,
@@ -325,12 +323,12 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         remna_used_gb=remna_used_gb,
     )
 
-    use_webapp = REMNAWAVE_WEBAPP
-    if is_full_remnawave and final_link and REMNAWAVE_WEBAPP and not HAPP_CRYPTOLINK:
+    use_webapp = remnawave_webapp_enabled
+    if is_full_remnawave and final_link and remnawave_webapp_enabled and not happ_cryptolink_enabled:
         try:
             webapp_override_results = await run_hooks(
                 "remnawave_webapp_override",
-                remnawave_webapp=REMNAWAVE_WEBAPP,
+                remnawave_webapp=remnawave_webapp_enabled,
                 final_link=final_link,
                 session=session,
             )
@@ -340,47 +338,41 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
                         use_webapp = hook_result
                     elif isinstance(hook_result, dict) and "override" in hook_result:
                         use_webapp = hook_result["override"]
-        except Exception as e:
-            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
-    
-    if is_full_remnawave and final_link and use_webapp and not HAPP_CRYPTOLINK:
+        except Exception as error:
+            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {error}")
+
+    if is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled:
         if vless_enabled:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
             builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
     else:
-        if CONNECT_PHONE_BUTTON:
-            builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-            if vless_enabled:
-                builder.row(InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"))
-                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
-            else:
-                builder.row(
-                    InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{key_name}"),
-                    InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"),
-                )
+        if vless_enabled:
+            builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
-            if vless_enabled:
-                builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
-            else:
-                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
     builder.row(InlineKeyboardButton(text=RENEW_KEY, callback_data=f"renew_key|{key_name}"))
 
-    if HWID_RESET_BUTTON and hwid_count > 0:
+    hwid_reset_enabled = bool(BUTTONS_CONFIG.get("HWID_RESET_BUTTON_ENABLE", HWID_RESET_BUTTON))
+    qrcode_enabled = bool(BUTTONS_CONFIG.get("QRCODE_BUTTON_ENABLE", QRCODE))
+    delete_key_enabled = bool(BUTTONS_CONFIG.get("DELETE_KEY_BUTTON_ENABLE", ENABLE_DELETE_KEY_BUTTON))
+    toggle_client_enabled = bool(BUTTONS_CONFIG.get("TOGGLE_CLIENT_BUTTON_ENABLE", TOGGLE_CLIENT))
+
+    if hwid_reset_enabled and hwid_count > 0:
         builder.row(InlineKeyboardButton(text=HWID_BUTTON, callback_data=f"reset_hwid|{key_name}"))
 
-    if QRCODE:
+    if qrcode_enabled:
         builder.row(InlineKeyboardButton(text=QR, callback_data=f"show_qr|{key_name}"))
 
-    if ENABLE_DELETE_KEY_BUTTON:
+    if delete_key_enabled:
         builder.row(InlineKeyboardButton(text=DELETE, callback_data=f"delete_key|{key_name}"))
 
-    if USE_COUNTRY_SELECTION:
+    if country_selection_enabled:
         builder.row(InlineKeyboardButton(text=CHANGE_LOCATION, callback_data=f"change_location|{key_name}"))
 
-    if TOGGLE_CLIENT:
+    if toggle_client_enabled:
         builder.row(InlineKeyboardButton(text=FREEZE, callback_data=f"freeze_subscription|{key_name}"))
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
@@ -437,12 +429,14 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
         "after_hwid_reset", chat_id=callback_query.from_user.id, admin=False, session=session, key_name=key_name
     )
     if hook_result and any("redirect_to_profile" in str(result) for result in hook_result):
-        kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         if callback_query.message.text:
-            await callback_query.message.edit_text("✅ Устройства сброшены", reply_markup=kb.as_markup())
+            await callback_query.message.edit_text("✅ Устройства сброшены", reply_markup=builder.as_markup())
         else:
-            await callback_query.message.edit_caption(caption="✅ Устройства сброшены", reply_markup=kb.as_markup())
+            await callback_query.message.edit_caption(
+                caption="✅ Устройства сброшены", reply_markup=builder.as_markup()
+            )
         return
 
     image_path = os.path.join("img", "pic_view.jpg")

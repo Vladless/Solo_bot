@@ -1,3 +1,5 @@
-__all__ = ("router",)
+from . import cluster_manage, cluster_sync, cluster_tariffs, cluster_transfers, cluster_wizard  # noqa
+from .base import AdminClusterStates, router
 
-from .clusters_handler import router
+
+__all__ = ["router", "AdminClusterStates"]

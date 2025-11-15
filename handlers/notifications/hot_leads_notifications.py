@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS, HOT_LEAD_INTERVAL_HOURS
+from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import add_notification, check_notification_time, get_hot_leads
 from database.models import Notification
 from handlers.buttons import MAIN_MENU
@@ -20,6 +21,9 @@ from logger import logger
 
 async def notify_hot_leads(bot: Bot, session: AsyncSession):
     logger.info("Запуск уведомлений для горячих лидов.")
+
+    hot_lead_interval_hours = int(NOTIFICATIONS_CONFIG.get("HOT_LEADS_INTERVAL_HOURS", HOT_LEAD_INTERVAL_HOURS))
+    discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
 
     try:
         leads = await get_hot_leads(session)
@@ -42,7 +46,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     session,
                     tg_id=tg_id,
                     notification_type="hot_lead_step_1",
-                    hours=HOT_LEAD_INTERVAL_HOURS,
+                    hours=hot_lead_interval_hours,
                 )
                 if not can_send:
                     continue
@@ -68,13 +72,19 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     session,
                     tg_id=tg_id,
                     notification_type="hot_lead_step_2",
-                    hours=DISCOUNT_ACTIVE_HOURS,
+                    hours=discount_active_hours,
                 )
                 if expired:
                     builder = InlineKeyboardBuilder()
                     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-                    result = await send_notification(bot, tg_id, None, HOT_LEAD_LOST_OPPORTUNITY, builder.as_markup())
+                    result = await send_notification(
+                        bot,
+                        tg_id,
+                        None,
+                        HOT_LEAD_LOST_OPPORTUNITY,
+                        builder.as_markup(),
+                    )
                     if result:
                         await add_notification(session, tg_id, "hot_lead_step_2_expired")
                         logger.info(f"📭 Скидка упущена — отправлено уведомление: {tg_id}")
@@ -85,7 +95,7 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                     session,
                     tg_id=tg_id,
                     notification_type="hot_lead_step_2",
-                    hours=HOT_LEAD_INTERVAL_HOURS,
+                    hours=hot_lead_interval_hours,
                 )
                 if not can_send:
                     continue

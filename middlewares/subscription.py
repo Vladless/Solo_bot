@@ -10,6 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
+from core.bootstrap import MODES_CONFIG
 from handlers.buttons import SUB_CHANELL, SUB_CHANELL_DONE
 from handlers.texts import SUBSCRIPTION_REQUIRED_MSG
 from handlers.utils import edit_or_send_message
@@ -23,7 +24,8 @@ class SubscriptionMiddleware(BaseMiddleware):
         event: Update,
         data: dict[str, Any],
     ) -> Any:
-        if not CHANNEL_EXISTS or not CHANNEL_REQUIRED:
+        channel_check_enabled = bool(MODES_CONFIG.get("CHANNEL_CHECK_ENABLED", CHANNEL_REQUIRED))
+        if not CHANNEL_EXISTS or not channel_check_enabled:
             return await handler(event, data)
 
         tg_id = None

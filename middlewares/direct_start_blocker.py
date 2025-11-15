@@ -9,6 +9,7 @@ from aiogram.types import Message, Update
 from sqlalchemy import select
 
 from config import DISABLE_DIRECT_START
+from core.bootstrap import MODES_CONFIG
 from database import async_session_maker, check_user_exists
 from database.models import Coupon, Gift, TrackingSource, User
 from logger import logger
@@ -32,7 +33,8 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
         event: Update,
         data: dict[str, Any],
     ) -> Any:
-        if not DISABLE_DIRECT_START:
+        direct_start_disabled = bool(MODES_CONFIG.get("DIRECT_START_DISABLED", DISABLE_DIRECT_START))
+        if not direct_start_disabled:
             return await handler(event, data)
 
         message: Message | None = getattr(event, "message", None)

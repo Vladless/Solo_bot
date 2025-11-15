@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS
+from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import get_keys, get_tariffs
 from database.models import Notification
 from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
@@ -37,8 +38,10 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
+    discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+
     now = datetime.utcnow()
-    if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
+    if now - last_time > timedelta(hours=discount_active_hours):
         await callback.message.edit_text("⏳ Срок действия скидки истёк.")
         return
 
@@ -49,13 +52,13 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-        expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
+        expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
             f"🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
             f"💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
             f"🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
             f"</blockquote>\n"
-            f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, DISCOUNT_ACTIVE_HOURS)} — не упустите свой шанс!</b>",
+            f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, discount_active_hours)} — не упустите свой шанс!</b>",
             reply_markup=builder.as_markup(),
         )
     else:
@@ -82,7 +85,6 @@ async def handle_discount_tariff_selection(callback: CallbackQuery, session, sta
             data=f"select_tariff_plan|{tariff_id}",
         )
         await select_tariff_plan(fake_callback, session=session, state=state)
-
     except Exception as e:
         logger.error(f"Ошибка при выборе скидочного тарифа: {e}")
         await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
@@ -104,8 +106,10 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
+    discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+
     now = datetime.utcnow()
-    if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
+    if now - last_time > timedelta(hours=discount_active_hours):
         await callback.message.edit_text("⏳ Срок действия финальной скидки истёк.")
         return
 
@@ -121,7 +125,7 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
             f"💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
             f"🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
             f"</blockquote>\n"
-            f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)} — не упустите шанс!</b>",
+            f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, discount_active_hours)} — не упустите шанс!</b>",
             reply_markup=builder.as_markup(),
         )
     else:

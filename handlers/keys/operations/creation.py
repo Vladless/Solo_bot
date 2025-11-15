@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
+from core.bootstrap import MODES_CONFIG
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
 from hooks.hooks import run_hooks
 from logger import (
@@ -152,7 +153,10 @@ async def create_key_on_cluster(
                             except Exception as e:
                                 logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
 
-                        use_crypto_link = HAPP_CRYPTOLINK
+                        base_use_crypto_link = bool(
+                            MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK)
+                        )
+                        use_crypto_link = base_use_crypto_link
                         try:
                             hook_results = await run_hooks(
                                 "happ_cryptolink_override",
@@ -161,7 +165,7 @@ async def create_key_on_cluster(
                                 session=session,
                                 email=email,
                                 tg_id=tg_id,
-                                happ_cryptolink=HAPP_CRYPTOLINK,
+                                happ_cryptolink=base_use_crypto_link,
                             )
                             if hook_results:
                                 for hook_result in hook_results:
@@ -170,7 +174,7 @@ async def create_key_on_cluster(
                                         break
                         except Exception as e:
                             logger.warning(f"[HAPP_CRYPTOLINK_OVERRIDE] Ошибка при применении хуков: {e}")
-                        
+
                         remnawave_key = link_vless or (
                             result["happ"]["cryptoLink"] if use_crypto_link else result.get("subscriptionUrl")
                         )

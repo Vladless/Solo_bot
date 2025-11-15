@@ -1,3 +1,10 @@
-__all__ = ("router",)
+from aiogram import Router
 
-from .users_handler import router
+from . import users_bans, users_hwid, users_keys, users_manage
+
+
+router = Router()
+router.include_router(users_manage.router)
+router.include_router(users_hwid.router)
+router.include_router(users_keys.router)
+router.include_router(users_bans.router)

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HAPP_CRYPTOLINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, update_key_client_id
+from core.bootstrap import MODES_CONFIG
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -42,6 +43,7 @@ async def ensure_on_remnawave(
 
     expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
     traffic_bytes = bytes_from_gb(total_gb)
+    use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
     async def do_update():
         try:
@@ -82,7 +84,7 @@ async def ensure_on_remnawave(
             new_uuid = created.get("uuid") if isinstance(created, dict) else None
             remna_link = None
             if isinstance(created, dict):
-                if HAPP_CRYPTOLINK:
+                if use_crypto_link:
                     remna_link = (
                         created.get("happ", {}).get("cryptoLink") if isinstance(created.get("happ"), dict) else None
                     )

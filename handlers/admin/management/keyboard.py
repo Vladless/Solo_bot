@@ -1,8 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from middlewares import maintenance
-
+from core.bootstrap import MANAGEGENT_CONFIG
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -39,7 +38,9 @@ def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
         text="📤 Загрузить файл",
         callback_data=AdminPanelCallback(action="upload_file").pack(),
     )
-    maintenance_text = "🛠️ Выключить тех. работы" if maintenance.maintenance_mode else "🛠️ Включить тех. работы"
+
+    maintenance_enabled = bool(MANAGEGENT_CONFIG.get("MAINTENANCE_ENABLED", False))
+    maintenance_text = "🛠️ Выключить тех. работы" if maintenance_enabled else "🛠️ Включить тех. работы"
     builder.button(
         text=maintenance_text,
         callback_data=AdminPanelCallback(action="toggle_maintenance").pack(),
@@ -72,7 +73,8 @@ def build_database_kb() -> InlineKeyboardMarkup:
 
 def build_back_to_db_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="⬅️ Назад", callback_data=AdminPanelCallback(action="database").pack())
+    builder.button(text="⬅️ Назад", callback_data=AdminPanelCallback(action="back_to_db_menu").pack())
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -105,7 +107,6 @@ def build_single_admin_menu(tg_id: int, role: str = "moderator") -> InlineKeyboa
     builder = InlineKeyboardBuilder()
 
     builder.button(text="✏ Изменить роль", callback_data=AdminPanelCallback(action=f"edit_role|{tg_id}").pack())
-
     builder.button(text="🗑 Удалить админа", callback_data=AdminPanelCallback(action=f"delete_admin|{tg_id}").pack())
 
     if role == "superadmin":
@@ -140,14 +141,6 @@ def build_token_result_kb(token: str) -> InlineKeyboardMarkup:
     builder.button(text="📋 Скопировать токен", switch_inline_query_current_chat=token)
     builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="admins").pack())
     builder.adjust(1)
-    return builder.as_markup()
-
-
-def build_back_to_db_menu() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-
-    builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="back_to_db_menu").pack())
-
     return builder.as_markup()
 
 

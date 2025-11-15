@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_id
+from core.bootstrap import MODES_CONFIG
 from logger import logger
 from panels._3xui import get_vless_link_for_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
@@ -23,6 +24,8 @@ async def _is_vless_tariff(session: AsyncSession, email: str) -> bool:
 
 
 async def _try_build_remna_vless(servers: list, email: str) -> tuple[str | None, str | None]:
+    happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
+
     si = servers[0]
     remna = RemnawaveAPI(si["api_url"])
     ok = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
@@ -50,7 +53,7 @@ async def _try_build_remna_vless(servers: list, email: str) -> tuple[str | None,
     except Exception:
         pass
 
-    if HAPP_CRYPTOLINK and happ_link:
+    if happ_cryptolink_enabled and happ_link:
         return best, happ_link
 
     sub_url = data.get("subscriptionUrl")
@@ -102,6 +105,8 @@ async def make_aggregated_link(
     remna_link_override: str | None = None,
     plan=None,
 ) -> str | None:
+    legacy_links_enabled = bool(MODES_CONFIG.get("LEGACY_LINKS_ENABLED", LEGACY_LINKS))
+
     servers = (
         await filter_cluster_by_subgroup(session, cluster_all, subgroup_code, cluster_id)
         if subgroup_code
@@ -125,7 +130,7 @@ async def make_aggregated_link(
     base = PUBLIC_LINK.rstrip("/")
 
     if vless_needed:
-        if LEGACY_LINKS:
+        if legacy_links_enabled:
             if xui:
                 xui_link = await _try_build_3xui_vless(xui, email)
                 if xui_link:
@@ -158,14 +163,12 @@ async def make_aggregated_link(
         return f"{base}/{email}/{tg_id}"
 
     if remna and not xui:
-        if LEGACY_LINKS:
+        if legacy_links_enabled:
             logger.info("[agg_link] LEGACY non-vless -> base link")
             return f"{base}/{email}/{tg_id}"
         best_vless, sub_url = await _try_build_remna_vless(remna, email)
         if remna_link_override and (
-            remna_link_override.lower().startswith("vless://") or 
-            remna_link_override.startswith("http") or 
-            remna_link_override.startswith("happ://")
+            remna_link_override.lower().startswith("vless://") or remna_link_override.startswith(("http", "happ://"))
         ):
             logger.info("[agg_link] choose override Remnawave (non-vless)")
             return remna_link_override

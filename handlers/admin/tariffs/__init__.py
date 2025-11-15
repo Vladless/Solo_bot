@@ -1,3 +1,10 @@
-__all__ = ("router",)
+from aiogram import Router
 
-from .tariffs_handler import router
+
+router = Router()
+
+from . import (
+    tariff_manage,  # noqa: F401
+    tariff_sorting,  # noqa: F401
+    tariff_subgroups,  # noqa: F401
+)

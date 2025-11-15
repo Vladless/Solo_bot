@@ -329,7 +329,18 @@ def build_tariff_group_selection_for_servers_kb(
 
 
 def build_availability_kb(cluster_name: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔁 Обновить", callback_data=AdminClusterCallback(action="availability", data=cluster_name).pack())],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack())],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔁 Обновить",
+                    callback_data=AdminClusterCallback(action="availability", data=cluster_name).pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад", callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack()
+                )
+            ],
+        ]
+    )

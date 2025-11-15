@@ -1,7 +1,5 @@
 import os
 
-from math import ceil
-
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext

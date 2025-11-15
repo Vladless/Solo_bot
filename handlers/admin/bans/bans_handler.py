@@ -17,7 +17,7 @@ from database.models import BlockedUser, Key, ManualBan
 from filters.admin import IsAdminFilter
 from logger import logger
 
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
+from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     build_bans_kb,
     build_blocked_users_kb,
@@ -69,19 +69,12 @@ def get_shadow_bans_menu_text() -> str:
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "bans_shadow_menu"), IsAdminFilter())
 async def handle_shadow_bans_menu(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        text=get_shadow_bans_menu_text(),
-        reply_markup=build_shadow_bans_kb()
-    )
+    await callback_query.message.edit_text(text=get_shadow_bans_menu_text(), reply_markup=build_shadow_bans_kb())
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "bans_manual_menu"), IsAdminFilter())
 async def handle_manual_bans_menu(callback_query: CallbackQuery):
-    text_ = (
-        "🔒 <b>Ручные баны</b>\n\n"
-        "Пользователи, которых вы забанили через админку.\n"
-        "⬇ Выберите действие:"
-    )
+    text_ = "🔒 <b>Ручные баны</b>\n\nПользователи, которых вы забанили через админку.\n⬇ Выберите действие:"
     await callback_query.message.edit_text(text=text_, reply_markup=build_manual_bans_kb())
 
 
@@ -117,11 +110,7 @@ async def handle_bans_export(callback_query: CallbackQuery, session: AsyncSessio
 async def handle_bans_delete_banned(callback_query: CallbackQuery, session: AsyncSession):
     kb = build_blocked_users_kb()
     try:
-        stmt = (
-            select(BlockedUser.tg_id)
-            .outerjoin(Key, BlockedUser.tg_id == Key.tg_id)
-            .where(Key.tg_id.is_(None))
-        )
+        stmt = select(BlockedUser.tg_id).outerjoin(Key, BlockedUser.tg_id == Key.tg_id).where(Key.tg_id.is_(None))
         result = await session.execute(stmt)
         blocked_ids = [row[0] for row in result.all()]
 
@@ -151,8 +140,9 @@ async def handle_shadow_bans_export(callback_query: CallbackQuery, session: Asyn
     kb = build_shadow_bans_kb()
     try:
         result = await session.execute(
-            select(ManualBan.tg_id, ManualBan.banned_at, ManualBan.banned_by, ManualBan.until)
-            .where(ManualBan.reason == "shadow")
+            select(ManualBan.tg_id, ManualBan.banned_at, ManualBan.banned_by, ManualBan.until).where(
+                ManualBan.reason == "shadow"
+            )
         )
         rows = result.all()
 
@@ -182,8 +172,9 @@ async def handle_manual_bans_export(callback_query: CallbackQuery, session: Asyn
     kb = build_manual_bans_kb()
     try:
         result = await session.execute(
-            select(ManualBan.tg_id, ManualBan.banned_at, ManualBan.reason, ManualBan.until, ManualBan.banned_by)
-            .where(or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None)))
+            select(ManualBan.tg_id, ManualBan.banned_at, ManualBan.reason, ManualBan.until, ManualBan.banned_by).where(
+                or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None))
+            )
         )
         rows = result.all()
 
@@ -214,7 +205,7 @@ async def handle_clear_blocked_users(callback_query: CallbackQuery, session: Asy
     try:
         count_result = await session.execute(select(func.count()).select_from(BlockedUser))
         total_count = count_result.scalar() or 0
-        
+
         if total_count == 0:
             await callback_query.message.answer(
                 text="📂 Нет забанивших пользователей для очистки.",
@@ -224,7 +215,7 @@ async def handle_clear_blocked_users(callback_query: CallbackQuery, session: Asy
 
         await session.execute(delete(BlockedUser))
         await session.commit()
-        
+
         await callback_query.message.answer(
             text=f"🗑️ Очищено {total_count} записей забанивших пользователей из базы данных.",
             reply_markup=kb,
@@ -246,7 +237,7 @@ async def handle_clear_shadow_bans(callback_query: CallbackQuery, session: Async
             select(func.count()).select_from(ManualBan).where(ManualBan.reason == "shadow")
         )
         total_count = count_result.scalar() or 0
-        
+
         if total_count == 0:
             await callback_query.message.answer(
                 text="📂 Нет теневых банов для очистки.",
@@ -256,7 +247,7 @@ async def handle_clear_shadow_bans(callback_query: CallbackQuery, session: Async
 
         await session.execute(delete(ManualBan).where(ManualBan.reason == "shadow"))
         await session.commit()
-        
+
         await callback_query.message.answer(
             text=f"🗑️ Очищено {total_count} записей теневых банов из базы данных.",
             reply_markup=kb,
@@ -275,12 +266,12 @@ async def handle_clear_manual_bans(callback_query: CallbackQuery, session: Async
     kb = build_manual_bans_kb()
     try:
         count_result = await session.execute(
-            select(func.count()).select_from(ManualBan).where(
-                or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None))
-            )
+            select(func.count())
+            .select_from(ManualBan)
+            .where(or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None)))
         )
         total_count = count_result.scalar() or 0
-        
+
         if total_count == 0:
             await callback_query.message.answer(
                 text="📂 Нет ручных банов для очистки.",
@@ -288,13 +279,9 @@ async def handle_clear_manual_bans(callback_query: CallbackQuery, session: Async
             )
             return
 
-        await session.execute(
-            delete(ManualBan).where(
-                or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None))
-            )
-        )
+        await session.execute(delete(ManualBan).where(or_(ManualBan.reason != "shadow", ManualBan.reason.is_(None))))
         await session.commit()
-        
+
         await callback_query.message.answer(
             text=f"🗑️ Очищено {total_count} записей ручных банов из базы данных.",
             reply_markup=kb,
@@ -327,10 +314,7 @@ async def handle_preemptive_ban_start(callback: CallbackQuery, state: FSMContext
 @router.callback_query(AdminPanelCallback.filter(F.action == "bans_cancel_preemptive"), IsAdminFilter())
 async def handle_cancel_preemptive_ban(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        text=get_shadow_bans_menu_text(),
-        reply_markup=build_shadow_bans_kb()
-    )
+    await callback.message.edit_text(text=get_shadow_bans_menu_text(), reply_markup=build_shadow_bans_kb())
 
 
 @router.message(PreemptiveBanStates.waiting_for_preemptive_ids, IsAdminFilter())

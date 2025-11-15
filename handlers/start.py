@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from typing import Any
@@ -21,6 +22,7 @@ from config import (
     SUPPORT_CHAT_URL,
     TRIAL_TIME_DISABLE,
 )
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_user,
     get_coupon_by_code,
@@ -41,12 +43,12 @@ from handlers.buttons import (
 )
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
-from handlers.payments.gift import handle_gift_link
-from handlers.profile import process_callback_view_profile
+from handlers.instructions.instructions import send_instructions
 from handlers.keys.key_mode.key_create import confirm_create_new_key
 from handlers.keys.key_view import process_callback_or_message_view_keys
+from handlers.payments.gift import handle_gift_link
+from handlers.profile import process_callback_view_profile
 from handlers.refferal import invite_handler
-from handlers.instructions.instructions import send_instructions
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -71,17 +73,29 @@ processing_gifts = set()
 @router.message(Command("start"))
 @router.callback_query(F.data == "start")
 async def start_entry(
-    event: Message | CallbackQuery, state: FSMContext, session: Any, admin: bool, captcha: bool = True
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    session: Any,
+    admin: bool,
+    captcha: bool = True,
 ):
     message = event.message if isinstance(event, CallbackQuery) else event
-    if CAPTCHA_ENABLE and captcha:
+
+    captcha_enabled = bool(MODES_CONFIG.get("CAPTCHA_ENABLED", CAPTCHA_ENABLE))
+    if captcha_enabled and captcha:
         exists = await get_user_snapshot(session, message.chat.id)
         if exists is None:
             captcha_data = await generate_captcha(message, state)
             await edit_or_send_message(message, captcha_data["text"], reply_markup=captcha_data["markup"])
             return
+
     text = getattr(event, "data", None) or message.text
-    await process_start_logic(message, state, session, admin, text)
+
+    user_data = None
+    if isinstance(event, CallbackQuery):
+        user_data = extract_user_data(event.from_user)
+
+    await process_start_logic(message, state, session, admin, text, user_data)
 
 
 @router.callback_query(F.data == "check_subscription")
@@ -174,7 +188,9 @@ async def process_start_logic(
     if trial_key is not None:
         trial, key_count = trial_key
 
-    if SHOW_START_MENU_ONCE:
+    show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
+
+    if show_start_menu_once:
         if key_count > 0 or trial == 1:
             await process_callback_view_profile(message, state, admin, session)
         else:
@@ -260,9 +276,16 @@ async def show_start_menu(
         trial_status = trial
         key_cnt = key_count or 0
 
-    show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE) and (key_cnt == 0)
+    trial_time_disable = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
+
+    show_trial = (trial_status in (-1, 0)) and (not trial_time_disable) and (key_cnt == 0)
     show_profile = (key_cnt > 0) or (
-        ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial)
+        (
+            (not bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE)))
+            or (trial_status not in (-1, 0))
+            or trial_time_disable
+        )
+        and (not show_trial)
     )
 
     if show_trial:
@@ -270,7 +293,7 @@ async def show_start_menu(
     if show_profile:
         kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if CHANNEL_EXISTS:
+    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(
             InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
             InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL),
@@ -297,14 +320,15 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     user_id = callback.from_user.id
     snap = await get_user_snapshot(session, user_id)
     trial = 0 if snap is None else snap[0]
-    back_target = "profile" if SHOW_START_MENU_ONCE and trial > 0 else "start"
+    show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
+    back_target = "profile" if show_start_menu_once and trial > 0 else "start"
 
     kb = InlineKeyboardBuilder()
-    if DONATIONS_ENABLE:
+    if BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE):
         kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
     kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    if CHANNEL_EXISTS:
+    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
 
     module_buttons = await run_hooks("about_menu", chat_id=user_id, trial=trial, session=session)
@@ -318,5 +342,9 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
         text = text_hooks[0]
 
     await edit_or_send_message(
-        callback.message, text, reply_markup=kb.as_markup(), media_path=os.path.join("img", "pic.jpg"), force_text=False
+        callback.message,
+        text,
+        reply_markup=kb.as_markup(),
+        media_path=os.path.join("img", "pic.jpg"),
+        force_text=False,
     )

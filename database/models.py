@@ -262,3 +262,13 @@ class Admin(Base):
     @staticmethod
     def generate_token() -> str:
         return secrets.token_urlsafe(32)
+
+
+class Setting(DictLikeMixin, Base):
+    __tablename__ = "settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(JSONB, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

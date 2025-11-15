@@ -3,7 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.models import Gift, Tariff
 from handlers.buttons import BACK
-from handlers.utils import format_days, format_months
+from handlers.utils import format_days
 
 from ..panel.keyboard import AdminPanelCallback
 
@@ -37,11 +37,8 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
     row = []
 
     for i, gift in enumerate(gifts):
-        if gift.selected_months > 0:
-            duration_text = format_months(gift.selected_months)
-        else:
-            days = (gift.expiry_time.date() - gift.created_at.date()).days
-            duration_text = format_days(days)
+        days = (gift.expiry_time.date() - gift.created_at.date()).days
+        duration_text = format_days(days)
 
         button_text = f"{gift.gift_id[:6]}... — {duration_text}"
 

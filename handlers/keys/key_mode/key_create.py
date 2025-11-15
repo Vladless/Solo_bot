@@ -18,6 +18,7 @@ from config import (
     USE_COUNTRY_SELECTION,
     USE_NEW_PAYMENT_FLOW,
 )
+from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_user,
     check_user_exists,
@@ -89,7 +90,8 @@ async def handle_key_creation(
     try:
         current_time = datetime.now(moscow_tz)
 
-        if not TRIAL_TIME_DISABLE:
+        trial_time_disabled = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
+        if not trial_time_disabled:
             trial_status = await get_trial(session, tg_id)
             if trial_status in [0, -1]:
                 trial_tariffs = await get_tariffs(session, group_code="trial")
@@ -109,7 +111,8 @@ async def handle_key_creation(
 
                 trial_tariff = trial_tariffs[0]
                 base_days = trial_tariff["duration_days"]
-                extra_days = NOTIFY_EXTRA_DAYS if trial_status == -1 else 0
+                extra_days_value = int(NOTIFICATIONS_CONFIG.get("EXTRA_DAYS_AFTER_EXPIRY", NOTIFY_EXTRA_DAYS))
+                extra_days = extra_days_value if trial_status == -1 else 0
                 total_days = base_days + extra_days
                 expiry_time = current_time + timedelta(days=total_days)
 
@@ -156,8 +159,6 @@ async def handle_key_creation(
         if tariffs:
             group_code = tariffs[0].get("group_code")
             if group_code:
-                from database.notifications import check_hot_lead_discount
-
                 discount_info = await check_hot_lead_discount(session, tg_id)
 
                 if discount_info and discount_info.get("available"):
@@ -278,8 +279,10 @@ async def handle_key_creation(
         if discount_info and discount_info.get("available"):
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
+            discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
             time_left = format_discount_time_left(
-                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+                expires_at - timedelta(hours=discount_active_hours),
+                discount_active_hours,
             )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
@@ -486,7 +489,9 @@ async def create_key(
                 session=session,
             )
 
-    if USE_COUNTRY_SELECTION:
+    use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+    if use_country_selection:
         await key_country_mode(
             tg_id=tg_id,
             expiry_time=expiry_time,

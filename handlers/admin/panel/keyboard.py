@@ -67,14 +67,19 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     builder = insert_hook_buttons(builder, module_buttons)
 
     builder.button(
+        text="⚙️ Настройки",
+        callback_data=AdminPanelCallback(action="settings").pack(),
+    )
+
+    builder.button(
         text=MAIN_MENU,
         callback_data="profile",
     )
 
     if admin_role == "superadmin":
-        builder.adjust(2, 1, 1, 1, 2, 2, 2, 1)
+        builder.adjust(2, 1, 1, 1, 2, 2, 2, 1, 1)
     else:
-        builder.adjust(2, 2, 1, 1)
+        builder.adjust(2, 2, 1, 1, 1)
 
     return builder.as_markup()
 

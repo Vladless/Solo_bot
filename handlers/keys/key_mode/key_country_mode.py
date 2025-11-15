@@ -19,13 +19,13 @@ from bot import bot
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    CONNECT_PHONE_BUTTON,
     HAPP_CRYPTOLINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
     SUPPORT_CHAT_URL,
 )
+from core.bootstrap import MODES_CONFIG
 from database import (
     add_user,
     check_server_name_by_cluster,
@@ -41,10 +41,8 @@ from database.models import Key, Server, Tariff
 from handlers.buttons import (
     BACK,
     CONNECT_DEVICE,
-    CONNECT_PHONE,
     MAIN_MENU,
     MY_SUB,
-    PC_BUTTON,
     ROUTER_BUTTON,
     SUPPORT,
     TV_BUTTON,
@@ -488,7 +486,7 @@ async def finalize_key_creation(
                         )
 
                     if not remnawave_link:
-                        if HAPP_CRYPTOLINK:
+                        if bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK)):
                             happ = sub.get("happ") or {}
                             remnawave_link = happ.get("cryptoLink") or happ.get("link")
                         if not remnawave_link:
@@ -593,12 +591,12 @@ async def finalize_key_creation(
         else None
     )
 
-    use_webapp = REMNAWAVE_WEBAPP
-    if REMNAWAVE_WEBAPP and webapp_url:
+    use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    if use_webapp and webapp_url:
         try:
             webapp_override_results = await run_hooks(
                 "remnawave_webapp_override",
-                remnawave_webapp=REMNAWAVE_WEBAPP,
+                remnawave_webapp=use_webapp,
                 final_link=final_link,
                 session=session,
             )
@@ -617,15 +615,9 @@ async def finalize_key_creation(
         else:
             if use_webapp and webapp_url:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
+                builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
-    elif CONNECT_PHONE_BUTTON:
-        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-        builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-        )
     else:
         builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 

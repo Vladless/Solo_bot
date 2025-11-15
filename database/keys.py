@@ -23,7 +23,7 @@ async def store_key(
     try:
         exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         existing_key = exists.scalar_one_or_none()
-        
+
         if existing_key:
             await session.execute(
                 update(Key)
@@ -54,7 +54,7 @@ async def store_key(
             )
             session.add(new_key)
             logger.info(f"[Store Key] Ключ создан: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
-        
+
         await session.commit()
 
     except SQLAlchemyError as e:

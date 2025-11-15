@@ -1,7 +1,9 @@
-from typing import Dict
+from typing import Any
+
 from hooks.hooks import run_hooks
 
-PROVIDERS_BASE: Dict[str, dict] = {
+
+PROVIDERS_BASE: dict[str, dict[str, Any]] = {
     "YOOKASSA": {
         "currency": "RUB",
         "value": "pay_yookassa",
@@ -30,7 +32,7 @@ PROVIDERS_BASE: Dict[str, dict] = {
         "module": "kassai",
     },
     "TRIBUTE": {
-        "currency": "RUB",
+        "currency": "RUB+USD",
         "value": "pay_tribute",
         "fast": None,
     },
@@ -56,25 +58,27 @@ PROVIDERS_BASE: Dict[str, dict] = {
     },
 }
 
-def get_providers(flags: Dict[str, bool]) -> Dict[str, dict]:
-    out: Dict[str, dict] = {}
-    for k, base in PROVIDERS_BASE.items():
-        cfg = dict(base)
-        cfg["enabled"] = bool(flags.get(k))
-        out[k] = cfg
-    return out
 
-async def get_providers_with_hooks(flags: Dict[str, bool]) -> Dict[str, dict]:
-    out = get_providers(flags)
-    results = await run_hooks("providers_config", providers=out, flags=flags)
-    for r in results:
-        if not isinstance(r, dict):
+def get_providers(flags: dict[str, bool]) -> dict[str, dict[str, Any]]:
+    providers: dict[str, dict[str, Any]] = {}
+    for name, base in PROVIDERS_BASE.items():
+        cfg = dict(base)
+        cfg["enabled"] = bool(flags.get(name))
+        providers[name] = cfg
+    return providers
+
+
+async def get_providers_with_hooks(flags: dict[str, bool]) -> dict[str, dict[str, Any]]:
+    providers = get_providers(flags)
+    results = await run_hooks("providers_config", providers=providers, flags=flags)
+    for result in results:
+        if not isinstance(result, dict):
             continue
-        for name, patch in r.items():
+        for name, patch in result.items():
             if patch is None:
-                out.pop(name, None)
+                providers.pop(name, None)
             elif isinstance(patch, dict):
-                base = dict(out.get(name, {}))
+                base = dict(providers.get(name, {}))
                 base.update(patch)
-                out[name] = base
-    return out
+                providers[name] = base
+    return providers

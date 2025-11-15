@@ -8,7 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Gift, GiftUsage, Tariff
+from database.models import Gift, GiftUsage
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
@@ -181,44 +181,18 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
     result = await session.execute(stmt)
     gifts = result.scalars().all()
 
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-
-    builder = InlineKeyboardBuilder()
-
     if not gifts:
+        builder = InlineKeyboardBuilder()
         builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
         await callback.message.edit_text("❌ Подарки не найдены.", reply_markup=builder.as_markup())
         return
 
     keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
 
-    builder.inline_keyboard.extend(keyboard.inline_keyboard)
-    builder.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
-
-    await callback.message.edit_text(f"🎁 <b>Список подарков</b>\nСтраница {page}:", reply_markup=builder.as_markup())
-
-
-async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: int):
-    limit = 10
-    offset = (page - 1) * limit
-
-    stmt = select(Gift).order_by(Gift.created_at.desc()).offset(offset).limit(limit)
-    result = await session.execute(stmt)
-    gifts = result.scalars().all()
-
-    builder = InlineKeyboardBuilder()
-
-    if not gifts:
-        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
-        await callback.message.edit_text("❌ Подарки не найдены.", reply_markup=builder.as_markup())
-        return
-
-    keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
-
-    for row in keyboard.inline_keyboard:
-        builder.row(*row)
-
-    await callback.message.edit_text(f"🎁 <b>Список подарков</b>\nСтраница {page}:", reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        f"🎁 <b>Список подарков</b>\nСтраница {page}:",
+        reply_markup=keyboard,
+    )
 
 
 @router.callback_query(F.data.startswith("gift_view|"))

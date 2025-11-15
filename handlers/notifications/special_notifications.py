@@ -8,13 +8,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
-    CONNECT_PHONE_BUTTON,
     NOTIFY_EXTRA_DAYS,
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     REMNAWAVE_WEBAPP,
     SUPPORT_CHAT_URL,
 )
+from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_notification,
     check_notifications_bulk,
@@ -22,7 +22,7 @@ from database import (
     update_key_notified,
 )
 from database.tariffs import get_tariffs
-from handlers.buttons import CONNECT_DEVICE, CONNECT_PHONE, MAIN_MENU, PC_BUTTON, TV_BUTTON
+from handlers.buttons import CONNECT_DEVICE, MAIN_MENU
 from handlers.keys.operations import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
@@ -42,7 +42,15 @@ moscow_tz = pytz.timezone("Europe/Moscow")
 
 async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
     logger.info("Проверка пользователей, не активировавших пробный период...")
-    users = await check_notifications_bulk(session, "inactive_trial", NOTIFY_INACTIVE)
+
+    inactive_hours = int(NOTIFICATIONS_CONFIG.get("INACTIVE_USER_ENABLED", NOTIFY_INACTIVE))
+    extra_days = int(NOTIFICATIONS_CONFIG.get("EXTRA_DAYS_AFTER_EXPIRY", NOTIFY_EXTRA_DAYS))
+
+    if inactive_hours <= 0:
+        logger.info("INACTIVE_USER_ENABLED <= 0, уведомления для неактивных триалов отключены.")
+        return
+
+    users = await check_notifications_bulk(session, "inactive_trial", inactive_hours)
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
     messages = []
 
@@ -67,11 +75,11 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
 
         trial_extended = user["last_notification_time"] is not None
 
-        if trial_extended:
-            total_days = NOTIFY_EXTRA_DAYS + trial_days
+        if trial_extended and extra_days > 0:
+            total_days = extra_days + trial_days
             message = TRIAL_INACTIVE_BONUS_MSG.format(
                 display_name=display_name,
-                extra_days_formatted=format_days(NOTIFY_EXTRA_DAYS),
+                extra_days_formatted=format_days(extra_days),
                 total_days_formatted=format_days(total_days),
             )
             await mark_trial_extended(tg_id, session)
@@ -110,6 +118,13 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
     current_dt = datetime.fromtimestamp(current_time / 1000, tz=moscow_tz)
     messages = []
 
+    inactive_traffic_hours = int(NOTIFICATIONS_CONFIG.get("INACTIVE_TRAFFIC_ENABLED", NOTIFY_INACTIVE_TRAFFIC))
+    if inactive_traffic_hours <= 0:
+        logger.info("INACTIVE_TRAFFIC_ENABLED <= 0, уведомления о нулевом трафике отключены.")
+        return
+
+    remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+
     for key in keys:
         tg_id = key.tg_id
         email = key.email
@@ -122,7 +137,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
             continue
 
         created_at_dt = pytz.utc.localize(datetime.fromtimestamp(created_at / 1000)).astimezone(moscow_tz)
-        if current_dt < created_at_dt + timedelta(hours=NOTIFY_INACTIVE_TRAFFIC):
+        if current_dt < created_at_dt + timedelta(hours=inactive_traffic_hours):
             continue
 
         if expiry_time:
@@ -132,12 +147,12 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
         try:
             traffic_data = await get_user_traffic(session, tg_id, email)
-        except Exception as e:
-            logger.error(f"Ошибка получения трафика для {email}: {e}")
+        except Exception as error:
+            logger.error(f"Ошибка получения трафика для {email}: {error}")
             continue
 
         if traffic_data.get("status") != "success":
-            logger.warning(f"⚠ Ошибка при получении трафика для {email}: {traffic_data.get('message')}")
+            logger.warning(f"Ошибка при получении трафика для {email}: {traffic_data.get('message')}")
             continue
 
         total_traffic = sum(
@@ -145,7 +160,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         )
 
         if total_traffic == 0:
-            logger.info(f"⚠ У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление.")
+            logger.info(f"У пользователя {tg_id} ({email}) 0 ГБ трафика. Отправляем уведомление.")
             builder = InlineKeyboardBuilder()
 
             server_id = key.server_id
@@ -153,19 +168,12 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 is_full_remnawave = await is_full_remnawave_cluster(server_id, session)
                 final_link = key.key or key.remnawave_link
 
-                if is_full_remnawave and final_link and REMNAWAVE_WEBAPP:
+                if is_full_remnawave and final_link and remnawave_webapp_enabled:
                     builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 else:
-                    if CONNECT_PHONE_BUTTON:
-                        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{email}"))
-                        builder.row(
-                            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-                            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-                        )
-                    else:
-                        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
-            except Exception as e:
-                logger.error(f"Ошибка при определении типа панели для {email}: {e}")
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
+            except Exception as error:
+                logger.error(f"Ошибка при определении типа панели для {email}: {error}")
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
 
             builder.row(InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
@@ -173,12 +181,16 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
             try:
                 hook_commands = await run_hooks(
-                    "zero_traffic_notification", chat_id=tg_id, admin=False, session=session, email=email
+                    "zero_traffic_notification",
+                    chat_id=tg_id,
+                    admin=False,
+                    session=session,
+                    email=email,
                 )
                 if hook_commands:
                     builder = insert_hook_buttons(builder, hook_commands)
-            except Exception as e:
-                logger.warning(f"[ZERO_TRAFFIC_NOTIFICATION] Ошибка при применении хуков: {e}")
+            except Exception as error:
+                logger.warning(f"[ZERO_TRAFFIC_NOTIFICATION] Ошибка при применении хуков: {error}")
 
             keyboard = builder.as_markup()
             message = ZERO_TRAFFIC_MSG.format(email=email)
@@ -191,8 +203,8 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
         try:
             await update_key_notified(session, tg_id, client_id)
-        except Exception as e:
-            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {e}")
+        except Exception as error:
+            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {error}")
 
     if messages:
         results = await send_messages_with_limit(
@@ -205,4 +217,4 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         sent_count = sum(result for result in results if result)
         logger.info(f"Отправлено {sent_count} уведомлений о нулевом трафике.")
 
-    logger.info("✅ Обработка пользователей с нулевым трафиком завершена.")
+    logger.info("Обработка пользователей с нулевым трафиком завершена.")

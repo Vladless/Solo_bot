@@ -14,13 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
 from config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
+from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import (
     check_tariff_exists,
     get_balance,
     get_key_by_server,
     get_key_details,
     get_tariff_by_id,
-    get_tariffs,
     update_balance,
     update_key_expiry,
 )
@@ -179,7 +179,10 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 )
             )
 
-        sorted_subgroups = sorted([k for k in grouped_tariffs if k], key=lambda x: (subgroup_weights.get(x, 999999), x))
+        sorted_subgroups = sorted(
+            [k for k in grouped_tariffs if k],
+            key=lambda x: (subgroup_weights.get(x, 999999), x),
+        )
 
         for subgroup in sorted_subgroups:
             subgroup_hash = create_subgroup_hash(subgroup, group_code)
@@ -210,10 +213,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
         discount_message = ""
         if discount_info.get("available"):
+            discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
             time_left = format_discount_time_left(
-                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+                expires_at - timedelta(hours=discount_active_hours),
+                discount_active_hours,
             )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
@@ -362,10 +367,12 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         discount_message = ""
         if discount_info.get("available"):
+            discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
             time_left = format_discount_time_left(
-                expires_at - timedelta(hours=DISCOUNT_ACTIVE_HOURS), DISCOUNT_ACTIVE_HOURS
+                expires_at - timedelta(hours=discount_active_hours),
+                discount_active_hours,
             )
             discount_message = DISCOUNT_OFFER_MESSAGE.format(offer_text=offer_text, time_left=time_left)
 
@@ -383,8 +390,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 @router.callback_query(F.data.startswith("renew_plan|"))
 async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMContext, session: Any):
     tg_id = callback_query.from_user.id
-    tariff_id = callback_query.data.split("|")[1]
-    tariff_id = int(tariff_id)
+    tariff_id = int(callback_query.data.split("|")[1])
 
     data = await state.get_data()
     client_id = data.get("renew_client_id")

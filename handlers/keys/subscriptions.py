@@ -39,7 +39,7 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
                     return lines, headers
                 return [], {}
     except Exception as e:
-        logger.error(f"Error fetching URL {url}: {e}")
+        logger.debug(f"Error fetching URL {url}: {e}")
         return [], {}
 
 
