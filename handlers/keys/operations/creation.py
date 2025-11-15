@@ -115,6 +115,7 @@ async def create_key_on_cluster(
         remnawave_created = False
         remnawave_key = None
         remnawave_client_id = None
+        remnawave_link_value = None
 
         if remnawave_servers:
             remna = RemnawaveAPI(remnawave_servers[0]["api_url"])
@@ -146,38 +147,15 @@ async def create_key_on_cluster(
                     if result:
                         remnawave_created = True
                         remnawave_client_id = result.get("uuid")
-                        link_vless = None
+                        remnawave_link_value = result.get("subscriptionUrl")
+                        
+                        remnawave_key = None
                         if need_vless_key:
                             try:
-                                link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
+                                remnawave_key = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
                                 logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
-
-                        base_use_crypto_link = bool(
-                            MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK)
-                        )
-                        use_crypto_link = base_use_crypto_link
-                        try:
-                            hook_results = await run_hooks(
-                                "happ_cryptolink_override",
-                                cluster_id=cluster_id,
-                                plan=plan,
-                                session=session,
-                                email=email,
-                                tg_id=tg_id,
-                                happ_cryptolink=base_use_crypto_link,
-                            )
-                            if hook_results:
-                                for hook_result in hook_results:
-                                    if hook_result is True or hook_result is False:
-                                        use_crypto_link = hook_result
-                                        break
-                        except Exception as e:
-                            logger.warning(f"[HAPP_CRYPTOLINK_OVERRIDE] Ошибка при применении хуков: {e}")
-
-                        remnawave_key = link_vless or (
-                            result["happ"]["cryptoLink"] if use_crypto_link else result.get("subscriptionUrl")
-                        )
+                        
                         logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
                 else:
                     logger.warning(f"{PANEL_REMNA} Нет inbound_id у серверов")
@@ -246,7 +224,7 @@ async def create_key_on_cluster(
                 expiry_time=expiry_timestamp,
                 key=public_link,
                 server_id=server_id_to_store,
-                remnawave_link=remnawave_key,
+                remnawave_link=remnawave_link_value if remnawave_created else None,
                 tariff_id=plan,
             )
             await session.execute(update(User).where(User.tg_id == tg_id, User.trial.in_([0, -1])).values(trial=1))

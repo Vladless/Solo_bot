@@ -170,13 +170,24 @@ async def get_recipients(session: AsyncSession, send_to: str, cluster_name: str 
     return tg_ids, len(tg_ids)
 
 
+def strip_html_tags(text: str) -> str:
+    text = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r"\1", text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+    return text.strip()
+
+
 def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
-    if "BUTTONS:" not in text:
+    buttons_match = re.search(r'(<[^>]+>)?\s*BUTTONS\s*:\s*(</[^>]+>)?', text, re.IGNORECASE)
+    if not buttons_match:
         return text, None
 
-    parts = text.split("BUTTONS:", 1)
-    clean_text = parts[0].strip()
-    buttons_text = parts[1].strip()
+    clean_text = text[:buttons_match.start()].strip()
+
+    buttons_section = text[buttons_match.start():].strip()
+    buttons_text = strip_html_tags(buttons_section)
+
+    buttons_text = re.sub(r'^.*?BUTTONS\s*:\s*', '', buttons_text, flags=re.IGNORECASE).strip()
 
     if not buttons_text:
         return clean_text, None
@@ -186,9 +197,7 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
 
     for line in button_lines:
         try:
-            cleaned_line = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r"\1", line)
-
-            button_data = json.loads(cleaned_line)
+            button_data = json.loads(line)
 
             if not isinstance(button_data, dict) or "text" not in button_data:
                 logger.warning(f"Неверный формат кнопки: {line}")
@@ -307,6 +316,21 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     cluster_name = data.get("cluster_name")
     _, user_count = await get_recipients(session, send_to, cluster_name)
 
+    if keyboard:
+        try:
+            keyboard_dict = keyboard.model_dump()
+            InlineKeyboardMarkup.model_validate(keyboard_dict)
+        except Exception as e:
+            await message.answer(
+                f"❌ <b>Ошибка в клавиатуре!</b>\n\n"
+                f"Не удалось сохранить клавиатуру из указанных кнопок.\n"
+                f"Ошибка: {str(e)}\n\n"
+                f"Пожалуйста, проверьте формат кнопок и попробуйте снова.",
+                reply_markup=build_admin_back_kb("sender"),
+            )
+            await state.clear()
+            return
+
     await state.update_data(text=clean_text, photo=photo, keyboard=keyboard.model_dump() if keyboard else None)
     await state.set_state(AdminSender.preview)
 
@@ -343,8 +367,32 @@ async def handle_send_confirm(callback_query: CallbackQuery, state: FSMContext, 
             keyboard = InlineKeyboardMarkup.model_validate(keyboard_data)
         except Exception as e:
             logger.error(f"Ошибка восстановления клавиатуры: {e}")
+            await callback_query.message.edit_text(
+                f"❌ <b>Ошибка восстановления клавиатуры!</b>\n\n"
+                f"Не удалось восстановить клавиатуру из сохраненных данных.\n"
+                f"Ошибка: {str(e)}\n\n"
+                f"Пожалуйста, создайте рассылку заново.",
+                reply_markup=build_admin_back_kb("sender"),
+            )
+            await state.clear()
+            return
 
     tg_ids, total_users = await get_recipients(session, send_to, cluster_name)
+
+    if keyboard:
+        try:
+            keyboard.model_dump()
+        except Exception as e:
+            logger.error(f"Ошибка валидации клавиатуры перед рассылкой: {e}")
+            await callback_query.message.edit_text(
+                f"❌ <b>Ошибка валидации клавиатуры!</b>\n\n"
+                f"Клавиатура не прошла финальную проверку перед рассылкой.\n"
+                f"Ошибка: {str(e)}\n\n"
+                f"Пожалуйста, создайте рассылку заново.",
+                reply_markup=build_admin_back_kb("sender"),
+            )
+            await state.clear()
+            return
 
     await callback_query.message.edit_text(f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}")
 

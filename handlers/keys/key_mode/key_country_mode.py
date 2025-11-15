@@ -486,11 +486,7 @@ async def finalize_key_creation(
                         )
 
                     if not remnawave_link:
-                        if bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK)):
-                            happ = sub.get("happ") or {}
-                            remnawave_link = happ.get("cryptoLink") or happ.get("link")
-                        if not remnawave_link:
-                            remnawave_link = sub.get("subscriptionUrl")
+                        remnawave_link = sub.get("subscriptionUrl")
 
             if old_key_name:
                 await session.execute(

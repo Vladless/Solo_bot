@@ -287,6 +287,24 @@ async def renew_key_in_cluster(
             await update_key_expiry(session, client_id, new_expiry_time)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, tg_id, f"{email}_{prefix}")
+
+            try:
+                key_link = await make_aggregated_link(
+                    session=session,
+                    cluster_all=cluster_scope,
+                    cluster_id=cluster_id,
+                    email=email,
+                    client_id=client_id,
+                    tg_id=tg_id,
+                    subgroup_code=target_subgroup,
+                    remna_link_override=None,
+                    plan=plan,
+                )
+                if key_link:
+                    await update_key_link(session, email, key_link)
+            except Exception as le:
+                logger.warning(f"[Link] ошибка генерации/сохранения после продления: {le}")
+            
             return True
 
         return False

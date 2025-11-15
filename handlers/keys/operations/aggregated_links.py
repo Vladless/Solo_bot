@@ -172,6 +172,9 @@ async def make_aggregated_link(
         ):
             logger.info("[agg_link] choose override Remnawave (non-vless)")
             return remna_link_override
+        if sub_url and sub_url.startswith("happ://"):
+            logger.info("[agg_link] choose Remnawave cryptoLink (non-vless)")
+            return sub_url
         kd = await get_key_details(session, email)
         stored = kd.get("remnawave_link") if kd else None
         if stored:

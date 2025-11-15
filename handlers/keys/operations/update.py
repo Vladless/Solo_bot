@@ -6,7 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import filter_cluster_by_subgroup, get_servers, store_key
+from database import filter_cluster_by_subgroup, get_servers, get_tariff_by_id, store_key
 from database.models import Key, Tariff
 from handlers.utils import get_least_loaded_cluster
 from logger import (
@@ -62,6 +62,7 @@ async def update_key_on_cluster(
 
         remnawave_client_id = None
         remnawave_key = None
+        remnawave_link_value = None
 
         if remnawave_servers:
             inbound_ids = [s["inbound_id"] for s in remnawave_servers if s.get("inbound_id")]
@@ -104,7 +105,9 @@ async def update_key_on_cluster(
                 result = await remna.create_user(user_data)
                 if result:
                     remnawave_client_id = result.get("uuid")
-                    remnawave_key = result.get("subscriptionUrl")
+                    remnawave_link_value = result.get("subscriptionUrl")
+                    remnawave_key = None
+                    
                     logger.info(f"{PANEL_REMNA} Клиент заново создан, uuid={remnawave_client_id}")
                 else:
                     logger.error(f"{PANEL_REMNA} Ошибка создания клиента")
@@ -162,7 +165,7 @@ async def update_key_on_cluster(
             await asyncio.gather(*tasks, return_exceptions=True)
 
         logger.info(f"[Update] Ключ {remnawave_client_id} обновлён на серверах подгруппы в {cluster_id}")
-        return remnawave_client_id, remnawave_key
+        return remnawave_client_id, remnawave_link_value
 
     except Exception as e:
         logger.error(f"[Update Error] Ошибка при обновлении ключа {client_id} на {cluster_id}: {e}")
@@ -246,7 +249,7 @@ async def update_subscription(
         traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
         device_limit = int(tariff.device_limit) if tariff.device_limit is not None else 0
 
-    new_client_id, remnawave_key = await update_key_on_cluster(
+    new_client_id, remnawave_link_value = await update_key_on_cluster(
         tg_id=tg_id,
         client_id=client_id,
         email=email,
@@ -267,7 +270,7 @@ async def update_subscription(
         client_id=new_client_id,
         tg_id=tg_id,
         subgroup_code=subgroup_code,
-        remna_link_override=remnawave_key,
+        remna_link_override=None,
         plan=tariff_id,
     )
 
@@ -280,7 +283,7 @@ async def update_subscription(
         email=email,
         expiry_time=expiry_time,
         key=final_key_link,
-        remnawave_link=remnawave_key,
+        remnawave_link=remnawave_link_value or remnawave_link,
         server_id=new_cluster_id,
         tariff_id=tariff_id,
         alias=alias,

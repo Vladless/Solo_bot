@@ -314,11 +314,6 @@ async def handle_sync_server(
                             sub = await remna.get_subscription_by_username(key["email"])
                             if sub:
                                 new_remnawave_link = sub.get("subscriptionUrl")
-                                if HAPP_CRYPTOLINK:
-                                    happ = sub.get("happ") or {}
-                                    new_remnawave_link = (
-                                        happ.get("cryptoLink") or happ.get("link") or new_remnawave_link
-                                    )
 
                                 if new_remnawave_link:
                                     server_result = await session.execute(
@@ -336,7 +331,7 @@ async def handle_sync_server(
                                         email=key["email"],
                                         client_id=key["client_id"],
                                         tg_id=key["tg_id"],
-                                        remna_link_override=new_remnawave_link,
+                                        remna_link_override=None,
                                         plan=key["tariff_id"],
                                     )
 
@@ -544,11 +539,6 @@ async def handle_sync_cluster(
                             sub = await remna.get_subscription_by_username(key["email"])
                             if sub:
                                 new_remnawave_link = sub.get("subscriptionUrl")
-                                if HAPP_CRYPTOLINK:
-                                    happ = sub.get("happ") or {}
-                                    new_remnawave_link = (
-                                        happ.get("cryptoLink") or happ.get("link") or new_remnawave_link
-                                    )
 
                                 if new_remnawave_link:
                                     servers = await get_servers(session)
@@ -561,7 +551,7 @@ async def handle_sync_cluster(
                                         email=key["email"],
                                         client_id=key["client_id"],
                                         tg_id=key["tg_id"],
-                                        remna_link_override=new_remnawave_link,
+                                        remna_link_override=None,
                                         plan=key["tariff_id"],
                                     )
 
