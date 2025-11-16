@@ -15,10 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
-    get_balance,
     get_key_details,
-    set_user_balance,
-    update_balance,
     update_trial,
 )
 from database.models import Key, ManualBan, Payment, Referral, User
@@ -35,8 +32,6 @@ from .keyboard import (
     AdminUserEditorCallback,
     build_editor_kb,
     build_user_edit_kb,
-    build_users_balance_change_kb,
-    build_users_balance_kb,
 )
 from .users_states import UserEditorState
 
@@ -261,161 +256,6 @@ async def handle_trial_restore(
         text="✅ Триал успешно восстановлен!",
         reply_markup=build_editor_kb(tg_id),
     )
-
-
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_edit"),
-    IsAdminFilter(),
-)
-async def handle_balance_change(
-    callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    session: AsyncSession,
-):
-    tg_id = callback_data.tg_id
-
-    stmt = (
-        select(Payment.amount, Payment.payment_system, Payment.status, Payment.created_at)
-        .where(Payment.tg_id == tg_id)
-        .order_by(Payment.created_at.desc())
-        .limit(5)
-    )
-    result = await session.execute(stmt)
-    records = result.all()
-
-    balance = await get_balance(session, tg_id)
-    balance = int(balance or 0)
-
-    text = (
-        f"<b>💵 Изменение баланса</b>"
-        f"\n\n🆔 ID: <b>{tg_id}</b>"
-        f"\n💰 Баланс: <b>{balance}Р</b>"
-        f"\n📊 Последние операции (5):"
-    )
-
-    if records:
-        for amount, payment_system, status, created_at in records:
-            date = created_at.strftime("%Y-%m-%d %H:%M:%S")
-            text += (
-                f"\n<blockquote>💸 Сумма: {amount} | {payment_system}"
-                f"\n📌 Статус: {status}"
-                f"\n⏳ Дата: {date}</blockquote>"
-            )
-    else:
-        text += "\n <i>🚫 Отсутствуют</i>"
-
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=await build_users_balance_kb(session, tg_id),
-    )
-
-
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_add"),
-    IsAdminFilter(),
-)
-async def handle_balance_add(
-    callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    state: FSMContext,
-    session: AsyncSession,
-):
-    tg_id = callback_data.tg_id
-    amount = callback_data.data
-
-    if amount is not None:
-        amount = int(amount)
-        old_balance = await get_balance(session, tg_id)
-
-        if amount >= 0:
-            await update_balance(session, tg_id, amount)
-            new_balance = old_balance + amount
-        else:
-            new_balance = max(0, old_balance + amount)
-            await set_user_balance(session, tg_id, new_balance)
-
-        if old_balance != new_balance:
-            await handle_balance_change(callback_query, callback_data, session)
-        return
-
-    await state.update_data(tg_id=tg_id, op_type="add")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
-    await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id),
-    )
-
-
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_take"),
-    IsAdminFilter(),
-)
-async def handle_balance_take(
-    callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    state: FSMContext,
-):
-    tg_id = callback_data.tg_id
-
-    await state.update_data(tg_id=tg_id, op_type="take")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
-    await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите вычесть из баланса пользователя:",
-        reply_markup=build_users_balance_change_kb(tg_id),
-    )
-
-
-@router.callback_query(
-    AdminUserEditorCallback.filter(F.action == "users_balance_set"),
-    IsAdminFilter(),
-)
-async def handle_balance_set(
-    callback_query: CallbackQuery,
-    callback_data: AdminUserEditorCallback,
-    state: FSMContext,
-):
-    tg_id = callback_data.tg_id
-
-    await state.update_data(tg_id=tg_id, op_type="set")
-    await state.set_state(UserEditorState.waiting_for_balance)
-
-    await callback_query.message.edit_text(
-        text="✍️ Введите баланс, который хотите установить пользователю:",
-        reply_markup=build_users_balance_change_kb(tg_id),
-    )
-
-
-@router.message(UserEditorState.waiting_for_balance, IsAdminFilter())
-async def handle_balance_input(message: Message, state: FSMContext, session: AsyncSession):
-    data = await state.get_data()
-    tg_id = data.get("tg_id")
-    op_type = data.get("op_type")
-
-    if not message.text.isdigit() or int(message.text) < 0:
-        await message.answer(
-            text="🚫 Пожалуйста, введите корректную сумму!",
-            reply_markup=build_users_balance_change_kb(tg_id),
-        )
-        return
-
-    amount = int(message.text)
-
-    if op_type == "add":
-        text = f"✅ К балансу пользователя добавлено <b>{amount}Р</b>"
-        await update_balance(session, tg_id, amount)
-    elif op_type == "take":
-        current_balance = await get_balance(session, tg_id)
-        new_balance = max(0, current_balance - amount)
-        deducted = current_balance if amount > current_balance else amount
-        text = f"✅ Из баланса пользователя было вычтено <b>{deducted}Р</b>"
-        await set_user_balance(session, tg_id, new_balance)
-    else:
-        text = f"✅ Баланс пользователя изменен на <b>{amount}Р</b>"
-        await set_user_balance(session, tg_id, amount)
-
-    await message.answer(text=text, reply_markup=build_users_balance_change_kb(tg_id))
 
 
 @router.callback_query(

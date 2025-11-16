@@ -16,6 +16,7 @@ from database import create_blocked_user
 from database.models import BlockedUser, Key, ManualBan, Payment, Server, Tariff, User
 from filters.admin import IsAdminFilter
 from logger import logger
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
@@ -113,7 +114,10 @@ async def get_recipients(session: AsyncSession, send_to: str, cluster_name: str 
     query = None
     if send_to == "subscribed":
         query = (
-            select(distinct(User.tg_id)).join(Key).where(Key.expiry_time > now_ms).where(~User.tg_id.in_(banned_tg_ids))
+            select(distinct(User.tg_id))
+            .join(Key)
+            .where(Key.expiry_time > now_ms)
+            .where(~User.tg_id.in_(banned_tg_ids))
         )
     elif send_to == "unsubscribed":
         subquery = (
@@ -151,7 +155,7 @@ async def get_recipients(session: AsyncSession, send_to: str, cluster_name: str 
             .join(Payment, User.tg_id == Payment.tg_id)
             .where(Payment.status == "success")
             .where(Payment.amount > 0)
-            .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+            .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
             .where(not_(exists(subquery_active_keys.where(Key.tg_id == User.tg_id))))
             .where(~User.tg_id.in_(banned_tg_ids))
         )

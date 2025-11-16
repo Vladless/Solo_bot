@@ -4,6 +4,7 @@ from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, Payment, Referral, Tariff, User
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 
 
 async def count_total_users(session: AsyncSession) -> int:
@@ -116,7 +117,7 @@ async def sum_payments_since(session: AsyncSession, since: date) -> float:
             and_(
                 Payment.created_at >= since,
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -130,7 +131,7 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
                 Payment.created_at >= start,
                 Payment.created_at < end,
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -142,7 +143,7 @@ async def sum_total_payments(session: AsyncSession) -> float:
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
             and_(
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -158,7 +159,7 @@ async def count_hot_leads(session: AsyncSession) -> int:
         select(Payment.tg_id)
         .where(Payment.amount > 0)
         .where(Payment.status == "success")
-        .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+        .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
         .where(not_(exists(subquery_active_keys.where(Key.tg_id == Payment.tg_id))))
         .distinct()
     )

@@ -8,6 +8,7 @@ from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Key, Payment, Referral, Tariff, User
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 
 
 async def export_users_csv(session: AsyncSession) -> BufferedInputFile:
@@ -61,6 +62,7 @@ async def export_payments_csv(session: AsyncSession) -> BufferedInputFile:
             Payment.created_at,
         )
         .select_from(j)
+        .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
         .order_by(Payment.created_at.asc())
     )
 
@@ -84,7 +86,10 @@ async def export_user_payments_csv(tg_id: int, session: AsyncSession) -> Buffere
             Payment.created_at,
         )
         .select_from(j)
-        .where(User.tg_id == tg_id)
+        .where(
+            User.tg_id == tg_id,
+            Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
+        )
         .order_by(Payment.created_at.asc())
     )
 
@@ -169,7 +174,7 @@ async def export_hot_leads_csv(session: AsyncSession) -> BufferedInputFile:
                 .where(Payment.tg_id == User.tg_id)
                 .where(Payment.status == "success")
                 .where(Payment.amount > 0)
-                .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+                .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
             ),
             not_(exists(select(Key.tg_id).where(Key.tg_id == User.tg_id).where(Key.expiry_time > now_ts))),
         )
