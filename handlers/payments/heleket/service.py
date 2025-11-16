@@ -2,7 +2,7 @@ import base64
 import hashlib
 import json
 import time
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 import aiohttp
 from aiogram import F, Router, types
@@ -10,8 +10,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from handlers.payments.currency_rates import format_for_user
 
 from config import (
     HELEKET_API_KEY,
@@ -21,14 +21,28 @@ from config import (
     HELEKET_SUCCESS_URL,
     PROVIDERS_ENABLED,
 )
-from handlers.payments.providers import get_providers
-from handlers.payments.currency_rates import get_rub_rate
-from handlers.buttons import BACK, HELEKET, PAY_2
-from handlers.texts import ENTER_SUM, HELEKET_CRYPTO_DESCRIPTION, HELEKET_PAYMENT_MESSAGE
-from handlers.payments.keyboards import build_amounts_keyboard, payment_options_for_user, parse_amount_from_callback, pay_keyboard
-from handlers.utils import edit_or_send_message
 from database import add_payment, async_session_maker
 from database.models import User
+from handlers.buttons import BACK, HELEKET, PAY_2
+from handlers.payments.currency_rates import (
+    format_for_user,
+    get_rub_rate,
+    pick_currency,
+    to_rub,
+)
+from handlers.payments.keyboards import (
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.payments.providers import get_providers
+from handlers.texts import (
+    ENTER_SUM,
+    HELEKET_CRYPTO_DESCRIPTION,
+    HELEKET_PAYMENT_MESSAGE,
+)
+from handlers.utils import edit_or_send_message
 from logger import logger
 
 
@@ -37,7 +51,6 @@ router = Router()
 
 async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
     """Получает язык пользователя из базы данных"""
-    from sqlalchemy import select
     result = await session.execute(
         select(User.language_code).where(User.tg_id == tg_id)
     )
@@ -91,7 +104,9 @@ async def process_callback_pay_heleket(
                 return
 
             language_code = await get_user_language(session, tg_id)
-            opts = await payment_options_for_user(session, tg_id, language_code)
+            opts = await payment_options_for_user(
+                session, tg_id, language_code, force_currency="USD"
+            )
             builder = build_amounts_keyboard(
                 prefix=f"heleket_{method_name}",
                 pattern="{prefix}_amount|{price}",
@@ -159,7 +174,9 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     tg_id = callback_query.from_user.id
 
     language_code = await get_user_language(session, tg_id)
-    opts = await payment_options_for_user(session, tg_id, language_code)
+    opts = await payment_options_for_user(
+        session, tg_id, language_code, force_currency="USD"
+    )
     builder = build_amounts_keyboard(
         prefix=f"heleket_{method_name}",
         pattern="{prefix}_amount|{price}",
@@ -186,7 +203,6 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data="pay_heleket_crypto"))
 
-    from ..currency_rates import pick_currency
     language_code = await get_user_language(session, callback_query.from_user.id)
     currency = pick_currency(language_code)
     
@@ -215,7 +231,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         )
         return
 
-    from ..currency_rates import pick_currency
     language_code = await get_user_language(session, message.from_user.id)
     currency = pick_currency(language_code)
 
@@ -244,7 +259,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         )
         return
 
-    from ..currency_rates import to_rub
     if currency == "RUB":
         amount_rub = user_amount
     else: 
@@ -265,9 +279,8 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
-    from ..currency_rates import format_for_user
     tg_id = message.from_user.id
-    amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code)
+    amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code, force_currency="USD")
 
     await edit_or_send_message(
         target_message=message,
@@ -328,7 +341,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     tg_id = callback_query.from_user.id
     language_code = await get_user_language(session, tg_id)
-    amount_text = await format_for_user(session, tg_id, float(amount), language_code)
+    amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="USD")
 
     await edit_or_send_message(
         target_message=callback_query.message,
