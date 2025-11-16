@@ -59,12 +59,19 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
 
         group_code = row["group_code"]
 
-        await session.execute(update(Server).where(Server.cluster_name == cluster_name).values(tariff_group=group_code))
+        await session.execute(
+            update(Server)
+            .where(Server.cluster_name == cluster_name)
+            .values(tariff_group=group_code)
+        )
         await session.commit()
+
+        servers = await get_servers(session=session, include_enabled=True)
+        cluster_servers = servers.get(cluster_name, [])
 
         await callback.message.edit_text(
             f"✅ Для кластера <code>{cluster_name}</code> установлена тарифная группа: <b>{group_code}</b>",
-            reply_markup=build_manage_cluster_kb(cluster_name),
+            reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
         )
 
     except Exception as e:
