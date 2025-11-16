@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import HWID_RESET_BUTTON
 from database import get_clusters
 from database.models import Key, Tariff
-from handlers.buttons import BACK
+from handlers.buttons import BACK, FREEZE, UNFREEZE
 from handlers.utils import format_days
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
@@ -246,6 +246,8 @@ def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
 def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
+    is_frozen = key_details.get("is_frozen") if isinstance(key_details, dict) else getattr(key_details, "is_frozen", False)
+
     builder.button(
         text="⏳ Время истечения",
         callback_data=AdminUserEditorCallback(
@@ -274,6 +276,22 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
             action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
         ).pack(),
     )
+
+    if is_frozen:
+        builder.button(
+            text=UNFREEZE,
+            callback_data=AdminUserEditorCallback(
+                action="users_unfreeze", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
+    else:
+        builder.button(
+            text=FREEZE,
+            callback_data=AdminUserEditorCallback(
+                action="users_freeze", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
+
     if HWID_RESET_BUTTON:
         builder.button(
             text="💻 HWID",

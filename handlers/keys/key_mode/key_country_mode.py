@@ -160,12 +160,16 @@ async def key_country_mode(
 
     builder = InlineKeyboardBuilder()
     ts = int(expiry_time.timestamp())
-    for server_name in available_servers:
-        if old_key_name:
-            callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
-        else:
-            callback_data = f"select_country|{server_name}|{ts}"
-        builder.row(InlineKeyboardButton(text=server_name, callback_data=callback_data))
+
+    for i in range(0, len(available_servers), 2):
+        row_buttons = []
+        for server_name in available_servers[i : i + 2]:
+            if old_key_name:
+                callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
+            else:
+                callback_data = f"select_country|{server_name}|{ts}"
+            row_buttons.append(InlineKeyboardButton(text=server_name, callback_data=callback_data))
+        builder.row(*row_buttons)
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -263,9 +267,14 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             return
 
         builder = InlineKeyboardBuilder()
-        for country in available_servers:
-            callback_data = f"select_country|{country}|{ts}|{old_key_name}"
-            builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
+
+        for i in range(0, len(available_servers), 2):
+            row_buttons = []
+            for country in available_servers[i : i + 2]:
+                callback_data = f"select_country|{country}|{ts}|{old_key_name}"
+                row_buttons.append(InlineKeyboardButton(text=country, callback_data=callback_data))
+            builder.row(*row_buttons)
+
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
 
         await edit_or_send_message(

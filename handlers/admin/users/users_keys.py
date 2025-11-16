@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,8 @@ from database import (
     get_servers,
     get_tariff_by_id,
     get_tariffs_for_cluster,
+    mark_key_as_frozen,
+    mark_key_as_unfrozen,
     update_key_expiry,
 )
 from database.models import Key, Server, Tariff
@@ -31,9 +34,10 @@ from handlers.keys.operations import (
     get_user_traffic,
     renew_key_in_cluster,
     reset_traffic_in_cluster,
+    toggle_client_on_cluster,
     update_subscription,
 )
-from handlers.utils import generate_random_email
+from handlers.utils import generate_random_email, handle_error
 from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
@@ -72,7 +76,7 @@ async def handle_key_edit(
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text="🚫 Информация о подписке не найдена.",
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
@@ -981,6 +985,138 @@ async def handle_reset_traffic(
             "❌ Произошла ошибка при сбросе трафика. Попробуйте позже.",
             reply_markup=build_editor_kb(tg_id),
         )
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_freeze"),
+    IsAdminFilter(),
+)
+async def handle_admin_freeze_subscription(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    tg_id = callback_data.tg_id
+    email = str(callback_data.data)
+
+    try:
+        record = await get_key_details(session, email)
+        if not record:
+            await callback_query.message.edit_text(
+                text="🚫 Информация о ключе не найдена.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        client_id = record["client_id"]
+        cluster_id = record["server_id"]
+
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=False, session=session)
+        if result["status"] != "success":
+            text_error = (
+                "Произошла ошибка при заморозке подписки.\n"
+                f"Детали: {result.get('error') or result.get('results')}"
+            )
+            await callback_query.message.edit_text(
+                text_error,
+                reply_markup=build_editor_kb(tg_id, True),
+            )
+            return
+
+        now_ms = int(time.time() * 1000)
+        time_left = record["expiry_time"] - now_ms
+        if time_left < 0:
+            time_left = 0
+
+        await mark_key_as_frozen(session, record["tg_id"], client_id, time_left)
+        await session.commit()
+
+        await callback_query.answer("✅ Подписка заморожена")
+
+        await handle_key_edit(
+            callback_query=callback_query,
+            callback_data=callback_data,
+            session=session,
+            update=False,
+        )
+    except Exception as e:
+        await handle_error(tg_id, callback_query, f"Ошибка при заморозке подписки: {e}")
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_unfreeze"),
+    IsAdminFilter(),
+)
+async def handle_admin_unfreeze_subscription(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    tg_id = callback_data.tg_id
+    email = str(callback_data.data)
+
+    try:
+        record = await get_key_details(session, email)
+        if not record:
+            await callback_query.message.edit_text(
+                text="🚫 Информация о ключе не найдена.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        client_id = record["client_id"]
+        cluster_id = record["server_id"]
+
+        result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=True, session=session)
+        if result["status"] != "success":
+            text_error = (
+                "Произошла ошибка при включении подписки.\n"
+                f"Детали: {result.get('error') or result.get('results')}"
+            )
+            await callback_query.message.edit_text(
+                text_error,
+                reply_markup=build_editor_kb(tg_id, True),
+            )
+            return
+
+        tariff = await get_tariff_by_id(session, record["tariff_id"]) if record.get("tariff_id") else None
+        if not tariff:
+            total_gb = 0
+            hwid_limit = 0
+        else:
+            total_gb = int(tariff.get("traffic_limit") or 0)
+            hwid_limit = int(tariff.get("device_limit") or 0)
+
+        now_ms = int(time.time() * 1000)
+        leftover = record["expiry_time"]
+        if leftover < 0:
+            leftover = 0
+        new_expiry_time = now_ms + leftover
+
+        await mark_key_as_unfrozen(session, record["tg_id"], client_id, new_expiry_time)
+        await session.commit()
+
+        await renew_key_in_cluster(
+            cluster_id=cluster_id,
+            email=email,
+            client_id=client_id,
+            new_expiry_time=new_expiry_time,
+            total_gb=total_gb,
+            session=session,
+            hwid_device_limit=hwid_limit,
+            reset_traffic=False,
+        )
+
+        await callback_query.answer("✅ Подписка разморожена")
+
+        await handle_key_edit(
+            callback_query=callback_query,
+            callback_data=callback_data,
+            session=session,
+            update=False,
+        )
+    except Exception as e:
+        await handle_error(tg_id, callback_query, f"Ошибка при включении подписки: {e}")
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:
