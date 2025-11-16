@@ -1,15 +1,15 @@
 import hashlib
 import hmac
 import time
-import aiohttp
 
+import aiohttp
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from handlers.payments.currency_rates import format_for_user
 
 from config import (
     KASSAI_API_KEY,
@@ -20,25 +20,34 @@ from config import (
     KASSAI_SUCCESS_URL,
     PROVIDERS_ENABLED,
 )
-from handlers.payments.providers import get_providers
+from database.models import User
 from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
+from handlers.payments.currency_rates import (
+    format_for_user,
+    pick_currency,
+    to_rub,
+)
+from handlers.payments.keyboards import (
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.payments.providers import get_providers
 from handlers.texts import (
     ENTER_SUM,
     KASSAI_CARDS_DESCRIPTION,
     KASSAI_PAYMENT_MESSAGE,
     KASSAI_SBP_DESCRIPTION,
 )
-from handlers.payments.keyboards import build_amounts_keyboard, payment_options_for_user, parse_amount_from_callback, pay_keyboard
 from handlers.utils import edit_or_send_message
-from database.models import User
 from logger import logger
 
 router = Router()
 
 
 async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
-    """Получает язык пользователя из базы данных"""
-    from sqlalchemy import select
+    """Получает язык пользователя из базы данных."""
     result = await session.execute(
         select(User.language_code).where(User.tg_id == tg_id)
     )
@@ -46,6 +55,8 @@ async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
 
 
 class ReplenishBalanceKassaiState(StatesGroup):
+    """Состояния FSM для пополнения баланса через KassaI."""
+
     choosing_method = State()
     choosing_amount = State()
     waiting_for_payment_confirmation = State()
@@ -71,18 +82,28 @@ KASSAI_PAYMENT_METHODS = [
 ]
 
 
-
 @router.callback_query(F.data == "pay_kassai")
 async def process_callback_pay_kassai(
-    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession, method_name: str = None
+    callback_query: types.CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    method_name: str = None,
 ):
+    """Обработчик callback для инициализации платежа через KassaI."""
     try:
         tg_id = callback_query.from_user.id
         logger.info(f"User {tg_id} initiated KassaAI payment.")
         await state.clear()
 
         if method_name:
-            method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
+            method = next(
+                (
+                    m
+                    for m in KASSAI_PAYMENT_METHODS
+                    if m["name"] == method_name and m["enable"]
+                ),
+                None,
+            )
             if not method:
                 try:
                     await callback_query.message.delete()
@@ -95,13 +116,15 @@ async def process_callback_pay_kassai(
                 return
 
             language_code = await get_user_language(session, tg_id)
-            opts = await payment_options_for_user(session, tg_id, language_code)
+            opts = await payment_options_for_user(
+                session, tg_id, language_code, force_currency="RUB"
+            )
             builder = build_amounts_keyboard(
                 prefix=f"kassai_{method_name}",
                 pattern="{prefix}_amount|{price}",
                 back_cb="balance",
                 custom_cb=f"kassai_custom_amount|{method_name}",
-                opts=opts
+                opts=opts,
             )
 
             try:
@@ -123,7 +146,12 @@ async def process_callback_pay_kassai(
         builder = InlineKeyboardBuilder()
         for method in KASSAI_PAYMENT_METHODS:
             if method["enable"]:
-                builder.row(InlineKeyboardButton(text=method["button"], callback_data=f"kassai_method|{method['name']}"))
+                builder.row(
+                    InlineKeyboardButton(
+                        text=method["button"],
+                        callback_data=f"kassai_method|{method['name']}",
+                    )
+                )
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
 
         try:
@@ -134,12 +162,20 @@ async def process_callback_pay_kassai(
             text="Выберите способ оплаты через KassaAI:",
             reply_markup=builder.as_markup(),
         )
-        await state.update_data(message_id=new_msg.message_id, chat_id=new_msg.chat.id)
+        await state.update_data(
+            message_id=new_msg.message_id, chat_id=new_msg.chat.id
+        )
         await state.set_state(ReplenishBalanceKassaiState.choosing_method)
 
     except Exception as e:
-        logger.error(f"Error in process_callback_pay_kassai for user {callback_query.message.chat.id}: {e}")
-        await callback_query.answer("Произошла ошибка при инициализации платежа. Попробуйте позже.", show_alert=True)
+        logger.error(
+            f"Error in process_callback_pay_kassai for user "
+            f"{callback_query.message.chat.id}: {e}"
+        )
+        await callback_query.answer(
+            "Произошла ошибка при инициализации платежа. Попробуйте позже.",
+            show_alert=True,
+        )
 
 
 @router.callback_query(F.data.startswith("kassai_method|"))
@@ -160,7 +196,9 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     tg_id = callback_query.from_user.id
 
     language_code = await get_user_language(session, tg_id)
-    opts = await payment_options_for_user(session, tg_id, language_code)
+    opts = await payment_options_for_user(
+        session, tg_id, language_code, force_currency="RUB"
+    )
     builder = build_amounts_keyboard(
         prefix=f"kassai_{method_name}",
         pattern="{prefix}_amount|{price}",
@@ -187,7 +225,6 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"pay_kassai_{method_name}"))
 
-    from handlers.payments.currency_rates import pick_currency
     language_code = await get_user_language(session, callback_query.from_user.id)
     currency = pick_currency(language_code)
     
@@ -216,7 +253,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         )
         return
 
-    from handlers.payments.currency_rates import pick_currency
     language_code = await get_user_language(session, message.from_user.id)
     currency = pick_currency(language_code)
 
@@ -256,7 +292,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         )
         return
 
-    from handlers.payments.currency_rates import to_rub, format_for_user
     if currency == "RUB":
         amount_rub = user_amount
     else: 
@@ -278,7 +313,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
     confirm_keyboard = pay_keyboard(payment_url, pay_text=PAY_2, back_cb="balance")
 
     tg_id = message.from_user.id
-    amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code)
+    amount_text = await format_for_user(session, tg_id, float(amount_rub), language_code, force_currency="RUB")
 
     await edit_or_send_message(
         target_message=message,
@@ -347,7 +382,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
 
     tg_id = callback_query.from_user.id
     language_code = await get_user_language(session, tg_id)
-    amount_text = await format_for_user(session, tg_id, float(amount), language_code)
+    amount_text = await format_for_user(session, tg_id, float(amount), language_code, force_currency="RUB")
 
     await edit_or_send_message(
         target_message=callback_query.message,
