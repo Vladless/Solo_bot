@@ -37,7 +37,7 @@ from database import (
     update_balance,
     update_trial,
 )
-from database.models import Key, Server, Tariff
+from database.models import Key, Server, ServerSpecialgroup, Tariff
 from handlers.buttons import (
     BACK,
     CONNECT_DEVICE,
@@ -51,13 +51,19 @@ from handlers.keys.operations import create_client_on_server
 from handlers.keys.operations.aggregated_links import make_aggregated_link
 from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
 from handlers.utils import (
+    ALLOWED_GROUP_CODES,
     edit_or_send_message,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import (
+    process_cluster_override,
+    process_intercept_key_creation_message,
+    process_key_creation_complete,
+    process_remnawave_webapp_override,
+)
 from logger import logger
 from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
@@ -92,11 +98,11 @@ async def key_country_mode(
 
     data = await state.get_data() if state else {}
 
-    forced_cluster_results = await run_hooks(
-        "cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan
+    forced_cluster = await process_cluster_override(
+        tg_id=tg_id, state_data=data, session=session, plan=plan
     )
-    if forced_cluster_results and forced_cluster_results[0]:
-        least_loaded_cluster = forced_cluster_results[0]
+    if forced_cluster:
+        least_loaded_cluster = forced_cluster
     else:
         try:
             least_loaded_cluster = await get_least_loaded_cluster(session)
@@ -109,6 +115,7 @@ async def key_country_mode(
             return
 
     subgroup_title = None
+    tariff = None
     if plan:
         tariff = await get_tariff_by_id(session, plan)
         if tariff:
@@ -132,10 +139,42 @@ async def key_country_mode(
             await bot.send_message(chat_id=tg_id, text=text)
         return
 
+    server_ids = [s["id"] for s in servers]
+    groups_map = {}
+    if server_ids:
+        r = await session.execute(
+            select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                ServerSpecialgroup.server_id.in_(server_ids)
+            )
+        )
+        for sid, gc in r.all():
+            groups_map.setdefault(sid, []).append(gc)
+
+    for server in servers:
+        server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
+
     if subgroup_title:
         servers = await filter_cluster_by_subgroup(session, servers, subgroup_title, least_loaded_cluster)
         if not servers:
             text = "❌ Нет доступных серверов в выбранном кластере."
+            if safe_to_edit:
+                await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
+            else:
+                await bot.send_message(chat_id=tg_id, text=text)
+            return
+
+    special = None
+    if tariff:
+        gc = (tariff.get("group_code") or "").lower()
+        if gc in ALLOWED_GROUP_CODES:
+            special = gc
+    
+    if special:
+        bound_servers = [s for s in servers if special in (s.get("special_groups") or [])]
+        if bound_servers:
+            servers = bound_servers
+        else:
+            text = f"❌ Нет доступных серверов для тарифа с группой '{special}'."
             if safe_to_edit:
                 await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
             else:
@@ -213,10 +252,13 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         cluster_name = cluster_info["cluster_name"]
 
         key_tariff_id = record.get("tariff_id")
+        tariff_obj = None
         subgroup_title = None
         if key_tariff_id:
-            res = await session.execute(select(Tariff.subgroup_title).where(Tariff.id == key_tariff_id))
-            subgroup_title = res.scalar_one_or_none()
+            res = await session.execute(select(Tariff).where(Tariff.id == key_tariff_id))
+            tariff_obj = res.scalar_one_or_none()
+            if tariff_obj:
+                subgroup_title = tariff_obj.subgroup_title
 
         q = (
             select(
@@ -235,11 +277,19 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             await callback_query.answer("❌ Доступных серверов в кластере не найдено", show_alert=True)
             return
 
-        if subgroup_title:
-            servers = await filter_cluster_by_subgroup(session, servers, subgroup_title.strip(), cluster_name)
-            if not servers:
-                await callback_query.answer("❌ Доступных серверов в этой подгруппе нет", show_alert=True)
-                return
+        server_ids = [s["id"] for s in servers]
+        groups_map = {}
+        if server_ids:
+            r = await session.execute(
+                select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                    ServerSpecialgroup.server_id.in_(server_ids)
+                )
+            )
+            for sid, gc in r.all():
+                groups_map.setdefault(sid, []).append(gc)
+
+        for server in servers:
+            server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
 
         available_servers = []
         tasks = [
@@ -262,8 +312,50 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             if result_ok is True:
                 available_servers.append(server["server_name"])
 
+        if subgroup_title and available_servers:
+            available_servers_dict = [s for s in servers if s["server_name"] in available_servers]
+            filtered_servers = await filter_cluster_by_subgroup(session, available_servers_dict, subgroup_title.strip(), cluster_name)
+            if filtered_servers:
+                available_servers = [s["server_name"] for s in filtered_servers]
+            else:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text="❌ Нет доступных стран для смены локации.",
+                    reply_markup=builder.as_markup(),
+                )
+                return
+
+        if available_servers and tariff_obj:
+            special = None
+            gc = (tariff_obj.group_code or "").lower() if hasattr(tariff_obj, 'group_code') else None
+            if gc and gc in ALLOWED_GROUP_CODES:
+                special = gc
+            
+            if special:
+                available_servers_dict = [s for s in servers if s["server_name"] in available_servers]
+                bound_servers = [s for s in available_servers_dict if special in (s.get("special_groups") or [])]
+                if bound_servers:
+                    available_servers = [s["server_name"] for s in bound_servers]
+                else:
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+                    await edit_or_send_message(
+                        target_message=callback_query.message,
+                        text="❌ Нет доступных стран для смены локации.",
+                        reply_markup=builder.as_markup(),
+                    )
+                    return
+
         if not available_servers:
-            await callback_query.answer("❌ Нет доступных серверов для смены локации", show_alert=True)
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Нет доступных стран для смены локации.",
+                reply_markup=builder.as_markup(),
+            )
             return
 
         builder = InlineKeyboardBuilder()
@@ -598,21 +690,11 @@ async def finalize_key_creation(
 
     use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
     if use_webapp and webapp_url:
-        try:
-            webapp_override_results = await run_hooks(
-                "remnawave_webapp_override",
-                remnawave_webapp=use_webapp,
-                final_link=final_link,
-                session=session,
-            )
-            if webapp_override_results:
-                for hook_result in webapp_override_results:
-                    if hook_result is True or hook_result is False:
-                        use_webapp = hook_result
-                    elif isinstance(hook_result, dict) and "override" in hook_result:
-                        use_webapp = hook_result["override"]
-        except Exception as e:
-            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
+        use_webapp = await process_remnawave_webapp_override(
+            remnawave_webapp=use_webapp,
+            final_link=final_link,
+            session=session,
+        )
 
     if panel_type == "remnawave" or is_full_remnawave:
         if is_vless:
@@ -630,23 +712,16 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    try:
-        intercept_results = await run_hooks(
-            "intercept_key_creation_message", chat_id=tg_id, session=session, target_message=callback_query
-        )
-        if intercept_results and intercept_results[0]:
-            return
-    except Exception as e:
-        logger.warning(f"[INTERCEPT_KEY_CREATION] Ошибка при применении хуков: {e}")
+    if await process_intercept_key_creation_message(
+        chat_id=tg_id, session=session, target_message=callback_query
+    ):
+        return
 
-    try:
-        hook_commands = await run_hooks(
-            "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
-        )
-        if hook_commands:
-            builder = insert_hook_buttons(builder, hook_commands)
-    except Exception as e:
-        logger.warning(f"[KEY_CREATION_COMPLETE] Ошибка при применении хуков: {e}")
+    hook_commands = await process_key_creation_complete(
+        chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
+    )
+    if hook_commands:
+        builder = insert_hook_buttons(builder, hook_commands)
 
     t = tariff.name if tariff else "—"
     subgroup_title = tariff.subgroup_title if tariff and tariff.subgroup_title else ""

@@ -40,7 +40,12 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import (
+    process_cluster_override,
+    process_intercept_key_creation_message,
+    process_key_creation_complete,
+    process_remnawave_webapp_override,
+)
 from logger import logger
 
 
@@ -91,12 +96,12 @@ async def key_cluster_mode(
                 if tariff.get("traffic_limit") is not None:
                     traffic_limit_gb = int(tariff["traffic_limit"])
 
-        forced_cluster_results = await run_hooks(
-            "cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan
+        forced_cluster = await process_cluster_override(
+            tg_id=tg_id, state_data=data, session=session, plan=plan
         )
 
-        if forced_cluster_results and forced_cluster_results[0]:
-            least_loaded_cluster = forced_cluster_results[0]
+        if forced_cluster:
+            least_loaded_cluster = forced_cluster
         else:
             try:
                 least_loaded_cluster = await get_least_loaded_cluster(session)
@@ -179,21 +184,11 @@ async def key_cluster_mode(
         if await is_full_remnawave_cluster(least_loaded_cluster, session):
             use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
             if use_webapp and final_link:
-                try:
-                    webapp_override_results = await run_hooks(
-                        "remnawave_webapp_override",
-                        remnawave_webapp=use_webapp,
-                        final_link=final_link,
-                        session=session,
-                    )
-                    if webapp_override_results:
-                        for hook_result in webapp_override_results:
-                            if hook_result is True or hook_result is False:
-                                use_webapp = hook_result
-                            elif isinstance(hook_result, dict) and "override" in hook_result:
-                                use_webapp = hook_result["override"]
-                except Exception as e:
-                    logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {e}")
+                use_webapp = await process_remnawave_webapp_override(
+                    remnawave_webapp=use_webapp,
+                    final_link=final_link,
+                    session=session,
+                )
 
             if (
                 use_webapp
@@ -212,23 +207,16 @@ async def key_cluster_mode(
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    try:
-        intercept_results = await run_hooks(
-            "intercept_key_creation_message", chat_id=tg_id, session=session, target_message=message_or_query
-        )
-        if intercept_results and intercept_results[0]:
-            return
-    except Exception as e:
-        logger.warning(f"[INTERCEPT_KEY_CREATION] Ошибка при применении хуков: {e}")
+    if await process_intercept_key_creation_message(
+        chat_id=tg_id, session=session, target_message=message_or_query
+    ):
+        return
 
-    try:
-        hook_commands = await run_hooks(
-            "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
-        )
-        if hook_commands:
-            builder = insert_hook_buttons(builder, hook_commands)
-    except Exception as e:
-        logger.warning(f"[KEY_CREATION_COMPLETE] Ошибка при применении хуков: {e}")
+    hook_commands = await process_key_creation_complete(
+        chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
+    )
+    if hook_commands:
+        builder = insert_hook_buttons(builder, hook_commands)
 
     expiry_time_local = expiry_time.astimezone(moscow_tz)
     expiry_time_local - datetime.now(moscow_tz)

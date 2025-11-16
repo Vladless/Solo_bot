@@ -240,6 +240,7 @@ async def handle_key_extension(
             reset_traffic=False,
             target_subgroup=key_subgroup,
             old_subgroup=key_subgroup,
+            plan=key.tariff_id,
         )
         await update_key_expiry(session, client_id, new_expiry)
         await update_coupon_usage_count(session, coupon.id)

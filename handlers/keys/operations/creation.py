@@ -10,7 +10,7 @@ from database import get_servers, get_tariff_by_id, store_key
 from database.models import User
 from core.bootstrap import MODES_CONFIG
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
-from hooks.hooks import run_hooks
+from hooks.processors import process_extract_cryptolink_from_result
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -155,6 +155,18 @@ async def create_key_on_cluster(
                                 remnawave_key = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
                                 logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
+                        else:
+                            crypto_link = await process_extract_cryptolink_from_result(
+                                result=result,
+                                cluster_id=server_id_to_store,
+                                plan=plan,
+                                session=session,
+                                email=email,
+                                tg_id=tg_id,
+                                need_vless_key=need_vless_key,
+                            )
+                            if crypto_link:
+                                remnawave_key = crypto_link
                         
                         logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
                 else:

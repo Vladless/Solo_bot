@@ -171,6 +171,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 reset_traffic=False,
                 target_subgroup=key_subgroup,
                 old_subgroup=key_subgroup,
+                plan=key.tariff_id,
             )
             await update_key_expiry(session, key.client_id, new_expiry)
 

@@ -63,7 +63,11 @@ from handlers.utils import (
     is_full_remnawave_cluster,
 )
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import (
+    process_after_hwid_reset,
+    process_remnawave_webapp_override,
+    process_view_key_menu,
+)
 from logger import logger
 from panels.remnawave import RemnawaveAPI
 
@@ -325,21 +329,11 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
 
     use_webapp = remnawave_webapp_enabled
     if is_full_remnawave and final_link and remnawave_webapp_enabled and not happ_cryptolink_enabled:
-        try:
-            webapp_override_results = await run_hooks(
-                "remnawave_webapp_override",
-                remnawave_webapp=remnawave_webapp_enabled,
-                final_link=final_link,
-                session=session,
-            )
-            if webapp_override_results:
-                for hook_result in webapp_override_results:
-                    if hook_result is True or hook_result is False:
-                        use_webapp = hook_result
-                    elif isinstance(hook_result, dict) and "override" in hook_result:
-                        use_webapp = hook_result["override"]
-        except Exception as error:
-            logger.warning(f"[REMNAWAVE_WEBAPP_OVERRIDE] Ошибка при применении хуков: {error}")
+        use_webapp = await process_remnawave_webapp_override(
+            remnawave_webapp=remnawave_webapp_enabled,
+            final_link=final_link,
+            session=session,
+        )
 
     if is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled:
         if vless_enabled:
@@ -376,7 +370,7 @@ async def render_key_info(message: Message, session: Any, key_name: str, image_p
         builder.row(InlineKeyboardButton(text=FREEZE, callback_data=f"freeze_subscription|{key_name}"))
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-    module_buttons = await run_hooks("view_key_menu", key_name=key_name, session=session)
+    module_buttons = await process_view_key_menu(key_name=key_name, session=session)
     builder = insert_hook_buttons(builder, module_buttons)
 
     await edit_or_send_message(
@@ -425,10 +419,9 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: Any):
                 deleted += 1
         await callback_query.answer(f"✅ Устройства сброшены ({deleted})", show_alert=True)
 
-    hook_result = await run_hooks(
-        "after_hwid_reset", chat_id=callback_query.from_user.id, admin=False, session=session, key_name=key_name
-    )
-    if hook_result and any("redirect_to_profile" in str(result) for result in hook_result):
+    if await process_after_hwid_reset(
+        chat_id=callback_query.from_user.id, admin=False, session=session, key_name=key_name
+    ):
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         if callback_query.message.text:

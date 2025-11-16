@@ -1105,6 +1105,7 @@ async def handle_admin_unfreeze_subscription(
             session=session,
             hwid_device_limit=hwid_limit,
             reset_traffic=False,
+            plan=record.get("tariff_id"),
         )
 
         await callback_query.answer("✅ Подписка разморожена")
@@ -1170,6 +1171,7 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
         reset_traffic=False,
         target_subgroup=key_subgroup,
         old_subgroup=key_subgroup,
+        plan=tariff_id,
     )
 
     await update_key_expiry(session, client_id, expiry_time)

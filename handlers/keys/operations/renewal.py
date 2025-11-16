@@ -24,6 +24,7 @@ from panels.remnawave import RemnawaveAPI
 
 from .aggregated_links import make_aggregated_link
 from .subgroup_migration import migrate_between_subgroups
+from hooks.processors import process_get_cryptolink_after_renewal
 
 
 async def resolve_cluster(session: AsyncSession, cluster_id: str):
@@ -289,6 +290,22 @@ async def renew_key_in_cluster(
                 await delete_notification(session, tg_id, f"{email}_{prefix}")
 
             try:
+                remna_link_override = None
+                if remna_ok and cluster_scope:
+                    remnawave_nodes = [
+                        s for s in cluster_scope
+                        if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
+                    ]
+                    if remnawave_nodes:
+                        remna_link_override = await process_get_cryptolink_after_renewal(
+                            email=email,
+                            cluster_id=cluster_id,
+                            plan=plan,
+                            session=session,
+                            tg_id=tg_id,
+                            remnawave_nodes=remnawave_nodes,
+                        )
+
                 key_link = await make_aggregated_link(
                     session=session,
                     cluster_all=cluster_scope,
@@ -297,7 +314,7 @@ async def renew_key_in_cluster(
                     client_id=client_id,
                     tg_id=tg_id,
                     subgroup_code=target_subgroup,
-                    remna_link_override=None,
+                    remna_link_override=remna_link_override,
                     plan=plan,
                 )
                 if key_link:

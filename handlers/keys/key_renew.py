@@ -42,7 +42,13 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_russian_month
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import (
+    process_process_callback_renew_key,
+    process_purchase_tariff_group_override,
+    process_renew_tariffs,
+    process_renewal_complete,
+    process_renewal_forbidden_groups,
+)
 from logger import logger
 
 
@@ -75,14 +81,11 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
-            try:
-                hook_commands = await run_hooks(
-                    "process_callback_renew_key", callback_query=callback_query, state=state, session=session
-                )
-                if hook_commands:
-                    kb = insert_hook_buttons(kb, hook_commands)
-            except Exception as e:
-                logger.warning(f"[RENEW] Ошибка при применении хуков: {e}")
+            hook_commands = await process_process_callback_renew_key(
+                callback_query=callback_query, state=state, session=session
+            )
+            if hook_commands:
+                kb = insert_hook_buttons(kb, hook_commands)
 
             await edit_or_send_message(
                 target_message=callback_query.message,
@@ -122,16 +125,10 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
                 current_tariff = await get_tariff_by_id(session, tariff_id)
 
                 forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
-
-                try:
-                    hook_results = await run_hooks(
-                        "renewal_forbidden_groups", chat_id=tg_id, admin=False, session=session
-                    )
-                    for hook_result in hook_results:
-                        additional_groups = hook_result.get("additional_groups", [])
-                        forbidden_groups.extend(additional_groups)
-                except Exception as e:
-                    logger.warning(f"[RENEW] Ошибка при получении дополнительных групп: {e}")
+                additional_groups = await process_renewal_forbidden_groups(
+                    chat_id=tg_id, admin=False, session=session
+                )
+                forbidden_groups.extend(additional_groups)
 
                 if current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
@@ -141,17 +138,12 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         if discount_info.get("available"):
             group_code = discount_info["tariff_group"]
 
-        try:
-            hook_results = await run_hooks(
-                "purchase_tariff_group_override", chat_id=tg_id, admin=False, session=session, original_group=group_code
-            )
-            for hook_result in hook_results:
-                if hook_result.get("override_group"):
-                    group_code = hook_result["override_group"]
-                    logger.info(f"[RENEW] Тарифная группа переопределена хуком для продления: {group_code}")
-                    break
-        except Exception as e:
-            logger.warning(f"[RENEW] Ошибка при применении хуков переопределения группы: {e}")
+        override_result = await process_purchase_tariff_group_override(
+            chat_id=tg_id, admin=False, session=session, original_group=group_code
+        )
+        if override_result:
+            group_code = override_result["override_group"]
+            logger.info(f"[RENEW] Тарифная группа переопределена хуком для продления: {group_code}")
 
         tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
         tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
@@ -195,18 +187,14 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
-        try:
-            hook_builder = InlineKeyboardBuilder()
-            hook_builder.attach(builder)
+        hook_builder = InlineKeyboardBuilder()
+        hook_builder.attach(builder)
 
-            hook_commands = await run_hooks("renew_tariffs", chat_id=tg_id, admin=False, session=session)
-            if hook_commands:
-                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+        hook_commands = await process_renew_tariffs(chat_id=tg_id, admin=False, session=session)
+        if hook_commands:
+            hook_builder = insert_hook_buttons(hook_builder, hook_commands)
 
-            final_markup = hook_builder.as_markup()
-        except Exception as e:
-            logger.warning(f"[RENEW] Ошибка при применении хуков: {e}")
-            final_markup = builder.as_markup()
+        final_markup = hook_builder.as_markup()
 
         balance_rub = await get_balance(session, tg_id) or 0
         balance = await format_for_user(session, tg_id, balance_rub, language_code)
@@ -288,16 +276,10 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
                 current_tariff = await get_tariff_by_id(session, tariff_id)
 
                 forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
-
-                try:
-                    hook_results = await run_hooks(
-                        "renewal_forbidden_groups", chat_id=callback.from_user.id, admin=False, session=session
-                    )
-                    for hook_result in hook_results:
-                        additional_groups = hook_result.get("additional_groups", [])
-                        forbidden_groups.extend(additional_groups)
-                except Exception as e:
-                    logger.warning(f"[RENEW_SUBGROUP] Ошибка при получении дополнительных групп: {e}")
+                additional_groups = await process_renewal_forbidden_groups(
+                    chat_id=callback.from_user.id, admin=False, session=session
+                )
+                forbidden_groups.extend(additional_groups)
 
                 if current_tariff and current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
@@ -309,17 +291,12 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         if discount_info.get("available"):
             group_code = discount_info["tariff_group"]
 
-        try:
-            hook_results = await run_hooks(
-                "purchase_tariff_group_override", chat_id=tg_id, admin=False, session=session, original_group=group_code
-            )
-            for hook_result in hook_results:
-                if hook_result.get("override_group"):
-                    group_code = hook_result["override_group"]
-                    logger.info(f"[RENEW_SUBGROUP] Тарифная группа переопределена хуком: {group_code}")
-                    break
-        except Exception as e:
-            logger.warning(f"[RENEW_SUBGROUP] Ошибка при применении хуков переопределения группы: {e}")
+        override_result = await process_purchase_tariff_group_override(
+            chat_id=tg_id, admin=False, session=session, original_group=group_code
+        )
+        if override_result:
+            group_code = override_result["override_group"]
+            logger.info(f"[RENEW_SUBGROUP] Тарифная группа переопределена хуком: {group_code}")
 
         subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
         if not subgroup:
@@ -350,20 +327,16 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"renew_key|{key_name}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-        try:
-            hook_builder = InlineKeyboardBuilder()
-            hook_builder.attach(builder)
+        hook_builder = InlineKeyboardBuilder()
+        hook_builder.attach(builder)
 
-            hook_commands = await run_hooks(
-                "renew_tariffs", chat_id=callback.from_user.id, admin=False, session=session
-            )
-            if hook_commands:
-                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+        hook_commands = await process_renew_tariffs(
+            chat_id=callback.from_user.id, admin=False, session=session
+        )
+        if hook_commands:
+            hook_builder = insert_hook_buttons(hook_builder, hook_commands)
 
-            final_markup = hook_builder.as_markup()
-        except Exception as e:
-            logger.warning(f"[RENEW_SUBGROUP] Ошибка при применении хуков: {e}")
-            final_markup = builder.as_markup()
+        final_markup = hook_builder.as_markup()
 
         discount_message = ""
         if discount_info.get("available"):
@@ -599,14 +572,11 @@ async def complete_key_renewal(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=f"view_key|{email}"))
-        try:
-            hook_commands = await run_hooks(
-                "renewal_complete", chat_id=tg_id, admin=False, session=session, email=email, client_id=client_id
-            )
-            if hook_commands:
-                builder = insert_hook_buttons(builder, hook_commands)
-        except Exception as e:
-            logger.warning(f"[RENEWAL_COMPLETE] Ошибка при применении хуков: {e}")
+        hook_commands = await process_renewal_complete(
+            chat_id=tg_id, admin=False, session=session, email=email, client_id=client_id
+        )
+        if hook_commands:
+            builder = insert_hook_buttons(builder, hook_commands)
 
         try:
             if callback_query:

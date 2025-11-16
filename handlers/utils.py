@@ -23,7 +23,7 @@ from bot import bot
 from config import ADMIN_ID
 from database import get_servers
 from database.models import Key, Notification, Server
-from hooks.hooks import run_hooks
+from hooks.processors import process_cluster_balancer
 from logger import logger
 
 
@@ -82,9 +82,9 @@ async def get_least_loaded_cluster(session: AsyncSession) -> str:
         else:
             continue
 
-    cluster_filter_results = await run_hooks("cluster_balancer", available_clusters=available_clusters, session=session)
-    if cluster_filter_results and cluster_filter_results[0]:
-        available_clusters = cluster_filter_results[0]
+    filtered_clusters = await process_cluster_balancer(available_clusters=available_clusters, session=session)
+    if filtered_clusters:
+        available_clusters = filtered_clusters
 
     if not available_clusters:
         logger.warning("❌ Нет доступных кластеров с лимитом ключей!")

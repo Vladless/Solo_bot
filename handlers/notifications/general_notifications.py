@@ -623,6 +623,7 @@ async def process_auto_renew_or_notify(
             session=conn,
             target_subgroup=key_subgroup,
             old_subgroup=key_subgroup,
+            plan=selected_tariff["id"],
         )
         await update_balance(conn, tg_id, -renewal_cost)
         await update_key_expiry(conn, client_id, int(new_expiry_time))
