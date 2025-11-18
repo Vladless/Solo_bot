@@ -38,7 +38,10 @@ from handlers.keys.operations import (
     update_subscription,
 )
 from handlers.utils import generate_random_email, handle_error
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.processors import process_admin_key_edit_menu
 from logger import logger
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -119,9 +122,18 @@ async def handle_key_edit(
     )
 
     if not update or not getattr(callback_data, "edit", False):
+        kb_markup = build_key_edit_kb(key_obj.__dict__, email)
+        kb_builder = InlineKeyboardBuilder.from_markup(kb_markup)
+        hook_buttons = await process_admin_key_edit_menu(
+            email=email,
+            session=session,
+            client_id=key_obj.client_id,
+            tg_id=key_obj.tg_id,
+        )
+        kb_builder = insert_hook_buttons(kb_builder, hook_buttons)
         await callback_query.message.edit_text(
             text=text,
-            reply_markup=build_key_edit_kb(key_obj.__dict__, email),
+            reply_markup=kb_builder.as_markup(),
         )
     else:
         await callback_query.message.edit_text(

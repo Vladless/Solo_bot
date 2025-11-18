@@ -453,6 +453,29 @@ async def process_view_key_menu(
         return []
 
 
+async def process_admin_key_edit_menu(
+    email: str,
+    session: Any,
+    **kwargs,
+) -> list:
+    """
+    Обрабатывает хук admin_key_edit_menu.
+    
+    Возвращает список кнопок для добавления в меню редактирования ключа в админке.
+    """
+    try:
+        results = await run_hooks(
+            "admin_key_edit_menu",
+            email=email,
+            session=session,
+            **kwargs,
+        )
+        return results if results else []
+    except Exception as e:
+        logger.warning(f"[ADMIN_KEY_EDIT_MENU] Ошибка при обработке хука: {e}")
+        return []
+
+
 async def process_after_hwid_reset(
     chat_id: int,
     session: Any,
