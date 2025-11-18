@@ -81,7 +81,8 @@ async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, m
             earliest_payments AS (
                 SELECT DISTINCT ON (tg_id) tg_id, amount, created_at
                 FROM payments
-                WHERE status = 'success'
+                WHERE status = 'success' 
+                  AND payment_system NOT IN ('coupon', 'admin', 'referral')
                 ORDER BY tg_id, created_at
             )
         """
@@ -148,7 +149,9 @@ async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, m
                 ), 0) AS total_bonus
             FROM referral_levels rl
             JOIN payments p ON rl.referred_tg_id = p.tg_id
-            WHERE p.status = 'success' AND rl.level <= :max_levels
+            WHERE p.status = 'success' 
+              AND p.payment_system NOT IN ('coupon', 'admin', 'referral')
+              AND rl.level <= :max_levels
         """
         )
 
