@@ -1,3 +1,3 @@
-__all__ = ("router",)
-
 from .sender_handler import router
+
+__all__ = ["router"]
