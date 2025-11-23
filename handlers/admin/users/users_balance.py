@@ -32,6 +32,17 @@ def format_admin_operation(amount: float, created_at: datetime) -> str:
     )
 
 
+def format_user_payment(amount: float, created_at: datetime, payment_system: str, status: str) -> str:
+    date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
+    abs_amount = abs(amount)
+    system_name = payment_system or "Неизвестно"
+    return (
+        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}"
+        f"\n📌 Статус: {status}"
+        f"\n⏳ Дата: {date_str}</blockquote>"
+    )
+
+
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_balance_edit"),
     IsAdminFilter(),
@@ -46,25 +57,44 @@ async def handle_balance_change(
     balance = await get_balance(session, tg_id)
     balance = int(balance or 0)
 
-    stmt = (
+    stmt_admin = (
         select(Payment.amount, Payment.created_at)
         .where(Payment.tg_id == tg_id, Payment.payment_system == "admin")
         .order_by(Payment.created_at.desc())
         .limit(5)
     )
-    result = await session.execute(stmt)
-    records = result.all()
+    result_admin = await session.execute(stmt_admin)
+    admin_records = result_admin.all()
+
+    stmt_user = (
+        select(Payment.amount, Payment.created_at, Payment.payment_system, Payment.status)
+        .where(
+            Payment.tg_id == tg_id,
+            Payment.payment_system != "admin"
+        )
+        .order_by(Payment.created_at.desc())
+        .limit(5)
+    )
+    result_user = await session.execute(stmt_user)
+    user_records = result_user.all()
 
     text = (
         f"<b>💵 Изменение баланса</b>"
         f"\n\n🆔 ID: <b>{tg_id}</b>"
         f"\n💰 Баланс: <b>{balance}Р</b>"
-        f"\n📊 Операции админа (5):"
     )
 
-    if records:
-        for amount, created_at in records:
+    text += "\n\n<b>📊 Операции админа (5):</b>"
+    if admin_records:
+        for amount, created_at in admin_records:
             text += format_admin_operation(amount, created_at)
+    else:
+        text += "\n<i>🚫 Операции отсутствуют</i>"
+
+    text += "\n\n<b>📊 Последние операции (5):</b>"
+    if user_records:
+        for amount, created_at, payment_system, status in user_records:
+            text += format_user_payment(amount, created_at, payment_system, status)
     else:
         text += "\n<i>🚫 Операции отсутствуют</i>"
 

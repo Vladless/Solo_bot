@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import ManualBan
 from filters.admin import IsAdminFilter
 
-from .keyboard import AdminUserEditorCallback, build_editor_btn, build_editor_kb
+from .keyboard import AdminUserEditorCallback, build_editor_btn, build_editor_kb, build_user_ban_type_kb
 from .users_states import BanUserStates
 
 
@@ -28,7 +28,7 @@ async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEdito
 
     await callback.message.edit_text(
         text="🚫 Выберите тип блокировки пользователя:",
-        reply_markup=build_editor_btn("🚫 Блокировки", tg_id=callback_data.tg_id, edit=True),
+        reply_markup=build_user_ban_type_kb(callback_data.tg_id),
     )
 
 
