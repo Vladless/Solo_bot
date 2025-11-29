@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, get_servers, get_tariff_by_id, store_key
 from database.models import Key, Tariff
+from handlers.tariffs.tariff_display import GB, get_effective_limits_for_key
 from handlers.utils import get_least_loaded_cluster
 from logger import (
     CLOGGER as logger,
@@ -61,7 +62,6 @@ async def update_key_on_cluster(
         xui_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "3x-ui"]
 
         remnawave_client_id = None
-        remnawave_key = None
         remnawave_link_value = None
 
         if remnawave_servers:
@@ -106,8 +106,7 @@ async def update_key_on_cluster(
                 if result:
                     remnawave_client_id = result.get("uuid")
                     remnawave_link_value = result.get("subscriptionUrl")
-                    remnawave_key = None
-                    
+
                     logger.info(f"{PANEL_REMNA} Клиент заново создан, uuid={remnawave_client_id}")
                 else:
                     logger.error(f"{PANEL_REMNA} Ошибка создания клиента")
@@ -181,7 +180,7 @@ async def update_subscription(
     remnawave_link: str = None,
 ) -> None:
     result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.email == email))
-    record = result.scalar_one_or_none()
+    record: Key | None = result.scalar_one_or_none()
     if not record:
         raise ValueError(f"The key {email} does not exist in database")
 
@@ -192,6 +191,10 @@ async def update_subscription(
     alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
     public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+
+    selected_device_limit = getattr(record, "selected_device_limit", None)
+    selected_traffic_limit = getattr(record, "selected_traffic_limit", None)
+    selected_price_rub = getattr(record, "selected_price_rub", None)
 
     tariff = None
     subgroup_code = getattr(record, "subgroup_code", None)
@@ -243,10 +246,20 @@ async def update_subscription(
             return
         cluster_servers = prefiltered
 
-    traffic_limit = None
-    device_limit = None
-    if tariff:
-        traffic_limit = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
+    traffic_limit_gb = None
+    device_limit = 0
+
+    if tariff and tariff_id:
+        device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
+            session=session,
+            tariff_id=int(tariff_id),
+            selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
+            selected_traffic_gb=int(selected_traffic_limit) if selected_traffic_limit is not None else None,
+        )
+        device_limit = int(device_limit_effective or 0)
+        traffic_limit_gb = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else None
+    elif tariff:
+        traffic_limit_gb = int(tariff.traffic_limit) if tariff.traffic_limit is not None else None
         device_limit = int(tariff.device_limit) if tariff.device_limit is not None else 0
 
     new_client_id, remnawave_link_value = await update_key_on_cluster(
@@ -256,7 +269,7 @@ async def update_subscription(
         expiry_time=expiry_time,
         cluster_id=new_cluster_id,
         session=session,
-        traffic_limit=traffic_limit,
+        traffic_limit=traffic_limit_gb,
         device_limit=device_limit,
         remnawave_link=remnawave_link,
         subgroup_code=subgroup_code,
@@ -287,4 +300,7 @@ async def update_subscription(
         server_id=new_cluster_id,
         tariff_id=tariff_id,
         alias=alias,
+        selected_device_limit=selected_device_limit,
+        selected_traffic_limit=selected_traffic_limit,
+        selected_price_rub=selected_price_rub,
     )

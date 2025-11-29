@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+
 from ..defaults import DEFAULT_MODES_CONFIG
 
 
@@ -47,7 +48,7 @@ async def update_modes_config(session: AsyncSession, new_values: dict[str, bool]
     else:
         setting.value = new_values
 
-    await session.flush()
+    await session.commit()
 
     modes_config = DEFAULT_MODES_CONFIG.copy()
     modes_config.update(new_values)

@@ -14,6 +14,7 @@ from database import (
     update_key_expiry,
     update_key_link,
 )
+from hooks.processors import process_get_cryptolink_after_renewal
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -24,7 +25,6 @@ from panels.remnawave import RemnawaveAPI
 
 from .aggregated_links import make_aggregated_link
 from .subgroup_migration import migrate_between_subgroups
-from hooks.processors import process_get_cryptolink_after_renewal
 
 
 async def resolve_cluster(session: AsyncSession, cluster_id: str):
@@ -293,7 +293,8 @@ async def renew_key_in_cluster(
                 remna_link_override = None
                 if remna_ok and cluster_scope:
                     remnawave_nodes = [
-                        s for s in cluster_scope
+                        s
+                        for s in cluster_scope
                         if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
                     ]
                     if remnawave_nodes:
@@ -321,7 +322,7 @@ async def renew_key_in_cluster(
                     await update_key_link(session, email, key_link)
             except Exception as le:
                 logger.warning(f"[Link] ошибка генерации/сохранения после продления: {le}")
-            
+
             return True
 
         return False

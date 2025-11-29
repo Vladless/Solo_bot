@@ -59,11 +59,7 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
 
         group_code = row["group_code"]
 
-        await session.execute(
-            update(Server)
-            .where(Server.cluster_name == cluster_name)
-            .values(tariff_group=group_code)
-        )
+        await session.execute(update(Server).where(Server.cluster_name == cluster_name).values(tariff_group=group_code))
         await session.commit()
 
         servers = await get_servers(session=session, include_enabled=True)

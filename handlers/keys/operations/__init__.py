@@ -1,5 +1,3 @@
-# handlers/keys/operations/__init__.py
-
 from .creation import create_client_on_server, create_key_on_cluster
 from .deletion import delete_key_from_cluster
 from .renewal import renew_key_in_cluster

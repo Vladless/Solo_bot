@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+
 from ..defaults import DEFAULT_MONEY_CONFIG
 
 
@@ -49,7 +50,7 @@ async def update_money_config(session: AsyncSession, new_values: dict[str, Any])
     else:
         setting.value = new_values
 
-    await session.flush()
+    await session.commit()
 
     money_config = DEFAULT_MONEY_CONFIG.copy()
     money_config.update(new_values)

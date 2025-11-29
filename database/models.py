@@ -77,6 +77,13 @@ class Key(DictLikeMixin, Base):
     notified = Column(Boolean, default=False)
     notified_24h = Column(Boolean, default=False)
 
+    selected_device_limit = Column(Integer, nullable=True)
+    selected_traffic_limit = Column(BigInteger, nullable=True)
+    selected_price_rub = Column(Integer, nullable=True)
+
+    current_device_limit = Column(Integer, nullable=True)
+    current_traffic_limit = Column(BigInteger, nullable=True)
+
 
 class Tariff(DictLikeMixin, Base):
     __tablename__ = "tariffs"
@@ -94,6 +101,17 @@ class Tariff(DictLikeMixin, Base):
     subgroup_title = Column(String, nullable=True)
     sort_order = Column(Integer, nullable=True)
     vless = Column(Boolean, default=False)
+
+    configurable = Column(Boolean, nullable=False, server_default="false")
+
+    device_options = Column(JSONB, nullable=True)
+    traffic_options_gb = Column(JSONB, nullable=True)
+
+    device_step_rub = Column(Integer, nullable=True)
+    device_overrides = Column(JSONB, nullable=True)
+
+    traffic_step_rub = Column(Integer, nullable=True)
+    traffic_overrides = Column(JSONB, nullable=True)
 
 
 class Server(DictLikeMixin, Base):

@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+
 from ..defaults import DEFAULT_PAYMENTS_CONFIG
 
 
@@ -47,7 +48,7 @@ async def update_payments_config(session: AsyncSession, new_values: dict[str, bo
     else:
         setting.value = new_values
 
-    await session.flush()
+    await session.commit()
 
     payments_config = DEFAULT_PAYMENTS_CONFIG.copy()
     payments_config.update(new_values)

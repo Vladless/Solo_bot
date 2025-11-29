@@ -11,6 +11,7 @@ from handlers.payments.currency_rates import format_for_user
 from handlers.texts import DEFAULT_PAYMENT_MESSAGE
 from handlers.utils import edit_or_send_message
 from logger import logger
+from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 
 from .service import (
     KASSAI_PAYMENT_METHODS,
@@ -72,12 +73,7 @@ async def _handle_custom_amount_input_kassai(
     tg_id = from_user.id
 
     temp_data = await get_temporary_data(session, tg_id)
-    valid_states = [
-        "waiting_for_payment",
-        "waiting_for_renewal_payment",
-        "waiting_for_gift_payment",
-    ]
-    if not temp_data or temp_data["state"] not in valid_states:
+    if not temp_data or temp_data["state"] not in ALLOWED_TEMP_PAYMENT_STATES:
         await edit_or_send_message(
             target_message=message,
             text="❌ Не удалось получить данные для оплаты.",

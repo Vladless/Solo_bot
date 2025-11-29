@@ -587,3 +587,24 @@ async def start_tariff_creation_existing_group(
         f"📦 Добавление нового тарифа в группу <code>{group_code}</code>\n\n📝 Введите <b>название тарифа</b>:",
         reply_markup=build_cancel_kb(),
     )
+
+
+@router.callback_query(F.data.startswith("toggle_configurable|"), IsAdminFilter())
+async def toggle_tariff_configurable(callback: CallbackQuery, session: AsyncSession):
+    tariff_id = int(callback.data.split("|")[1])
+
+    result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
+    tariff = result.scalar_one_or_none()
+
+    if not tariff:
+        await callback.message.edit_text("❌ Тариф не найден.")
+        return
+
+    current = bool(tariff.configurable)
+    tariff.configurable = not current
+    tariff.updated_at = datetime.utcnow()
+
+    await session.commit()
+
+    text, markup = render_tariff_card(tariff)
+    await callback.message.edit_text(text=text, reply_markup=markup)

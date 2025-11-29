@@ -26,17 +26,19 @@ from database import (
     add_notification,
     check_notification_time,
     check_notifications_bulk,
-    check_tariff_exists,
     delete_key,
     delete_notification,
     get_all_keys,
     get_balance,
     get_last_notification_time,
-    get_tariff_by_id,
-    get_tariffs_for_cluster,
     update_balance,
     update_key_expiry,
     update_key_tariff,
+)
+from database.tariffs import (
+    check_tariff_exists,
+    get_tariff_by_id,
+    get_tariffs_for_cluster,
 )
 from handlers.keys.operations import delete_key_from_cluster, renew_key_in_cluster
 from handlers.notifications.notify_kb import (
@@ -44,6 +46,7 @@ from handlers.notifications.notify_kb import (
     build_notification_expired_kb,
     build_notification_kb,
 )
+from handlers.tariffs.tariff_display import GB, get_effective_limits_for_key
 from handlers.texts import (
     KEY_CANNOT_RENEW_CURRENT,
     KEY_DELETED_MSG,
@@ -382,6 +385,27 @@ async def handle_expired_keys(
                 tariff = tariffs[0] if tariffs else None
 
                 if tariff and balance >= tariff["price_rub"]:
+                    selected_device_limit = getattr(key, "selected_device_limit", None)
+                    selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
+                    selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
+
+                    device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
+                        session=session,
+                        tariff_id=int(tariff["id"]),
+                        selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
+                        selected_traffic_gb=selected_traffic_gb,
+                    )
+                    traffic_limit_gb_effective = (
+                        int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
+                    )
+
+                    standard_caption = get_renewal_message(
+                        tariff_name=tariff.get("name", ""),
+                        traffic_limit=traffic_limit_gb_effective,
+                        device_limit=device_limit_effective,
+                        subgroup_title=tariff.get("subgroup_title", ""),
+                    )
+
                     await process_auto_renew_or_notify(
                         bot,
                         session,
@@ -389,12 +413,7 @@ async def handle_expired_keys(
                         notification_id,
                         1,
                         "notify_expired.jpg",
-                        get_renewal_message(
-                            tariff_name=tariff.get("name", ""),
-                            traffic_limit=tariff.get("traffic_limit") if tariff.get("traffic_limit") is not None else 0,
-                            device_limit=tariff.get("device_limit") if tariff.get("device_limit") is not None else 0,
-                            subgroup_title=tariff.get("subgroup_title", ""),
-                        ),
+                        standard_caption,
                     )
 
             except Exception as error:
@@ -485,6 +504,7 @@ async def process_auto_renew_or_notify(
     standard_photo: str,
     standard_caption: str,
 ):
+    """Пытается автопродлить ключ или отправить уведомление."""
     tg_id = key.tg_id
     email = key.email or ""
     renew_notification_id = f"{email}_renew"
@@ -508,33 +528,39 @@ async def process_auto_renew_or_notify(
 
         selected_tariff = None
 
-        if not tariff_id:
-            selected_tariff = None
-        else:
-            if await check_tariff_exists(conn, tariff_id):
-                current_tariff = await get_tariff_by_id(conn, tariff_id)
+        if tariff_id and await check_tariff_exists(conn, tariff_id):
+            current_tariff = await get_tariff_by_id(conn, tariff_id)
 
-                forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+            forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
+            try:
+                hook_results = await run_hooks("renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn)
+                for hook_result in hook_results:
+                    additional_groups = hook_result.get("additional_groups", [])
+                    forbidden_groups.extend(additional_groups)
+            except Exception as error:
+                logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {error}")
 
-                try:
-                    hook_results = await run_hooks("renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn)
-                    for hook_result in hook_results:
-                        additional_groups = hook_result.get("additional_groups", [])
-                        forbidden_groups.extend(additional_groups)
-                except Exception as error:
-                    logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {error}")
-
-                if current_tariff["group_code"] in forbidden_groups:
-                    selected_tariff = None
-                elif balance >= current_tariff["price_rub"]:
+            if current_tariff and current_tariff["group_code"] not in forbidden_groups:
+                stored_price = getattr(key, "selected_price_rub", None)
+                renewal_cost = float(stored_price) if stored_price is not None else float(current_tariff["price_rub"])
+                if balance >= renewal_cost:
                     selected_tariff = current_tariff
+                else:
+                    selected_tariff = None
             else:
                 selected_tariff = None
+        else:
+            selected_tariff = None
 
         if not selected_tariff:
-            expiry_data = await prepare_key_expiry_data(key, conn, int(datetime.now(moscow_tz).timestamp() * 1000))
+            expiry_data = await prepare_key_expiry_data(
+                key,
+                conn,
+                int(datetime.now(moscow_tz).timestamp() * 1000),
+            )
 
             use_change_tariff_kb = False
+            message_text = None
 
             if tariff_id and await check_tariff_exists(conn, tariff_id):
                 current_tariff = await get_tariff_by_id(conn, tariff_id)
@@ -552,7 +578,6 @@ async def process_auto_renew_or_notify(
 
                     if current_tariff["group_code"] in forbidden_groups:
                         use_change_tariff_kb = True
-
                         message_text = KEY_CANNOT_RENEW_CURRENT.format(
                             email=email,
                             hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -562,7 +587,6 @@ async def process_auto_renew_or_notify(
                         )
             else:
                 use_change_tariff_kb = True
-
                 message_text = KEY_CANNOT_RENEW_CURRENT.format(
                     email=email,
                     hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -581,17 +605,29 @@ async def process_auto_renew_or_notify(
                 keyboard = build_notification_kb(email)
 
             await add_notification(conn, tg_id, notification_id)
-            text_to_send = message_text if "message_text" in locals() else standard_caption
+            text_to_send = message_text if message_text is not None else standard_caption
             await send_notification(bot, tg_id, standard_photo, text_to_send, keyboard)
             return
 
         client_id = key.client_id
         current_expiry = key.expiry_time
         duration_days = selected_tariff["duration_days"]
-        renewal_cost = selected_tariff["price_rub"]
-        traffic_limit = selected_tariff["traffic_limit"]
-        device_limit = selected_tariff["device_limit"]
-        total_gb = traffic_limit if traffic_limit else 0
+
+        stored_price = getattr(key, "selected_price_rub", None)
+        renewal_cost = float(stored_price) if stored_price is not None else float(selected_tariff["price_rub"])
+
+        selected_device_limit = getattr(key, "selected_device_limit", None)
+        selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
+        selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
+
+        device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
+            session=conn,
+            tariff_id=int(selected_tariff["id"]),
+            selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
+            selected_traffic_gb=selected_traffic_gb,
+        )
+        traffic_limit_gb_effective = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
+        total_gb = traffic_limit_gb_effective
 
         new_expiry_time = (
             current_expiry
@@ -600,7 +636,6 @@ async def process_auto_renew_or_notify(
         ) + duration_days * 24 * 60 * 60 * 1000
 
         formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
-
         formatted_expiry_date = formatted_expiry_date.replace(
             datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
             get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
@@ -619,7 +654,7 @@ async def process_auto_renew_or_notify(
             client_id=client_id,
             new_expiry_time=int(new_expiry_time),
             total_gb=total_gb,
-            hwid_device_limit=device_limit,
+            hwid_device_limit=device_limit_effective,
             session=conn,
             target_subgroup=key_subgroup,
             old_subgroup=key_subgroup,
@@ -633,10 +668,8 @@ async def process_auto_renew_or_notify(
 
         renewed_message = get_renewal_message(
             tariff_name=selected_tariff["name"],
-            traffic_limit=selected_tariff.get("traffic_limit")
-            if selected_tariff.get("traffic_limit") is not None
-            else 0,
-            device_limit=selected_tariff.get("device_limit") if selected_tariff.get("device_limit") is not None else 0,
+            traffic_limit=traffic_limit_gb_effective,
+            device_limit=device_limit_effective,
             expiry_date=formatted_expiry_date,
             subgroup_title=selected_tariff.get("subgroup_title", ""),
         )

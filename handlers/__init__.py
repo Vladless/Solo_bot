@@ -13,6 +13,7 @@ from .payments import router as payments_router
 from .profile import router as profile_router
 from .refferal import router as refferal_router
 from .start import router as start_router
+from .tariffs import router as tariff_router
 
 
 router = Router(name="handlers_main_router")
@@ -29,4 +30,5 @@ router.include_routers(
     instructions_router,
     admin_router,
     refferal_router,
+    tariff_router,
 )

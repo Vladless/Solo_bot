@@ -5,7 +5,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, Update
 
 from config import ADMIN_ID
-from core.bootstrap import MANAGEGENT_CONFIG
+from core.bootstrap import MANAGEMENT_CONFIG
 from database import async_session_maker
 from database.models import Admin
 
@@ -17,7 +17,7 @@ class MaintenanceModeMiddleware(BaseMiddleware):
         event: Update,
         data: dict[str, Any],
     ) -> Any:
-        maintenance_enabled = bool(MANAGEGENT_CONFIG.get("MAINTENANCE_ENABLED", False))
+        maintenance_enabled = bool(MANAGEMENT_CONFIG.get("MAINTENANCE_ENABLED", False))
         if not maintenance_enabled:
             return await handler(event, data)
 

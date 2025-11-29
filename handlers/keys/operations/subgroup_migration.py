@@ -5,8 +5,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import HAPP_CRYPTOLINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import filter_cluster_by_subgroup, update_key_client_id
 from core.bootstrap import MODES_CONFIG
+from database import filter_cluster_by_subgroup, update_key_client_id
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -32,6 +32,13 @@ async def ensure_on_remnawave(
 ) -> tuple[str | None, str | None]:
     if not servers:
         return None, None
+
+    if total_gb is None:
+        total_gb = 0
+    if hwid_device_limit is None:
+        hwid_device_limit = 0
+    else:
+        hwid_device_limit = int(hwid_device_limit)
 
     inbounds = [s.get("inbound_id") for s in servers if s.get("inbound_id")]
 
@@ -77,8 +84,8 @@ async def ensure_on_remnawave(
             }
             if traffic_bytes > 0:
                 payload["trafficLimitBytes"] = traffic_bytes
-            if hwid_device_limit is not None:
-                payload["hwidDeviceLimit"] = hwid_device_limit
+
+            payload["hwidDeviceLimit"] = hwid_device_limit
 
             created = await api.create_user(payload)
             new_uuid = created.get("uuid") if isinstance(created, dict) else None

@@ -1,6 +1,5 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
-from math import ceil
 from typing import Any
 
 import pytz
@@ -10,20 +9,18 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     DISCOUNT_ACTIVE_HOURS,
     NOTIFY_EXTRA_DAYS,
     TRIAL_TIME_DISABLE,
     USE_COUNTRY_SELECTION,
-    USE_NEW_PAYMENT_FLOW,
 )
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_user,
     check_user_exists,
-    get_balance,
-    get_tariff_by_id,
     get_tariffs_for_cluster,
     get_trial,
 )
@@ -31,32 +28,28 @@ from database.models import Admin
 from database.notifications import check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
-from handlers.buttons import MAIN_MENU, PAYMENT
+from handlers.buttons import MAIN_MENU
 from handlers.payments.currency_rates import format_for_user
-from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     DISCOUNT_OFFER_MESSAGE,
     DISCOUNT_OFFER_STEP2,
     DISCOUNT_OFFER_STEP3,
-    INSUFFICIENT_FUNDS_MSG,
     SELECT_TARIFF_PLAN_MSG,
 )
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import (
-    process_check_discount_validity,
     process_purchase_tariff_group_override,
     process_tariff_menu,
 )
 from logger import logger
 
-from .key_cluster_mode import key_cluster_mode
-from .key_country_mode import key_country_mode
+from .key_mode.key_cluster_mode import key_cluster_mode
+from .key_mode.key_country_mode import key_country_mode
 
 
 router = Router()
-
 moscow_tz = pytz.timezone("Europe/Moscow")
 
 
@@ -67,12 +60,16 @@ class Form(FSMContext):
 @router.callback_query(F.data == "create_key")
 @router.callback_query(F.data == "buy")
 @router.message(F.text == "/buy")
-async def confirm_create_new_key(callback_query_or_message: CallbackQuery | Message, state: FSMContext, session: Any):
+async def confirm_create_new_key(
+    callback_query_or_message: CallbackQuery | Message,
+    state: FSMContext,
+    session: AsyncSession,
+):
     if isinstance(callback_query_or_message, CallbackQuery):
-        tg_id = callback_query_or_message.message.chat.id
-        message_or_query = callback_query_or_message
+        tg_id = callback_query_or_message.from_user.id
+        message_or_query: Message | CallbackQuery = callback_query_or_message
     else:
-        tg_id = callback_query_or_message.chat.id
+        tg_id = callback_query_or_message.from_user.id
         message_or_query = callback_query_or_message
 
     await handle_key_creation(tg_id, state, session, message_or_query)
@@ -81,7 +78,7 @@ async def confirm_create_new_key(callback_query_or_message: CallbackQuery | Mess
 async def handle_key_creation(
     tg_id: int,
     state: FSMContext,
-    session: Any,
+    session: AsyncSession,
     message_or_query: Message | CallbackQuery,
 ):
     state_data = await state.get_data()
@@ -90,6 +87,9 @@ async def handle_key_creation(
         return
 
     await state.update_data(key_creation_in_progress=True)
+
+    target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
+    language_code = message_or_query.from_user.language_code
 
     try:
         current_time = datetime.now(moscow_tz)
@@ -100,16 +100,12 @@ async def handle_key_creation(
             if trial_status in [0, -1]:
                 trial_tariffs = await get_tariffs(session, group_code="trial")
                 if not trial_tariffs:
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
                     await edit_or_send_message(
-                        target_message=(
-                            message_or_query.message
-                            if isinstance(message_or_query, CallbackQuery)
-                            else message_or_query
-                        ),
+                        target_message=target_message,
                         text="❌ Пробная подписка временно недоступна.",
-                        reply_markup=InlineKeyboardBuilder()
-                        .row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-                        .as_markup(),
+                        reply_markup=builder.as_markup(),
                     )
                     return
 
@@ -123,42 +119,40 @@ async def handle_key_creation(
                 logger.info(f"[Trial] Доступен {total_days}-дневный триал для пользователя {tg_id}")
 
                 await edit_or_send_message(
-                    target_message=(
-                        message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-                    ),
+                    target_message=target_message,
                     text=CREATING_CONNECTION_MSG,
                     reply_markup=None,
                 )
 
                 await state.update_data(is_trial=True, plan=trial_tariff["id"])
-                await create_key(tg_id, expiry_time, state, session, message_or_query, plan=trial_tariff["id"])
+                await create_key(
+                    tg_id=tg_id,
+                    expiry_time=expiry_time,
+                    state=state,
+                    session=session,
+                    message_or_query=message_or_query,
+                    old_key_name=None,
+                    plan=trial_tariff["id"],
+                )
                 return
 
         try:
             cluster_name = await get_least_loaded_cluster(session)
         except ValueError as e:
             logger.error(f"Нет доступных кластеров: {e}")
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
             await edit_or_send_message(
-                target_message=(
-                    message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-                ),
+                target_message=target_message,
                 text=str(e),
-                reply_markup=InlineKeyboardBuilder()
-                .row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-                .as_markup(),
+                reply_markup=builder.as_markup(),
             )
             return
 
         tariffs = await get_tariffs_for_cluster(session, cluster_name)
 
-        language_code = (
-            message_or_query.from_user.language_code
-            if not isinstance(message_or_query, CallbackQuery)
-            else message_or_query.from_user.language_code
-        )
-
-        discount_info = None
-        subgroup_weights = {}
+        discount_info: dict[str, Any] | None = None
+        subgroup_weights: dict[str, int] = {}
 
         if tariffs:
             group_code = tariffs[0].get("group_code")
@@ -183,7 +177,11 @@ async def handle_key_creation(
                     if override_result.get("discount_info"):
                         await state.update_data(discount_info=override_result["discount_info"])
 
-                tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
+                tariffs_data = await get_tariffs(
+                    session,
+                    group_code=group_code,
+                    with_subgroup_weights=True,
+                )
                 tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
                 subgroup_weights = tariffs_data["subgroup_weights"]
 
@@ -195,17 +193,18 @@ async def handle_key_creation(
                 builder = InlineKeyboardBuilder()
                 builder.row(
                     InlineKeyboardButton(
-                        text="🔗 Привязать тариф", callback_data=AdminPanelCallback(action="clusters").pack()
+                        text="🔗 Привязать тариф",
+                        callback_data=AdminPanelCallback(action="clusters").pack(),
                     )
                 )
                 builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
                 text = (
-                    f"🚫 <b>Невозможно создать подписку</b>\n\n"
-                    f"📊 <b>Информация о кластере:</b>\n<blockquote>"
+                    "🚫 <b>Невозможно создать подписку</b>\n\n"
+                    "📊 <b>Информация о кластере:</b>\n<blockquote>"
                     f"🌐 <b>Кластер:</b> <code>{cluster_name}</code>\n"
-                    f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
-                    f"💡 <b>Привяжите тариф к кластеру</b>"
+                    "⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
+                    "💡 <b>Привяжите тариф к кластеру</b>"
                 )
             else:
                 builder = InlineKeyboardBuilder()
@@ -213,9 +212,7 @@ async def handle_key_creation(
                 text = "❌ Нет доступных тарифов для выбора."
 
             await edit_or_send_message(
-                target_message=(
-                    message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-                ),
+                target_message=target_message,
                 text=text,
                 reply_markup=builder.as_markup(),
             )
@@ -224,55 +221,53 @@ async def handle_key_creation(
         group_code = tariffs[0].get("group_code") if tariffs else None
         if not group_code:
             await edit_or_send_message(
-                target_message=(
-                    message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-                ),
+                target_message=target_message,
                 text="❌ Не удалось определить группу тарифов.",
                 reply_markup=None,
             )
             return
 
-        grouped_tariffs = defaultdict(list)
-        for t in tariffs:
-            subgroup = t.get("subgroup_title")
-            grouped_tariffs[subgroup].append(t)
+        grouped_tariffs: dict[str | None, list[dict[str, Any]]] = defaultdict(list)
+        for tariff in tariffs:
+            subgroup = tariff.get("subgroup_title")
+            grouped_tariffs[subgroup].append(tariff)
 
         builder = InlineKeyboardBuilder()
 
-        for t in grouped_tariffs.get(None, []):
-            price_txt = await format_for_user(session, tg_id, t.get("price_rub", 0), language_code)
+        for tariff in grouped_tariffs.get(None, []):
+            price_text = await format_for_user(session, tg_id, tariff.get("price_rub", 0), language_code)
             builder.row(
                 InlineKeyboardButton(
-                    text=f"{t['name']} — {price_txt}",
-                    callback_data=f"select_tariff_plan|{t['id']}",
+                    text=f"{tariff['name']} — {price_text}",
+                    callback_data=f"select_tariff_plan|{tariff['id']}",
                 )
             )
 
         sorted_subgroups = sorted(
-            [k for k in grouped_tariffs if k],
-            key=lambda x: (subgroup_weights.get(x, 999999) if subgroup_weights else 999999, x),
+            [key for key in grouped_tariffs if key],
+            key=lambda title: (subgroup_weights.get(title, 999999) if subgroup_weights else 999999, title),
         )
 
         for subgroup in sorted_subgroups:
             subgroup_hash = create_subgroup_hash(subgroup, group_code)
             builder.row(
                 InlineKeyboardButton(
-                    text=f"{subgroup}",
+                    text=subgroup,
                     callback_data=f"tariff_subgroup_user|{subgroup_hash}",
                 )
             )
 
         tariff_menu_buttons = await process_tariff_menu(
-            group_code=group_code, cluster_name=cluster_name, tg_id=tg_id, session=session
+            group_code=group_code,
+            cluster_name=cluster_name,
+            tg_id=tg_id,
+            session=session,
         )
         builder = insert_hook_buttons(builder, tariff_menu_buttons)
 
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-        target_message = message_or_query.message if isinstance(message_or_query, CallbackQuery) else message_or_query
-
         discount_message = ""
-
         if discount_info and discount_info.get("available"):
             offer_text = DISCOUNT_OFFER_STEP2 if discount_info["type"] == "hot_lead_step_2" else DISCOUNT_OFFER_STEP3
             expires_at = discount_info["expires_at"]
@@ -289,7 +284,11 @@ async def handle_key_creation(
             reply_markup=builder.as_markup(),
         )
 
-        await state.update_data(tg_id=tg_id, cluster_name=cluster_name, group_code=group_code)
+        await state.update_data(
+            tg_id=tg_id,
+            cluster_name=cluster_name,
+            group_code=group_code,
+        )
         await state.set_state(Form.waiting_for_server_selection)
 
     finally:
@@ -297,7 +296,7 @@ async def handle_key_creation(
 
 
 @router.callback_query(F.data.startswith("tariff_subgroup_user|"))
-async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMContext, session: Any):
+async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     subgroup_hash = callback.data.split("|")[1]
     data = await state.get_data()
     cluster_name = data.get("cluster_name")
@@ -312,14 +311,16 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
         )
         return
 
-    tariffs = await get_tariffs_for_cluster(session, cluster_name)
-    filtered = []
+    tariffs_for_cluster = await get_tariffs_for_cluster(session, cluster_name)
+    filtered: list[dict[str, Any]] = []
 
-    if tariffs:
-        group_code = tariffs[0].get("group_code")
+    if tariffs_for_cluster:
+        group_code = tariffs_for_cluster[0].get("group_code")
         if group_code:
             tariffs = await get_tariffs(session, group_code=group_code)
-            filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")]
+            filtered = [
+                tariff for tariff in tariffs if tariff.get("subgroup_title") == subgroup and tariff.get("is_active")
+            ]
 
     if not filtered:
         await edit_or_send_message(
@@ -333,12 +334,12 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
     language_code = callback.from_user.language_code
 
     builder = InlineKeyboardBuilder()
-    for t in filtered:
-        price_txt = await format_for_user(session, tg_id, t.get("price_rub", 0), language_code)
+    for tariff in filtered:
+        price_text = await format_for_user(session, tg_id, tariff.get("price_rub", 0), language_code)
         builder.row(
             InlineKeyboardButton(
-                text=f"{t['name']} — {price_txt}",
-                callback_data=f"select_tariff_plan|{t['id']}",
+                text=f"{tariff['name']} — {price_text}",
+                callback_data=f"select_tariff_plan|{tariff['id']}",
             )
         )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_tariff_group_list"))
@@ -352,8 +353,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
 
 
 @router.callback_query(F.data == "back_to_tariff_group_list")
-async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, session: Any):
-    await state.get_data()
+async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     tg_id = callback.from_user.id
     await handle_key_creation(
         tg_id=tg_id,
@@ -363,110 +363,18 @@ async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, 
     )
 
 
-@router.callback_query(F.data.startswith("select_tariff_plan|"))
-async def select_tariff_plan(callback_query: CallbackQuery, session: Any, state: FSMContext):
-    tg_id = callback_query.from_user.id
-    tariff_id = int(callback_query.data.split("|")[1])
-
-    tariff = await get_tariff_by_id(session, tariff_id)
-    if not tariff:
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text="❌ Указанный тариф не найден.",
-        )
-        await callback_query.answer()
-        return
-
-    discount_info = await check_hot_lead_discount(session, tg_id)
-    if tariff.get("group_code") in ["discounts", "discounts_max"]:
-        if not discount_info.get("available") or datetime.utcnow() >= discount_info["expires_at"]:
-            builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            await edit_or_send_message(
-                target_message=callback_query.message,
-                text="❌ Скидка недоступна или истекла. Пожалуйста, выберите тариф заново.",
-                reply_markup=builder.as_markup(),
-            )
-            await callback_query.answer()
-            return
-
-    validity_result = await process_check_discount_validity(
-        chat_id=tg_id,
-        admin=False,
-        session=session,
-        tariff_group=tariff.get("group_code"),
-    )
-    if validity_result:
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text=validity_result["message"],
-            reply_markup=builder.as_markup(),
-        )
-        await callback_query.answer()
-        return
-
-    duration_days = tariff["duration_days"]
-    price_rub = tariff["price_rub"]
-
-    balance = await get_balance(session, tg_id)
-
-    if balance < price_rub:
-        required_amount = ceil(price_rub - balance)
-
-        if USE_NEW_PAYMENT_FLOW:
-            handled = await try_fast_payment_flow(
-                callback_query,
-                session,
-                state,
-                tg_id=tg_id,
-                temp_key="waiting_for_payment",
-                temp_payload={
-                    "tariff_id": tariff_id,
-                    "duration_days": duration_days,
-                    "required_amount": required_amount,
-                },
-                required_amount=required_amount,
-            )
-            if handled:
-                return
-
-        language_code = getattr(callback_query.from_user, "language_code", None)
-        required_amount_text = await format_for_user(session, tg_id, float(required_amount), language_code)
-
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount_text),
-            reply_markup=builder.as_markup(),
-        )
-        return
-
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⏳ Подождите...", callback_data="creating_key"))
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=CREATING_CONNECTION_MSG,
-        reply_markup=builder.as_markup(),
-    )
-    await callback_query.answer()
-
-    expiry_time = datetime.now(moscow_tz) + timedelta(days=duration_days)
-    await state.update_data(tariff_id=tariff_id)
-    await create_key(tg_id, expiry_time, state, session, callback_query, plan=tariff_id)
-
-
 async def create_key(
     tg_id: int,
-    expiry_time,
-    state,
-    session,
-    message_or_query=None,
-    old_key_name: str = None,
-    plan: int = None,
+    expiry_time: datetime,
+    state: FSMContext | None,
+    session: AsyncSession,
+    message_or_query: Message | CallbackQuery | None = None,
+    old_key_name: str | None = None,
+    plan: int | None = None,
+    selected_duration_days: int | None = None,
+    selected_device_limit: int | None = None,
+    selected_traffic_gb: int | None = None,
+    selected_price_rub: int | None = None,
 ):
     if not await check_user_exists(session, tg_id):
         from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
@@ -483,6 +391,21 @@ async def create_key(
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 
+    if state and any(
+        value is not None
+        for value in (selected_duration_days, selected_device_limit, selected_traffic_gb, selected_price_rub)
+    ):
+        state_data = await state.get_data()
+        if selected_duration_days is not None:
+            state_data["config_selected_duration_days"] = selected_duration_days
+        if selected_device_limit is not None:
+            state_data["config_selected_device_limit"] = selected_device_limit
+        if selected_traffic_gb is not None:
+            state_data["config_selected_traffic_gb"] = selected_traffic_gb
+        if selected_price_rub is not None:
+            state_data["config_selected_price_rub"] = selected_price_rub
+        await state.set_data(state_data)
+
     if use_country_selection:
         await key_country_mode(
             tg_id=tg_id,
@@ -492,6 +415,9 @@ async def create_key(
             message_or_query=message_or_query,
             old_key_name=old_key_name,
             plan=plan,
+            selected_device_limit=selected_device_limit,
+            selected_traffic_gb=selected_traffic_gb,
+            selected_price_rub=selected_price_rub,
         )
     else:
         await key_cluster_mode(
@@ -501,4 +427,7 @@ async def create_key(
             session=session,
             message_or_query=message_or_query,
             plan=plan,
+            selected_device_limit=selected_device_limit,
+            selected_traffic_gb=selected_traffic_gb,
+            selected_price_rub=selected_price_rub,
         )

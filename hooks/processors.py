@@ -1,6 +1,7 @@
 from typing import Any
 
 from logger import logger
+
 from .hooks import run_hooks
 
 
@@ -13,7 +14,7 @@ async def process_cluster_override(
 ) -> str | None:
     """
     Обрабатывает хук cluster_override.
-    
+
     Возвращает название кластера для принудительного выбора или None.
     """
     try:
@@ -38,7 +39,7 @@ async def process_cluster_balancer(
 ) -> dict | None:
     """
     Обрабатывает хук cluster_balancer.
-    
+
     Возвращает отфильтрованный словарь кластеров или None (использовать исходный).
     """
     try:
@@ -62,7 +63,7 @@ async def process_remnawave_webapp_override(
 ) -> bool:
     """
     Обрабатывает хук remnawave_webapp_override.
-    
+
     Возвращает bool - использовать ли webapp для подключения устройства.
     """
     if not remnawave_webapp or not final_link:
@@ -102,7 +103,7 @@ async def process_happ_cryptolink_override(
 ) -> bool:
     """
     Обрабатывает хук happ_cryptolink_override.
-    
+
     Возвращает bool - использовать ли криптоссылку для подписки.
     """
     try:
@@ -141,15 +142,15 @@ async def process_extract_cryptolink_from_result(
 ) -> str | None:
     """
     Обрабатывает хук happ_cryptolink_override и извлекает криптоссылку из результата API.
-    
+
     Возвращает криптоссылку если нужно использовать, иначе None.
     """
     if need_vless_key:
         return None
 
     try:
-        from core.bootstrap import MODES_CONFIG
         from config import HAPP_CRYPTOLINK
+        from core.bootstrap import MODES_CONFIG
 
         base_use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
         use_crypto_link = await process_happ_cryptolink_override(
@@ -188,7 +189,7 @@ async def process_get_cryptolink_after_renewal(
 ) -> str | None:
     """
     Получает свежие данные подписки после продления и извлекает криптоссылку если нужно.
-    
+
     Возвращает криптоссылку если хук требует её использования, иначе None.
     """
     if not remnawave_nodes:
@@ -196,9 +197,9 @@ async def process_get_cryptolink_after_renewal(
 
     try:
         from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-        from panels.remnawave import RemnawaveAPI
         from database import get_tariff_by_id
         from handlers.keys.operations.utils import is_plan_vless
+        from panels.remnawave import RemnawaveAPI
 
         remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
         if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
@@ -237,7 +238,7 @@ async def process_intercept_key_creation_message(
 ) -> bool:
     """
     Обрабатывает хук intercept_key_creation_message.
-    
+
     Возвращает True если нужно прервать выполнение (перехватить сообщение).
     """
     try:
@@ -264,7 +265,7 @@ async def process_key_creation_complete(
 ) -> list:
     """
     Обрабатывает хук key_creation_complete.
-    
+
     Возвращает список кнопок для добавления в меню после создания ключа.
     """
     try:
@@ -291,7 +292,7 @@ async def process_process_callback_renew_key(
 ) -> list:
     """
     Обрабатывает хук process_callback_renew_key.
-    
+
     Возвращает список кнопок для добавления в меню продления.
     """
     try:
@@ -316,7 +317,7 @@ async def process_renewal_forbidden_groups(
 ) -> list[str]:
     """
     Обрабатывает хук renewal_forbidden_groups.
-    
+
     Возвращает список дополнительных запрещенных групп для продления.
     """
     try:
@@ -348,11 +349,11 @@ async def process_purchase_tariff_group_override(
 ) -> dict | None:
     """
     Обрабатывает хук purchase_tariff_group_override.
-    
+
     Возвращает dict с ключами:
     - override_group: str - новая группа тарифов
     - discount_info: dict | None - информация о скидке (опционально)
-    
+
     Или None если переопределение не требуется.
     """
     try:
@@ -384,7 +385,7 @@ async def process_renew_tariffs(
 ) -> list:
     """
     Обрабатывает хук renew_tariffs.
-    
+
     Возвращает список кнопок для добавления в меню выбора тарифов для продления.
     """
     try:
@@ -411,7 +412,7 @@ async def process_renewal_complete(
 ) -> list:
     """
     Обрабатывает хук renewal_complete.
-    
+
     Возвращает список кнопок для добавления в меню после продления подписки.
     """
     try:
@@ -437,7 +438,7 @@ async def process_view_key_menu(
 ) -> list:
     """
     Обрабатывает хук view_key_menu.
-    
+
     Возвращает список кнопок для добавления в меню просмотра ключа.
     """
     try:
@@ -460,7 +461,7 @@ async def process_admin_key_edit_menu(
 ) -> list:
     """
     Обрабатывает хук admin_key_edit_menu.
-    
+
     Возвращает список кнопок для добавления в меню редактирования ключа в админке.
     """
     try:
@@ -485,7 +486,7 @@ async def process_after_hwid_reset(
 ) -> bool:
     """
     Обрабатывает хук after_hwid_reset.
-    
+
     Возвращает True если нужно перенаправить пользователя в профиль после сброса устройств.
     """
     try:
@@ -514,7 +515,7 @@ async def process_tariff_menu(
 ) -> list:
     """
     Обрабатывает хук tariff_menu.
-    
+
     Возвращает список кнопок для добавления в меню выбора тарифов.
     """
     try:
@@ -541,11 +542,11 @@ async def process_check_discount_validity(
 ) -> dict | None:
     """
     Обрабатывает хук check_discount_validity.
-    
+
     Возвращает dict с ключами:
     - valid: bool - валидна ли скидка
     - message: str - сообщение об ошибке (если valid=False)
-    
+
     Или None если скидка валидна.
     """
     try:
@@ -577,7 +578,7 @@ async def process_connect_device_menu(
 ) -> list:
     """
     Обрабатывает хук connect_device_menu.
-    
+
     Возвращает список кнопок для добавления в меню подключения устройства.
     """
     try:
@@ -592,4 +593,3 @@ async def process_connect_device_menu(
     except Exception as e:
         logger.warning(f"[CONNECT_DEVICE_MENU] Ошибка при обработке хука: {e}")
         return []
-

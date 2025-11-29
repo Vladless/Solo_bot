@@ -4,11 +4,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
     BUTTON_TITLES,
-    NOTIFICATION_TITLES,
-    NOTIFICATION_TIME_FIELDS,
-    PAYMENT_PROVIDER_TITLES,
     MODES_TITLES,
     MONEY_FIELDS,
+    NOTIFICATION_TIME_FIELDS,
+    NOTIFICATION_TITLES,
+    PAYMENT_PROVIDER_TITLES,
 )
 
 
@@ -73,8 +73,12 @@ def build_settings_kb() -> InlineKeyboardMarkup:
         text="Режимы",
         callback_data=AdminPanelCallback(action="settings_modes").pack(),
     )
+    builder.button(
+        text="Тарификация",
+        callback_data=AdminPanelCallback(action="settings_tariffs").pack(),
+    )
 
-    builder.adjust(2, 2, 1)
+    builder.adjust(2, 2, 2)
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()

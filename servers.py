@@ -23,10 +23,9 @@ PING_SEMAPHORE = asyncio.Semaphore(3)
 
 
 async def ping_server(server_ip: str) -> bool:
-    """Пингует сервер через ICMP или TCP 443, если ICMP недоступен."""
     async with PING_SEMAPHORE:
         try:
-            response = ping(server_ip, timeout=3)
+            response = await asyncio.to_thread(ping, server_ip, timeout=3)
             if response is not None and response is not False:
                 return True
             return await check_tcp_connection(server_ip, 443)

@@ -26,10 +26,7 @@ def format_admin_operation(amount: float, created_at: datetime) -> str:
     date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
     sign = "+" if amount > 0 else "-" if amount < 0 else ""
     abs_amount = abs(amount)
-    return (
-        f"\n<blockquote>Админ {sign}{abs_amount}Р"
-        f"\n⏳ Дата: {date_str}</blockquote>"
-    )
+    return f"\n<blockquote>Админ {sign}{abs_amount}Р\n⏳ Дата: {date_str}</blockquote>"
 
 
 def format_user_payment(amount: float, created_at: datetime, payment_system: str, status: str) -> str:
@@ -37,9 +34,7 @@ def format_user_payment(amount: float, created_at: datetime, payment_system: str
     abs_amount = abs(amount)
     system_name = payment_system or "Неизвестно"
     return (
-        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}"
-        f"\n📌 Статус: {status}"
-        f"\n⏳ Дата: {date_str}</blockquote>"
+        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}\n📌 Статус: {status}\n⏳ Дата: {date_str}</blockquote>"
     )
 
 
@@ -68,21 +63,14 @@ async def handle_balance_change(
 
     stmt_user = (
         select(Payment.amount, Payment.created_at, Payment.payment_system, Payment.status)
-        .where(
-            Payment.tg_id == tg_id,
-            Payment.payment_system != "admin"
-        )
+        .where(Payment.tg_id == tg_id, Payment.payment_system != "admin")
         .order_by(Payment.created_at.desc())
         .limit(5)
     )
     result_user = await session.execute(stmt_user)
     user_records = result_user.all()
 
-    text = (
-        f"<b>💵 Изменение баланса</b>"
-        f"\n\n🆔 ID: <b>{tg_id}</b>"
-        f"\n💰 Баланс: <b>{balance}Р</b>"
-    )
+    text = f"<b>💵 Изменение баланса</b>\n\n🆔 ID: <b>{tg_id}</b>\n💰 Баланс: <b>{balance}Р</b>"
 
     text += "\n\n<b>📊 Операции админа (5):</b>"
     if admin_records:

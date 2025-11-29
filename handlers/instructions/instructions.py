@@ -7,18 +7,18 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from core.bootstrap import MODES_CONFIG
 from config import (
     CONNECT_MACOS,
     CONNECT_WINDOWS,
     DOWNLOAD_MACOS,
     DOWNLOAD_PC,
+    HAPP_CRYPTOLINK,
+    REMNAWAVE_WEBAPP,
     SUPPORT_CHAT_URL,
     WEBHOOK_HOST,
-    REMNAWAVE_WEBAPP,
-    HAPP_CRYPTOLINK,
 )
-from database import get_subscription_link, get_key_details
+from core.bootstrap import MODES_CONFIG
+from database import get_key_details, get_subscription_link
 from handlers.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,

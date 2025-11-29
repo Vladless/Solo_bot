@@ -11,8 +11,8 @@ from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import AdminSenderCallback, build_clusters_kb, build_sender_kb
-from .sender_states import AdminSender
 from .sender_service import BroadcastService
+from .sender_states import AdminSender
 from .sender_utils import get_recipients, parse_message_buttons
 
 
@@ -54,11 +54,7 @@ async def handle_cluster_select(callback_query: CallbackQuery, session: AsyncSes
     AdminSenderCallback.filter(F.type != "cluster-select"),
     IsAdminFilter(),
 )
-async def handle_broadcast_type(
-    callback_query: CallbackQuery,
-    callback_data: AdminSenderCallback,
-    state: FSMContext
-):
+async def handle_broadcast_type(callback_query: CallbackQuery, callback_data: AdminSenderCallback, state: FSMContext):
     await callback_query.message.edit_text(
         text=(
             "✍️ Введите текст сообщения для рассылки\n\n"
@@ -92,8 +88,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     max_len = 1024 if photo else 4096
     if len(clean_text) > max_len:
         await message.answer(
-            f"⚠️ Сообщение слишком длинное.\n"
-            f"Максимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
+            f"⚠️ Сообщение слишком длинное.\nМаксимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
@@ -119,42 +114,21 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
             await state.clear()
             return
 
-    await state.update_data(
-        text=clean_text,
-        photo=photo,
-        keyboard=keyboard.model_dump() if keyboard else None
-    )
+    await state.update_data(text=clean_text, photo=photo, keyboard=keyboard.model_dump() if keyboard else None)
     await state.set_state(AdminSender.preview)
 
     if photo:
-        await message.answer_photo(
-            photo=photo,
-            caption=clean_text,
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
+        await message.answer_photo(photo=photo, caption=clean_text, parse_mode="HTML", reply_markup=keyboard)
     else:
-        await message.answer(
-            text=clean_text,
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
+        await message.answer(text=clean_text, parse_mode="HTML", reply_markup=keyboard)
 
     await message.answer(
-        f"👀 Это предпросмотр рассылки.\n"
-        f"👥 Количество получателей: <b>{user_count}</b>\n\n"
-        f"Отправить?",
+        f"👀 Это предпросмотр рассылки.\n👥 Количество получателей: <b>{user_count}</b>\n\nОтправить?",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(
-                        text="📤 Отправить",
-                        callback_data="send_broadcast"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Отмена",
-                        callback_data="cancel_broadcast"
-                    ),
+                    InlineKeyboardButton(text="📤 Отправить", callback_data="send_broadcast"),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_broadcast"),
                 ]
             ]
         ),
@@ -162,11 +136,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
 
 
 @router.callback_query(F.data == "send_broadcast", IsAdminFilter())
-async def handle_broadcast_confirm(
-    callback_query: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession
-):
+async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     text_message = data.get("text")
     photo = data.get("photo")
@@ -200,35 +170,21 @@ async def handle_broadcast_confirm(
         await state.clear()
         return
 
-    await callback_query.message.edit_text(
-        f"📤 <b>Рассылка начата!</b>\n"
-        f"👥 Количество получателей: {total_users}"
-    )
+    await callback_query.message.edit_text(f"📤 <b>Рассылка начата!</b>\n👥 Количество получателей: {total_users}")
 
     messages = []
     for tg_id in tg_ids:
-        message_data = {
-            "tg_id": tg_id,
-            "text": text_message,
-            "photo": photo,
-            "keyboard": keyboard
-        }
+        message_data = {"tg_id": tg_id, "text": text_message, "photo": photo, "keyboard": keyboard}
         messages.append(message_data)
 
-    broadcast_service = BroadcastService(
-        bot=callback_query.bot,
-        session=session,
-        messages_per_second=35
-    )
-    
+    broadcast_service = BroadcastService(bot=callback_query.bot, session=session, messages_per_second=35)
+
     stats = await broadcast_service.broadcast(messages, workers=5)
 
     duration_minutes = int(stats["total_duration"] // 60)
     duration_seconds = int(stats["total_duration"] % 60)
     duration_str = (
-        f"{duration_minutes} мин {duration_seconds} сек"
-        if duration_minutes > 0
-        else f"{duration_seconds} сек"
+        f"{duration_minutes} мин {duration_seconds} сек" if duration_minutes > 0 else f"{duration_seconds} сек"
     )
 
     await callback_query.message.answer(

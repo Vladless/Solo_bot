@@ -1,7 +1,8 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from core.bootstrap import MANAGEGENT_CONFIG
+from core.bootstrap import MANAGEMENT_CONFIG
+
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -39,7 +40,7 @@ def build_management_kb(admin_role: str) -> InlineKeyboardMarkup:
         callback_data=AdminPanelCallback(action="upload_file").pack(),
     )
 
-    maintenance_enabled = bool(MANAGEGENT_CONFIG.get("MAINTENANCE_ENABLED", False))
+    maintenance_enabled = bool(MANAGEMENT_CONFIG.get("MAINTENANCE_ENABLED", False))
     maintenance_text = "🛠️ Выключить тех. работы" if maintenance_enabled else "🛠️ Включить тех. работы"
     builder.button(
         text=maintenance_text,

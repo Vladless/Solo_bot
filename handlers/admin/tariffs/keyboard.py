@@ -204,9 +204,31 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_single_tariff_kb(tariff_id: int, group_code: str = None) -> InlineKeyboardMarkup:
+def build_single_tariff_kb(
+    tariff_id: int,
+    group_code: str | None = None,
+    configurable: bool | None = None,
+) -> InlineKeyboardMarkup:
+    configurator_title = "⚙️ Конфигуратор"
+    if configurable is True:
+        configurator_title += " ✅"
+    elif configurable is False:
+        configurator_title += " ❌"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=configurator_title,
+                    callback_data=f"toggle_configurable|{tariff_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔧 Настройки конфигуратора",
+                    callback_data=f"edit_config|{tariff_id}",
+                )
+            ],
             [
                 InlineKeyboardButton(
                     text="✏️ Редактировать",

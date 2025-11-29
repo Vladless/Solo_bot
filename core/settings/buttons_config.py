@@ -2,10 +2,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+
 from ..defaults import DEFAULT_BUTTONS_CONFIG
 
 
 BUTTONS_CONFIG: dict[str, bool] = DEFAULT_BUTTONS_CONFIG.copy()
+BUTTONS_CONFIG.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
 
 
 async def load_buttons_config(session: AsyncSession) -> None:
@@ -15,6 +17,7 @@ async def load_buttons_config(session: AsyncSession) -> None:
 
     if setting is None:
         buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
+        buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
         setting = Setting(
             key="BUTTONS_CONFIG",
             value=buttons_config,
@@ -25,6 +28,7 @@ async def load_buttons_config(session: AsyncSession) -> None:
         stored = setting.value or {}
         buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
         buttons_config.update(stored)
+        buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
         setting.value = buttons_config
 
     BUTTONS_CONFIG.clear()
@@ -47,10 +51,11 @@ async def update_buttons_config(session: AsyncSession, new_values: dict[str, boo
     else:
         setting.value = new_values
 
-    await session.flush()
+    await session.commit()
 
     buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
     buttons_config.update(new_values)
+    buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
 
     BUTTONS_CONFIG.clear()
     BUTTONS_CONFIG.update(buttons_config)

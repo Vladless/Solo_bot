@@ -2,9 +2,9 @@ from sqlalchemy import and_, func, insert, not_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Payment, TrackingSource, User
 from logger import logger
-from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):

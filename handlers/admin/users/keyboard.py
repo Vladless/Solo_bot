@@ -246,7 +246,9 @@ def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
 def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    is_frozen = key_details.get("is_frozen") if isinstance(key_details, dict) else getattr(key_details, "is_frozen", False)
+    is_frozen = (
+        key_details.get("is_frozen") if isinstance(key_details, dict) else getattr(key_details, "is_frozen", False)
+    )
 
     builder.button(
         text="⏳ Время истечения",
@@ -287,9 +289,7 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     else:
         builder.button(
             text=FREEZE,
-            callback_data=AdminUserEditorCallback(
-                action="users_freeze", data=email, tg_id=key_details["tg_id"]
-            ).pack(),
+            callback_data=AdminUserEditorCallback(action="users_freeze", data=email, tg_id=key_details["tg_id"]).pack(),
         )
 
     if HWID_RESET_BUTTON:

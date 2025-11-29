@@ -41,7 +41,6 @@ from handlers.utils import generate_random_email, handle_error
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_admin_key_edit_menu
 from logger import logger
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -1026,8 +1025,7 @@ async def handle_admin_freeze_subscription(
         result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=False, session=session)
         if result["status"] != "success":
             text_error = (
-                "Произошла ошибка при заморозке подписки.\n"
-                f"Детали: {result.get('error') or result.get('results')}"
+                f"Произошла ошибка при заморозке подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             await callback_query.message.edit_text(
                 text_error,
@@ -1082,8 +1080,7 @@ async def handle_admin_unfreeze_subscription(
         result = await toggle_client_on_cluster(cluster_id, email, client_id, enable=True, session=session)
         if result["status"] != "success":
             text_error = (
-                "Произошла ошибка при включении подписки.\n"
-                f"Детали: {result.get('error') or result.get('results')}"
+                f"Произошла ошибка при включении подписки.\nДетали: {result.get('error') or result.get('results')}"
             )
             await callback_query.message.edit_text(
                 text_error,

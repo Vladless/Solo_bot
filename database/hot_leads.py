@@ -1,8 +1,8 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Key, Payment, User
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
+from database.models import Key, Payment, User
 
 
 async def get_hot_leads(session: AsyncSession):

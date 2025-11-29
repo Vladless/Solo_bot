@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import CHECK_REFERRAL_REWARD_ISSUED, REFERRAL_BONUS_PERCENTAGES
+from core.bootstrap import BUTTONS_CONFIG
 from database.models import Referral
 from logger import logger
 
@@ -57,6 +58,11 @@ async def mark_referral_reward_issued(session: AsyncSession, referred_tg_id: int
 
 
 async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, max_levels: int) -> float:
+    referral_enabled = bool(BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLED", True))
+    if not referral_enabled:
+        logger.debug("Реферальная программа отключена, бонусы не начисляются")
+        return 0.0
+
     if CHECK_REFERRAL_REWARD_ISSUED:
         bonus_cte = """
             WITH RECURSIVE

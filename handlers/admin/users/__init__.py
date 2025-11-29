@@ -1,6 +1,6 @@
 from aiogram import Router
 
-from . import users_bans, users_hwid, users_keys, users_manage, users_balance
+from . import users_balance, users_bans, users_hwid, users_keys, users_manage
 
 
 router = Router()

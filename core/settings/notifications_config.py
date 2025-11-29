@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Setting
+
 from ..defaults import DEFAULT_NOTIFICATIONS_CONFIG
 
 
@@ -49,7 +50,7 @@ async def update_notifications_config(session: AsyncSession, new_values: dict[st
     else:
         setting.value = new_values
 
-    await session.flush()
+    await session.commit()
 
     notifications_config = DEFAULT_NOTIFICATIONS_CONFIG.copy()
     notifications_config.update(new_values)

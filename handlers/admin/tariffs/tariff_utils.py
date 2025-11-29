@@ -39,6 +39,8 @@ def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
     device_text = f"{tariff.device_limit}" if tariff.device_limit is not None else "Безлимит"
     sort_order = getattr(tariff, "sort_order", 1)
     vless_text = "Да" if getattr(tariff, "vless", False) else "Нет"
+    configurable = bool(getattr(tariff, "configurable", False))
+    configurable_text = "Включен" if configurable else "Выключен"
 
     text = (
         f"<b>📄 Тариф: {tariff.name}</b>\n\n"
@@ -48,8 +50,9 @@ def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:
         f"📦 Трафик: <b>{traffic_text}</b>\n"
         f"📱 Устройств: <b>{device_text}</b>\n"
         f"🔗 VLESS: <b>{vless_text}</b>\n"
+        f"⚙️ Конфигуратор: <b>{configurable_text}</b>\n"
         f"🔢 Позиция: <b>{sort_order}</b>\n"
         f"{'✅ Активен' if tariff.is_active else '⛔ Отключен'}"
     )
 
-    return text, build_single_tariff_kb(tariff.id, tariff.group_code)
+    return text, build_single_tariff_kb(tariff.id, tariff.group_code, configurable=configurable)

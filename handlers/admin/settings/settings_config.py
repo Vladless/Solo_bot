@@ -1,5 +1,6 @@
 from typing import Final
 
+
 BUTTON_TITLES: Final[dict[str, str]] = {
     "CHANNEL_BUTTON_ENABLE": "Канал",
     "DONATIONS_BUTTON_ENABLE": "Донаты",
@@ -13,6 +14,7 @@ BUTTON_TITLES: Final[dict[str, str]] = {
     "TOP_REFERRAL_BUTTON_ENABLE": "Топ-5 рефералов",
     "QRCODE_BUTTON_ENABLE": "QR подписки",
     "HWID_RESET_BUTTON_ENABLE": "Сброс HWID",
+    "ANDROID_TV_BUTTON_ENABLE": "Android TV",
 }
 
 NOTIFICATION_TITLES: Final[dict[str, str]] = {

@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.bootstrap import MANAGEGENT_CONFIG, update_management_config
+from core.bootstrap import MANAGEMENT_CONFIG, update_management_config
 from database.models import Admin
 from filters.admin import IsAdminFilter
 
@@ -39,7 +39,7 @@ async def toggle_maintenance_mode(callback: CallbackQuery, session: AsyncSession
         await callback.answer("❌ Админ не найден.", show_alert=True)
         return
 
-    current_config = dict(MANAGEGENT_CONFIG)
+    current_config = dict(MANAGEMENT_CONFIG)
     current_value = bool(current_config.get("MAINTENANCE_ENABLED", False))
     new_value = not current_value
     current_config["MAINTENANCE_ENABLED"] = new_value

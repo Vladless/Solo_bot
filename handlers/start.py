@@ -44,7 +44,7 @@ from handlers.buttons import (
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.instructions.instructions import send_instructions
-from handlers.keys.key_mode.key_create import confirm_create_new_key
+from handlers.keys.key_create import confirm_create_new_key
 from handlers.keys.key_view import process_callback_or_message_view_keys
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile

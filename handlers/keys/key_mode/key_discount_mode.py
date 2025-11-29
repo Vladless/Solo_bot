@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
@@ -12,11 +13,10 @@ from database import get_keys, get_tariffs
 from database.models import Notification
 from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
 from handlers.notifications.notify_kb import build_tariffs_keyboard
+from handlers.tariffs.buy.key_tariffs import select_tariff_plan
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
 from handlers.utils import format_discount_time_left
 from logger import logger
-
-from .key_create import select_tariff_plan
 
 
 router = Router()
@@ -54,10 +54,10 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
 
         expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            f"🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
-            f"💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
-            f"🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
-            f"</blockquote>\n"
+            "🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            "💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
+            "🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
+            "</blockquote>\n"
             f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, discount_active_hours)} — не упустите свой шанс!</b>",
             reply_markup=builder.as_markup(),
         )
@@ -74,7 +74,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.startswith("discount_tariff|"))
-async def handle_discount_tariff_selection(callback: CallbackQuery, session, state):
+async def handle_discount_tariff_selection(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     try:
         tariff_id = int(callback.data.split("|")[1])
         fake_callback = CallbackQuery.model_construct(
@@ -120,16 +120,17 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
+        expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            f"🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
-            f"💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
-            f"🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
-            f"</blockquote>\n"
-            f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, discount_active_hours)} — не упустите шанс!</b>",
+            "🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            "💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
+            "🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
+            "</blockquote>\n"
+            f"⏰ <b>Время ограничено: {format_discount_time_left(expires_at, discount_active_hours)} — не упустите шанс!</b>",
             reply_markup=builder.as_markup(),
         )
     else:
-        tariffs = await get_tariffs(session, group_code="discounts_max")
+        tariffs = await get_tariffs(session=session, group_code="discounts_max")
         if not tariffs:
             await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
             return
