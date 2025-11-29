@@ -364,8 +364,7 @@ async def handle_expired_keys(
 
     notify_renew_expired_enabled = bool(NOTIFICATIONS_CONFIG.get("RENEW_EXPIRED_ENABLED", NOTIFY_RENEW_EXPIRED))
     notify_delete_key_enabled = bool(NOTIFICATIONS_CONFIG.get("DELETE_KEY_ENABLED", NOTIFY_DELETE_KEY))
-    delete_key_delay_hours = int(NOTIFICATIONS_CONFIG.get("DELETE_KEY_DELAY_HOURS", NOTIFY_DELETE_DELAY))
-    delete_key_delay_minutes = delete_key_delay_hours * 60
+    delete_key_delay_minutes = int(NOTIFICATIONS_CONFIG.get("DELETE_KEY_DELAY_MINUTES", NOTIFY_DELETE_DELAY))
 
     messages = []
 
