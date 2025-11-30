@@ -31,7 +31,7 @@ NOTIFICATION_TIME_FIELDS: Final[dict[str, str]] = {
     "INACTIVE_USER_ENABLED": "Неактивные (ч)",
     "EXPIRY_24H_BEFORE_HOURS": "До 24ч (ч)",
     "EXPIRY_10H_BEFORE_HOURS": "До 10ч (ч)",
-    "DELETE_KEY_DELAY_HOURS": "Удаление (ч)",
+    "DELETE_KEY_DELAY_HOURS": "Удаление (мин)",
     "EXTRA_DAYS_AFTER_EXPIRY": "Дни к пробнику",
     "INACTIVE_TRAFFIC_ENABLED": "Трафик неакт. (ч)",
     "HOT_LEADS_INTERVAL_HOURS": "Гор.лиды (ч)",
