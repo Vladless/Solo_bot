@@ -10,8 +10,8 @@ class UserBase(BaseModel):
     last_name: str | None = None
     language_code: str | None = None
     is_bot: bool | None = False
-    balance: float = 0.0
-    trial: int = 0
+    balance: float | None = 0.0
+    trial: int | None = 0
     source_code: str | None = None
 
 

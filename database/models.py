@@ -101,6 +101,7 @@ class Tariff(DictLikeMixin, Base):
     subgroup_title = Column(String, nullable=True)
     sort_order = Column(Integer, nullable=True)
     vless = Column(Boolean, default=False)
+    external_squad: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     configurable = Column(Boolean, nullable=False, server_default="false")
 

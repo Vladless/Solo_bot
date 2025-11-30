@@ -62,6 +62,7 @@ async def create_key_on_cluster(
 
         traffic_limit_bytes_value = 0
         device_limit_value = 0
+        external_squad_uuid = None
 
         if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
@@ -85,6 +86,7 @@ async def create_key_on_cluster(
 
             subgroup_title = tariff.get("subgroup_title")
             need_vless_key = bool(tariff.get("vless"))
+            external_squad_uuid = tariff.get("external_squad") or None
         else:
             traffic_limit_bytes_value = int(traffic_limit_bytes or 0)
             device_limit_value = int(hwid_limit or 0)
@@ -167,6 +169,9 @@ async def create_key_on_cluster(
                         user_data["shortUuid"] = short_uuid
 
                     user_data["hwidDeviceLimit"] = device_limit_value
+
+                    if external_squad_uuid:
+                        user_data["externalSquadUuid"] = external_squad_uuid
 
                     logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
                     result = await remna.create_user(user_data)

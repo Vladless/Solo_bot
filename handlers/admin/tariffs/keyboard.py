@@ -290,6 +290,12 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"edit_field|{tariff_id}|vless",
                 )
             ],
+            [
+                InlineKeyboardButton(
+                    text="Внешний сквад",
+                    callback_data=f"edit_field|{tariff_id}|external_squad",
+                )
+            ],
             [InlineKeyboardButton(text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}")],
             [
                 InlineKeyboardButton(

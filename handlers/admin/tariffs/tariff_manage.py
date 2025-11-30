@@ -481,6 +481,7 @@ async def ask_new_value(callback: CallbackQuery, state: FSMContext):
         "traffic_limit": "лимит трафика в ГБ (0 — безлимит)",
         "device_limit": "лимит устройств (0 — безлимит)",
         "vless": "VLESS (да/нет)",
+        "external_squad": "внешний сквад (0 — убрать)",
     }
 
     await callback.message.edit_text(
@@ -534,6 +535,18 @@ async def apply_edit(message: Message, state: FSMContext, session: AsyncSession)
                 reply_markup=build_cancel_kb(),
             )
             return
+
+    if field == "external_squad":
+        if value in ("", "0", "-"):
+            value = None
+        setattr(tariff, field, value)
+        tariff.updated_at = datetime.utcnow()
+        await session.commit()
+        await state.clear()
+
+        text, markup = render_tariff_card(tariff)
+        await message.answer(text=text, reply_markup=markup)
+        return
 
     if field in ["duration_days", "price_rub", "traffic_limit", "device_limit"]:
         try:
