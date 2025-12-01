@@ -29,7 +29,6 @@ from database.notifications import check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
 from handlers.buttons import MAIN_MENU
-from handlers.payments.currency_rates import format_for_user
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     DISCOUNT_OFFER_MESSAGE,
@@ -43,6 +42,7 @@ from hooks.processors import (
     process_purchase_tariff_group_override,
     process_tariff_menu,
 )
+from .utils import add_tariff_button_generic
 from logger import logger
 
 from .key_mode.key_cluster_mode import key_cluster_mode
@@ -235,12 +235,13 @@ async def handle_key_creation(
         builder = InlineKeyboardBuilder()
 
         for tariff in grouped_tariffs.get(None, []):
-            price_text = await format_for_user(session, tg_id, tariff.get("price_rub", 0), language_code)
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"{tariff['name']} — {price_text}",
-                    callback_data=f"select_tariff_plan|{tariff['id']}",
-                )
+            await add_tariff_button_generic(
+                builder=builder,
+                tariff=tariff,
+                session=session,
+                tg_id=tg_id,
+                language_code=language_code,
+                callback_prefix="select_tariff_plan",
             )
 
         sorted_subgroups = sorted(
@@ -335,13 +336,15 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
 
     builder = InlineKeyboardBuilder()
     for tariff in filtered:
-        price_text = await format_for_user(session, tg_id, tariff.get("price_rub", 0), language_code)
-        builder.row(
-            InlineKeyboardButton(
-                text=f"{tariff['name']} — {price_text}",
-                callback_data=f"select_tariff_plan|{tariff['id']}",
-            )
+        await add_tariff_button_generic(
+            builder=builder,
+            tariff=tariff,
+            session=session,
+            tg_id=tg_id,
+            language_code=language_code,
+            callback_prefix="select_tariff_plan",
         )
+
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_tariff_group_list"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

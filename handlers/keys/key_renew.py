@@ -53,6 +53,7 @@ from hooks.processors import (
     process_renewal_complete,
     process_renewal_forbidden_groups,
 )
+from .utils import add_tariff_button_generic
 from logger import logger
 
 
@@ -166,16 +167,13 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         language_code = getattr(callback_query.from_user, "language_code", None)
 
         for t in grouped_tariffs.get(None, []):
-            price_text = await format_for_user(session, tg_id, t["price_rub"], language_code)
-            if t.get("configurable"):
-                button_text = f"{t['name']} — от {price_text}"
-            else:
-                button_text = f"{t['name']} — {price_text}"
-            builder.row(
-                InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"renew_plan|{t['id']}",
-                )
+            await add_tariff_button_generic(
+                builder=builder,
+                tariff=t,
+                session=session,
+                tg_id=tg_id,
+                language_code=language_code,
+                callback_prefix="renew_plan",
             )
 
         sorted_subgroups = sorted(
@@ -324,16 +322,13 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         builder = InlineKeyboardBuilder()
         for t in filtered:
-            price_txt = await format_for_user(session, tg_id, t.get("price_rub", 0), language_code)
-            if t.get("configurable"):
-                button_text = f"{t['name']} — от {price_txt}"
-            else:
-                button_text = f"{t['name']} — {price_txt}"
-            builder.row(
-                InlineKeyboardButton(
-                    text=button_text,
-                    callback_data=f"renew_plan|{t['id']}",
-                )
+            await add_tariff_button_generic(
+                builder=builder,
+                tariff=t,
+                session=session,
+                tg_id=tg_id,
+                language_code=language_code,
+                callback_prefix="renew_plan",
             )
 
         builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"renew_key|{key_name}"))
