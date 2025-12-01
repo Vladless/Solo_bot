@@ -85,12 +85,27 @@ async def key_country_mode(
     message_or_query: Message | CallbackQuery | None = None,
     old_key_name: str | None = None,
     plan: int | None = None,
+    selected_device_limit: int | None = None,
+    selected_traffic_gb: int | None = None,
+    selected_price_rub: int | None = None,
 ):
     target_message = None
     safe_to_edit = False
 
     if state and plan:
         await state.update_data(tariff_id=plan)
+
+    if state and any(
+        value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub)
+    ):
+        data = await state.get_data()
+        if selected_device_limit is not None:
+            data["config_selected_device_limit"] = selected_device_limit
+        if selected_traffic_gb is not None:
+            data["config_selected_traffic_gb"] = selected_traffic_gb
+        if selected_price_rub is not None:
+            data["config_selected_price_rub"] = selected_price_rub
+        await state.set_data(data)
 
     if isinstance(message_or_query, CallbackQuery) and message_or_query.message:
         target_message = message_or_query.message
@@ -212,7 +227,10 @@ async def key_country_mode(
             if old_key_name:
                 callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
             else:
-                callback_data = f"select_country|{server_name}|{ts}"
+                if plan:
+                    callback_data = f"select_country|{server_name}|{ts}||{plan}"
+                else:
+                    callback_data = f"select_country|{server_name}|{ts}"
             row_buttons.append(InlineKeyboardButton(text=server_name, callback_data=callback_data))
         builder.row(*row_buttons)
 
@@ -404,7 +422,9 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
         return
 
-    old_key_name = data[3] if len(data) > 3 else None
+    old_key_name = data[3] if len(data) > 3 and data[3] else None
+    tariff_id = int(data[4]) if len(data) > 4 and data[4] else None
+
     tg_id = callback_query.from_user.id
 
     fsm_data = await state.get_data()
@@ -434,6 +454,7 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
             session=session,
             callback_query=callback_query,
             old_key_name=old_key_name,
+            tariff_id=tariff_id,
         )
     finally:
         fsm_data = await state.get_data()
