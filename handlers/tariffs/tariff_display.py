@@ -36,7 +36,7 @@ async def get_effective_limits_for_key(
         device_limit = int(selected_device_limit)
 
     if selected_traffic_gb is None:
-        traffic_limit_bytes = int(base_traffic_bytes or 0)
+        traffic_limit_bytes = int(base_traffic_bytes or 0) * GB
     elif selected_traffic_gb == 0:
         traffic_limit_bytes = 0
     else:
@@ -315,7 +315,7 @@ async def build_key_created_message(
                 traffic_to_show = 0
         elif base_traffic is not None:
             try:
-                traffic_to_show = int(base_traffic / GB)
+                traffic_to_show = int(base_traffic)
             except (TypeError, ValueError):
                 traffic_to_show = 0
         else:
