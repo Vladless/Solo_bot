@@ -570,6 +570,29 @@ async def process_check_discount_validity(
         return None
 
 
+async def process_addons_menu(
+    email: str,
+    session: Any,
+    **kwargs,
+) -> list:
+    """
+    Обрабатывает хук addons_menu.
+
+    Возвращает список операций для модификации кнопок в меню конфигуратора тарифов.
+    """
+    try:
+        results = await run_hooks(
+            "addons_menu",
+            email=email,
+            session=session,
+            **kwargs,
+        )
+        return results if results else []
+    except Exception as e:
+        logger.warning(f"[ADDONS_MENU] Ошибка при обработке хука: {e}")
+        return []
+
+
 async def process_connect_device_menu(
     chat_id: int,
     session: Any,
