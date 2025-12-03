@@ -100,12 +100,36 @@ async def handle_key_edit(
 
     tariff_name = "—"
     subgroup_title = "—"
+    base_devices = None
+    base_traffic = None
+    is_configurable = False
     if key_obj.tariff_id:
-        result = await session.execute(select(Tariff.name, Tariff.subgroup_title).where(Tariff.id == key_obj.tariff_id))
+        result = await session.execute(
+            select(Tariff.name, Tariff.subgroup_title, Tariff.device_limit, Tariff.traffic_limit, Tariff.configurable)
+            .where(Tariff.id == key_obj.tariff_id)
+        )
         row = result.first()
         if row:
             tariff_name = row[0]
             subgroup_title = row[1] or "—"
+            base_devices = row[2]
+            base_traffic = row[3]
+            is_configurable = bool(row[4])
+
+    devices_line = ""
+    traffic_line = ""
+    if is_configurable:
+        sel_dev, cur_dev = key_obj.selected_device_limit, key_obj.current_device_limit
+        if sel_dev is not None or cur_dev is not None:
+            base_dev = sel_dev if sel_dev is not None else (base_devices if base_devices is not None else cur_dev)
+            extra = f" + {cur_dev - base_dev} (докуплено)" if (base_dev is not None and cur_dev is not None and cur_dev > base_dev) else ""
+            devices_line = f"📱 <b>Устройства:</b> {base_dev}{extra}\n"
+
+        sel_traf, cur_traf = key_obj.selected_traffic_limit, key_obj.current_traffic_limit
+        if sel_traf is not None or cur_traf is not None:
+            base_traf = sel_traf if sel_traf is not None else (base_traffic if base_traffic is not None else cur_traf)
+            extra = f" + {cur_traf - base_traf} ГБ (докуплено)" if (base_traf is not None and cur_traf is not None and cur_traf > base_traf) else ""
+            traffic_line = f"📊 <b>Трафик:</b> {base_traf} ГБ{extra}\n"
 
     text = (
         "<b>🔑 Информация о подписке</b>\n\n"
@@ -117,6 +141,8 @@ async def handle_key_edit(
         f"🆔 <b>ID клиента:</b> {key_obj.tg_id or '—'}\n"
         f"📁 <b>Группа:</b> {subgroup_title}\n"
         f"📦 <b>Тариф:</b> {tariff_name}\n"
+        f"{devices_line}"
+        f"{traffic_line}"
         "</blockquote>"
     )
 
