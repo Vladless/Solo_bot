@@ -93,16 +93,12 @@ def strip_html_tags(text: str) -> str:
 
 
 def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
-    buttons_match = re.search(r"(<[^>]+>)?\s*BUTTONS\s*:\s*(</[^>]+>)?", text, re.IGNORECASE)
-    if not buttons_match:
+    if "BUTTONS:" not in text:
         return text, None
 
-    clean_text = text[: buttons_match.start()].strip()
-
-    buttons_section = text[buttons_match.start() :].strip()
-    buttons_text = strip_html_tags(buttons_section)
-
-    buttons_text = re.sub(r"^.*?BUTTONS\s*:\s*", "", buttons_text, flags=re.IGNORECASE).strip()
+    parts = text.split("BUTTONS:", 1)
+    clean_text = parts[0].strip()
+    buttons_text = parts[1].strip()
 
     if not buttons_text:
         return clean_text, None
@@ -112,7 +108,8 @@ def parse_message_buttons(text: str) -> tuple[str, InlineKeyboardMarkup | None]:
 
     for line in button_lines:
         try:
-            button_data = json.loads(line)
+            cleaned_line = re.sub(r'<tg-emoji emoji-id="[^"]*">([^<]*)</tg-emoji>', r"\1", line)
+            button_data = json.loads(cleaned_line)
 
             if not isinstance(button_data, dict) or "text" not in button_data:
                 logger.warning(f"[Sender] Неверный формат кнопки: {line}")

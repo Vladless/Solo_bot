@@ -28,6 +28,8 @@ from handlers.texts import (
     UNLIMITED_TRAFFIC_LABEL,
 )
 from handlers.utils import edit_or_send_message
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.processors import process_addons_menu
 from logger import logger
 
 from ..buy.key_tariffs import calculate_config_price
@@ -301,6 +303,9 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
         )
     )
     builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{email}"))
+
+    module_buttons = await process_addons_menu(email=email, session=session)
+    builder = insert_hook_buttons(builder, module_buttons)
 
     await edit_or_send_message(
         target_message=callback.message,
