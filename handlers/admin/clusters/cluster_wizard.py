@@ -36,10 +36,15 @@ async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
         "<i>⚠️ <b>Важно:</b> Кластеры удаляются автоматически, если удалить все серверы внутри них.</i>\n\n"
     )
 
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=build_clusters_editor_kb(servers),
-    )
+    message = callback_query.message
+    markup = build_clusters_editor_kb(servers)
+
+    if message and message.text:
+        await message.edit_text(text=text, reply_markup=markup)
+    elif message and message.caption:
+        await message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await message.answer(text=text, reply_markup=markup)
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "add"), IsAdminFilter())

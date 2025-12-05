@@ -224,6 +224,10 @@ class Gift(DictLikeMixin, Base):
     max_usages = Column(Integer, nullable=True)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
 
+    selected_device_limit = Column(Integer, nullable=True)
+    selected_traffic_gb = Column(Integer, nullable=True)
+    selected_price_rub = Column(Integer, nullable=True)
+
 
 class GiftUsage(DictLikeMixin, Base):
     __tablename__ = "gift_usages"
