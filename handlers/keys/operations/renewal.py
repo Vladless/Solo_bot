@@ -218,15 +218,18 @@ async def renew_key_in_cluster(
                 else servers_map.get(cluster_id) or await resolve_cluster(session, cluster_id)
             )
 
-        dl = await resolve_device_limit_from_group(session, server_id)
-        if dl is not None:
-            hwid_device_limit = dl
-
         external_squad_uuid = None
         if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             if tariff:
                 external_squad_uuid = tariff.get("external_squad")
+                tariff_device_limit = tariff.get("device_limit")
+                if tariff_device_limit is not None:
+                    hwid_device_limit = int(tariff_device_limit)
+        else:
+            dl = await resolve_device_limit_from_group(session, server_id)
+            if dl is not None:
+                hwid_device_limit = dl
 
         if (target_subgroup or "") != (old_subgroup or "") and not single_server:
             new_client_id, remna_link = await migrate_between_subgroups(
