@@ -1,9 +1,12 @@
+import asyncio
 import inspect
 
 from collections.abc import Callable
 from typing import Any
 
 from logger import logger
+
+from .constants import DEFAULT_HOOK_TIMEOUT
 
 
 _hooks: dict[str, list[tuple[Callable[..., Any], str | None]]] = {}
@@ -40,23 +43,35 @@ def unregister_module_hooks(module_name: str):
 
 
 async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[Any]:
+    """Вызывает зарегистрированные хуки и собирает результаты."""
     results: list[Any] = []
     for func, owner in _hooks.get(name, []):
         if require_enabled and owner:
             try:
                 from utils.modules_manager import manager
-
                 if not manager.is_enabled(owner):
                     continue
             except Exception:
                 pass
         try:
             if inspect.iscoroutinefunction(func):
-                result = await func(**kwargs)
+                coro = func(**kwargs)
             else:
-                result = func(**kwargs)
+                async def _run_sync():
+                    return func(**kwargs)
+                coro = _run_sync()
+
+            result = await asyncio.wait_for(coro, timeout=DEFAULT_HOOK_TIMEOUT)
             if result:
                 results.append(result)
+        except asyncio.TimeoutError:
+            logger.error(
+                f"[HOOK:{name}] Таймаут в {getattr(func, '__name__', func)} при timeout={DEFAULT_HOOK_TIMEOUT}",
+                exc_info=True,
+            )
         except Exception as e:
-            logger.error(f"[HOOK:{name}] Ошибка в {getattr(func, '__name__', func)}: {e}")
+            logger.error(
+                f"[HOOK:{name}] Ошибка в {getattr(func, '__name__', func)}: {e}",
+                exc_info=True,
+            )
     return results

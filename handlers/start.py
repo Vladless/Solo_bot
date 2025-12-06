@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from typing import Any
@@ -70,6 +69,17 @@ router = Router()
 processing_gifts = set()
 
 
+async def get_or_load_user_snapshot(
+    session: AsyncSession,
+    cached_snapshot: tuple[int, int] | None,
+    tg_id: int,
+) -> tuple[int, int] | None:
+    """Возвращает снапшот пользователя, используя кеш если есть."""
+    if cached_snapshot is not None:
+        return cached_snapshot
+    return await get_user_snapshot(session, tg_id)
+
+
 @router.message(Command("start"))
 @router.callback_query(F.data == "start")
 async def start_entry(
@@ -81,10 +91,12 @@ async def start_entry(
 ):
     message = event.message if isinstance(event, CallbackQuery) else event
 
+    user_snapshot = None
+
     captcha_enabled = bool(MODES_CONFIG.get("CAPTCHA_ENABLED", CAPTCHA_ENABLE))
     if captcha_enabled and captcha:
-        exists = await get_user_snapshot(session, message.chat.id)
-        if exists is None:
+        user_snapshot = await get_user_snapshot(session, message.chat.id)
+        if user_snapshot is None:
             captcha_data = await generate_captcha(message, state)
             await edit_or_send_message(message, captcha_data["text"], reply_markup=captcha_data["markup"])
             return
@@ -95,7 +107,7 @@ async def start_entry(
     if isinstance(event, CallbackQuery):
         user_data = extract_user_data(event.from_user)
 
-    await process_start_logic(message, state, session, admin, text, user_data)
+    await process_start_logic(message, state, session, admin, text, user_data, user_snapshot=user_snapshot)
 
 
 @router.callback_query(F.data == "check_subscription")
@@ -122,13 +134,25 @@ async def process_start_logic(
     state: FSMContext,
     session: Any,
     admin: bool,
-    text_to_process: str = None,
+    text_to_process: str | None = None,
     user_data: dict | None = None,
+    user_snapshot: tuple[int, int] | None = None,
 ):
     user_data = user_data or extract_user_data(message.from_user or message.chat)
     text = text_to_process or message.text or message.caption
+
+    if text == "/start":
+        await add_user(session=session, **user_data)
+        trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
+        trial = 0
+        key_count = 0
+        if trial_key is not None:
+            trial, key_count = trial_key
+        await show_start_menu(message, admin, session, trial=trial, key_count=key_count)
+        return
+
     if not text:
-        trial_key = await get_user_snapshot(session, user_data["tg_id"])
+        trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
         trial = 0
         key_count = 0
         if trial_key is not None:
@@ -182,7 +206,7 @@ async def process_start_logic(
         await send_instructions(message)
         return
 
-    trial_key = await get_user_snapshot(session, user_data["tg_id"])
+    trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
     trial = 0
     key_count = 0
     if trial_key is not None:
@@ -308,7 +332,7 @@ async def show_start_menu(
         module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
         kb = insert_hook_buttons(kb, module_buttons)
     except Exception as e:
-        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}")
+        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}", exc_info=True)
 
     kb.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 

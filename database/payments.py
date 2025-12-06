@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Optional
 
 from pytz import timezone
 from sqlalchemy import and_, insert, select, update
@@ -91,11 +90,20 @@ async def get_payment_by_id(session: AsyncSession, internal_id: int) -> dict | N
     try:
         result = await session.execute(select(Payment).where(Payment.id == internal_id).limit(1))
         payment = result.scalar_one_or_none()
-        if payment:
-            logger.info(f"Найден платёж id={internal_id}")
-            return dict(payment.__dict__)
-        logger.info(f"Платёж id={internal_id} не найден")
-        return None
+        if not payment:
+            return None
+        return {
+            "id": payment.id,
+            "tg_id": payment.tg_id,
+            "amount": payment.amount,
+            "currency": payment.currency,
+            "status": payment.status,
+            "payment_system": payment.payment_system,
+            "payment_id": payment.payment_id,
+            "created_at": payment.created_at,
+            "metadata": payment.metadata_,
+            "original_amount": payment.original_amount,
+        }
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при поиске платежа id={internal_id}: {e}")
         return None
@@ -137,11 +145,20 @@ async def get_payment_by_payment_id(session: AsyncSession, pid: str) -> dict | N
     try:
         result = await session.execute(select(Payment).where(Payment.payment_id == pid).limit(1))
         payment = result.scalar_one_or_none()
-        if payment:
-            logger.info(f"Найден платёж payment_id={pid}")
-            return dict(payment.__dict__)
-        logger.info(f"Платёж payment_id={pid} не найден")
-        return None
+        if not payment:
+            return None
+        return {
+            "id": payment.id,
+            "tg_id": payment.tg_id,
+            "amount": payment.amount,
+            "currency": payment.currency,
+            "status": payment.status,
+            "payment_system": payment.payment_system,
+            "payment_id": payment.payment_id,
+            "created_at": payment.created_at,
+            "metadata": payment.metadata_,
+            "original_amount": payment.original_amount,
+        }
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при поиске платежа payment_id={pid}: {e}")
         return None
@@ -158,8 +175,8 @@ async def cancel_expired_pending_payments(session: AsyncSession) -> int:
             )
         )
         .values(status="cancelled")
-        .returning(Payment.id)
     )
     res = await session.execute(stmt)
     await session.commit()
-    return len(res.fetchall())
+    affected = res.rowcount or 0
+    return affected
