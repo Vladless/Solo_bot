@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS
+from core.bootstrap import NOTIFICATIONS_CONFIG
 from database.models import Key, Notification, User
 from logger import logger
 
@@ -81,7 +82,9 @@ async def check_hot_lead_discount(session: AsyncSession, tg_id: int) -> dict:
 
         notification_type, last_time = row
 
-        expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
+        hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+
+        expires_at = last_time + timedelta(hours=hours)
         current_time = datetime.utcnow()
 
         if current_time > expires_at:
@@ -89,7 +92,12 @@ async def check_hot_lead_discount(session: AsyncSession, tg_id: int) -> dict:
 
         tariff_group = "discounts" if notification_type == "hot_lead_step_2" else "discounts_max"
 
-        return {"available": True, "type": notification_type, "tariff_group": tariff_group, "expires_at": expires_at}
+        return {
+            "available": True,
+            "type": notification_type,
+            "tariff_group": tariff_group,
+            "expires_at": expires_at,
+        }
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке скидки горячего лида для {tg_id}: {e}")
@@ -157,7 +165,7 @@ async def check_notifications_bulk(
                     "username": row.username,
                     "first_name": row.first_name,
                     "last_name": row.last_name,
-                    "last_notification_time": (int(last_time.timestamp() * 1000) if last_time else None),
+                    "last_notification_time": int(last_time.timestamp() * 1000) if last_time else None,
                 })
 
         logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")

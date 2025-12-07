@@ -141,44 +141,26 @@ async def process_start_logic(
     user_data = user_data or extract_user_data(message.from_user or message.chat)
     text = text_to_process or message.text or message.caption
 
-    if text == "/start":
-        await add_user(session=session, **user_data)
-        trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
-        trial = 0
-        key_count = 0
-        if trial_key is not None:
-            trial, key_count = trial_key
-        await show_start_menu(message, admin, session, trial=trial, key_count=key_count)
-        return
-
-    if not text:
-        trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
-        trial = 0
-        key_count = 0
-        if trial_key is not None:
-            trial, key_count = trial_key
-        await show_start_menu(message, admin, session, trial=trial, key_count=key_count)
-        return
-
-    if text.startswith("/start "):
+    if text and text.startswith("/start "):
         text = text.split(maxsplit=1)[1]
 
     await state.update_data(original_text=text, user_data=user_data)
 
     gift_detected = False
-    for part in text.split("-"):
-        await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
-        if "coupons" in part:
-            await handle_coupon_link(part, message, state, session, admin, user_data)
-            continue
-        if "gift" in part:
-            gift_detected = await handle_gift(part, message, state, session, user_data)
-            break
-        if "referral" in part:
-            await handle_referral_link_safe(part, message, state, session, user_data)
-            continue
-        if "utm" in part:
-            await handle_utm_link(part, message, state, session, user_data)
+    if text:
+        for part in text.split("-"):
+            await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
+            if "coupons" in part:
+                await handle_coupon_link(part, message, state, session, admin, user_data)
+                continue
+            if "gift" in part:
+                gift_detected = await handle_gift(part, message, state, session, user_data)
+                break
+            if "referral" in part:
+                await handle_referral_link_safe(part, message, state, session, user_data)
+                continue
+            if "utm" in part:
+                await handle_utm_link(part, message, state, session, user_data)
 
     await state.clear()
     if gift_detected:
@@ -186,7 +168,7 @@ async def process_start_logic(
 
     await add_user(session=session, **user_data)
 
-    tl = text.strip().lower()
+    tl = (text or "").strip().lower()
     if tl == "trial":
         await confirm_create_new_key(message, state, session)
         return
