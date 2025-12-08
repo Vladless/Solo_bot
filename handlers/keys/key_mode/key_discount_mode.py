@@ -77,14 +77,12 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
 async def handle_discount_tariff_selection(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     try:
         tariff_id = int(callback.data.split("|")[1])
-        fake_callback = CallbackQuery.model_construct(
-            id=callback.id,
-            from_user=callback.from_user,
-            chat_instance=callback.chat_instance,
-            message=callback.message,
-            data=f"select_tariff_plan|{tariff_id}",
-        )
-        await select_tariff_plan(fake_callback, session=session, state=state)
+        original_data = callback.data
+        object.__setattr__(callback, "data", f"select_tariff_plan|{tariff_id}")
+        try:
+            await select_tariff_plan(callback, session=session, state=state)
+        finally:
+            object.__setattr__(callback, "data", original_data)
     except Exception as e:
         logger.error(f"Ошибка при выборе скидочного тарифа: {e}")
         await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
