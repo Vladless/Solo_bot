@@ -61,6 +61,18 @@ router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
 
 
+def normalize_expiry_ms(raw_value: int | float | None) -> int:
+    """Нормализует таймстамп истечения в миллисекунды."""
+    if not raw_value:
+        return 0
+    value = int(raw_value)
+    if value > 10**13:
+        value //= 1000
+    elif value < 10**10:
+        value *= 1000
+    return value
+
+
 @router.callback_query(F.data.startswith("renew_key|"))
 async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Обрабатывает нажатие кнопки продления конкретного ключа."""
@@ -74,7 +86,8 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             return
 
         client_id = record["client_id"]
-        expiry_time = record["expiry_time"]
+        expiry_time_raw = record["expiry_time"]
+        expiry_time = normalize_expiry_ms(expiry_time_raw)
         server_id = record["server_id"]
         tariff_id = record.get("tariff_id")
 
@@ -406,8 +419,9 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             return
 
         email = record["email"]
-        expiry_time = record["expiry_time"]
-        current_time = datetime.utcnow().timestamp() * 1000
+        expiry_time_raw = record["expiry_time"]
+        expiry_time = normalize_expiry_ms(expiry_time_raw)
+        current_time = int(datetime.utcnow().timestamp() * 1000)
 
         if expiry_time <= current_time:
             new_expiry_time = int(current_time + timedelta(days=duration_days).total_seconds() * 1000)
