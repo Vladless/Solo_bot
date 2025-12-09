@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    HAPP_CRYPTOLINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     USE_COUNTRY_SELECTION,

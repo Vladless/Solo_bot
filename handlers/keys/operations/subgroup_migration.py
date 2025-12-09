@@ -52,6 +52,20 @@ async def ensure_on_remnawave(
     traffic_bytes = bytes_from_gb(total_gb)
     use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
+    async def _build_link_from_subscription(sub_url: str | None) -> str | None:
+        if not sub_url:
+            return None
+        remna_link = None
+        if use_crypto_link:
+            try:
+                remna_link = await api.encrypt_happ_crypto_link(sub_url)
+            except Exception as e:
+                logger.error(f"{PANEL_REMNA} ошибка шифрования happ-ссылки: {e}")
+                remna_link = None
+        if not remna_link:
+            remna_link = sub_url
+        return remna_link
+
     async def do_update():
         try:
             updated = await api.update_user(
@@ -61,16 +75,30 @@ async def ensure_on_remnawave(
                 traffic_limit_bytes=traffic_bytes,
                 hwid_device_limit=hwid_device_limit,
             )
-            if updated:
-                if reset_traffic:
-                    try:
-                        await api.reset_user_traffic(client_id)
-                    except Exception:
-                        pass
-                return client_id, None
-        except Exception:
+            if not updated:
+                return None, None
+
+            if reset_traffic:
+                try:
+                    await api.reset_user_traffic(client_id)
+                except Exception:
+                    pass
+
+            remna_link = None
+            try:
+                sub_data = await api.get_subscription_by_username(email)
+            except Exception as e:
+                logger.error(f"{PANEL_REMNA} get_subscription_by_username при update: {e}")
+                sub_data = None
+
+            if sub_data:
+                sub_url = sub_data.get("subscriptionUrl")
+                remna_link = await _build_link_from_subscription(sub_url)
+
+            return client_id, remna_link
+        except Exception as e:
+            logger.error(f"{PANEL_REMNA} update_user не удалось: {e}")
             return None, None
-        return None, None
 
     async def do_create():
         try:
@@ -84,19 +112,18 @@ async def ensure_on_remnawave(
             }
             if traffic_bytes > 0:
                 payload["trafficLimitBytes"] = traffic_bytes
-
             payload["hwidDeviceLimit"] = hwid_device_limit
 
             created = await api.create_user(payload)
-            new_uuid = created.get("uuid") if isinstance(created, dict) else None
-            remna_link = None
-            if isinstance(created, dict):
-                if use_crypto_link:
-                    remna_link = (
-                        created.get("happ", {}).get("cryptoLink") if isinstance(created.get("happ"), dict) else None
-                    )
-                if not remna_link:
-                    remna_link = created.get("subscriptionUrl")
+            if not created:
+                return None, None
+
+            user = created.get("user") or {}
+            new_uuid = user.get("uuid") or client_id
+
+            sub_url = created.get("subscriptionUrl")
+            remna_link = await _build_link_from_subscription(sub_url)
+
             return new_uuid, remna_link
         except Exception as e:
             logger.error(f"{PANEL_REMNA} создание не удалось: {e}")

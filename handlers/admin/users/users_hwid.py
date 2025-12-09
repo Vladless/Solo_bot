@@ -52,12 +52,53 @@ async def handle_hwid_menu(
         await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
         return
 
+    user_info = await api.get_user_by_uuid(client_id)
     devices = await api.get_user_hwid_devices(client_id)
 
-    if not devices:
-        text = "💻 <b>HWID устройства</b>\n\n🔌 Нет привязанных устройств."
+    status_emoji = "🟢"
+    status_text = "Онлайн"
+    online_at_str = "—"
+    first_connected_str = "—"
+    last_node_uuid = "—"
+
+    if not user_info:
+        status_emoji = "⚪️"
+        status_text = "Не найден"
     else:
-        text = f"💻 <b>HWID устройства</b>\n\nПривязано: <b>{len(devices)}</b>\n\n"
+        is_online = bool(user_info.get("isOnline"))
+        status_emoji = "🟢" if is_online else "⚪️"
+        status_text = "Онлайн" if is_online else "Офлайн"
+
+        online_at = user_info.get("onlineAt")
+        if online_at:
+            online_at_str = online_at[:19].replace("T", " ")
+
+        first_connected_at = user_info.get("firstConnectedAt")
+        if first_connected_at:
+            first_connected_str = first_connected_at[:19].replace("T", " ")
+
+        last_node_uuid_val = user_info.get("lastConnectedNodeUuid")
+        if last_node_uuid_val:
+            last_node_uuid = last_node_uuid_val
+
+    if not devices:
+        text = (
+            "💻 <b>HWID устройства</b>\n\n"
+            f"{status_emoji} <b>Статус:</b> {status_text}\n"
+            f"└ 🕓 <b>Онлайн был:</b> {online_at_str}\n"
+            f"└ 🚀 <b>Первое подключение:</b> {first_connected_str}\n"
+            f"└ 🛰 <b>Нода последнего подключения:</b> {last_node_uuid}\n\n"
+            "🔌 Нет привязанных устройств."
+        )
+    else:
+        text = (
+            "💻 <b>HWID устройства</b>\n\n"
+            f"{status_emoji} <b>Статус:</b> {status_text}\n"
+            f"└ 🕓 <b>Онлайн был:</b> {online_at_str}\n"
+            f"└ 🚀 <b>Первое подключение:</b> {first_connected_str}\n"
+            f"└ 🛰 <b>Нода последнего подключения:</b> {last_node_uuid}\n\n"
+            f"🔗 Привязано устройств: <b>{len(devices)}</b>\n\n"
+        )
         for idx, device in enumerate(devices, 1):
             created = device.get("createdAt", "")[:19].replace("T", " ")
             updated = device.get("updatedAt", "")[:19].replace("T", " ")
