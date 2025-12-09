@@ -223,9 +223,11 @@ async def renew_key_in_cluster(
             tariff = await get_tariff_by_id(session, plan)
             if tariff:
                 external_squad_uuid = tariff.get("external_squad")
-                tariff_device_limit = tariff.get("device_limit")
-                if tariff_device_limit is not None:
-                    hwid_device_limit = int(tariff_device_limit)
+                is_configurable = tariff.get("configurable", False)
+                if not is_configurable:
+                    tariff_device_limit = tariff.get("device_limit")
+                    if tariff_device_limit is not None:
+                        hwid_device_limit = int(tariff_device_limit)
         else:
             dl = await resolve_device_limit_from_group(session, server_id)
             if dl is not None:
