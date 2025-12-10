@@ -42,11 +42,11 @@ from hooks.processors import (
     process_purchase_tariff_group_override,
     process_tariff_menu,
 )
-from .utils import add_tariff_button_generic
 from logger import logger
 
 from .key_mode.key_cluster_mode import key_cluster_mode
 from .key_mode.key_country_mode import key_country_mode
+from .utils import add_tariff_button_generic
 
 
 router = Router()

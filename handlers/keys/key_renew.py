@@ -53,8 +53,9 @@ from hooks.processors import (
     process_renewal_complete,
     process_renewal_forbidden_groups,
 )
-from .utils import add_tariff_button_generic
 from logger import logger
+
+from .utils import add_tariff_button_generic
 
 
 router = Router()

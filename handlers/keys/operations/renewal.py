@@ -10,10 +10,10 @@ from database import (
     filter_cluster_by_subgroup,
     get_key_details,
     get_servers,
+    get_tariff_by_id,
     resolve_device_limit_from_group,
     update_key_expiry,
     update_key_link,
-    get_tariff_by_id,
 )
 from hooks.processors import process_get_cryptolink_after_renewal
 from logger import (
@@ -57,7 +57,6 @@ async def renew_on_remnawave(
     target_server_name: str | None = None,
     external_squad_uuid: str | None = None,
 ) -> bool:
-    """Продлевает подписку на Remnawave-узлах кластера."""
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
     ]
@@ -67,23 +66,24 @@ async def renew_on_remnawave(
         remnawave_nodes = [s for s in remnawave_nodes if s.get("server_name") == target_server_name] or remnawave_nodes[
             :1
         ]
+
     remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
         return False
+
     expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
     active_inbounds = [s["inbound_id"] for s in remnawave_nodes]
 
-    update_kwargs = dict(
-        uuid=client_id,
-        expire_at=expire_iso,
-        active_user_inbounds=active_inbounds,
-        traffic_limit_bytes=traffic_limit_bytes,
-        hwid_device_limit=hwid_device_limit,
-    )
-    if external_squad_uuid:
-        update_kwargs["external_squad_uuid"] = external_squad_uuid
+    update_kwargs = {
+        "uuid": client_id,
+        "expire_at": expire_iso,
+        "active_user_inbounds": active_inbounds,
+        "traffic_limit_bytes": traffic_limit_bytes,
+        "hwid_device_limit": hwid_device_limit,
+        "external_squad_uuid": external_squad_uuid,
+    }
 
     updated = await remna.update_user(**update_kwargs)
     if updated:
@@ -222,7 +222,11 @@ async def renew_key_in_cluster(
         if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             if tariff:
-                external_squad_uuid = tariff.get("external_squad")
+                raw_external_squad = tariff.get("external_squad")
+                if raw_external_squad:
+                    external_squad_uuid = raw_external_squad
+                else:
+                    external_squad_uuid = ""
                 is_configurable = tariff.get("configurable", False)
                 if not is_configurable:
                     tariff_device_limit = tariff.get("device_limit")
@@ -247,6 +251,7 @@ async def renew_key_in_cluster(
                 reset_traffic=reset_traffic,
                 old_subgroup=old_subgroup,
                 target_subgroup=target_subgroup,
+                external_squad_uuid=external_squad_uuid,
             )
 
             await update_key_expiry(session, new_client_id or client_id, new_expiry_time)

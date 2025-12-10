@@ -29,6 +29,7 @@ async def ensure_on_remnawave(
     hwid_device_limit: int,
     reset_traffic: bool,
     attempt_update_first: bool,
+    external_squad_uuid: str | None = None,
 ) -> tuple[str | None, str | None]:
     if not servers:
         return None, None
@@ -74,6 +75,7 @@ async def ensure_on_remnawave(
                 active_user_inbounds=inbounds,
                 traffic_limit_bytes=traffic_bytes,
                 hwid_device_limit=hwid_device_limit,
+                external_squad_uuid=external_squad_uuid,
             )
             if not updated:
                 return None, None
@@ -113,6 +115,8 @@ async def ensure_on_remnawave(
             if traffic_bytes > 0:
                 payload["trafficLimitBytes"] = traffic_bytes
             payload["hwidDeviceLimit"] = hwid_device_limit
+            if external_squad_uuid is not None:
+                payload["externalSquadUuid"] = external_squad_uuid or None
 
             created = await api.create_user(payload)
             if not created:
@@ -237,6 +241,7 @@ async def migrate_between_subgroups(
     reset_traffic: bool,
     old_subgroup: str,
     target_subgroup: str,
+    external_squad_uuid: str | None = None,
 ) -> tuple[str, str | None]:
     target = await filter_cluster_by_subgroup(session, cluster_all, target_subgroup, cluster_id)
     xui_tgt, remna_tgt = split_by_panel(target)
@@ -293,6 +298,7 @@ async def migrate_between_subgroups(
             hwid_device_limit=hwid_device_limit,
             reset_traffic=reset_traffic,
             attempt_update_first=was_on_remna_before,
+            external_squad_uuid=external_squad_uuid,
         )
         if remna_old_non:
             await delete_on_remnawave(remna_old_non, client_id)
@@ -315,6 +321,7 @@ async def migrate_between_subgroups(
         hwid_device_limit=hwid_device_limit,
         reset_traffic=reset_traffic,
         attempt_update_first=was_on_remna_before,
+        external_squad_uuid=external_squad_uuid,
     )
 
     if remna_old_non:

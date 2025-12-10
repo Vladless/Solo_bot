@@ -49,6 +49,7 @@ async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[A
         if require_enabled and owner:
             try:
                 from utils.modules_manager import manager
+
                 if not manager.is_enabled(owner):
                     continue
             except Exception:
@@ -57,14 +58,16 @@ async def run_hooks(name: str, require_enabled: bool = True, **kwargs) -> list[A
             if inspect.iscoroutinefunction(func):
                 coro = func(**kwargs)
             else:
+
                 async def _run_sync():
                     return func(**kwargs)
+
                 coro = _run_sync()
 
             result = await asyncio.wait_for(coro, timeout=DEFAULT_HOOK_TIMEOUT)
             if result:
                 results.append(result)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 f"[HOOK:{name}] Таймаут в {getattr(func, '__name__', func)} при timeout={DEFAULT_HOOK_TIMEOUT}",
                 exc_info=True,

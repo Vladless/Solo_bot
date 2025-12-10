@@ -95,9 +95,7 @@ async def key_country_mode(
     if state and plan:
         await state.update_data(tariff_id=plan)
 
-    if state and any(
-        value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub)
-    ):
+    if state and any(value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub)):
         data = await state.get_data()
         if selected_device_limit is not None:
             data["config_selected_device_limit"] = selected_device_limit
