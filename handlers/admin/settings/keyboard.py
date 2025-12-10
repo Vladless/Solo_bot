@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
+from core.settings.money_config import get_currency_mode
 from .settings_config import (
     BUTTON_TITLES,
     MODES_TITLES,
@@ -192,12 +193,14 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
             ).pack(),
         )
 
-    mode = str(money_state.get("CURRENCY_MODE") or "RUB").upper()
-    if mode not in ("RUB", "USD", "RUB+USD"):
-        mode = "RUB"
+    mode, one_screen = get_currency_mode()
+    if mode == "RUB+USD" and one_screen:
+        mode_text = "RUB+USD (одним экраном)"
+    else:
+        mode_text = mode
 
     builder.button(
-        text=f"Режим валют: {mode}",
+        text=f"Режим валют: {mode_text}",
         callback_data=AdminPanelCallback(
             action="settings_money_currency",
             page=0,
@@ -214,3 +217,4 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
     )
 
     return builder.as_markup()
+

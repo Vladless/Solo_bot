@@ -8,8 +8,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DONATIONS_ENABLE
-from core.bootstrap import PAYMENTS_CONFIG, MONEY_CONFIG, BUTTONS_CONFIG
+from config import DONATIONS_ENABLE, TRIBUTE_LINK
+from core.bootstrap import PAYMENTS_CONFIG, BUTTONS_CONFIG
+from core.settings.money_config import get_currency_mode
 from database import get_last_payments
 from database.models import User
 from handlers import buttons as btn
@@ -33,21 +34,17 @@ async def get_payment_providers_config() -> dict[str, bool]:
     return dict(config)
 
 
-def get_currency_mode() -> str:
-    mode_cfg = MONEY_CONFIG.get("CURRENCY_MODE", "RUB")
-    mode = str(mode_cfg or "RUB").upper()
-    if mode not in ("RUB", "USD", "RUB+USD"):
-        mode = "RUB"
-    return mode
-
-
 @router.callback_query(F.data == "pay")
 async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     providers_config = await get_payment_providers_config()
     providers_with_hooks = await get_providers_with_hooks(providers_config)
 
-    mode = get_currency_mode()
+    mode, one_screen = get_currency_mode()
     multicurrency_enabled = mode == "RUB+USD"
+
+    tribute_cfg = providers_with_hooks.get("TRIBUTE") or {}
+    tribute_link = (TRIBUTE_LINK or "").strip()
+    tribute_enabled = bool(tribute_cfg.get("enabled") and tribute_link)
 
     if not multicurrency_enabled:
         allowed_currency = "RUB" if mode == "RUB" else "USD"
@@ -78,14 +75,15 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
     )
 
     donations_enabled = bool(BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE))
-    has_extra_menu_items = bool(module_buttons) or donations_enabled or bool(
-        (providers_with_hooks.get("TRIBUTE") or {}).get("enabled")
-    )
+    has_extra_menu_items = bool(module_buttons) or donations_enabled or tribute_enabled
 
-    if multicurrency_enabled:
+    if multicurrency_enabled and not one_screen:
         show_stars = bool((providers_with_hooks.get("STARS") or {}).get("enabled"))
-        show_tribute = bool((providers_with_hooks.get("TRIBUTE") or {}).get("enabled"))
-        keyboard = build_currency_choice_kb(show_stars=show_stars, prefix="pay_currency", show_tribute=show_tribute)
+        keyboard = build_currency_choice_kb(
+            show_stars=show_stars,
+            prefix="pay_currency",
+            show_tribute=tribute_enabled,
+        )
         await edit_or_send_message(
             target_message=callback_query.message,
             text=FAST_PAY_CHOOSE_CURRENCY,
@@ -102,8 +100,18 @@ async def handle_pay(callback_query: CallbackQuery, state: FSMContext, session: 
     for key, cfg in providers_with_hooks.items():
         if not cfg.get("enabled"):
             continue
+        if key == "TRIBUTE":
+            continue
         text = getattr(btn, key, key)
         builder.row(InlineKeyboardButton(text=text, callback_data=cfg["value"]))
+
+    if tribute_enabled:
+        builder.row(
+            InlineKeyboardButton(
+                text=getattr(btn, "TRIBUTE", "TRIBUTE"),
+                url=tribute_link,
+            )
+        )
 
     if donations_enabled:
         builder.row(InlineKeyboardButton(text=btn.DONAT_BUTTON, callback_data="donate"))
@@ -124,6 +132,8 @@ async def _build_pay_menu_for_currency(currency: str) -> InlineKeyboardBuilder:
 
     builder = InlineKeyboardBuilder()
     for key, cfg in providers_with_hooks.items():
+        if key == "TRIBUTE":
+            continue
         if not cfg.get("enabled"):
             continue
         if cfg.get("currency") != currency:

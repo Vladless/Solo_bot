@@ -137,19 +137,21 @@ async def open_currency_mode_menu(callback: CallbackQuery) -> None:
     money_config = MONEY_CONFIG
     mode = str(money_config.get("CURRENCY_MODE") or "RUB").upper()
 
-    if mode not in ("RUB", "USD", "RUB+USD"):
+    if mode not in ("RUB", "USD", "RUB+USD", "RUB+USD_ONE_SCREEN"):
         mode = "RUB"
 
     text = (
         "Выберите режим валют:\n\n"
         "• RUB — все цены только в рублях;\n"
         "• USD — все цены только в долларах;\n"
-        "• RUB+USD — мультивалюта, оба варианта."
+        "• RUB+USD — мультивалюта, выбор валюты перед оплатой;\n"
+        "• RUB+USD (одним экраном) — мультивалюта, все кассы на одном экране."
     )
 
     rub_checked = mode == "RUB"
     usd_checked = mode == "USD"
     multi_checked = mode == "RUB+USD"
+    multi_one_screen_checked = mode == "RUB+USD_ONE_SCREEN"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -167,6 +169,12 @@ async def open_currency_mode_menu(callback: CallbackQuery) -> None:
                 InlineKeyboardButton(
                     text=("✅ RUB+USD" if multi_checked else "RUB+USD"),
                     callback_data=AdminPanelCallback(action="settings_money_currency_set", page=3).pack(),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=("✅ RUB+USD (одним экраном)" if multi_one_screen_checked else "RUB+USD (одним экраном)"),
+                    callback_data=AdminPanelCallback(action="settings_money_currency_set", page=4).pack(),
                 ),
             ],
             [
@@ -190,7 +198,7 @@ async def set_currency_mode(
 ) -> None:
     mode_index = callback_data.page
 
-    if mode_index not in (1, 2, 3):
+    if mode_index not in (1, 2, 3, 4):
         await callback.answer("Некорректный выбор", show_alert=True)
         return
 
@@ -198,8 +206,10 @@ async def set_currency_mode(
         new_mode = "RUB"
     elif mode_index == 2:
         new_mode = "USD"
-    else:
+    elif mode_index == 3:
         new_mode = "RUB+USD"
+    else:
+        new_mode = "RUB+USD_ONE_SCREEN"
 
     money_config = MONEY_CONFIG.copy()
     money_config["CURRENCY_MODE"] = new_mode

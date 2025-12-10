@@ -19,6 +19,7 @@ from config import (
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
 )
+from core.bootstrap import MODES_CONFIG
 from database import get_key_details, get_servers
 from database.models import Server
 from handlers.texts import HAPP_ANNOUNCE, HIDDIFY_PROFILE_TITLE, SUBSCRIPTION_INFO_TEXT, V2RAYTUN_ANNOUNCE
@@ -73,7 +74,9 @@ async def get_subscription_urls(
     server_id: str, email: str, session: AsyncSession, include_remnawave_key: str = None
 ) -> list[str]:
     urls = []
-    if USE_COUNTRY_SELECTION:
+    use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+    if use_country_selection:
         result = await session.execute(
             select(Server.subscription_url).where(Server.server_name == server_id, Server.enabled.is_(True))
         )

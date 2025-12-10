@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import USE_COUNTRY_SELECTION
+from core.bootstrap import MODES_CONFIG
 from database import (
     delete_key,
     delete_user_data,
@@ -533,7 +534,9 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
             )
             return
 
-        if USE_COUNTRY_SELECTION:
+        use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+        if use_country_selection:
             unique_countries = {srv["server_name"] for srv in cluster_servers}
             await state.update_data(tg_id=tg_id, email=email, cluster_id=cluster_id)
             builder = InlineKeyboardBuilder()
@@ -809,7 +812,9 @@ async def handle_create_key_start(
     tg_id = callback_data.tg_id
     await state.update_data(tg_id=tg_id)
 
-    if USE_COUNTRY_SELECTION:
+    use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+    if use_country_selection:
         await state.set_state(UserEditorState.selecting_country)
 
         stmt = select(Server.server_name).distinct().order_by(Server.server_name)
@@ -935,6 +940,8 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
     data = await state.get_data()
     tg_id = data.get("tg_id", callback_query.from_user.id)
 
+    use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
     try:
         if not callback_query.data.startswith("tariff_"):
             raise ValueError("Некорректный callback_data")
@@ -950,7 +957,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
         expiry = datetime.now(tz=timezone.utc) + timedelta(days=duration_days)
         expiry_ms = int(expiry.timestamp() * 1000)
 
-        if USE_COUNTRY_SELECTION and "country" in data:
+        if use_country_selection and "country" in data:
             country = data["country"]
             await create_key_on_cluster(
                 country,

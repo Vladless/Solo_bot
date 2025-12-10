@@ -5,8 +5,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import USE_NEW_PAYMENT_FLOW
-from core.bootstrap import PAYMENTS_CONFIG, MONEY_CONFIG
+from config import USE_NEW_PAYMENT_FLOW, TRIBUTE_LINK
+from core.bootstrap import PAYMENTS_CONFIG
+from core.settings.money_config import get_currency_mode
+
 from database.temporary_data import create_temporary_data
 from handlers import buttons as btn
 from handlers.payments.currency_flow import (
@@ -26,14 +28,6 @@ router = Router()
 async def get_payment_providers_config() -> dict[str, bool]:
     config = PAYMENTS_CONFIG or {}
     return dict(config)
-
-
-def get_currency_mode() -> str:
-    mode_cfg = MONEY_CONFIG.get("CURRENCY_MODE", "RUB")
-    mode = str(mode_cfg or "RUB").upper()
-    if mode not in ("RUB", "USD", "RUB+USD"):
-        mode = "RUB"
-    return mode
 
 
 async def _run_provider_flow(
@@ -97,46 +91,57 @@ async def try_fast_payment_flow(
     payment_config = await get_payment_providers_config()
     providers_map = await get_providers_with_hooks(payment_config)
 
-    providers = (
-        [USE_NEW_PAYMENT_FLOW]
-        if isinstance(USE_NEW_PAYMENT_FLOW, str)
-        else [str(provider) for provider in (USE_NEW_PAYMENT_FLOW or [])]
-    )
-    providers = [
-        provider
-        for provider in providers
-        if (providers_map.get(str(provider).upper()) or {}).get("fast")
-        and (providers_map.get(str(provider).upper()) or {}).get("enabled", True)
-    ]
+    configured = [str(p) for p in (USE_NEW_PAYMENT_FLOW or [])]
+    configured_upper = [p.upper() for p in configured]
+    configured_set = set(configured_upper)
 
-    mode = get_currency_mode()
-    multicurrency_enabled = mode == "RUB+USD"
+    providers: list[str] = []
+    for p_up in configured_upper:
+        cfg = providers_map.get(p_up) or {}
+        if cfg.get("fast") and cfg.get("enabled", True):
+            providers.append(p_up)
 
-    if not multicurrency_enabled:
+    mode, one_screen = get_currency_mode()
+    multicurrency_mode = mode == "RUB+USD"
+
+    if not multicurrency_mode:
         allowed_currency = "RUB" if mode == "RUB" else "USD"
-        providers = [
-            provider
-            for provider in providers
-            if (providers_map.get(provider.upper()) or {}).get("currency") in (allowed_currency, "RUB+USD")
-        ]
+        filtered: list[str] = []
+        for p_up in providers:
+            cfg = providers_map.get(p_up) or {}
+            curr = str(cfg.get("currency") or "").upper()
+            if curr in (allowed_currency, "RUB+USD"):
+                filtered.append(p_up)
+        providers = filtered
 
-    if not providers:
+    if not providers and "TRIBUTE" not in configured_set:
         return False
 
-    if len(providers) == 1 and not multicurrency_enabled:
-        single_provider = providers[0].upper()
-        cfg = providers_map.get(single_provider) or {}
-        currency = cfg.get("currency")
-        if currency:
-            await state.update_data(chosen_currency=currency)
-        if await _run_provider_flow(single_provider, callback_query, session, state, required_amount):
-            return True
-        return False
+    tribute_cfg = providers_map.get("TRIBUTE") or {}
+    tribute_link = (TRIBUTE_LINK or "").strip()
+    tribute_enabled = (
+        "TRIBUTE" in configured_set
+        and tribute_cfg.get("enabled", True)
+        and bool(tribute_link)
+    )
 
-    if multicurrency_enabled:
-        show_stars = bool((providers_map.get("STARS") or {}).get("enabled"))
-        show_tribute = bool((providers_map.get("TRIBUTE") or {}).get("enabled"))
-        keyboard = build_currency_choice_kb(show_stars=show_stars, show_tribute=show_tribute)
+    stars_cfg = providers_map.get("STARS") or {}
+    stars_enabled_for_fast = (
+        "STARS" in configured_set
+        and stars_cfg.get("fast")
+        and stars_cfg.get("enabled", True)
+    )
+
+    if multicurrency_mode and not one_screen:
+        show_stars = stars_enabled_for_fast
+        show_tribute = tribute_enabled
+        if not providers and not show_tribute:
+            return False
+
+        keyboard = build_currency_choice_kb(
+            show_stars=show_stars,
+            show_tribute=show_tribute,
+        )
         lead_text = await shortfall_lead_text(
             session,
             tg_id,
@@ -157,11 +162,39 @@ async def try_fast_payment_flow(
         )
         return True
 
+    total_options = len(providers) + (1 if tribute_enabled else 0)
+    if len(providers) == 1 and total_options == 1:
+        single_provider = providers[0]
+        cfg = providers_map.get(single_provider) or {}
+        currency = cfg.get("currency")
+        if currency:
+            await state.update_data(chosen_currency=currency)
+        if await _run_provider_flow(single_provider, callback_query, session, state, required_amount):
+            return True
+        return False
+
     keyboard = InlineKeyboardBuilder()
-    for provider in providers:
-        provider_upper = provider.upper()
+    for provider_upper in providers:
         button_text = getattr(btn, provider_upper, provider_upper)
-        keyboard.row(InlineKeyboardButton(text=button_text, callback_data=f"choose_payment_provider|{provider_upper}"))
+        if one_screen:
+            cfg = providers_map.get(provider_upper) or {}
+            curr = cfg.get("currency")
+            if curr and curr != "RUB+USD":
+                button_text = f"{button_text} ({currency_label(curr)})"
+        keyboard.row(
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"choose_payment_provider|{provider_upper}",
+            )
+        )
+
+    if tribute_enabled:
+        keyboard.row(
+            InlineKeyboardButton(
+                text=getattr(btn, "TRIBUTE", "TRIBUTE"),
+                url=tribute_link,
+            )
+        )
 
     keyboard.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
@@ -171,7 +204,11 @@ async def try_fast_payment_flow(
         required_amount,
         getattr(callback_query.from_user, "language_code", None),
     )
-    await state.update_data(temp_key=temp_key, temp_payload=temp_payload, required_amount=required_amount)
+    await state.update_data(
+        temp_key=temp_key,
+        temp_payload=temp_payload,
+        required_amount=required_amount,
+    )
     await edit_or_send_message(
         target_message=callback_query.message,
         text=f"{lead_text}.\n\n{FAST_PAY_CHOOSE_PROVIDER}",
@@ -188,14 +225,14 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
     currency = callback_query.data.split("|")[1]
     data = await state.get_data()
 
-    providers = data.get("fastflow_providers") or (
-        [USE_NEW_PAYMENT_FLOW]
-        if isinstance(USE_NEW_PAYMENT_FLOW, str)
-        else [str(provider) for provider in (USE_NEW_PAYMENT_FLOW or [])]
-    )
+    providers = data.get("fastflow_providers") or []
+    if not providers:
+        configured = [str(p) for p in (USE_NEW_PAYMENT_FLOW or [])]
+        providers = [p.upper() for p in configured]
+
     filtered = [
         provider_upper
-        for provider_upper in (provider.upper() for provider in providers)
+        for provider_upper in (p.upper() for p in providers)
         if (providers_map.get(provider_upper) or {}).get("currency") == currency
         and (providers_map.get(provider_upper) or {}).get("fast")
         and (providers_map.get(provider_upper) or {}).get("enabled", True)
@@ -228,7 +265,10 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
     for provider_upper in filtered:
         button_text = getattr(btn, provider_upper, provider_upper)
         keyboard.row(
-            InlineKeyboardButton(text=button_text, callback_data=f"choose_payment_provider|{provider_upper}")
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"choose_payment_provider|{provider_upper}",
+            )
         )
 
     keyboard.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
@@ -241,7 +281,11 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
         force_currency=currency,
     )
     text = f"{lead_text}.\n\nВалюта: {currency_label(currency)}\n{FAST_PAY_CHOOSE_PROVIDER}"
-    await edit_or_send_message(target_message=callback_query.message, text=text, reply_markup=keyboard.as_markup())
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=text,
+        reply_markup=keyboard.as_markup(),
+    )
 
 
 @router.callback_query(F.data.startswith("choose_payment_provider|"))

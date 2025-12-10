@@ -16,6 +16,7 @@ from config import (
     REMNAWAVE_PASSWORD,
     USE_COUNTRY_SELECTION,
 )
+from core.bootstrap import MODES_CONFIG
 from database import get_servers
 from database.models import Key, Server, Tariff
 from filters.admin import IsAdminFilter
@@ -205,7 +206,9 @@ async def handle_sync_server(
             )
             return
 
-        if USE_COUNTRY_SELECTION:
+        use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+        if use_country_selection:
             stmt = (
                 select(
                     Server.api_url,
@@ -402,7 +405,9 @@ async def handle_sync_cluster(
         servers = await get_servers(session)
         cluster_servers = servers.get(cluster_name, [])
 
-        if USE_COUNTRY_SELECTION:
+        use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
+        if use_country_selection:
             server_names = [s.get("server_name") for s in cluster_servers if s.get("server_name")]
             if not server_names:
                 await callback_query.message.edit_text(
@@ -474,7 +479,7 @@ async def handle_sync_cluster(
                                 f"обновим без лимитов"
                             )
 
-                    if USE_COUNTRY_SELECTION:
+                    if use_country_selection:
                         user_server = None
                         for s in cluster_servers:
                             if s.get("server_name") == key["server_id"]:
@@ -573,7 +578,7 @@ async def handle_sync_cluster(
                             delete(Key).where(Key.tg_id == key["tg_id"], Key.client_id == key["client_id"])
                         )
 
-                        cluster_id_for_recreate = key["server_id"] if USE_COUNTRY_SELECTION else cluster_name
+                        cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                         await create_key_on_cluster(
                             cluster_id_for_recreate,
                             key["tg_id"],
@@ -594,7 +599,7 @@ async def handle_sync_cluster(
                         delete(Key).where(Key.tg_id == key["tg_id"], Key.client_id == key["client_id"])
                     )
 
-                    cluster_id_for_recreate = key["server_id"] if USE_COUNTRY_SELECTION else cluster_name
+                    cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                     await create_key_on_cluster(
                         cluster_id_for_recreate,
                         key["tg_id"],

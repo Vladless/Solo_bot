@@ -5,6 +5,7 @@ from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import USE_COUNTRY_SELECTION
+from core.bootstrap import MODES_CONFIG
 from database.models import Key, Server
 from logger import logger
 
@@ -33,9 +34,11 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
 
         await session.commit()
 
+        use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
+
         base_text = f"✅ Ключи успешно перенесены на сервер '{new_server_name}', сервер '{old_server_name}' удален!"
         sync_reminder = '\n\n⚠️ Не забудьте сделать "Синхронизацию".'
-        final_text = base_text + (sync_reminder if USE_COUNTRY_SELECTION else "")
+        final_text = base_text + (sync_reminder if use_country_selection else "")
 
         await callback_query.message.edit_text(
             text=final_text,
