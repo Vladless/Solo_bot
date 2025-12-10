@@ -389,13 +389,32 @@ def update_from_beta():
     local_version = get_local_version()
     remote_version = get_remote_version(branch="dev")
 
+    console.print(
+        Panel(
+            "[bold red]Обновление на DEV / BETA-ветку[/bold red]\n\n"
+            "[white]"
+            "• Dev-ветка может содержать изменения, которые ещё находятся в доработке.\n"
+            "• Возможны ошибки и непредсказуемое поведение отдельных функций, особенно режима стран.\n\n"
+            "• BETA-версии бота в первую очередь ориентированы на опытных пользователей, "
+            "готовых протестировать новые возможности и осознанно работать с обновлённым функционалом.\n"
+            "[/white]\n\n"
+            "[yellow]Перед началом обновления CLI автоматически создаёт резервную копию проекта, "
+            "что позволит при необходимости безопасно восстановиться из бэкапа.[/yellow]",
+            border_style="red",
+            title="[bold red]Нестабильная ветка разработки[/bold red]",
+            padding=(1, 2),
+        )
+    )
+
     if local_version and remote_version:
         console.print(f"[cyan]Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
         if local_version == remote_version:
             if not Confirm.ask("[yellow]Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
 
-    if not Confirm.ask("[yellow]Подтвердите обновление Solobot с ветки DEV[/yellow]"):
+    if not Confirm.ask(
+        "[bold red]Продолжить обновление на dev-ветку с учётом возможных особенностей работы?[/bold red]"
+    ):
         return
 
     console.print("[red]ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
@@ -553,7 +572,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.3.3", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.7", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
