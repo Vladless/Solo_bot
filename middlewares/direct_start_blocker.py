@@ -1,14 +1,14 @@
 import time
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISABLE_DIRECT_START
 from core.bootstrap import MODES_CONFIG
-from database import async_session_maker, check_user_exists
+from database import check_user_exists
 from logger import logger
 
 
@@ -40,6 +40,11 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
             if current_state:
                 return await handler(event, data)
 
+        session = data.get("session")
+        if not isinstance(session, AsyncSession):
+            logger.error("[DirectStartBlocker] session отсутствует в data")
+            return await handler(event, data)
+
         tg_id = message.from_user.id
         text = message.text.strip()
         now = time.time()
@@ -48,8 +53,7 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
             cached = _cache_user_exists.get(tg_id)
             if cached and cached[0] > now:
                 return cached[1]
-            async with async_session_maker() as session:
-                exists = await check_user_exists(session, tg_id)
+            exists = await check_user_exists(session, tg_id)
             _cache_user_exists[tg_id] = (now + _TTL, exists)
             return exists
 

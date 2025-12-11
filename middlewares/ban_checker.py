@@ -19,7 +19,7 @@ _ban_cache: dict[int, tuple[float, dict | None]] = {}
 
 
 class BanCheckerMiddleware(BaseMiddleware):
-    def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
+    def __init__(self, session_factory: Callable[[], AsyncSession] | None = None) -> None:
         self.session_factory = session_factory
 
     async def __call__(
@@ -50,32 +50,27 @@ class BanCheckerMiddleware(BaseMiddleware):
         if cached and cached[0] > now_ts:
             ban_info = cached[1]
         else:
-            session: AsyncSession | None = (
-                data.get("session") if isinstance(data.get("session"), AsyncSession) else None
-            )
-            created_here = False
-            if session is None:
-                session = self.session_factory()
-                created_here = True
-            try:
-                q = (
-                    select(ManualBan.reason, ManualBan.until)
-                    .where(
-                        ManualBan.tg_id == tg_id,
-                        (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow()),
-                    )
-                    .limit(1)
+            session = data.get("session")
+            if not isinstance(session, AsyncSession):
+                logger.error("[BanChecker] session отсутствует в data")
+                return await handler(event, data)
+
+            query = (
+                select(ManualBan.reason, ManualBan.until)
+                .where(
+                    ManualBan.tg_id == tg_id,
+                    (ManualBan.until.is_(None)) | (ManualBan.until > datetime.utcnow()),
                 )
-                res = await session.execute(q)
-                row = res.first()
-                if row:
-                    reason, until = row
-                    ban_info = {"reason": reason or "не указана", "until": until}
-                else:
-                    ban_info = None
-            finally:
-                if created_here:
-                    await session.close()
+                .limit(1)
+            )
+            result = await session.execute(query)
+            row = result.first()
+            if row:
+                reason, until = row
+                ban_info = {"reason": reason or "не указана", "until": until}
+            else:
+                ban_info = None
+
             _ban_cache[tg_id] = (now_ts + _BAN_CACHE_TTL, ban_info)
 
         if not ban_info:
