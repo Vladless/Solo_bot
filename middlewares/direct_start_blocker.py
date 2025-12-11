@@ -42,17 +42,21 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
 
         session = data.get("session")
         if not isinstance(session, AsyncSession):
-            logger.error("[DirectStartBlocker] session отсутствует в data")
             return await handler(event, data)
 
         tg_id = message.from_user.id
         text = message.text.strip()
         now = time.time()
+        user_in_data = bool(data.get("user"))
 
         async def user_exists_cached() -> bool:
+            if user_in_data:
+                return True
+
             cached = _cache_user_exists.get(tg_id)
             if cached and cached[0] > now:
                 return cached[1]
+
             exists = await check_user_exists(session, tg_id)
             _cache_user_exists[tg_id] = (now + _TTL, exists)
             return exists

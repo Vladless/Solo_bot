@@ -3,20 +3,11 @@ from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import CallbackQuery, Message, Update
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID
 from core.bootstrap import MANAGEMENT_CONFIG
-from database.models import Admin
 
 
 class MaintenanceModeMiddleware(BaseMiddleware):
-    def __init__(self) -> None:
-        if isinstance(ADMIN_ID, (list, tuple, set)):
-            self._admin_ids = set(ADMIN_ID)
-        else:
-            self._admin_ids = {ADMIN_ID}
-
     async def __call__(
         self,
         handler: Callable[[Update, dict[str, Any]], Awaitable[Any]],
@@ -38,15 +29,7 @@ class MaintenanceModeMiddleware(BaseMiddleware):
         if not user_id:
             return
 
-        if user_id in self._admin_ids:
-            return await handler(event, data)
-
-        session = data.get("session")
-        if not isinstance(session, AsyncSession):
-            return
-
-        db_admin = await session.get(Admin, user_id)
-        if db_admin:
+        if data.get("admin"):
             return await handler(event, data)
 
         if isinstance(event, CallbackQuery):
