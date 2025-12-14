@@ -641,6 +641,195 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
 
 
 @router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_recreate_key"),
+    IsAdminFilter(),
+)
+async def handle_recreate_key_start(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    result = await session.execute(select(Key).where(Key.email == email))
+    key_obj: Key | None = result.scalar_one_or_none()
+
+    if not key_obj:
+        await callback_query.message.edit_text(
+            text="🚫 Ключ не найден.",
+            reply_markup=build_editor_kb(tg_id),
+        )
+        return
+
+    tariff_name = "—"
+    if key_obj.tariff_id:
+        tariff = await get_tariff_by_id(session, key_obj.tariff_id)
+        if tariff:
+            tariff_name = tariff.get("name", "—")
+
+    text = (
+        "<b>🔁 Пересоздание ссылки подписки</b>\n\n"
+        f"📦 <b>Тариф:</b> {tariff_name}\n\n"
+        "⚠️ <b>Будет сгенерирована новая ссылка подписки.</b>\n"
+        "Старая ссылка перестанет работать.\n\n"
+        "✅ <i>Все данные подписки сохранятся.</i>"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Пересоздать",
+            callback_data=f"confirm_recreate|{tg_id}|{email}",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🔙 Назад",
+            callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
+        )
+    )
+
+    await callback_query.message.edit_text(text=text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("confirm_recreate|"), IsAdminFilter())
+async def handle_recreate_key_confirm(
+    callback_query: CallbackQuery,
+    session: AsyncSession,
+):
+    _, tg_id, old_email = callback_query.data.split("|")
+    tg_id = int(tg_id)
+
+    try:
+        result = await session.execute(select(Key).where(Key.email == old_email))
+        key_obj: Key | None = result.scalar_one_or_none()
+
+        if not key_obj:
+            await callback_query.message.edit_text(
+                text="🚫 Ключ не найден.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        await callback_query.message.edit_text("⏳ Пересоздание ссылки подписки...")
+
+        client_id = key_obj.client_id
+        cluster_id = key_obj.server_id
+        old_link = key_obj.remnawave_link or key_obj.key
+
+        servers = await get_servers(session)
+        cluster = servers.get(cluster_id)
+
+        if not cluster:
+            for _, server_list in servers.items():
+                for server_info in server_list:
+                    if server_info.get("server_name", "").lower() == cluster_id.lower():
+                        cluster = [server_info]
+                        break
+                if cluster:
+                    break
+
+        if not cluster:
+            await callback_query.message.edit_text(
+                text=f"❗ Кластер {cluster_id} не найден.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
+
+        if not remnawave_servers:
+            await callback_query.message.edit_text(
+                text="❗ Revoke доступен только для Remnawave. Для 3x-ui используйте перевыпуск.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        api_url = remnawave_servers[0].get("api_url")
+
+        from panels.remnawave_ext import revoke_user_subscription
+
+        user_data = await revoke_user_subscription(api_url, client_id)
+
+        if not user_data:
+            await callback_query.message.edit_text(
+                text="❗ Не удалось выполнить revoke. Проверьте логи.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        new_link = user_data.get("subscriptionUrl")
+
+        if not new_link:
+            await callback_query.message.edit_text(
+                text="❗ Revoke выполнен, но новая ссылка не получена.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
+
+        await session.execute(
+            update(Key)
+            .where(Key.email == old_email)
+            .values(
+                key=new_link,
+                remnawave_link=new_link,
+            )
+        )
+        await session.commit()
+
+        try:
+            user_text = (
+                "🔄 <b>Ваша подписка была перевыпущена</b>\n\n"
+                f"🔗 <b>Новая ссылка подписки:</b>\n<code>{new_link}</code>\n\n"
+                "<i>Старая ссылка больше не работает.</i>"
+            )
+            user_kb = InlineKeyboardBuilder()
+            user_kb.row(InlineKeyboardButton(text="📱 Мои подписки", callback_data="view_keys"))
+            user_kb.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+
+            await callback_query.bot.send_message(
+                chat_id=tg_id,
+                text=user_text,
+                reply_markup=user_kb.as_markup(),
+            )
+            notification_sent = True
+        except Exception as e:
+            logger.warning(f"Не удалось отправить уведомление клиенту {tg_id}: {e}")
+            notification_sent = False
+
+        text = (
+            "✅ <b>Ссылка подписки пересоздана</b>\n\n"
+            f"🔗 <b>Старая ссылка:</b>\n<code>{old_link}</code>\n\n"
+            f"🔗 <b>Новая ссылка:</b>\n<code>{new_link}</code>\n\n"
+        )
+        if notification_sent:
+            text += "📨 <i>Клиент уведомлён о новой ссылке.</i>"
+        else:
+            text += "⚠️ <i>Не удалось уведомить клиента.</i>"
+
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(
+                text="🔙 Назад",
+                callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=old_email).pack(),
+            )
+        )
+
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=builder.as_markup(),
+        )
+
+    except Exception as e:
+        logger.error(f"Ошибка при revoke ключа {old_email}: {e}")
+        await callback_query.message.edit_text(
+            text=f"❗ Ошибка при пересоздании: {e}",
+            reply_markup=build_editor_kb(tg_id),
+        )
+
+
+@router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_delete_key"),
     IsAdminFilter(),
 )

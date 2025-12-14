@@ -261,6 +261,10 @@ def build_key_edit_kb(key_details: dict, email: str, is_configurable: bool = Fal
         callback_data=AdminUserEditorCallback(action="users_update_key", data=email, tg_id=key_details["tg_id"]).pack(),
     )
     builder.button(
+        text="🔁 Пересоздать",
+        callback_data=AdminUserEditorCallback(action="users_recreate_key", data=email, tg_id=key_details["tg_id"]).pack(),
+    )
+    builder.button(
         text="📦 Тариф",
         callback_data=AdminUserEditorCallback(action="users_renew", data=email, tg_id=key_details["tg_id"]).pack(),
     )
