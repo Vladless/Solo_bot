@@ -14,7 +14,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USE_COUNTRY_SELECTION
+from config import USE_COUNTRY_SELECTION, REMNAWAVE_TOKEN_LOGIN_ENABLED, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from panels.remnawave import RemnawaveAPI
 from core.bootstrap import MODES_CONFIG
 from database import (
     delete_key,
@@ -737,7 +738,9 @@ async def handle_recreate_key_confirm(
             )
             return
 
-        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
+        remnawave_servers = [
+            s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"
+        ]
 
         if not remnawave_servers:
             await callback_query.message.edit_text(
@@ -747,10 +750,21 @@ async def handle_recreate_key_confirm(
             return
 
         api_url = remnawave_servers[0].get("api_url")
+        if not api_url:
+            await callback_query.message.edit_text(
+                text="❗ У Remnawave сервера не задан api_url.",
+                reply_markup=build_editor_kb(tg_id),
+            )
+            return
 
-        from panels.remnawave_ext import revoke_user_subscription
+        api = RemnawaveAPI(api_url)
+        try:
+            if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
+                await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
 
-        user_data = await revoke_user_subscription(api_url, client_id)
+            user_data = await api.revoke_user_subscription(client_id)
+        finally:
+            await api.aclose()
 
         if not user_data:
             await callback_query.message.edit_text(
@@ -785,8 +799,18 @@ async def handle_recreate_key_confirm(
                 "<i>Старая ссылка больше не работает.</i>"
             )
             user_kb = InlineKeyboardBuilder()
-            user_kb.row(InlineKeyboardButton(text="📱 Мои подписки", callback_data="view_keys"))
-            user_kb.row(InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile"))
+            user_kb.row(
+                InlineKeyboardButton(
+                    text="📱 Мои подписки",
+                    callback_data="view_keys",
+                )
+            )
+            user_kb.row(
+                InlineKeyboardButton(
+                    text="👤 Личный кабинет",
+                    callback_data="profile",
+                )
+            )
 
             await callback_query.bot.send_message(
                 chat_id=tg_id,
@@ -812,7 +836,11 @@ async def handle_recreate_key_confirm(
         builder.row(
             InlineKeyboardButton(
                 text="🔙 Назад",
-                callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=old_email).pack(),
+                callback_data=AdminUserEditorCallback(
+                    action="users_key_edit",
+                    tg_id=tg_id,
+                    data=old_email,
+                ).pack(),
             )
         )
 

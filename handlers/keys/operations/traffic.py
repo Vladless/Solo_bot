@@ -107,7 +107,8 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
                 if not user_data:
                     user_traffic_data["Remnawave (общий)"] = "Клиент не найден"
                 else:
-                    used_bytes = user_data.get("usedTrafficBytes", 0)
+                    user_traffic = user_data.get("userTraffic", {})
+                    used_bytes = user_traffic.get("usedTrafficBytes", 0)
                     used_gb = round(used_bytes / 1073741824, 2)
                     user_traffic_data["Remnawave (общий)"] = used_gb
         except Exception as e:
