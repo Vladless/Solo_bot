@@ -11,6 +11,9 @@ class UserEditorState(StatesGroup):
     selecting_cluster = State()
     selecting_duration = State()
     selecting_country = State()
+    config_menu = State()
+    config_select_base = State()
+    config_input_addon = State()
 
 
 class RenewTariffState(StatesGroup):

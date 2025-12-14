@@ -243,7 +243,7 @@ def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
+def build_key_edit_kb(key_details: dict, email: str, is_configurable: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     is_frozen = (
@@ -264,6 +264,13 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
         text="📦 Тариф",
         callback_data=AdminUserEditorCallback(action="users_renew", data=email, tg_id=key_details["tg_id"]).pack(),
     )
+    if is_configurable:
+        builder.button(
+            text="📱 Конфигурация",
+            callback_data=AdminUserEditorCallback(
+                action="users_edit_config", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
     builder.button(
         text="❌ Удалить",
         callback_data=AdminUserEditorCallback(action="users_delete_key", data=email, tg_id=key_details["tg_id"]).pack(),
