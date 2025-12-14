@@ -91,6 +91,11 @@ async def start_entry(
 ):
     message = event.message if isinstance(event, CallbackQuery) else event
 
+    try:
+        await run_hooks("start_entry", message=message, event=event, state=state, session=session, admin=admin)
+    except Exception as e:
+        logger.error(f"[Hooks:start_entry] Ошибка: {e}", exc_info=True)
+
     user_snapshot = None
 
     captcha_enabled = bool(MODES_CONFIG.get("CAPTCHA_ENABLED", CAPTCHA_ENABLE))
