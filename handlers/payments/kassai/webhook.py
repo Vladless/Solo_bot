@@ -2,7 +2,7 @@ import hashlib
 
 from aiohttp import web
 
-from config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID
+from config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID, KASSAI_WEBHOOK_RESPONSE
 from database import (
     add_payment,
     async_session_maker,
@@ -92,7 +92,7 @@ async def kassai_webhook(request: web.Request):
                     logger.info(
                         f"KassaAI: платёж {order_id} уже обработан"
                     )
-                    return web.Response(text="OK")
+                    return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
                 ok = await update_payment_status(
                     session=session,
                     internal_id=int(payment["id"]),
@@ -129,7 +129,7 @@ async def kassai_webhook(request: web.Request):
             f"KassaAI: платёж {order_id} успешно обработан, "
             f"баланс пользователя {tg_id} пополнен на {amount} RUB"
         )
-        return web.Response(text="OK")
+        return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
     except Exception as e:
         logger.error(f"Ошибка обработки KassaAI webhook: {e}")
         return web.Response(status=500)
