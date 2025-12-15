@@ -1,4 +1,5 @@
 from math import ceil
+from typing import Any
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -7,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import USE_NEW_PAYMENT_FLOW
+from core.bootstrap import MODES_CONFIG
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from database import (
     get_balance,
@@ -36,10 +38,10 @@ from ..buy.key_tariffs import calculate_config_price
 from .utils import (
     KeyAddonConfigState,
     build_addons_pack_screen_text,
+    calc_remaining_ratio_seconds,
     format_devices_label,
     format_traffic_label,
 )
-
 
 router = Router()
 
@@ -74,6 +76,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     current_traffic_gb = data.get("addon_current_traffic_gb")
     selected_devices = data.get("addon_selected_device_limit")
     selected_traffic_gb = data.get("addon_selected_traffic_gb")
+    expiry_time = data.get("addon_expiry_time")
 
     if not email or not tariff_id:
         logger.warning(f"[ADDONS] PACK_MODE: нет email или tariff_id в состоянии: {data}")
@@ -154,6 +157,10 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
         selected_device_limit=current_devices_for_price,
         selected_traffic_gb=current_traffic_for_price,
     )
+    try:
+        base_price_for_current_int = int(base_price_for_current) if base_price_for_current is not None else 0
+    except (TypeError, ValueError):
+        base_price_for_current_int = 0
 
     new_devices_for_price = current_devices_for_price
     if has_device_option and selected_devices is not None:
@@ -176,11 +183,29 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
         selected_device_limit=new_devices_for_price,
         selected_traffic_gb=new_traffic_for_price,
     )
-    extra_price = max(0, price_with_pack - base_price_for_current)
+    try:
+        price_with_pack_int = int(price_with_pack) if price_with_pack is not None else 0
+    except (TypeError, ValueError):
+        price_with_pack_int = 0
+
+    recalc_enabled = bool(
+        MODES_CONFIG.get(
+            "KEY_ADDONS_RECALC_PRICE",
+            TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False),
+        )
+    )
+
+    if recalc_enabled:
+        diff_full = max(0, price_with_pack_int - base_price_for_current_int)
+        remaining_seconds, total_seconds = calc_remaining_ratio_seconds(expiry_time, tariff)
+        extra_price = int((diff_full * remaining_seconds + total_seconds - 1) // total_seconds)
+    else:
+        extra_price = max(0, price_with_pack_int - base_price_for_current_int)
 
     logger.debug(
         "[ADDONS] PACK_MODE calculated prices: "
-        f"base_price_for_current={base_price_for_current} price_with_pack={price_with_pack} extra_price={extra_price} "
+        f"base_price_for_current={base_price_for_current_int} price_with_pack={price_with_pack_int} "
+        f"extra_price={extra_price} recalc_enabled={recalc_enabled} "
         f"has_device_option={has_device_option} has_traffic_option={has_traffic_option} pack_mode={pack_mode!r}"
     )
 
@@ -195,23 +220,13 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     has_device_pack_selected = has_device_option and selected_devices is not None
     has_traffic_pack_selected = has_traffic_option and selected_traffic_gb is not None
 
-    if has_device_pack_selected:
-        selected_devices_label = format_devices_label(selected_devices)
-    else:
-        selected_devices_label = None
-
-    if has_traffic_pack_selected:
-        selected_traffic_label = format_traffic_label(selected_traffic_gb)
-    else:
-        selected_traffic_label = None
+    selected_devices_label = format_devices_label(selected_devices) if has_device_pack_selected else None
+    selected_traffic_label = format_traffic_label(selected_traffic_gb) if has_traffic_pack_selected else None
 
     if has_device_pack_selected:
         current_devices_value = int(current_devices) if current_devices else 0
         selected_devices_value = int(selected_devices)
-        if current_devices_value <= 0 or selected_devices_value <= 0:
-            total_devices_value = 0
-        else:
-            total_devices_value = current_devices_value + selected_devices_value
+        total_devices_value = 0 if current_devices_value <= 0 or selected_devices_value <= 0 else current_devices_value + selected_devices_value
         total_devices_label = format_devices_label(total_devices_value)
     else:
         total_devices_label = None
@@ -219,10 +234,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     if has_traffic_pack_selected:
         current_traffic_value = int(current_traffic_gb) if current_traffic_gb else 0
         selected_traffic_value = int(selected_traffic_gb)
-        if current_traffic_value <= 0 or selected_traffic_value <= 0:
-            total_after_gb = 0
-        else:
-            total_after_gb = current_traffic_value + selected_traffic_value
+        total_after_gb = 0 if current_traffic_value <= 0 or selected_traffic_value <= 0 else current_traffic_value + selected_traffic_value
         total_traffic_label = format_traffic_label(total_after_gb)
     else:
         total_traffic_label = None
@@ -295,7 +307,6 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     elif traffic_buttons:
         for button in traffic_buttons:
             builder.row(button)
-
     builder.row(
         InlineKeyboardButton(
             text=CONFIRM_ADDON_BUTTON_TEXT.format(amount=extra_price_text),
@@ -426,7 +437,6 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
 
     selected_device_limit_db = record.get("selected_device_limit")
     selected_traffic_limit_db = record.get("selected_traffic_limit")
-    original_price_db = record.get("selected_price_rub")
     current_device_limit_db = record.get("current_device_limit")
     current_traffic_limit_db = record.get("current_traffic_limit")
 
@@ -434,7 +444,7 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     base_devices = int(base_devices) if base_devices is not None else None
 
     base_traffic_bytes = tariff.get("traffic_limit")
-    base_traffic_gb = int(base_traffic_bytes / GB) if base_traffic_bytes else None
+    base_traffic_gb_value = int(base_traffic_bytes / GB) if base_traffic_bytes else None
 
     current_devices = (
         int(current_device_limit_db)
@@ -444,7 +454,7 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     current_traffic_gb = (
         int(current_traffic_limit_db)
         if current_traffic_limit_db is not None
-        else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb)
+        else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb_value)
     )
 
     pack_devices, pack_traffic, pack_mode = get_pack_flags()
@@ -456,8 +466,7 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
         pack_traffic and bool(traffic_options) and not (current_traffic_gb is not None and int(current_traffic_gb) == 0)
     )
 
-    has_any_pack = has_device_pack or has_traffic_pack
-    if not has_any_pack:
+    if not (has_device_pack or has_traffic_pack):
         logger.warning(
             f"[ADDONS] PACK_MODE: пакеты недоступны, уже максимальные параметры "
             f"email={email} current_devices={current_devices} current_traffic_gb={current_traffic_gb} "
@@ -465,30 +474,6 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
         )
         await callback.message.answer("❌ Для этой подписки пакеты уже недоступны.")
         return
-
-    current_devices_for_price = int(current_devices) if current_devices is not None else None
-    current_traffic_gb_for_price = int(current_traffic_gb) if current_traffic_gb is not None else None
-
-    config_price_for_current = calculate_config_price(
-        tariff=tariff,
-        selected_device_limit=current_devices_for_price,
-        selected_traffic_gb=current_traffic_gb_for_price,
-    )
-
-    try:
-        original_price_from_db = int(original_price_db) if original_price_db is not None else 0
-    except (TypeError, ValueError):
-        original_price_from_db = 0
-
-    original_price = 0
-
-    logger.debug(
-        "[ADDONS] PACK_MODE start_key_addons state: "
-        f"email={email} tariff_id={tariff_id} current_devices={current_devices} current_traffic_gb={current_traffic_gb} "
-        f"config_price_for_current={config_price_for_current} original_price_db={original_price_db} "
-        f"original_price={original_price} original_price_from_db={original_price_from_db} "
-        f"pack_mode={pack_mode!r}"
-    )
 
     cfg_for_state = dict(cfg)
     if device_options:
@@ -502,7 +487,7 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
         addon_tariff_config=cfg_for_state,
         addon_current_device_limit=current_devices,
         addon_current_traffic_gb=current_traffic_gb,
-        addon_original_price=original_price,
+        addon_expiry_time=record.get("expiry_time"),
         addon_selected_device_limit=None,
         addon_selected_traffic_gb=None,
     )
@@ -572,7 +557,6 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
 
     email = data.get("addon_key_email")
     tariff_id = data.get("addon_tariff_id")
-    original_price = int(data.get("addon_original_price") or 0)
     selected_devices = data.get("addon_selected_device_limit")
     selected_traffic_gb = data.get("addon_selected_traffic_gb")
     current_devices = data.get("addon_current_device_limit")
@@ -580,7 +564,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
 
     logger.info(
         "[ADDONS] PACK_MODE handle_addons_confirm: "
-        f"tg_id={tg_id} email={email} tariff_id={tariff_id} original_price={original_price} "
+        f"tg_id={tg_id} email={email} tariff_id={tariff_id} "
         f"selected_devices={selected_devices} selected_traffic_gb={selected_traffic_gb} "
         f"current_devices={current_devices} current_traffic_gb={current_traffic_gb}"
     )
@@ -629,6 +613,10 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
         selected_device_limit=current_devices_for_price,
         selected_traffic_gb=current_traffic_for_price,
     )
+    try:
+        base_price_for_current_int = int(base_price_for_current) if base_price_for_current is not None else 0
+    except (TypeError, ValueError):
+        base_price_for_current_int = 0
 
     new_devices_for_price = current_devices_for_price
     if has_device_option and selected_devices is not None:
@@ -651,12 +639,31 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
         selected_device_limit=new_devices_for_price,
         selected_traffic_gb=new_traffic_for_price,
     )
-    extra_price = max(0, price_with_pack - base_price_for_current)
+    try:
+        price_with_pack_int = int(price_with_pack) if price_with_pack is not None else 0
+    except (TypeError, ValueError):
+        price_with_pack_int = 0
+
+    recalc_enabled = bool(
+        MODES_CONFIG.get(
+            "KEY_ADDONS_RECALC_PRICE",
+            TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False),
+        )
+    )
+
+    if recalc_enabled:
+        diff_full = max(0, price_with_pack_int - base_price_for_current_int)
+        remaining_seconds, total_seconds = calc_remaining_ratio_seconds(record.get("expiry_time"), tariff)
+        extra_price = int((diff_full * remaining_seconds + total_seconds - 1) // total_seconds)
+        total_price_after_purchase = base_price_for_current_int + extra_price
+    else:
+        extra_price = max(0, price_with_pack_int - base_price_for_current_int)
+        total_price_after_purchase = price_with_pack_int
 
     logger.debug(
         "[ADDONS] PACK_MODE confirm prices: "
-        f"base_price_for_current={base_price_for_current} price_with_pack={price_with_pack} "
-        f"original_price={original_price} extra_price={extra_price} "
+        f"base_price_for_current={base_price_for_current_int} price_with_pack={price_with_pack_int} "
+        f"extra_price={extra_price} recalc_enabled={recalc_enabled} total_price_after_purchase={total_price_after_purchase} "
         f"has_device_option={has_device_option} has_traffic_option={has_traffic_option} "
         f"pack_mode={pack_mode!r}"
     )
@@ -692,7 +699,6 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                 temp_payload={
                     "email": email,
                     "tariff_id": int(tariff_id),
-                    "original_price": original_price,
                     "selected_device_limit": selected_devices,
                     "selected_traffic_gb": selected_traffic_gb,
                     "current_device_limit": current_devices,
@@ -793,7 +799,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             email=email,
             selected_devices=new_device_limit_effective,
             selected_traffic_gb=new_traffic_limit_gb_effective,
-            total_price=int(price_with_pack),
+            total_price=int(total_price_after_purchase),
             has_device_choice=has_device_option,
             has_traffic_choice=has_traffic_option,
             config_mode="pack",
@@ -806,7 +812,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             f"tg_id={tg_id} email={email} extra_price={extra_price} "
             f"new_device_limit_effective={new_device_limit_effective} "
             f"new_traffic_limit_gb_effective={new_traffic_limit_gb_effective} "
-            f"pack_mode={pack_mode!r}"
+            f"recalc_enabled={recalc_enabled} pack_mode={pack_mode!r}"
         )
 
         await state.clear()

@@ -32,6 +32,7 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
     """Клавиатура основного экрана настроек тарификации."""
     allow_downgrade = bool(TARIFFS_CONFIG.get("ALLOW_DOWNGRADE", True))
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
+    recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
 
     builder = InlineKeyboardBuilder()
 
@@ -51,6 +52,13 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
+            text=f"Перерасчёт при докупке: {'да' if recalc_enabled else 'нет'}",
+            callback_data=AdminPanelCallback(action="settings_tariffs_toggle_addons_recalc").pack(),
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
             text="Назад",
             callback_data=AdminPanelCallback(action="settings").pack(),
         )
@@ -63,12 +71,14 @@ def build_tariffs_settings_text() -> str:
     """Текст основного экрана настроек тарификации."""
     allow_downgrade = bool(TARIFFS_CONFIG.get("ALLOW_DOWNGRADE", True))
     pack_mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
+    recalc_enabled = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
 
     lines: list[str] = [
         "⚙️ Настройки тарификации",
         "",
         f"• Понижение условий при изменении: {'включено' if allow_downgrade else 'выключено'}",
         f"• Режим доплат пакетами: {format_pack_mode_label(pack_mode)}",
+        f"• Перерасчёт при докупке: {'да' if recalc_enabled else 'нет'}",
         "",
         "Нажмите «Режим пакетов», чтобы подробнее настроить доплаты к активной подписке.",
     ]
@@ -169,6 +179,18 @@ async def toggle_tariffs_downgrade(callback: CallbackQuery, session: AsyncSessio
 
     new_config: dict[str, Any] = dict(TARIFFS_CONFIG)
     new_config["ALLOW_DOWNGRADE"] = not current
+
+    await update_tariffs_config(session, new_config)
+    await refresh_tariffs_settings_screen(callback)
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_tariffs_toggle_addons_recalc"))
+async def toggle_tariffs_addons_recalc(callback: CallbackQuery, session: AsyncSession) -> None:
+    """Переключает перерасчёт при докупке."""
+    current = bool(TARIFFS_CONFIG.get("KEY_ADDONS_RECALC_PRICE", False))
+
+    new_config: dict[str, Any] = dict(TARIFFS_CONFIG)
+    new_config["KEY_ADDONS_RECALC_PRICE"] = not current
 
     await update_tariffs_config(session, new_config)
     await refresh_tariffs_settings_screen(callback)

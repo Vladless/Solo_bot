@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from typing import Any
+
 from aiogram.fsm.state import State, StatesGroup
 
 from handlers.texts import (
@@ -56,6 +59,51 @@ def is_not_downgrade(current_value, new_value) -> bool:
     current_cmp = current_int if current_int > 0 else 10**9
     new_cmp = new_int if new_int > 0 else 10**9
     return new_cmp >= current_cmp
+
+
+def calc_remaining_ratio_seconds(expiry_time: Any, tariff: dict) -> tuple[int, int]:
+    """Секунды до конца подписки и длительность периода."""
+    duration_days = int(tariff.get("duration_days") or 0) or 30
+    total_seconds = max(1, duration_days * 86400)
+
+    if not expiry_time:
+        return total_seconds, total_seconds
+
+    expiry_dt: datetime | None = None
+
+    if isinstance(expiry_time, datetime):
+        expiry_dt = expiry_time
+    elif isinstance(expiry_time, (int, float)):
+        ts = float(expiry_time)
+        if ts > 10_000_000_000:
+            ts = ts / 1000.0
+        try:
+            expiry_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+        except Exception:
+            expiry_dt = None
+    elif isinstance(expiry_time, str):
+        try:
+            expiry_dt = datetime.fromisoformat(expiry_time.replace("Z", "+00:00"))
+        except Exception:
+            expiry_dt = None
+
+    if expiry_dt is None:
+        return total_seconds, total_seconds
+
+    now_utc = datetime.now(timezone.utc)
+    if expiry_dt.tzinfo is None:
+        expiry_utc = expiry_dt.replace(tzinfo=timezone.utc)
+    else:
+        expiry_utc = expiry_dt.astimezone(timezone.utc)
+
+    remaining_seconds = int((expiry_utc - now_utc).total_seconds())
+    if remaining_seconds <= 0:
+        return 0, total_seconds
+
+    if remaining_seconds > total_seconds:
+        remaining_seconds = total_seconds
+
+    return remaining_seconds, total_seconds
 
 
 def build_addons_screen_text(
