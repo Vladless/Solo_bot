@@ -1355,6 +1355,11 @@ async def handle_admin_unfreeze_subscription(
             total_gb = int(tariff.get("traffic_limit") or 0)
             hwid_limit = int(tariff.get("device_limit") or 0)
 
+        if record.get("current_traffic_limit") is not None:
+            total_gb = record["current_traffic_limit"]
+        if record.get("current_device_limit") is not None:
+            hwid_limit = record["current_device_limit"]
+
         now_ms = int(time.time() * 1000)
         leftover = record["expiry_time"]
         if leftover < 0:
@@ -1389,12 +1394,20 @@ async def handle_admin_unfreeze_subscription(
 
 
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:
-    result = await session.execute(select(Key.client_id, Key.tariff_id, Key.server_id).where(Key.email == email))
+    result = await session.execute(
+        select(
+            Key.client_id, 
+            Key.tariff_id, 
+            Key.server_id,
+            Key.current_device_limit,
+            Key.current_traffic_limit,
+        ).where(Key.email == email)
+    )
     row = result.first()
     if not row:
         return ValueError(f"User with email {email} was not found")
 
-    client_id, tariff_id, server_id = row
+    client_id, tariff_id, server_id, key_device_limit, key_traffic_limit = row
     if server_id is None:
         return ValueError(f"Key with client_id {client_id} was not found")
 
@@ -1413,6 +1426,11 @@ async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession
             traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
             device_limit = int(tariff[1]) if tariff[1] is not None else 0
             key_subgroup = tariff[2]
+
+    if key_device_limit is not None:
+        device_limit = key_device_limit
+    if key_traffic_limit is not None:
+        traffic_limit = key_traffic_limit
 
     servers = await get_servers(session=session)
 
