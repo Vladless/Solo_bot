@@ -139,6 +139,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
             return
 
         group_code = row[0]
+        original_group_code = group_code
 
         if tariff_id:
             if await check_tariff_exists(session, tariff_id):
@@ -150,6 +151,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
 
                 if current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
+                    original_group_code = group_code
 
         discount_info = await check_hot_lead_discount(session, tg_id)
 
@@ -166,6 +168,14 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
         tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
         subgroup_weights = tariffs_data["subgroup_weights"]
+
+        if not tariffs and discount_info.get("available"):
+            logger.warning(f"[RENEW] Нет тарифов со скидкой {group_code}, fallback на {original_group_code}")
+            group_code = original_group_code
+            tariffs_data = await get_tariffs(session, group_code=group_code, with_subgroup_weights=True)
+            tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+            subgroup_weights = tariffs_data["subgroup_weights"]
+            discount_info = {"available": False}
 
         if not tariffs:
             await callback_query.message.answer("❌ Нет доступных тарифов для продления.")
@@ -289,6 +299,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
             return
 
         group_code = row[0]
+        original_group_code = group_code
 
         tariff_id = record.get("tariff_id")
         if tariff_id:
@@ -303,6 +314,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
                 if current_tariff and current_tariff["group_code"] not in forbidden_groups:
                     group_code = current_tariff["group_code"]
+                    original_group_code = group_code
 
         tg_id = callback.from_user.id
         language_code = callback.from_user.language_code
@@ -325,6 +337,15 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         tariffs = await get_tariffs(session, group_code=group_code)
         filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+
+        if not filtered and discount_info.get("available"):
+            logger.warning(f"[RENEW_SUBGROUP] Нет тарифов со скидкой {group_code} в подгруппе '{subgroup}', fallback на {original_group_code}")
+            group_code = original_group_code
+            subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+            if subgroup:
+                tariffs = await get_tariffs(session, group_code=group_code)
+                filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
+            discount_info = {"available": False}
 
         if not filtered:
             await edit_or_send_message(

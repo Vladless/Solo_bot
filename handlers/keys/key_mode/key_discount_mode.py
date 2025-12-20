@@ -9,13 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS
 from core.bootstrap import NOTIFICATIONS_CONFIG
-from database import get_keys, get_tariffs
+from database import get_keys, get_tariffs, get_tariffs_for_cluster
 from database.models import Notification
 from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
 from handlers.notifications.notify_kb import build_tariffs_keyboard
 from handlers.tariffs.buy.key_tariffs import select_tariff_plan
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
-from handlers.utils import format_discount_time_left
+from handlers.utils import format_discount_time_left, get_least_loaded_cluster
 from logger import logger
 
 
@@ -64,8 +64,20 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
     else:
         tariffs = await get_tariffs(session=session, group_code="discounts")
         if not tariffs:
-            await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
-            return
+            try:
+                cluster_name = await get_least_loaded_cluster(session)
+                cluster_tariffs = await get_tariffs_for_cluster(session, cluster_name)
+                if cluster_tariffs:
+                    group_code = cluster_tariffs[0].get("group_code")
+                    if group_code:
+                        logger.warning(f"[DISCOUNT] Нет тарифов discounts, fallback на {group_code}")
+                        tariffs = await get_tariffs(session=session, group_code=group_code)
+            except Exception as e:
+                logger.error(f"[DISCOUNT] Не удалось получить обычные тарифы: {e}")
+            
+            if not tariffs:
+                await callback.message.edit_text("❌ Тарифы временно недоступны.")
+                return
 
         await callback.message.edit_text(
             DISCOUNT_TARIFF,
@@ -130,8 +142,20 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
     else:
         tariffs = await get_tariffs(session=session, group_code="discounts_max")
         if not tariffs:
-            await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
-            return
+            try:
+                cluster_name = await get_least_loaded_cluster(session)
+                cluster_tariffs = await get_tariffs_for_cluster(session, cluster_name)
+                if cluster_tariffs:
+                    group_code = cluster_tariffs[0].get("group_code")
+                    if group_code:
+                        logger.warning(f"[DISCOUNT_MAX] Нет тарифов discounts_max, fallback на {group_code}")
+                        tariffs = await get_tariffs(session=session, group_code=group_code)
+            except Exception as e:
+                logger.error(f"[DISCOUNT_MAX] Не удалось получить обычные тарифы: {e}")
+            
+            if not tariffs:
+                await callback.message.edit_text("❌ Тарифы временно недоступны.")
+                return
 
         await callback.message.edit_text(
             DISCOUNT_TARIFF_MAX,

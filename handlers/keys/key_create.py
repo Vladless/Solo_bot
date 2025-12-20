@@ -156,6 +156,7 @@ async def handle_key_creation(
 
         if tariffs:
             group_code = tariffs[0].get("group_code")
+            original_group_code = group_code
             if group_code:
                 discount_info = await check_hot_lead_discount(session, tg_id)
 
@@ -184,6 +185,19 @@ async def handle_key_creation(
                 )
                 tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
                 subgroup_weights = tariffs_data["subgroup_weights"]
+
+                if not tariffs and discount_info and discount_info.get("available"):
+                    logger.warning(f"[PURCHASE] Нет тарифов со скидкой {group_code}, fallback на {original_group_code}")
+                    group_code = original_group_code
+                    tariffs_data = await get_tariffs(
+                        session,
+                        group_code=group_code,
+                        with_subgroup_weights=True,
+                    )
+                    tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
+                    subgroup_weights = tariffs_data["subgroup_weights"]
+                    discount_info = None
+                    await state.update_data(discount_info=None)
 
         if not tariffs:
             result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
