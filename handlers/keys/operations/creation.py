@@ -33,6 +33,11 @@ async def create_key_on_cluster(
     hwid_limit: int = None,
     traffic_limit_bytes: int = None,
     is_trial: bool = False,
+    selected_device_limit: int = None,
+    selected_traffic_limit_gb: int = None,
+    current_device_limit: int = None,
+    current_traffic_limit_gb: int = None,
+    selected_price_rub: int = None,
 ):
     try:
         servers = await get_servers(session)
@@ -271,6 +276,11 @@ async def create_key_on_cluster(
                 server_id=server_id_to_store,
                 remnawave_link=remnawave_link_value if remnawave_created else None,
                 tariff_id=plan,
+                selected_device_limit=selected_device_limit,
+                selected_traffic_limit=selected_traffic_limit_gb,
+                current_device_limit=current_device_limit,
+                current_traffic_limit=current_traffic_limit_gb,
+                selected_price_rub=selected_price_rub,
             )
             await session.execute(update(User).where(User.tg_id == tg_id, User.trial.in_([0, -1])).values(trial=1))
             await session.commit()
