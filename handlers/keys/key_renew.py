@@ -698,15 +698,27 @@ async def complete_key_renewal(
             logger.error(f"[Error] Ключ с client_id={client_id} не найден в БД.")
             return
 
+        new_tariff_device_limit = tariff.get("device_limit")
+        new_tariff_traffic_limit_bytes = tariff.get("traffic_limit")
+        new_tariff_traffic_limit_gb = int(new_tariff_traffic_limit_bytes / GB) if new_tariff_traffic_limit_bytes else None
+        
         selected_device_limit_db = key_info.get("selected_device_limit")
         selected_traffic_limit_db = key_info.get("selected_traffic_limit")
+        current_traffic_limit_db = key_info.get("current_traffic_limit")
 
-        final_device_limit = (
-            int(selected_device_limit) if selected_device_limit is not None else selected_device_limit_db
-        )
-        final_traffic_limit = (
-            int(selected_traffic_limit) if selected_traffic_limit is not None else selected_traffic_limit_db
-        )
+        if new_tariff_device_limit is None:
+            final_device_limit = None
+        elif selected_device_limit is not None:
+            final_device_limit = int(selected_device_limit)
+        else:
+            final_device_limit = new_tariff_device_limit
+
+        if new_tariff_traffic_limit_gb is None:
+            final_traffic_limit = None
+        elif selected_traffic_limit is not None:
+            final_traffic_limit = int(selected_traffic_limit)
+        else:
+            final_traffic_limit = int(new_tariff_traffic_limit_gb)
 
         selected_traffic_gb_effective = int(final_traffic_limit) if final_traffic_limit is not None else None
         selected_device_limit_effective = int(final_device_limit) if final_device_limit is not None else None
@@ -801,7 +813,25 @@ async def complete_key_renewal(
         effective_client_id = key_row["client_id"] if key_row else client_id
 
         await update_key_expiry(session, effective_client_id, new_expiry_time)
-        await session.execute(update(Key).where(Key.email == email).values(tariff_id=tariff_id))
+ 
+        update_values = {"tariff_id": tariff_id}
+        
+        if not tariff.get("configurable"):
+            if new_tariff_device_limit is None:
+                update_values["selected_device_limit"] = None
+                update_values["current_device_limit"] = None
+            else:
+                update_values["selected_device_limit"] = new_tariff_device_limit
+                update_values["current_device_limit"] = final_device_limit
+
+            if new_tariff_traffic_limit_gb is None:
+                update_values["selected_traffic_limit"] = None
+                update_values["current_traffic_limit"] = None
+            else:
+                update_values["selected_traffic_limit"] = new_tariff_traffic_limit_gb
+                update_values["current_traffic_limit"] = final_traffic_limit
+        
+        await session.execute(update(Key).where(Key.email == email).values(**update_values))
         await update_balance(session, tg_id, -cost)
 
         if tariff.get("configurable"):

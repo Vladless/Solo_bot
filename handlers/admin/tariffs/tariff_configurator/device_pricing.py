@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
 
 from database.models import Tariff
 from filters.admin import IsAdminFilter
@@ -184,7 +185,8 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
         await state.clear()
         return
 
-    overrides = getattr(tariff, "device_overrides", None) or {}
+    existing_overrides = tariff.device_overrides
+    overrides = dict(existing_overrides) if existing_overrides else {}
     key = str(int(devices))
 
     if extra_price == 0:
@@ -192,7 +194,8 @@ async def save_device_override_price(message: Message, state: FSMContext, sessio
     else:
         overrides[key] = extra_price
 
-    tariff.device_overrides = overrides or None
+    tariff.device_overrides = overrides if overrides else None
+    attributes.flag_modified(tariff, "device_overrides")
     tariff.updated_at = datetime.utcnow()
     await session.commit()
 
