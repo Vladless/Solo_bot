@@ -61,6 +61,73 @@ def get_pack_flags() -> tuple[bool, bool, str]:
     return False, False, mode
 
 
+def get_override_value(overrides: Any, key: int) -> Any:
+    if not isinstance(overrides, dict):
+        return None
+    if key in overrides:
+        return overrides.get(key)
+    return overrides.get(str(key))
+
+
+def calc_pack_devices_price_rub(tariff: dict[str, Any], pack_devices: int | None) -> int:
+    if pack_devices is None:
+        return 0
+
+    pack_devices = int(pack_devices)
+    overrides = tariff.get("device_overrides") or {}
+
+    if pack_devices == 0:
+        override = get_override_value(overrides, 0)
+        return int(ceil(float(override))) if override is not None else 0
+
+    if pack_devices < 0:
+        return 0
+
+    override = get_override_value(overrides, pack_devices)
+    if override is not None:
+        return int(ceil(float(override)))
+
+    step_price = int(tariff.get("device_step_rub") or 0)
+    return int(ceil(pack_devices * step_price))
+
+
+def calc_pack_traffic_price_rub(tariff: dict[str, Any], pack_traffic_gb: int | None) -> int:
+    if pack_traffic_gb is None:
+        return 0
+
+    pack_traffic_gb = int(pack_traffic_gb)
+    overrides = tariff.get("traffic_overrides") or {}
+
+    if pack_traffic_gb == 0:
+        override = get_override_value(overrides, 0)
+        return int(ceil(float(override))) if override is not None else 0
+
+    if pack_traffic_gb < 0:
+        return 0
+
+    override = get_override_value(overrides, pack_traffic_gb)
+    if override is not None:
+        return int(ceil(float(override)))
+
+    step_price = int(tariff.get("traffic_step_rub") or 0)
+    return int(ceil(pack_traffic_gb * step_price))
+
+
+def calc_pack_full_price_rub(
+    tariff: dict[str, Any],
+    has_device_option: bool,
+    has_traffic_option: bool,
+    selected_devices: int | None,
+    selected_traffic_gb: int | None,
+) -> int:
+    total = 0
+    if has_device_option:
+        total += calc_pack_devices_price_rub(tariff, selected_devices if selected_devices is not None else None)
+    if has_traffic_option:
+        total += calc_pack_traffic_price_rub(tariff, selected_traffic_gb if selected_traffic_gb is not None else None)
+    return int(total)
+
+
 async def render_addons_screen(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     email = data.get("addon_key_email")
@@ -162,32 +229,6 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     except (TypeError, ValueError):
         base_price_for_current_int = 0
 
-    new_devices_for_price = current_devices_for_price
-    if has_device_option and selected_devices is not None:
-        pack_devices_val = int(selected_devices)
-        if pack_devices_val <= 0 or (new_devices_for_price is not None and new_devices_for_price <= 0):
-            new_devices_for_price = 0
-        else:
-            new_devices_for_price = (new_devices_for_price or 0) + pack_devices_val
-
-    new_traffic_for_price = current_traffic_for_price
-    if has_traffic_option and selected_traffic_gb is not None:
-        pack_traffic_val = int(selected_traffic_gb)
-        if pack_traffic_val <= 0 or (new_traffic_for_price is not None and new_traffic_for_price <= 0):
-            new_traffic_for_price = 0
-        else:
-            new_traffic_for_price = (new_traffic_for_price or 0) + pack_traffic_val
-
-    price_with_pack = calculate_config_price(
-        tariff=tariff,
-        selected_device_limit=new_devices_for_price,
-        selected_traffic_gb=new_traffic_for_price,
-    )
-    try:
-        price_with_pack_int = int(price_with_pack) if price_with_pack is not None else 0
-    except (TypeError, ValueError):
-        price_with_pack_int = 0
-
     recalc_enabled = bool(
         MODES_CONFIG.get(
             "KEY_ADDONS_RECALC_PRICE",
@@ -195,16 +236,23 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
         )
     )
 
+    diff_full = calc_pack_full_price_rub(
+        tariff=tariff,
+        has_device_option=has_device_option,
+        has_traffic_option=has_traffic_option,
+        selected_devices=int(selected_devices) if selected_devices is not None else None,
+        selected_traffic_gb=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
+    )
+
     if recalc_enabled:
-        diff_full = max(0, price_with_pack_int - base_price_for_current_int)
         remaining_seconds, total_seconds = calc_remaining_ratio_seconds(expiry_time, tariff)
         extra_price = int((diff_full * remaining_seconds + total_seconds - 1) // total_seconds)
     else:
-        extra_price = max(0, price_with_pack_int - base_price_for_current_int)
+        extra_price = int(diff_full)
 
     logger.debug(
         "[ADDONS] PACK_MODE calculated prices: "
-        f"base_price_for_current={base_price_for_current_int} price_with_pack={price_with_pack_int} "
+        f"base_price_for_current={base_price_for_current_int} diff_full={diff_full} "
         f"extra_price={extra_price} recalc_enabled={recalc_enabled} "
         f"has_device_option={has_device_option} has_traffic_option={has_traffic_option} pack_mode={pack_mode!r}"
     )
@@ -226,7 +274,11 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     if has_device_pack_selected:
         current_devices_value = int(current_devices) if current_devices else 0
         selected_devices_value = int(selected_devices)
-        total_devices_value = 0 if current_devices_value <= 0 or selected_devices_value <= 0 else current_devices_value + selected_devices_value
+        total_devices_value = (
+            0
+            if current_devices_value <= 0 or selected_devices_value <= 0
+            else current_devices_value + selected_devices_value
+        )
         total_devices_label = format_devices_label(total_devices_value)
     else:
         total_devices_label = None
@@ -234,7 +286,11 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     if has_traffic_pack_selected:
         current_traffic_value = int(current_traffic_gb) if current_traffic_gb else 0
         selected_traffic_value = int(selected_traffic_gb)
-        total_after_gb = 0 if current_traffic_value <= 0 or selected_traffic_value <= 0 else current_traffic_value + selected_traffic_value
+        total_after_gb = (
+            0
+            if current_traffic_value <= 0 or selected_traffic_value <= 0
+            else current_traffic_value + selected_traffic_value
+        )
         total_traffic_label = format_traffic_label(total_after_gb)
     else:
         total_traffic_label = None
@@ -307,6 +363,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     elif traffic_buttons:
         for button in traffic_buttons:
             builder.row(button)
+
     builder.row(
         InlineKeyboardButton(
             text=CONFIRM_ADDON_BUTTON_TEXT.format(amount=extra_price_text),
@@ -618,32 +675,6 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
     except (TypeError, ValueError):
         base_price_for_current_int = 0
 
-    new_devices_for_price = current_devices_for_price
-    if has_device_option and selected_devices is not None:
-        pack_devices_val = int(selected_devices)
-        if pack_devices_val <= 0 or (new_devices_for_price is not None and new_devices_for_price <= 0):
-            new_devices_for_price = 0
-        else:
-            new_devices_for_price = (new_devices_for_price or 0) + pack_devices_val
-
-    new_traffic_for_price = current_traffic_for_price
-    if has_traffic_option and selected_traffic_gb is not None:
-        pack_traffic_val = int(selected_traffic_gb)
-        if pack_traffic_val <= 0 or (new_traffic_for_price is not None and new_traffic_for_price <= 0):
-            new_traffic_for_price = 0
-        else:
-            new_traffic_for_price = (new_traffic_for_price or 0) + pack_traffic_val
-
-    price_with_pack = calculate_config_price(
-        tariff=tariff,
-        selected_device_limit=new_devices_for_price,
-        selected_traffic_gb=new_traffic_for_price,
-    )
-    try:
-        price_with_pack_int = int(price_with_pack) if price_with_pack is not None else 0
-    except (TypeError, ValueError):
-        price_with_pack_int = 0
-
     recalc_enabled = bool(
         MODES_CONFIG.get(
             "KEY_ADDONS_RECALC_PRICE",
@@ -651,18 +682,25 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
         )
     )
 
+    diff_full = calc_pack_full_price_rub(
+        tariff=tariff,
+        has_device_option=has_device_option,
+        has_traffic_option=has_traffic_option,
+        selected_devices=int(selected_devices) if selected_devices is not None else None,
+        selected_traffic_gb=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
+    )
+
     if recalc_enabled:
-        diff_full = max(0, price_with_pack_int - base_price_for_current_int)
         remaining_seconds, total_seconds = calc_remaining_ratio_seconds(record.get("expiry_time"), tariff)
         extra_price = int((diff_full * remaining_seconds + total_seconds - 1) // total_seconds)
         total_price_after_purchase = base_price_for_current_int + extra_price
     else:
-        extra_price = max(0, price_with_pack_int - base_price_for_current_int)
-        total_price_after_purchase = price_with_pack_int
+        extra_price = int(diff_full)
+        total_price_after_purchase = base_price_for_current_int + diff_full
 
     logger.debug(
         "[ADDONS] PACK_MODE confirm prices: "
-        f"base_price_for_current={base_price_for_current_int} price_with_pack={price_with_pack_int} "
+        f"base_price_for_current={base_price_for_current_int} diff_full={diff_full} "
         f"extra_price={extra_price} recalc_enabled={recalc_enabled} total_price_after_purchase={total_price_after_purchase} "
         f"has_device_option={has_device_option} has_traffic_option={has_traffic_option} "
         f"pack_mode={pack_mode!r}"

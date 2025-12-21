@@ -10,4 +10,5 @@ from . import (
     file_upload,  # noqa: F401
     import_3xui,  # noqa: F401
     maintenance,  # noqa: F401
+    import_remnawave # noqa: F401
 )
