@@ -2,7 +2,7 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
+from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 from database import get_servers
 from logger import (
     CLOGGER as logger,
@@ -75,10 +75,11 @@ async def delete_on_remnawave(servers: list, client_id: str) -> bool:
     for s in servers:
         name = s.get("server_name", "remna")
         api = RemnawaveAPI(s.get("api_url"))
-        ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-        if not ok:
-            logger.warning(f"{PANEL_REMNA} [{name}] Авторизация не удалась")
-            continue
+        if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
+            ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+            if not ok:
+                logger.warning(f"{PANEL_REMNA} [{name}] Авторизация не удалась")
+                continue
         try:
             done = await api.delete_user(client_id)
             if done:
