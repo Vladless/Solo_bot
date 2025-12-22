@@ -19,6 +19,7 @@ async def get_effective_limits_for_key(
     selected_device_limit: int | None,
     selected_traffic_gb: int | None,
 ) -> tuple[int, int]:
+    """Возвращает лимиты устройств и трафика с учётом выбранных значений."""
     tariff = await get_tariff_by_id(session, int(tariff_id)) if tariff_id else None
 
     if tariff:
@@ -46,6 +47,7 @@ async def get_effective_limits_for_key(
 
 
 async def resolve_price_to_charge(session: AsyncSession, state_data: dict[str, Any]) -> int | None:
+    """Считает цену к списанию по состоянию, с учётом конфигуратора и наценок."""
     price = state_data.get("selected_price_rub")
     if price is not None:
         try:
@@ -62,12 +64,81 @@ async def resolve_price_to_charge(session: AsyncSession, state_data: dict[str, A
         return None
 
     try:
-        return int(tariff.get("price_rub") or 0)
+        base_price = int(tariff.get("price_rub") or 0)
     except (TypeError, ValueError):
         return None
 
+    if not bool(tariff.get("configurable")):
+        return base_price
+
+    cfg = normalize_tariff_config(tariff)
+
+    device_options = cfg.get("device_options") or []
+    traffic_options_gb = cfg.get("traffic_options_gb") or []
+
+    try:
+        base_device_limit = int(min(device_options)) if device_options else int(tariff.get("device_limit") or 0)
+    except (TypeError, ValueError):
+        base_device_limit = 0
+
+    try:
+        base_traffic_gb = int(min(traffic_options_gb)) if traffic_options_gb else int(tariff.get("traffic_limit") or 0)
+    except (TypeError, ValueError):
+        base_traffic_gb = 0
+
+    selected_device_limit = state_data.get("selected_device_limit")
+    selected_traffic_gb = state_data.get("selected_traffic_limit")
+
+    try:
+        device_target = int(selected_device_limit) if selected_device_limit is not None else base_device_limit
+    except (TypeError, ValueError):
+        device_target = base_device_limit
+
+    try:
+        traffic_target_gb = int(selected_traffic_gb) if selected_traffic_gb is not None else base_traffic_gb
+    except (TypeError, ValueError):
+        traffic_target_gb = base_traffic_gb
+
+    try:
+        device_step_rub = int(cfg.get("device_step_rub") or 0)
+    except (TypeError, ValueError):
+        device_step_rub = 0
+
+    try:
+        traffic_step_rub = int(cfg.get("traffic_step_rub") or 0)
+    except (TypeError, ValueError):
+        traffic_step_rub = 0
+
+    device_overrides = cfg.get("device_overrides") or {}
+    traffic_overrides = cfg.get("traffic_overrides") or {}
+
+    device_add_rub = 0
+    if device_target > base_device_limit:
+        override_value = device_overrides.get(str(device_target), device_overrides.get(device_target))
+        if override_value is not None:
+            try:
+                device_add_rub = int(override_value)
+            except (TypeError, ValueError):
+                device_add_rub = 0
+        else:
+            device_add_rub = (device_target - base_device_limit) * device_step_rub
+
+    traffic_add_rub = 0
+    if traffic_target_gb > base_traffic_gb:
+        override_value = traffic_overrides.get(str(traffic_target_gb), traffic_overrides.get(traffic_target_gb))
+        if override_value is not None:
+            try:
+                traffic_add_rub = int(override_value)
+            except (TypeError, ValueError):
+                traffic_add_rub = 0
+        else:
+            traffic_add_rub = (traffic_target_gb - base_traffic_gb) * traffic_step_rub
+
+    return int(base_price + device_add_rub + traffic_add_rub)
+
 
 async def resolve_vless_enabled(session: AsyncSession, tariff_id: int | None) -> bool:
+    """Проверяет, включён ли VLESS в тарифе."""
     if not tariff_id:
         return False
 
@@ -84,6 +155,7 @@ async def get_key_tariff_display(
     selected_device_limit_override: int | None = None,
     selected_traffic_gb_override: int | None = None,
 ) -> tuple[str, str, int, int, bool]:
+    """Возвращает отображение тарифа и эффективные лимиты, приоритет — данные панели."""
     tariff_id = key_record.get("tariff_id")
     if not tariff_id:
         return "", "", 0, 0, False
@@ -287,6 +359,7 @@ async def build_key_created_message(
     selected_device_limit: int | None = None,
     selected_traffic_gb: int | None = None,
 ) -> str:
+    """Собирает сообщение об успешном создании ключа с отображением выбранных лимитов."""
     tariff_id = key_record.get("tariff_id")
     tariff = await get_tariff_by_id(session, int(tariff_id)) if tariff_id else None
 

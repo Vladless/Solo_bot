@@ -1,9 +1,7 @@
 import asyncio
-
 from datetime import datetime, timedelta
 
 import pytz
-
 from aiogram import Bot, Router
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -46,7 +44,7 @@ from handlers.notifications.notify_kb import (
     build_notification_expired_kb,
     build_notification_kb,
 )
-from handlers.tariffs.tariff_display import GB, get_effective_limits_for_key
+from handlers.tariffs.tariff_display import GB, get_effective_limits_for_key, resolve_price_to_charge
 from handlers.texts import (
     KEY_CANNOT_RENEW_CURRENT,
     KEY_DELETED_MSG,
@@ -379,11 +377,12 @@ async def handle_expired_keys(
 
         if notify_renew_expired_enabled:
             try:
-                balance = await get_balance(session, tg_id)
-                tariffs = await get_tariffs_for_cluster(session, server_id)
-                tariff = tariffs[0] if tariffs else None
+                tariff = None
+                tariff_id = getattr(key, "tariff_id", None)
+                if tariff_id and await check_tariff_exists(session, int(tariff_id)):
+                    tariff = await get_tariff_by_id(session, int(tariff_id))
 
-                if tariff and balance >= tariff["price_rub"]:
+                if tariff:
                     selected_device_limit = getattr(key, "selected_device_limit", None)
                     selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
                     selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
@@ -540,9 +539,17 @@ async def process_auto_renew_or_notify(
                 logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {error}")
 
             if current_tariff and current_tariff["group_code"] not in forbidden_groups:
-                stored_price = getattr(key, "selected_price_rub", None)
-                renewal_cost = float(stored_price) if stored_price is not None else float(current_tariff["price_rub"])
-                if balance >= renewal_cost:
+                renewal_cost = await resolve_price_to_charge(
+                    conn,
+                    {
+                        "tariff_id": current_tariff.get("id"),
+                        "selected_device_limit": getattr(key, "selected_device_limit", None),
+                        "selected_traffic_limit": getattr(key, "selected_traffic_limit", None),
+                        "selected_price_rub": getattr(key, "selected_price_rub", None),
+                    },
+                )
+
+                if renewal_cost is not None and balance >= renewal_cost:
                     selected_tariff = current_tariff
                 else:
                     selected_tariff = None
@@ -612,8 +619,18 @@ async def process_auto_renew_or_notify(
         current_expiry = key.expiry_time
         duration_days = selected_tariff["duration_days"]
 
-        stored_price = getattr(key, "selected_price_rub", None)
-        renewal_cost = float(stored_price) if stored_price is not None else float(selected_tariff["price_rub"])
+        renewal_cost = await resolve_price_to_charge(
+            conn,
+            {
+                "tariff_id": selected_tariff.get("id"),
+                "selected_device_limit": getattr(key, "selected_device_limit", None),
+                "selected_traffic_limit": getattr(key, "selected_traffic_limit", None),
+                "selected_price_rub": getattr(key, "selected_price_rub", None),
+            },
+        )
+        if renewal_cost is None:
+            logger.warning(f"[AUTO_RENEW] Не удалось определить стоимость продления для {email}. Продление отменено.")
+            return
 
         selected_device_limit = getattr(key, "selected_device_limit", None)
         selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
