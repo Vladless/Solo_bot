@@ -1,8 +1,9 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from core.settings.money_config import get_currency_mode
+
+from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
     BUTTON_TITLES,
     MODES_TITLES,
@@ -217,4 +218,3 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
     )
 
     return builder.as_markup()
-

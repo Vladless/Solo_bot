@@ -51,8 +51,11 @@ def calculate_config_price(
 
     base_price = int(tariff.get("price_rub") or 0)
 
-    raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
-    raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
+    raw_device_options = tariff.get("device_options")
+    raw_traffic_options = tariff.get("traffic_options_gb")
+
+    raw_device_options = raw_device_options if isinstance(raw_device_options, list) else []
+    raw_traffic_options = raw_traffic_options if isinstance(raw_traffic_options, list) else []
 
     device_values: list[int] = []
     for value in raw_device_options:
@@ -298,21 +301,19 @@ async def render_user_config_screen(
         logger.warning(f"[TARIFF_CFG] render_user_config_screen tariff_not_found: tariff_id={tariff_id}")
         return
 
-    raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
+    raw_device_options = tariff.get("device_options")
+    raw_traffic_options = tariff.get("traffic_options_gb")
+
+    raw_device_options = raw_device_options if isinstance(raw_device_options, list) else []
+    raw_traffic_options = raw_traffic_options if isinstance(raw_traffic_options, list) else []
+
     try:
-        device_options = sorted(
-            raw_device_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        device_options = sorted(raw_device_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         device_options = raw_device_options
 
-    raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
     try:
-        traffic_options = sorted(
-            raw_traffic_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        traffic_options = sorted(raw_traffic_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         traffic_options = raw_traffic_options
 
@@ -536,76 +537,19 @@ async def start_user_tariff_configurator(
     """Запускает конфигуратор тарифа для пользователя."""
     cfg = normalize_tariff_config(tariff)
 
-    raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
-    raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
+    raw_device_options = tariff.get("device_options")
+    raw_traffic_options = tariff.get("traffic_options_gb")
 
-    device_int_options: list[int] = []
-    for value in raw_device_options:
-        try:
-            device_int_options.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    traffic_int_options: list[int] = []
-    for value in raw_traffic_options:
-        try:
-            traffic_int_options.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    base_device_limit = cfg.get("base_device_limit")
-    if base_device_limit is None:
-        base_device_limit = tariff.get("device_limit")
-    if base_device_limit is not None:
-        try:
-            base_device_int = int(base_device_limit)
-            if base_device_int not in device_int_options:
-                raw_device_options.append(base_device_int)
-                device_int_options.append(base_device_int)
-        except (TypeError, ValueError):
-            pass
-
-    device_overrides_cfg = cfg.get("device_price_overrides") or tariff.get("device_overrides") or {}
-    if "0" in device_overrides_cfg and 0 not in device_int_options:
-        raw_device_options.append(0)
-        device_int_options.append(0)
-
-    base_traffic_gb = cfg.get("base_traffic_gb")
-    if base_traffic_gb is None:
-        raw_limit = tariff.get("traffic_limit")
-        if raw_limit:
-            raw_limit = int(raw_limit)
-            if raw_limit >= GB:
-                base_traffic_gb = int(raw_limit / GB)
-            else:
-                base_traffic_gb = raw_limit
-    if base_traffic_gb is not None:
-        try:
-            base_traffic_int = int(base_traffic_gb)
-            if base_traffic_int not in traffic_int_options:
-                raw_traffic_options.append(base_traffic_int)
-                traffic_int_options.append(base_traffic_int)
-        except (TypeError, ValueError):
-            pass
-
-    traffic_overrides_cfg = cfg.get("traffic_price_overrides") or tariff.get("traffic_overrides") or {}
-    if "0" in traffic_overrides_cfg and 0 not in traffic_int_options:
-        raw_traffic_options.append(0)
-        traffic_int_options.append(0)
+    raw_device_options = raw_device_options if isinstance(raw_device_options, list) else []
+    raw_traffic_options = raw_traffic_options if isinstance(raw_traffic_options, list) else []
 
     try:
-        device_options = sorted(
-            raw_device_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        device_options = sorted(raw_device_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         device_options = raw_device_options
 
     try:
-        traffic_options = sorted(
-            raw_traffic_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        traffic_options = sorted(raw_traffic_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         traffic_options = raw_traffic_options
 
@@ -626,10 +570,8 @@ async def start_user_tariff_configurator(
         return
 
     cfg_for_state = dict(cfg)
-    if device_options:
-        cfg_for_state["device_options"] = device_options
-    if traffic_options:
-        cfg_for_state["traffic_options_gb"] = traffic_options
+    cfg_for_state["device_options"] = device_options
+    cfg_for_state["traffic_options_gb"] = traffic_options
 
     data = await state.get_data()
     renew_mode = data.get("renew_mode")
@@ -686,21 +628,19 @@ async def finalize_config_and_purchase(callback_query: CallbackQuery, state: FSM
 
     duration_days = int(tariff.get("duration_days") or 30)
 
-    raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
+    raw_device_options = tariff.get("device_options")
+    raw_traffic_options = tariff.get("traffic_options_gb")
+
+    raw_device_options = raw_device_options if isinstance(raw_device_options, list) else []
+    raw_traffic_options = raw_traffic_options if isinstance(raw_traffic_options, list) else []
+
     try:
-        device_options = sorted(
-            raw_device_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        device_options = sorted(raw_device_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         device_options = raw_device_options
 
-    raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
     try:
-        traffic_options = sorted(
-            raw_traffic_options,
-            key=lambda v: (int(v) == 0, int(v)),
-        )
+        traffic_options = sorted(raw_traffic_options, key=lambda v: (int(v) == 0, int(v)))
     except (TypeError, ValueError):
         traffic_options = raw_traffic_options
 

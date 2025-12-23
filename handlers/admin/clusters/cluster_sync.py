@@ -286,7 +286,7 @@ async def handle_sync_server(
             try:
                 if key["panel_type"] == "remnawave":
                     tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
-                    
+
                     if tariff and server_info:
                         if tariff.get("subgroup_title") and tariff.get("subgroup_title") not in server_info.get(
                             "tariff_subgroups", []
@@ -313,7 +313,7 @@ async def handle_sync_server(
                     current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
                     selected_device_limit_from_key = key.get("selected_device_limit")
                     selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
-                    
+
                     if tariff:
                         if current_traffic_limit_gb_from_key is not None:
                             traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
@@ -499,9 +499,9 @@ async def handle_sync_cluster(
             batch_size = 50
             total_keys = len(keys_to_sync)
             processed_count = 0
-            
+
             for batch_start in range(0, total_keys, batch_size):
-                batch = keys_to_sync[batch_start:batch_start + batch_size]
+                batch = keys_to_sync[batch_start : batch_start + batch_size]
                 batch_end = batch_start + len(batch)
                 logger.info(f"[Sync] Обработка батча {batch_start}-{batch_end} из {total_keys}")
 
@@ -516,7 +516,7 @@ async def handle_sync_cluster(
                         current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
                         selected_device_limit_from_key = key.get("selected_device_limit")
                         selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
-                        
+
                         if tariff:
                             if current_traffic_limit_gb_from_key is not None:
                                 traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
@@ -533,11 +533,13 @@ async def handle_sync_cluster(
                                 hwid_limit = int(selected_device_limit_from_key)
                             else:
                                 hwid_limit = tariff.get("device_limit")
-                            
+
                             subgroup_title = tariff.get("subgroup_title")
 
                         expire_iso = (
-                            datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
+                            datetime.utcfromtimestamp(key["expiry_time"] / 1000)
+                            .replace(tzinfo=timezone.utc)
+                            .isoformat()
                         )
 
                         if use_country_selection:
@@ -599,7 +601,14 @@ async def handle_sync_cluster(
                                 "hwid_limit": hwid_limit,
                             }
                         else:
-                            return {"key": key, "success": False, "needs_recreate": True, "tariff": tariff, "traffic_limit_bytes": traffic_limit_bytes, "hwid_limit": hwid_limit}
+                            return {
+                                "key": key,
+                                "success": False,
+                                "needs_recreate": True,
+                                "tariff": tariff,
+                                "traffic_limit_bytes": traffic_limit_bytes,
+                                "hwid_limit": hwid_limit,
+                            }
 
                     except Exception as e:
                         logger.error(f"[Sync] Ошибка API для {key.get('email')}: {e}")
@@ -610,24 +619,24 @@ async def handle_sync_cluster(
 
                 bulk_updates = []
                 recreate_tasks = []
-                
+
                 for result in results:
                     if isinstance(result, Exception):
                         logger.error(f"[Sync] Exception в батче: {result}")
                         continue
-                    
+
                     if not isinstance(result, dict):
                         continue
-                    
+
                     key = result.get("key")
                     if not key:
                         continue
-                    
+
                     try:
                         if result.get("success") and result.get("new_link"):
                             new_link = result["new_link"]
                             tariff = result.get("tariff")
-                            
+
                             key_value = await make_aggregated_link(
                                 session=session,
                                 cluster_all=cluster_servers,
@@ -644,10 +653,10 @@ async def handle_sync_cluster(
                                 "remnawave_link": new_link,
                                 "key": key_value,
                             })
-                        
+
                         elif result.get("needs_recreate"):
                             recreate_tasks.append((key, result))
-                    
+
                     except Exception as e:
                         logger.error(f"[Sync] Ошибка подготовки для {key.get('email')}: {e}")
 
@@ -682,7 +691,7 @@ async def handle_sync_cluster(
                             delete(Key).where(Key.tg_id == key["tg_id"], Key.client_id == key["client_id"])
                         )
                         await session.commit()
-                        
+
                         cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                         await create_key_on_cluster(
                             cluster_id_for_recreate,
@@ -707,7 +716,7 @@ async def handle_sync_cluster(
                 processed_count = batch_end
                 progress_percent = int((processed_count / total_keys) * 100)
                 progress_bar = "█" * (progress_percent // 5) + "░" * (20 - progress_percent // 5)
-                
+
                 try:
                     await callback_query.message.edit_text(
                         text=(
@@ -719,20 +728,19 @@ async def handle_sync_cluster(
                     )
                 except Exception:
                     pass
-        
+
         else:
             for key in keys_to_sync:
                 try:
                     traffic_limit_bytes = 0
                     hwid_limit = 0
-                    subgroup_title = None
                     tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
 
                     current_device_limit_from_key = key.get("current_device_limit")
                     current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
                     selected_device_limit_from_key = key.get("selected_device_limit")
                     selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
-                    
+
                     if tariff:
                         if current_traffic_limit_gb_from_key is not None:
                             traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
@@ -742,15 +750,15 @@ async def handle_sync_cluster(
                             traffic_limit_bytes = int(tariff.get("traffic_limit") * 1024**3)
                         else:
                             traffic_limit_bytes = 0
-                        
+
                         if current_device_limit_from_key is not None:
                             hwid_limit = int(current_device_limit_from_key)
                         elif selected_device_limit_from_key is not None:
                             hwid_limit = int(selected_device_limit_from_key)
                         else:
                             hwid_limit = tariff.get("device_limit")
-                        
-                        subgroup_title = tariff.get("subgroup_title")
+
+                        tariff.get("subgroup_title")
                     elif key["tariff_id"]:
                         logger.warning(
                             f"[Sync] Ключ {key['client_id']} с несуществующим тарифом ID={key['tariff_id']} — "

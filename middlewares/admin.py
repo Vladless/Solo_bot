@@ -13,7 +13,7 @@ from database.models import Admin
 class AdminMiddleware(BaseMiddleware):
     """Проверяет, является ли пользователь администратором."""
 
-    _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+    _admin_ids: set[int] = set(ADMIN_ID) if isinstance(ADMIN_ID, list | tuple) else {ADMIN_ID}
 
     async def __call__(
         self,

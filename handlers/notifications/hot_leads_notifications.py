@@ -55,7 +55,9 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 discount_tariffs = await get_tariffs(session, group_code="discounts")
                 active_discount_tariffs = [t for t in discount_tariffs if t.get("is_active")]
                 if not active_discount_tariffs:
-                    logger.warning(f"[HOT LEAD] Пропуск шага 2 для {tg_id}: нет активных тарифов со скидкой (discounts)")
+                    logger.warning(
+                        f"[HOT LEAD] Пропуск шага 2 для {tg_id}: нет активных тарифов со скидкой (discounts)"
+                    )
                     continue
 
                 keyboard = build_hot_lead_kb()
@@ -110,7 +112,9 @@ async def notify_hot_leads(bot: Bot, session: AsyncSession):
                 discount_max_tariffs = await get_tariffs(session, group_code="discounts_max")
                 active_discount_max_tariffs = [t for t in discount_max_tariffs if t.get("is_active")]
                 if not active_discount_max_tariffs:
-                    logger.warning(f"[HOT LEAD] Пропуск шага 3 для {tg_id}: нет активных тарифов с максимальной скидкой (discounts_max)")
+                    logger.warning(
+                        f"[HOT LEAD] Пропуск шага 3 для {tg_id}: нет активных тарифов с максимальной скидкой (discounts_max)"
+                    )
                     continue
 
                 keyboard = build_hot_lead_kb(final=True)

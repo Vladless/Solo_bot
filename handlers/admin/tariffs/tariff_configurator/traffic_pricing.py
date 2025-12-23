@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from aiogram import F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
@@ -146,7 +147,12 @@ async def clear_traffic_overrides(callback: CallbackQuery, state: FSMContext, se
     await session.commit()
 
     text, markup = build_traffic_overrides_screen(tariff)
-    await callback.message.edit_text(text=text, reply_markup=markup)
+
+    try:
+        await callback.message.edit_text(text=text, reply_markup=markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
 
 
 @router.message(TariffConfigState.entering_traffic_overrides, IsAdminFilter())

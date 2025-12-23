@@ -339,7 +339,9 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         filtered = [t for t in tariffs if t["subgroup_title"] == subgroup and t["is_active"]]
 
         if not filtered and discount_info.get("available"):
-            logger.warning(f"[RENEW_SUBGROUP] Нет тарифов со скидкой {group_code} в подгруппе '{subgroup}', fallback на {original_group_code}")
+            logger.warning(
+                f"[RENEW_SUBGROUP] Нет тарифов со скидкой {group_code} в подгруппе '{subgroup}', fallback на {original_group_code}"
+            )
             group_code = original_group_code
             subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
             if subgroup:
@@ -700,11 +702,13 @@ async def complete_key_renewal(
 
         new_tariff_device_limit = tariff.get("device_limit")
         new_tariff_traffic_limit_bytes = tariff.get("traffic_limit")
-        new_tariff_traffic_limit_gb = int(new_tariff_traffic_limit_bytes / GB) if new_tariff_traffic_limit_bytes else None
-        
-        selected_device_limit_db = key_info.get("selected_device_limit")
-        selected_traffic_limit_db = key_info.get("selected_traffic_limit")
-        current_traffic_limit_db = key_info.get("current_traffic_limit")
+        new_tariff_traffic_limit_gb = (
+            int(new_tariff_traffic_limit_bytes / GB) if new_tariff_traffic_limit_bytes else None
+        )
+
+        key_info.get("selected_device_limit")
+        key_info.get("selected_traffic_limit")
+        key_info.get("current_traffic_limit")
 
         if new_tariff_device_limit is None:
             final_device_limit = None
@@ -813,9 +817,9 @@ async def complete_key_renewal(
         effective_client_id = key_row["client_id"] if key_row else client_id
 
         await update_key_expiry(session, effective_client_id, new_expiry_time)
- 
+
         update_values = {"tariff_id": tariff_id}
-        
+
         if not tariff.get("configurable"):
             if new_tariff_device_limit is None:
                 update_values["selected_device_limit"] = None
@@ -830,7 +834,7 @@ async def complete_key_renewal(
             else:
                 update_values["selected_traffic_limit"] = new_tariff_traffic_limit_gb
                 update_values["current_traffic_limit"] = final_traffic_limit
-        
+
         await session.execute(update(Key).where(Key.email == email).values(**update_values))
         await update_balance(session, tg_id, -cost)
 

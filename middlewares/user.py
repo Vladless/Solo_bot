@@ -61,13 +61,11 @@ class UserMiddleware(BaseMiddleware):
         return db_user
 
     def _fingerprint(self, user: User) -> str:
-        return "|".join(
-            [
-                str(user.id),
-                user.username or "",
-                user.first_name or "",
-                user.last_name or "",
-                user.language_code or "",
-                "1" if user.is_bot else "0",
-            ]
-        )
+        return "|".join([
+            str(user.id),
+            user.username or "",
+            user.first_name or "",
+            user.last_name or "",
+            user.language_code or "",
+            "1" if user.is_bot else "0",
+        ])

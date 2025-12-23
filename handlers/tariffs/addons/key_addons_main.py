@@ -81,8 +81,8 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
 
     tariff_name = tariff.get("name") or "подписка"
 
-    raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
-    raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
+    raw_device_options = cfg.get("device_options") or []
+    raw_traffic_options = cfg.get("traffic_options_gb") or []
 
     try:
         device_options = sorted(
@@ -115,9 +115,9 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
             continue
 
     has_device_option = bool(device_int_options)
-    has_device_choice = len(device_int_options) > 1
-
     has_traffic_option = bool(traffic_int_options)
+
+    has_device_choice = len(device_int_options) > 1
     has_traffic_choice = len(traffic_int_options) > 1
 
     if selected_devices is None and has_device_option:
@@ -340,60 +340,6 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
     raw_traffic_options = cfg.get("traffic_options_gb") or tariff.get("traffic_options_gb") or []
 
-    device_int_options: list[int] = []
-    for value in raw_device_options:
-        try:
-            device_int_options.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    traffic_int_options: list[int] = []
-    for value in raw_traffic_options:
-        try:
-            traffic_int_options.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    base_device_limit = cfg.get("base_device_limit")
-    if base_device_limit is None:
-        base_device_limit = tariff.get("device_limit")
-    if base_device_limit is not None:
-        try:
-            base_device_int = int(base_device_limit)
-            if base_device_int not in device_int_options:
-                raw_device_options.append(base_device_int)
-                device_int_options.append(base_device_int)
-        except (TypeError, ValueError):
-            pass
-
-    device_overrides_cfg = cfg.get("device_price_overrides") or tariff.get("device_overrides") or {}
-    if "0" in device_overrides_cfg and 0 not in device_int_options:
-        raw_device_options.append(0)
-        device_int_options.append(0)
-
-    base_traffic_gb = cfg.get("base_traffic_gb")
-    if base_traffic_gb is None:
-        raw_limit = tariff.get("traffic_limit")
-        if raw_limit:
-            raw_limit = int(raw_limit)
-            if raw_limit >= GB:
-                base_traffic_gb = int(raw_limit / GB)
-            else:
-                base_traffic_gb = raw_limit
-    if base_traffic_gb is not None:
-        try:
-            base_traffic_int = int(base_traffic_gb)
-            if base_traffic_int not in traffic_int_options:
-                raw_traffic_options.append(base_traffic_int)
-                traffic_int_options.append(base_traffic_int)
-        except (TypeError, ValueError):
-            pass
-
-    traffic_overrides_cfg = cfg.get("traffic_price_overrides") or tariff.get("traffic_overrides") or {}
-    if "0" in traffic_overrides_cfg and 0 not in traffic_int_options:
-        raw_traffic_options.append(0)
-        traffic_int_options.append(0)
-
     try:
         device_options = sorted(
             raw_device_options,
@@ -444,8 +390,13 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
         else (int(selected_traffic_limit_db) if selected_traffic_limit_db is not None else base_traffic_gb_from_tariff)
     )
 
-    current_devices_for_price = int(current_devices) if current_devices is not None else None
-    current_traffic_gb_for_price = int(current_traffic_gb) if current_traffic_gb is not None else None
+    has_device_option = bool(device_options)
+    has_traffic_option = bool(traffic_options)
+
+    current_devices_for_price = int(current_devices) if current_devices is not None and has_device_option else None
+    current_traffic_gb_for_price = (
+        int(current_traffic_gb) if current_traffic_gb is not None and has_traffic_option else None
+    )
 
     config_price_for_current = calculate_config_price(
         tariff=tariff,
@@ -468,10 +419,8 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     )
 
     cfg_for_state = dict(cfg)
-    if device_options:
-        cfg_for_state["device_options"] = device_options
-    if traffic_options:
-        cfg_for_state["traffic_options_gb"] = traffic_options
+    cfg_for_state["device_options"] = device_options
+    cfg_for_state["traffic_options_gb"] = traffic_options
 
     await state.update_data(
         addon_key_email=email,

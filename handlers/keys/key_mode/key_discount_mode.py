@@ -74,7 +74,7 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
                         tariffs = await get_tariffs(session=session, group_code=group_code)
             except Exception as e:
                 logger.error(f"[DISCOUNT] Не удалось получить обычные тарифы: {e}")
-            
+
             if not tariffs:
                 await callback.message.edit_text("❌ Тарифы временно недоступны.")
                 return
@@ -152,7 +152,7 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
                         tariffs = await get_tariffs(session=session, group_code=group_code)
             except Exception as e:
                 logger.error(f"[DISCOUNT_MAX] Не удалось получить обычные тарифы: {e}")
-            
+
             if not tariffs:
                 await callback.message.edit_text("❌ Тарифы временно недоступны.")
                 return

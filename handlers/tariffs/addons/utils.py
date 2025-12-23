@@ -73,7 +73,7 @@ def calc_remaining_ratio_seconds(expiry_time: Any, tariff: dict) -> tuple[int, i
 
     if isinstance(expiry_time, datetime):
         expiry_dt = expiry_time
-    elif isinstance(expiry_time, (int, float)):
+    elif isinstance(expiry_time, int | float):
         ts = float(expiry_time)
         if ts > 10_000_000_000:
             ts = ts / 1000.0

@@ -43,6 +43,7 @@ from .utils import (
     format_traffic_label,
 )
 
+
 router = Router()
 
 

@@ -1,7 +1,6 @@
 from .coupons import CouponBase, CouponResponse, CouponUpdate, CouponUsageResponse
 from .gifts import GiftBase, GiftResponse, GiftUpdate, GiftUsageResponse
 from .keys import KeyDetailsResponse, KeyResponse
-from .settings import SettingResponse, SettingUpsert
 from .misc import (
     BlockedUserResponse,
     ManualBanResponse,
@@ -12,5 +11,6 @@ from .misc import (
 )
 from .referrals import ReferralResponse
 from .servers import ServerBase, ServerResponse, ServerUpdate
+from .settings import SettingResponse, SettingUpsert
 from .tariffs import TariffBase, TariffResponse, TariffUpdate
 from .users import UserBase, UserResponse, UserUpdate

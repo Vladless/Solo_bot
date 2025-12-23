@@ -14,8 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USE_COUNTRY_SELECTION, REMNAWAVE_TOKEN_LOGIN_ENABLED, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
-from panels.remnawave import RemnawaveAPI
+from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED, USE_COUNTRY_SELECTION
 from core.bootstrap import MODES_CONFIG
 from database import (
     delete_key,
@@ -43,6 +42,7 @@ from handlers.utils import generate_random_email, handle_error
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_admin_key_edit_menu
 from logger import logger
+from panels.remnawave import RemnawaveAPI
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from .keyboard import (
@@ -738,9 +738,7 @@ async def handle_recreate_key_confirm(
             )
             return
 
-        remnawave_servers = [
-            s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"
-        ]
+        remnawave_servers = [s for s in cluster if s.get("panel_type", "3x-ui").lower() == "remnawave"]
 
         if not remnawave_servers:
             await callback_query.message.edit_text(
@@ -1396,8 +1394,8 @@ async def handle_admin_unfreeze_subscription(
 async def change_expiry_time(expiry_time: int, email: str, session: AsyncSession) -> Exception | None:
     result = await session.execute(
         select(
-            Key.client_id, 
-            Key.tariff_id, 
+            Key.client_id,
+            Key.tariff_id,
             Key.server_id,
             Key.current_device_limit,
             Key.current_traffic_limit,
@@ -1551,7 +1549,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
         extra_traf_str = f" + {extra_traffic} ГБ (докуплено)" if extra_traffic > 0 else ""
         text += f"📊 <b>Трафик:</b> {base_traffic} ГБ{extra_traf_str}\n"
     else:
-        text += f"📊 <b>Трафик:</b> безлимит\n"
+        text += "📊 <b>Трафик:</b> безлимит\n"
 
     text += "\n<i>Выберите что редактировать:</i>"
 
@@ -1771,7 +1769,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
         extra_traf_str = f" + {extra_traffic} ГБ (докуплено)" if extra_traffic > 0 else ""
         text += f"📊 <b>Трафик:</b> {base_traffic} ГБ{extra_traf_str}\n"
     else:
-        text += f"📊 <b>Трафик:</b> безлимит\n"
+        text += "📊 <b>Трафик:</b> безлимит\n"
 
     text += "\n<i>Выберите что редактировать:</i>"
 
@@ -1820,7 +1818,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
         tariff_base_traffic = tariff.get("traffic_limit") or 0
         extra_base_traffic = max(0, (base_traffic or 0) - tariff_base_traffic) if base_traffic else 0
         traffic_extra_price = extra_base_traffic * traffic_step
-        
+
         selected_price = base_price + devices_extra_price + traffic_extra_price
 
     result = await session.execute(select(Key).where(Key.email == email))
