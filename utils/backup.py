@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tarfile
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -23,21 +24,32 @@ from config import (
     DB_USER,
     PG_HOST,
     PG_PORT,
+    BACKUP_CREATE_ARCHIVE,
+    BACKUP_INCLUDE_DB,
+    BACKUP_INCLUDE_CONFIG,
+    BACKUP_INCLUDE_TEXTS,
+    BACKUP_INCLUDE_IMG,
 )
 from logger import logger
 
 
 async def backup_database() -> Exception | None:
     """
-    Создает резервную копию базы данных и отправляет ее администраторам.
+    Создает резервную копию базы данных (или полный архив) и отправляет его администраторам.
 
     Returns:
         Optional[Exception]: Исключение в случае ошибки или None при успешном выполнении
     """
-    backup_file_path, exception = _create_database_backup()
+    if BACKUP_CREATE_ARCHIVE:
+        if not any([BACKUP_INCLUDE_DB, BACKUP_INCLUDE_CONFIG, BACKUP_INCLUDE_TEXTS, BACKUP_INCLUDE_IMG]):
+            backup_file_path, exception = _create_database_backup()
+        else:
+            backup_file_path, exception = _create_backup_archive()
+    else:
+        backup_file_path, exception = _create_database_backup()
 
     if exception:
-        logger.error(f"Ошибка при создании бэкапа базы данных: {exception}")
+        logger.error(f"Ошибка при создании бэкапа: {exception}")
         return exception
 
     try:
@@ -45,12 +57,12 @@ async def backup_database() -> Exception | None:
         exception = _cleanup_old_backups()
 
         if exception:
-            logger.error(f"Ошибка при удалении старых бэкапов базы данных: {exception}")
+            logger.error(f"Ошибка при удалении старых бэкапов: {exception}")
             return exception
 
         return None
     except Exception as e:
-        logger.error(f"Ошибка при отправке бэкапа базы данных: {e}")
+        logger.error(f"Ошибка при отправке бэкапа: {e}")
         return e
 
 
@@ -103,9 +115,77 @@ def _create_database_backup() -> tuple[str | None, Exception | None]:
             del os.environ["PGPASSWORD"]
 
 
+def _create_backup_archive() -> tuple[str | None, Exception | None]:
+    """
+    Создает архив (.tar.gz) с выбранными компонентами бекапа.
+
+    Returns:
+        Tuple[Optional[str], Optional[Exception]]: Путь к файлу архива и исключение (если произошла ошибка)
+    """
+    date_formatted = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    backup_dir = Path(BACK_DIR)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+
+    archive_path = backup_dir / f"{DB_NAME}-full-backup-{date_formatted}.tar.gz"
+    project_root = Path(__file__).parent.parent
+    archive_folder = f"backup-{date_formatted}"
+
+    db_backup_path = None
+    try:
+        with tarfile.open(archive_path, "w:gz") as tar:
+            if BACKUP_INCLUDE_DB:
+                db_backup_path, db_exception = _create_database_backup()
+                if db_exception:
+                    logger.warning(f"Не удалось создать бекап БД для архива: {db_exception}")
+                elif db_backup_path and os.path.exists(db_backup_path):
+                    tar.add(db_backup_path, arcname=f"{archive_folder}/database.sql")
+                    logger.info("База данных добавлена в архив")
+
+            if BACKUP_INCLUDE_CONFIG:
+                config_path = project_root / "config.py"
+                if config_path.exists():
+                    tar.add(config_path, arcname=f"{archive_folder}/config.py")
+                    logger.info("config.py добавлен в архив")
+                else:
+                    logger.warning("config.py не найден, пропущен")
+
+            if BACKUP_INCLUDE_TEXTS:
+                texts_path = project_root / "handlers" / "texts.py"
+                if texts_path.exists():
+                    tar.add(texts_path, arcname=f"{archive_folder}/texts.py")
+                    logger.info("texts.py добавлен в архив")
+                else:
+                    logger.warning("handlers/texts.py не найден, пропущен")
+
+            if BACKUP_INCLUDE_IMG:
+                img_dir = project_root / "img"
+                if img_dir.exists() and img_dir.is_dir():
+                    img_files = [f for f in img_dir.iterdir() if f.is_file()]
+                    for img_file in img_files:
+                        tar.add(img_file, arcname=f"{archive_folder}/img/{img_file.name}")
+                    logger.info(f"Папка img/ добавлена в архив ({len(img_files)} файлов)")
+                else:
+                    logger.warning("Папка img/ не найдена, пропущена")
+
+        logger.info(f"Архив бекапа создан: {archive_path}")
+
+        if db_backup_path and os.path.exists(db_backup_path) and db_backup_path != str(archive_path):
+            try:
+                os.unlink(db_backup_path)
+                logger.info(f"Временный файл БД удален: {db_backup_path}")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить временный файл БД: {e}")
+
+        return str(archive_path), None
+
+    except Exception as e:
+        logger.error(f"Непредвиденная ошибка при создании архива бекапа: {e}")
+        return None, e
+
+
 def _cleanup_old_backups() -> Exception | None:
     """
-    Удаляет бэкапы старше 3 дней.
+    Удаляет бэкапы старше 3 дней (как .sql, так и .tar.gz файлы).
 
     Returns:
         Optional[Exception]: Исключение в случае ошибки или None при успешном выполнении
@@ -123,6 +203,13 @@ def _cleanup_old_backups() -> Exception | None:
                 if file_mtime < cutoff_date:
                     backup_file.unlink()
                     logger.info(f"Удален старый бэкап: {backup_file}")
+
+        for archive_file in backup_dir.glob("*.tar.gz"):
+            if archive_file.is_file():
+                file_mtime = datetime.fromtimestamp(archive_file.stat().st_mtime)
+                if file_mtime < cutoff_date:
+                    archive_file.unlink()
+                    logger.info(f"Удален старый архив: {archive_file}")
 
         logger.info("Очистка старых бэкапов завершена")
         return None
