@@ -721,14 +721,7 @@ async def complete_key_renewal(
             return
 
         new_tariff_device_limit = tariff.get("device_limit")
-        new_tariff_traffic_limit_bytes = tariff.get("traffic_limit")
-        new_tariff_traffic_limit_gb = (
-            int(new_tariff_traffic_limit_bytes / GB) if new_tariff_traffic_limit_bytes else None
-        )
-
-        key_info.get("selected_device_limit")
-        key_info.get("selected_traffic_limit")
-        key_info.get("current_traffic_limit")
+        new_tariff_traffic_limit_gb = tariff.get("traffic_limit")
 
         if new_tariff_device_limit is None:
             final_device_limit = None
@@ -744,17 +737,23 @@ async def complete_key_renewal(
         else:
             final_traffic_limit = int(new_tariff_traffic_limit_gb)
 
-        selected_traffic_gb_effective = int(final_traffic_limit) if final_traffic_limit is not None else None
-        selected_device_limit_effective = int(final_device_limit) if final_device_limit is not None else None
+        if tariff.get("configurable"):
+            selected_traffic_gb_effective = int(final_traffic_limit) if final_traffic_limit is not None else None
+            selected_device_limit_effective = int(final_device_limit) if final_device_limit is not None else None
 
-        device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
-            session=session,
-            tariff_id=int(tariff_id),
-            selected_device_limit=selected_device_limit_effective,
-            selected_traffic_gb=selected_traffic_gb_effective,
-        )
-        traffic_limit_gb_effective = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
-        total_gb = traffic_limit_gb_effective
+            device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
+                session=session,
+                tariff_id=int(tariff_id),
+                selected_device_limit=selected_device_limit_effective,
+                selected_traffic_gb=selected_traffic_gb_effective,
+            )
+
+            traffic_limit_gb_effective = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
+            total_gb = int(traffic_limit_gb_effective)
+        else:
+            device_limit_effective = final_device_limit
+            traffic_limit_gb_effective = int(final_traffic_limit) if final_traffic_limit is not None else 0
+            total_gb = int(traffic_limit_gb_effective)
 
         cfg = normalize_tariff_config(tariff)
         raw_device_options = cfg.get("device_options") or tariff.get("device_options") or []
