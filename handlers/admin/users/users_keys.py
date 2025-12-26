@@ -102,22 +102,24 @@ async def handle_key_edit(
 
     tariff_name = "—"
     subgroup_title = "—"
+    group_code = "—"
     base_devices = None
     base_traffic = None
     is_configurable = False
     if key_obj.tariff_id:
         result = await session.execute(
             select(
-                Tariff.name, Tariff.subgroup_title, Tariff.device_limit, Tariff.traffic_limit, Tariff.configurable
+                Tariff.name, Tariff.subgroup_title, Tariff.group_code, Tariff.device_limit, Tariff.traffic_limit, Tariff.configurable
             ).where(Tariff.id == key_obj.tariff_id)
         )
         row = result.first()
         if row:
             tariff_name = row[0]
             subgroup_title = row[1] or "—"
-            base_devices = row[2]
-            base_traffic = row[3]
-            is_configurable = bool(row[4])
+            group_code = row[2] or "—"
+            base_devices = row[3]
+            base_traffic = row[4]
+            is_configurable = bool(row[5])
 
     devices_line = ""
     traffic_line = ""
@@ -150,7 +152,8 @@ async def handle_key_edit(
         f"⏰ <b>Истекает:</b> {expiry_date} (МСК)\n"
         f"🌐 <b>Кластер:</b> {key_obj.server_id or '—'}\n"
         f"🆔 <b>ID клиента:</b> {key_obj.tg_id or '—'}\n"
-        f"📁 <b>Группа:</b> {subgroup_title}\n"
+        f"🏷️ <b>Тарифная группа:</b> {group_code}\n"
+        f"📁 <b>Подгруппа:</b> {subgroup_title}\n"
         f"📦 <b>Тариф:</b> {tariff_name}\n"
         f"{devices_line}"
         f"{traffic_line}"
