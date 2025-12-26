@@ -464,17 +464,26 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
             selected_devices_db = record.get("selected_device_limit")
             selected_traffic_db = record.get("selected_traffic_limit")
 
+            traffic_default = next(
+                (x for x in traffic_options_sorted if x != 0),
+                (traffic_options_sorted[0] if traffic_options_sorted else None),
+            )
+            device_default = next(
+                (x for x in device_options_sorted if x != 0),
+                (device_options_sorted[0] if device_options_sorted else None),
+            )
+
             if traffic_options_sorted:
-                selected_traffic_db = int(selected_traffic_db) if selected_traffic_db is not None else traffic_options_sorted[0]
+                selected_traffic_db = int(selected_traffic_db) if selected_traffic_db is not None else traffic_default
                 if selected_traffic_db not in traffic_options_sorted:
-                    selected_traffic_db = traffic_options_sorted[0]
+                    selected_traffic_db = traffic_default
             else:
                 selected_traffic_db = None
 
             if device_options_sorted:
-                selected_devices_db = int(selected_devices_db) if selected_devices_db is not None else device_options_sorted[0]
+                selected_devices_db = int(selected_devices_db) if selected_devices_db is not None else device_default
                 if selected_devices_db not in device_options_sorted:
-                    selected_devices_db = device_options_sorted[0]
+                    selected_devices_db = device_default
             else:
                 selected_devices_db = None
 

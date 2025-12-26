@@ -15,8 +15,8 @@ from logger import (
 from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
-from .deletion import delete_on_3xui, delete_on_remnawave
-from .utils import bytes_from_gb, norm_name, split_by_panel
+from ..keys.operations.deletion import delete_on_3xui, delete_on_remnawave
+from ..keys.operations.utils import bytes_from_gb, norm_name, split_by_panel
 
 
 async def ensure_on_remnawave(

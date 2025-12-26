@@ -25,7 +25,7 @@ from panels._3xui import extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
 from .aggregated_links import make_aggregated_link
-from .subgroup_migration import migrate_between_subgroups
+from ...tariffs.subgroup_migration import migrate_between_subgroups
 
 
 async def resolve_cluster(session: AsyncSession, cluster_id: str):
