@@ -142,6 +142,12 @@ async def build_users_balance_kb(session: AsyncSession, tg_id: int) -> InlineKey
             callback_data=AdminUserEditorCallback(action="users_balance_set", tg_id=tg_id).pack(),
         )
     )
+    builder.row(
+        InlineKeyboardButton(
+            text="Выгрузить платежи",
+            callback_data=AdminUserEditorCallback(action="users_balance_export", tg_id=tg_id).pack(),
+        )
+    )
 
     builder.row(build_editor_back_btn(tg_id, True))
 

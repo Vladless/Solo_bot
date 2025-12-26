@@ -6,6 +6,7 @@ from io import StringIO
 from aiogram.types import BufferedInputFile
 from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Key, Payment, Referral, Tariff, User
@@ -258,3 +259,67 @@ async def export_keys_csv(session: AsyncSession) -> BufferedInputFile:
 
     buffer.seek(0)
     return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv")
+
+
+async def export_user_all_payments_csv(tg_id: int, session: AsyncSession) -> BufferedInputFile:
+    query = (
+        select(
+            Payment.id,
+            Payment.tg_id,
+            Payment.payment_id,
+            Payment.amount,
+            Payment.currency,
+            Payment.payment_system,
+            Payment.status,
+            Payment.original_amount,
+            Payment.created_at,
+        )
+        .where(Payment.tg_id == tg_id)
+        .order_by(Payment.created_at.asc())
+    )
+
+    result = await session.execute(query)
+    rows = result.all()
+
+    buffer = StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "id",
+        "tg_id",
+        "payment_id",
+        "amount",
+        "currency",
+        "payment_system",
+        "status",
+        "original_amount",
+        "created_at",
+    ])
+
+    for (
+        internal_id,
+        user_tg_id,
+        external_payment_id,
+        amount,
+        currency,
+        payment_system,
+        status,
+        original_amount,
+        created_at,
+    ) in rows:
+        writer.writerow([
+            internal_id,
+            user_tg_id,
+            external_payment_id or "",
+            amount,
+            currency,
+            payment_system,
+            status,
+            original_amount if original_amount is not None else "",
+            created_at,
+        ])
+
+    buffer.seek(0)
+    return BufferedInputFile(
+        file=buffer.getvalue().encode("utf-8-sig"),
+        filename=f"user_{tg_id}_payments_full.csv",
+    )

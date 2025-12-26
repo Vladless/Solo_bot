@@ -180,3 +180,34 @@ async def cancel_expired_pending_payments(session: AsyncSession) -> int:
     await session.commit()
     affected = res.rowcount or 0
     return affected
+
+
+async def get_all_payments(
+    session: AsyncSession,
+    tg_id: int,
+    statuses: list[str] | None = None,
+) -> list[dict]:
+    query = select(Payment).where(Payment.tg_id == tg_id)
+
+    if statuses:
+        query = query.where(Payment.status.in_(statuses))
+
+    query = query.order_by(Payment.created_at.desc())
+
+    result = await session.execute(query)
+    payments = result.scalars().all()
+    return [
+        {
+            "id": p.id,
+            "tg_id": p.tg_id,
+            "amount": p.amount,
+            "currency": p.currency,
+            "status": p.status,
+            "payment_system": p.payment_system,
+            "payment_id": p.payment_id,
+            "created_at": p.created_at,
+            "metadata": p.metadata_,
+            "original_amount": p.original_amount,
+        }
+        for p in payments
+    ]

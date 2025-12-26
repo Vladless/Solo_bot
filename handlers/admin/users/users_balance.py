@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_balance, set_user_balance, update_balance
+from utils.csv_export import export_user_all_payments_csv
 from database.models import Payment
 from database.payments import add_payment
 from filters.admin import IsAdminFilter
@@ -90,6 +91,21 @@ async def handle_balance_change(
         text=text,
         reply_markup=await build_users_balance_kb(session, tg_id),
     )
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_balance_export"),
+    IsAdminFilter(),
+)
+async def handle_balance_export(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    tg_id = callback_data.tg_id
+    csv_file = await export_user_all_payments_csv(tg_id=tg_id, session=session)
+    await callback_query.message.answer_document(csv_file)
+    await callback_query.answer()
 
 
 @router.callback_query(
