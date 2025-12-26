@@ -302,9 +302,15 @@ async def build_key_view_payload(session: AsyncSession, key_name: str):
     if is_full_remnawave and client_id:
         try:
             servers = await get_servers(session)
-            remna_server = next(
-                (srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None
-            )
+            remna_server = None
+            for cluster_name, cluster_servers in servers.items():
+                for srv in cluster_servers:
+                    if (srv.get("server_name") == server_name or cluster_name == server_name) and srv.get("panel_type") == "remnawave":
+                        remna_server = srv
+                        break
+                if remna_server:
+                    break
+            
             if remna_server:
                 api = RemnawaveAPI(remna_server["api_url"])
                 if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
@@ -312,7 +318,8 @@ async def build_key_view_payload(session: AsyncSession, key_name: str):
                     hwid_count = len(devices or [])
                     user_data = await api.get_user_by_uuid(client_id)
                     if user_data:
-                        used_bytes = user_data.get("usedTrafficBytes", 0)
+                        user_traffic = user_data.get("userTraffic", {})
+                        used_bytes = user_traffic.get("usedTrafficBytes", 0)
                         remna_used_gb = round(used_bytes / GB, 1)
                         traffic_limit_bytes_actual = user_data.get("trafficLimitBytes")
                         if traffic_limit_bytes_actual is not None:
