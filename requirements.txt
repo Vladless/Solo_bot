@@ -63,4 +63,4 @@ urllib3==2.2.3
 uvicorn==0.35.0
 wrapt==1.16.0
 yarl==1.15.5
-yookassa==3.3.0
+yookassa==3.3.9

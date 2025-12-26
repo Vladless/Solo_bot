@@ -58,6 +58,44 @@ BACK_DIR = os.path.expanduser("~/.solobot_backups")
 TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 IS_ROOT_DIR = PROJECT_DIR == "/root"
+GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
+SERVICE_NAME = BOT_SERVICE
+
+
+def is_ascii_only(value: str) -> bool:
+    """Проверка, что строка содержит только ASCII."""
+    return all(ord(ch) < 128 for ch in value)
+
+
+def warn_english_only():
+    """Предупреждение о необходимости английской раскладки."""
+    console.print("[red]Обнаружен ввод с неанглийской раскладкой.[/red]")
+    console.print("[yellow]Пожалуйста, переключите раскладку на ENG и введите снова.[/yellow]")
+
+
+def safe_confirm(message: str, **kwargs) -> bool:
+    """Безопасный Confirm.ask с защитой от русской раскладки."""
+    while True:
+        try:
+            result = Confirm.ask(message, **kwargs)
+            return result
+        except UnicodeDecodeError:
+            warn_english_only()
+
+
+def safe_prompt(message: str, **kwargs) -> str:
+    """Безопасный Prompt.ask с защитой от русской раскладки."""
+    while True:
+        try:
+            value = Prompt.ask(message, **kwargs)
+        except UnicodeDecodeError:
+            warn_english_only()
+            continue
+        if isinstance(value, str) and not is_ascii_only(value):
+            warn_english_only()
+            continue
+        return value
+
 
 if IS_ROOT_DIR:
     console.print("[bold red]КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
@@ -66,8 +104,6 @@ if IS_ROOT_DIR:
     console.print("[red]Рекомендуется перенести бота в отдельную папку, например /root/solobot[/red]")
     console.print("[red]Обновление заблокировано в целях безопасности.[/red]")
     sys.exit(1)
-GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
-SERVICE_NAME = BOT_SERVICE
 
 
 def is_service_exists(service_name):
@@ -154,7 +190,7 @@ def restore_from_backup():
         shown.append((idx, path))
 
     try:
-        choice = Prompt.ask(
+        choice = safe_prompt(
             "[bold blue]Выберите номер бэкапа[/bold blue]",
             choices=[str(i) for i, _ in shown],
         )
@@ -164,7 +200,7 @@ def restore_from_backup():
     sel_path = shown[int(choice) - 1][1]
 
     console.print("[red]Внимание: текущие файлы проекта будут перезаписаны выбранным бэкапом.[/red]")
-    if not Confirm.ask("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
+    if not safe_confirm("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
         return
 
     if is_service_exists(SERVICE_NAME):
@@ -409,20 +445,20 @@ def update_from_beta():
     if local_version and remote_version:
         console.print(f"[cyan]Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
         if local_version == remote_version:
-            if not Confirm.ask("[yellow]Версия актуальна. Обновить всё равно?[/yellow]"):
+            if not safe_confirm("[yellow]Версия актуальна. Обновить всё равно?[/yellow]"):
                 return
 
-    if not Confirm.ask(
+    if not safe_confirm(
         "[bold red]Продолжить обновление на dev-ветку с учётом возможных особенностей работы?[/bold red]"
     ):
         return
 
     console.print("[red]ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
-    if not Confirm.ask("[red]Продолжить обновление?[/red]"):
+    if not safe_confirm("[red]Продолжить обновление?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = Confirm.ask("[yellow]Обновлять папку img?[/yellow]", default=False)
+    update_buttons = safe_confirm("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = safe_confirm("[yellow]Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -469,16 +505,16 @@ def update_from_beta():
 
 
 def update_from_release():
-    if not Confirm.ask("[yellow]Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
+    if not safe_confirm("[yellow]Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
         return
 
     console.print("[red]ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
     console.print("[red]  Исключения: папка img и файл handlers/buttons.py[/red]")
-    if not Confirm.ask("[red]Вы точно хотите продолжить?[/red]"):
+    if not safe_confirm("[red]Вы точно хотите продолжить?[/red]"):
         return
 
-    update_buttons = Confirm.ask("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = Confirm.ask("[yellow]Обновлять папку img?[/yellow]", default=False)
+    update_buttons = safe_confirm("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
+    update_img = safe_confirm("[yellow]Обновлять папку img?[/yellow]", default=False)
 
     backup_project()
     install_git_if_needed()
@@ -496,13 +532,13 @@ def update_from_release():
         for idx, tag in enumerate(tag_choices, 1):
             console.print(f"[cyan]{idx}.[/cyan] {tag}")
 
-        selected = Prompt.ask(
+        selected = safe_prompt(
             "[bold blue]Выберите номер релиза[/bold blue]",
             choices=[str(i) for i in range(1, len(tag_choices) + 1)],
         )
         tag_name = tag_choices[int(selected) - 1]
 
-        if not Confirm.ask(f"[yellow]Подтвердите установку релиза {tag_name}[/yellow]"):
+        if not safe_confirm(f"[yellow]Подтвердите установку релиза {tag_name}[/yellow]"):
             return
 
         console.print(f"[cyan]Клонируем релиз {tag_name} во временную папку...[/cyan]")
@@ -563,7 +599,7 @@ def show_update_menu():
     table.add_row("3", "Назад в меню")
 
     console.print(table)
-    choice = Prompt.ask("[bold blue]Введите номер[/bold blue]", choices=["1", "2", "3"])
+    choice = safe_prompt("[bold blue]Введите номер[/bold blue]", choices=["1", "2", "3"])
 
     if choice == "1":
         update_from_beta()
@@ -572,7 +608,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.3.7", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.8", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
@@ -594,7 +630,7 @@ def main():
     try:
         while True:
             show_menu()
-            choice = Prompt.ask(
+            choice = safe_prompt(
                 "[bold blue]👉 Введите номер действия[/bold blue]",
                 choices=[str(i) for i in range(1, 10)],
                 show_choices=False,
@@ -605,17 +641,17 @@ def main():
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "2":
-                if Confirm.ask("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
+                if safe_confirm("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
                     subprocess.run(["venv/bin/python", "main.py"])
             elif choice == "3":
                 if is_service_exists(SERVICE_NAME):
-                    if Confirm.ask("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
+                    if safe_confirm("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
                         subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "4":
                 if is_service_exists(SERVICE_NAME):
-                    if Confirm.ask("[red]Вы уверены, что хотите остановить бота?[/red]"):
+                    if safe_confirm("[red]Вы уверены, что хотите остановить бота?[/red]"):
                         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
