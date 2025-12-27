@@ -19,6 +19,25 @@ from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu
 
 
+def extract_tg_id_from_username(value: str | None) -> int | None:
+    if not value:
+        return None
+
+    value = value.strip()
+    if "_" not in value:
+        return None
+
+    tail = value.rsplit("_", 1)[-1]
+    if not tail.isdigit():
+        return None
+
+    tg_id = int(tail)
+    if tg_id <= 0:
+        return None
+
+    return tg_id
+
+
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
@@ -58,7 +77,7 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
     preview = ""
     for i, user in enumerate(users[:3], 1):
         email = user.get("email") or user.get("username") or "-"
-        expire = user.get("expireAt", "")[:10]
+        expire = (user.get("expireAt") or "")[:10]
         preview += f"{i}. {email} — до {expire}\n"
 
     await callback.message.edit_text(
@@ -75,6 +94,8 @@ async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> in
 
     for user in users:
         tg_id = user.get("telegramId")
+        if not tg_id:
+            tg_id = extract_tg_id_from_username(user.get("username")) or extract_tg_id_from_username(user.get("email"))
         if not tg_id:
             continue
 
@@ -112,6 +133,9 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
 
     for user in users:
         tg_id = user.get("telegramId")
+        if not tg_id:
+            tg_id = extract_tg_id_from_username(user.get("username")) or extract_tg_id_from_username(user.get("email"))
+
         client_id = user.get("uuid")
         email = user.get("email") or user.get("username")
         remnawave_link = user.get("subscriptionUrl")
