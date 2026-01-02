@@ -519,9 +519,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
 
         balance = round(await get_balance(session, tg_id), 2)
 
-        stored_price = record.get("selected_price_rub")
-        base_cost = tariff["price_rub"]
-        cost = round(stored_price if stored_price is not None else base_cost, 2)
+        cost = round(tariff["price_rub"], 2)
 
         if balance < cost:
             required_amount = ceil(cost - balance)

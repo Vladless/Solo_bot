@@ -379,42 +379,44 @@ async def handle_expired_keys(
 
         if notify_renew_expired_enabled:
             try:
-                tariff = None
+                standard_caption = ""
                 tariff_id = getattr(key, "tariff_id", None)
                 if tariff_id and await check_tariff_exists(session, int(tariff_id)):
                     tariff = await get_tariff_by_id(session, int(tariff_id))
+                    if tariff:
+                        selected_device_limit = getattr(key, "selected_device_limit", None)
+                        selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
+                        selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
 
-                if tariff:
-                    selected_device_limit = getattr(key, "selected_device_limit", None)
-                    selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
-                    selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
+                        device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
+                            session=session,
+                            tariff_id=int(tariff["id"]),
+                            selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
+                            selected_traffic_gb=selected_traffic_gb,
+                        )
+                        traffic_limit_gb_effective = (
+                            int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
+                        )
 
-                    device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
-                        session=session,
-                        tariff_id=int(tariff["id"]),
-                        selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
-                        selected_traffic_gb=selected_traffic_gb,
-                    )
-                    traffic_limit_gb_effective = (
-                        int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
-                    )
+                        standard_caption = get_renewal_message(
+                            tariff_name=tariff.get("name", ""),
+                            traffic_limit=traffic_limit_gb_effective,
+                            device_limit=device_limit_effective,
+                            subgroup_title=tariff.get("subgroup_title", ""),
+                        )
 
-                    standard_caption = get_renewal_message(
-                        tariff_name=tariff.get("name", ""),
-                        traffic_limit=traffic_limit_gb_effective,
-                        device_limit=device_limit_effective,
-                        subgroup_title=tariff.get("subgroup_title", ""),
-                    )
-
-                    await process_auto_renew_or_notify(
-                        bot,
-                        session,
-                        key,
-                        notification_id,
-                        1,
-                        "notify_expired.jpg",
-                        standard_caption,
-                    )
+                renewed = await process_auto_renew_or_notify(
+                    bot,
+                    session,
+                    key,
+                    notification_id,
+                    1,
+                    "notify_expired.jpg",
+                    standard_caption,
+                )
+                
+                if renewed:
+                    continue
 
             except Exception as error:
                 logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {error}")
@@ -515,7 +517,7 @@ async def process_auto_renew_or_notify(
             logger.debug(
                 f"⏳ Подписка {email} уже продлевалась в течение последних 24 часов, повторное продление отменено."
             )
-            return
+            return False
 
         balance = await get_balance(conn, tg_id)
         server_id = key.server_id
@@ -524,7 +526,7 @@ async def process_auto_renew_or_notify(
         tariffs = await get_tariffs_for_cluster(conn, server_id)
         if not tariffs:
             logger.warning(f"⛔ Нет доступных тарифов для продления подписки {email} (сервер: {server_id})")
-            return
+            return False
 
         selected_tariff = None
 
@@ -567,55 +569,22 @@ async def process_auto_renew_or_notify(
                 int(datetime.now(moscow_tz).timestamp() * 1000),
             )
 
-            use_change_tariff_kb = False
-            message_text = None
-
-            if tariff_id and await check_tariff_exists(conn, tariff_id):
-                current_tariff = await get_tariff_by_id(conn, tariff_id)
-                if current_tariff:
-                    forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
-                    try:
-                        hook_results = await run_hooks(
-                            "renewal_forbidden_groups", chat_id=tg_id, admin=False, session=conn
-                        )
-                        for hook_result in hook_results:
-                            additional_groups = hook_result.get("additional_groups", [])
-                            forbidden_groups.extend(additional_groups)
-                    except Exception as error:
-                        logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {error}")
-
-                    if current_tariff["group_code"] in forbidden_groups:
-                        use_change_tariff_kb = True
-                        message_text = KEY_CANNOT_RENEW_CURRENT.format(
-                            email=email,
-                            hours_left_formatted=expiry_data["hours_left_formatted"],
-                            formatted_expiry_date=expiry_data["formatted_expiry_date"],
-                            tariff_name=expiry_data["tariff_name"],
-                            tariff_details=expiry_data["tariff_details"],
-                        )
-            else:
-                use_change_tariff_kb = True
-                message_text = KEY_CANNOT_RENEW_CURRENT.format(
-                    email=email,
-                    hours_left_formatted=expiry_data["hours_left_formatted"],
-                    formatted_expiry_date=expiry_data["formatted_expiry_date"],
-                    tariff_name=expiry_data["tariff_name"],
-                    tariff_details=expiry_data["tariff_details"],
-                )
-
             last_notification_time = await get_last_notification_time(conn, tg_id, notification_id)
             if last_notification_time is not None:
-                return
+                return False
 
-            if use_change_tariff_kb:
-                keyboard = build_change_tariff_kb(email)
-            else:
-                keyboard = build_notification_kb(email)
+            message_text = KEY_CANNOT_RENEW_CURRENT.format(
+                email=email,
+                hours_left_formatted=expiry_data["hours_left_formatted"],
+                formatted_expiry_date=expiry_data["formatted_expiry_date"],
+                tariff_name=expiry_data["tariff_name"],
+                tariff_details=expiry_data["tariff_details"],
+            )
 
+            keyboard = build_change_tariff_kb(email)
             await add_notification(conn, tg_id, notification_id)
-            text_to_send = message_text if message_text is not None else standard_caption
-            await send_notification(bot, tg_id, standard_photo, text_to_send, keyboard)
-            return
+            await send_notification(bot, tg_id, standard_photo, message_text, keyboard)
+            return False
 
         client_id = key.client_id
         current_expiry = key.expiry_time
@@ -632,7 +601,7 @@ async def process_auto_renew_or_notify(
         )
         if renewal_cost is None:
             logger.warning(f"[AUTO_RENEW] Не удалось определить стоимость продления для {email}. Продление отменено.")
-            return
+            return False
 
         selected_device_limit = getattr(key, "selected_device_limit", None)
         selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
@@ -698,6 +667,9 @@ async def process_auto_renew_or_notify(
             logger.info(f"✅ Уведомление о продлении подписки {email} отправлено пользователю {tg_id}.")
         else:
             logger.warning(f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}.")
+        
+        return True
 
     except Exception as error:
         logger.error(f"❌ Ошибка в process_auto_renew_or_notify: {error}")
+        return False
