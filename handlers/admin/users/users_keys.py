@@ -52,6 +52,7 @@ from .keyboard import (
     build_editor_kb,
     build_key_delete_kb,
     build_key_edit_kb,
+    build_reissue_menu_kb,
     build_user_delete_kb,
     build_users_key_expiry_kb,
     build_users_key_show_kb,
@@ -341,6 +342,33 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
         text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
 
     await message.answer(text=text, reply_markup=build_users_key_show_kb(tg_id, email))
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_reissue_menu"),
+    IsAdminFilter(),
+)
+async def handle_reissue_menu(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+):
+    tg_id = callback_data.tg_id
+    email = callback_data.data
+
+    text = (
+        "<b>🔄 Перевыпуск подписки</b>\n\n"
+        "<b>📦 Полный перевыпуск</b>\n"
+        "<i>Пересоздаёт подписку на сервере с возможностью выбора кластера. "
+        "Используйте для переноса на другой сервер или обновления данных.</i>\n\n"
+        "<b>🔗 Сменить ссылку</b>\n"
+        "<i>Генерирует новую ссылку подписки. Старая ссылка перестанет работать. "
+        "Все данные подписки сохранятся.</i>"
+    )
+
+    await callback_query.message.edit_text(
+        text=text,
+        reply_markup=build_reissue_menu_kb(email, tg_id),
+    )
 
 
 @router.callback_query(

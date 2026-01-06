@@ -339,7 +339,7 @@ async def process_user_search(
 ) -> None:
     await state.clear()
 
-    stmt_user = select(User.username, User.balance, User.created_at, User.updated_at).where(User.tg_id == tg_id)
+    stmt_user = select(User.username, User.balance, User.created_at, User.updated_at, User.trial).where(User.tg_id == tg_id)
     result_user = await session.execute(stmt_user)
     user_data = result_user.first()
 
@@ -350,10 +350,12 @@ async def process_user_search(
         )
         return
 
-    username, balance, created_at, updated_at = user_data
+    username, balance, created_at, updated_at, trial = user_data
     balance = int(balance or 0)
     created_at_str = created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
     updated_at_str = updated_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+
+    trial_status = "использован" if trial == 1 else "доступен"
 
     stmt_ref_count = select(func.count()).select_from(Referral).where(Referral.referrer_tg_id == tg_id)
     result_ref = await session.execute(stmt_ref_count)
@@ -384,27 +386,48 @@ async def process_user_search(
     result_keys = await session.execute(stmt_keys)
     key_records = result_keys.scalars().all()
 
+    stmt_ban = select(ManualBan).where(ManualBan.tg_id == tg_id).limit(1)
+    result_ban = await session.execute(stmt_ban)
+    ban_record = result_ban.scalar_one_or_none()
+
+    ban_info = None
+    ban_reason = None
+    is_banned = ban_record is not None
+    if ban_record:
+        if ban_record.reason == "shadow":
+            ban_info = "🚫 Блокировка: 👻 Теневой бан"
+        elif ban_record.until:
+            until_str = ban_record.until.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+            ban_info = f"🚫 Блокировка: до {until_str}"
+            if ban_record.reason:
+                ban_reason = ban_record.reason
+        else:
+            ban_info = "🚫 Блокировка: навсегда"
+            if ban_record.reason:
+                ban_reason = ban_record.reason
+
     body = Text(
         f"🆔 ID: {tg_id}\n",
-        f"📄 Логин: @{username}" if username else "📄 Логин: —",
-        "\n",
+        f"📄 Логин: @{username}\n" if username else "📄 Логин: —\n",
         f"📅 Дата регистрации: {created_at_str}\n",
         f"🏃 Дата активности: {updated_at_str}\n",
         f"💰 Баланс: {balance} Р.\n",
         f"💳 Пополнения: {topups_sum} Р. ({topups_amount} шт.)\n",
         f"👥 Количество рефералов: {referral_count}\n",
+        f"🎁 Триал: {trial_status}\n",
     )
 
     if referrer_text:
         body += Text(referrer_text, "\n")
 
+    if ban_info:
+        body += Text(ban_info, "\n")
+        if ban_reason:
+            body += Text(f"📝 Причина: {ban_reason}\n")
+
     text_builder = Text(Bold("📊 Информация о пользователе"), "\n\n", BlockQuote(body))
 
     text = text_builder.as_html()
-
-    stmt_ban = select(1).where(ManualBan.tg_id == tg_id).limit(1)
-    result_ban = await session.execute(stmt_ban)
-    is_banned = result_ban.scalar_one_or_none() is not None
 
     kb = await build_user_edit_kb(tg_id, key_records, is_banned=is_banned)
 

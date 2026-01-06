@@ -22,7 +22,7 @@ from database import (
     update_key_notified,
 )
 from database.tariffs import get_tariffs
-from handlers.buttons import CONNECT_DEVICE, MAIN_MENU
+from handlers.buttons import CONNECT_DEVICE, MAIN_MENU, SUPPORT, TRIAL_BONUS
 from handlers.keys.operations import get_user_traffic
 from handlers.notifications.notify_utils import send_messages_with_limit
 from handlers.texts import (
@@ -69,7 +69,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         display_name = username or first_name or last_name or "Пользователь"
 
         builder = InlineKeyboardBuilder()
-        builder.row(types.InlineKeyboardButton(text="🚀 Активировать пробный период", callback_data="create_key"))
+        builder.row(types.InlineKeyboardButton(text=TRIAL_BONUS, callback_data="create_key"))
         builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         keyboard = builder.as_markup()
 
@@ -176,7 +176,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 logger.error(f"Ошибка при определении типа панели для {email}: {error}")
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
 
-            builder.row(InlineKeyboardButton(text="🔧 Написать в поддержку", url=SUPPORT_CHAT_URL))
+            builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
             builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
             try:
