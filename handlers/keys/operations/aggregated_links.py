@@ -103,7 +103,7 @@ async def make_aggregated_link(
     legacy_links_enabled = bool(MODES_CONFIG.get("LEGACY_LINKS_ENABLED", LEGACY_LINKS))
 
     servers = (
-        await filter_cluster_by_subgroup(session, cluster_all, subgroup_code, cluster_id)
+        await filter_cluster_by_subgroup(session, cluster_all, subgroup_code, cluster_id, tariff_id=plan)
         if subgroup_code
         else cluster_all
     )

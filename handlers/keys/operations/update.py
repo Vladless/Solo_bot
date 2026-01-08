@@ -33,6 +33,7 @@ async def update_key_on_cluster(
     device_limit: int = None,
     remnawave_link: str = None,
     subgroup_code: str | None = None,
+    tariff_id: int | None = None,
 ):
     try:
         servers = await get_servers(session)
@@ -50,7 +51,9 @@ async def update_key_on_cluster(
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         if subgroup_code:
-            filtered = await filter_cluster_by_subgroup(session, cluster, subgroup_code, cluster_id)
+            filtered = await filter_cluster_by_subgroup(
+                session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id
+            )
             if not filtered:
                 logger.warning(f"[Update] Нет серверов для подгруппы {subgroup_code} в кластере {cluster_id}.")
                 return client_id, remnawave_link
@@ -238,7 +241,9 @@ async def update_subscription(
             cluster_servers = []
 
     if subgroup_code:
-        prefiltered = await filter_cluster_by_subgroup(session, cluster_servers, subgroup_code, new_cluster_id)
+        prefiltered = await filter_cluster_by_subgroup(
+            session, cluster_servers, subgroup_code, new_cluster_id, tariff_id=tariff_id
+        )
         if not prefiltered:
             logger.warning(
                 f"[Update] Пересоздание пропущено: нет серверов под подгруппу {subgroup_code} в {new_cluster_id}."
@@ -273,6 +278,7 @@ async def update_subscription(
         device_limit=device_limit,
         remnawave_link=remnawave_link,
         subgroup_code=subgroup_code,
+        tariff_id=tariff_id,
     )
 
     aggregated = await make_aggregated_link(

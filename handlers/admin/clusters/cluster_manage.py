@@ -79,8 +79,14 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
     allowed = set(ALLOWED_GROUP_CODES)
     lines = []
     for s in cluster_servers:
+        tids = s.get("tariff_ids") or []
         subs = s.get("tariff_subgroups") or []
-        subs_str = ", ".join(sorted(subs)) if subs else "—"
+        if tids:
+            subs_str = f"{len(tids)} тариф(ов)"
+        elif subs:
+            subs_str = ", ".join(sorted(subs))
+        else:
+            subs_str = "—"
 
         grps = s.get("special_groups") or []
         grps = [g for g in grps if g in allowed]

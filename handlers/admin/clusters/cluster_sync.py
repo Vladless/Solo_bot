@@ -288,9 +288,13 @@ async def handle_sync_server(
                     tariff = tariffs_cache.get(key["tariff_id"]) if key["tariff_id"] else None
 
                     if tariff and server_info:
-                        if tariff.get("subgroup_title") and tariff.get("subgroup_title") not in server_info.get(
-                            "tariff_subgroups", []
-                        ):
+                        subgroup = tariff.get("subgroup_title")
+                        tid = key["tariff_id"]
+                        has_new_binding = tid and tid in (server_info.get("tariff_ids") or [])
+                        has_old_binding = subgroup and subgroup in (server_info.get("tariff_subgroups") or [])
+                        has_any_binding = bool(server_info.get("tariff_ids") or server_info.get("tariff_subgroups"))
+                        
+                        if has_any_binding and subgroup and not has_new_binding and not has_old_binding:
                             continue
 
                         if tariff.get("group_code") and tariff.get("group_code").lower() in ALLOWED_GROUP_CODES:
@@ -558,9 +562,12 @@ async def handle_sync_cluster(
                             remna = RemnawaveAPI(cluster_servers[0]["api_url"])
 
                             filtered_servers = cluster_servers
-                            if subgroup_title:
+                            if subgroup_title or (tariff and tariff.get("id")):
+                                tid = tariff.get("id") if tariff else None
                                 filtered_servers = [
-                                    s for s in cluster_servers if subgroup_title in s.get("tariff_subgroups", [])
+                                    s for s in cluster_servers 
+                                    if (tid and tid in (s.get("tariff_ids") or []))
+                                    or (subgroup_title and subgroup_title in (s.get("tariff_subgroups") or []))
                                 ]
                                 if not filtered_servers:
                                     filtered_servers = cluster_servers

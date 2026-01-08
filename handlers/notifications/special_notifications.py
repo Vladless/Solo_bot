@@ -5,6 +5,7 @@ import pytz
 from aiogram import Bot, Router, types
 from aiogram.types import InlineKeyboardButton, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
@@ -15,12 +16,8 @@ from config import (
     SUPPORT_CHAT_URL,
 )
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
-from database import (
-    add_notification,
-    check_notifications_bulk,
-    mark_trial_extended,
-    update_key_notified,
-)
+from database import add_notification, check_notifications_bulk
+from database.models import Key, User
 from database.tariffs import get_tariffs
 from handlers.buttons import CONNECT_DEVICE, MAIN_MENU, SUPPORT, TRIAL_BONUS
 from handlers.keys.operations import get_user_traffic
@@ -52,7 +49,10 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
 
     users = await check_notifications_bulk(session, "inactive_trial", inactive_hours)
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
-    messages = []
+    
+    if not users:
+        logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
+        return
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
     if not trial_tariffs:
@@ -60,6 +60,8 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         return
 
     trial_days = trial_tariffs[0]["duration_days"]
+    messages = []
+    users_to_extend = []
 
     for user in users:
         tg_id = user["tg_id"]
@@ -82,7 +84,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
                 extra_days_formatted=format_days(extra_days),
                 total_days_formatted=format_days(total_days),
             )
-            await mark_trial_extended(tg_id, session)
+            users_to_extend.append(tg_id)
         else:
             message = TRIAL_INACTIVE_FIRST_MSG.format(
                 display_name=display_name,
@@ -104,19 +106,31 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
             source_file="special_notifications",
             messages_per_second=25,
         )
-        sent_count = 0
+        
+        sent_tg_ids = []
         for msg, result in zip(messages, results, strict=False):
             if result:
-                await add_notification(session, msg["tg_id"], msg["notification_id"])
-                sent_count += 1
-        logger.info(f"Отправлено {sent_count} уведомлений неактивным пользователям.")
+                sent_tg_ids.append(msg["tg_id"])
+        
+        if sent_tg_ids:
+            for tg_id in sent_tg_ids:
+                await add_notification(session, tg_id, "inactive_trial")
+            logger.info(f"Отправлено {len(sent_tg_ids)} уведомлений неактивным пользователям.")
+        
+        extend_ids = [tg_id for tg_id in users_to_extend if tg_id in sent_tg_ids]
+        if extend_ids:
+            await session.execute(
+                update(User).where(User.tg_id.in_(extend_ids)).values(trial_extended=True)
+            )
+            await session.commit()
+            logger.info(f"Bulk: отмечено {len(extend_ids)} пользователей с расширенным триалом")
+
     logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
 
 
 async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time: int, keys: list):
     logger.info("Проверка пользователей с нулевым трафиком...")
     current_dt = datetime.fromtimestamp(current_time / 1000, tz=moscow_tz)
-    messages = []
 
     inactive_traffic_hours = int(NOTIFICATIONS_CONFIG.get("INACTIVE_TRAFFIC_ENABLED", NOTIFY_INACTIVE_TRAFFIC))
     if inactive_traffic_hours <= 0:
@@ -124,6 +138,9 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         return
 
     remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    
+    messages = []
+    keys_to_mark_notified = []
 
     for key in keys:
         tg_id = key.tg_id
@@ -144,6 +161,8 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
             expiry_dt = pytz.utc.localize(datetime.fromtimestamp(expiry_time / 1000)).astimezone(moscow_tz)
             if current_dt > expiry_dt:
                 continue
+
+        keys_to_mark_notified.append(client_id)
 
         try:
             traffic_data = await get_user_traffic(session, tg_id, email)
@@ -201,10 +220,15 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 "client_id": client_id,
             })
 
+    if keys_to_mark_notified:
         try:
-            await update_key_notified(session, tg_id, client_id)
+            await session.execute(
+                update(Key).where(Key.client_id.in_(keys_to_mark_notified)).values(notified=True)
+            )
+            await session.commit()
+            logger.info(f"Bulk: отмечено {len(keys_to_mark_notified)} ключей как notified")
         except Exception as error:
-            logger.error(f"Ошибка обновления notified для {tg_id} ({client_id}): {error}")
+            logger.error(f"Ошибка bulk-обновления notified: {error}")
 
     if messages:
         results = await send_messages_with_limit(

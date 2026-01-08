@@ -173,7 +173,9 @@ async def key_country_mode(
         server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
 
     if subgroup_title:
-        servers = await filter_cluster_by_subgroup(session, servers, subgroup_title, least_loaded_cluster)
+        servers = await filter_cluster_by_subgroup(
+            session, servers, subgroup_title, least_loaded_cluster, tariff_id=plan
+        )
         if not servers:
             text = "❌ Нет доступных серверов в выбранном кластере."
             if safe_to_edit:
@@ -340,6 +342,7 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
                 available_servers_dict,
                 subgroup_title.strip(),
                 cluster_name,
+                tariff_id=key_tariff_id,
             )
             if filtered_servers:
                 available_servers = [s["server_name"] for s in filtered_servers]

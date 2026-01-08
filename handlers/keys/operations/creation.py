@@ -6,7 +6,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import get_servers, get_tariff_by_id, store_key
+from database import filter_cluster_by_subgroup, get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
 from hooks.processors import process_extract_cryptolink_from_result
@@ -97,7 +97,9 @@ async def create_key_on_cluster(
             device_limit_value = int(hwid_limit or 0)
 
         if subgroup_title:
-            subgroup_servers = [s for s in enabled_servers if subgroup_title in s.get("tariff_subgroups", [])]
+            subgroup_servers = await filter_cluster_by_subgroup(
+                session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
+            )
             if subgroup_servers:
                 enabled_servers = subgroup_servers
             else:

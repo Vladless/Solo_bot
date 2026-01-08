@@ -252,6 +252,7 @@ async def renew_key_in_cluster(
                 old_subgroup=old_subgroup,
                 target_subgroup=target_subgroup,
                 external_squad_uuid=external_squad_uuid,
+                tariff_id=plan,
             )
 
             await update_key_expiry(session, new_client_id or client_id, new_expiry_time)
@@ -281,7 +282,9 @@ async def renew_key_in_cluster(
             cluster_scope = [single_server]
         else:
             if target_subgroup:
-                target = await filter_cluster_by_subgroup(session, cluster, target_subgroup, cluster_id)
+                target = await filter_cluster_by_subgroup(
+                    session, cluster, target_subgroup, cluster_id, tariff_id=plan
+                )
                 cluster_scope = target if target else cluster
             else:
                 cluster_scope = cluster

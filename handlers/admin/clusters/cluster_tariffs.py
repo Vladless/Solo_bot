@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers
 from database.models import Server, ServerSpecialgroup, ServerSubgroup, Tariff
+from database.servers import has_legacy_subgroup_bindings
 from filters.admin import IsAdminFilter
 from handlers.utils import ALLOWED_GROUP_CODES
 from logger import logger
@@ -14,11 +15,13 @@ from .base import router
 from .keyboard import (
     AdminClusterCallback,
     build_attach_tariff_kb,
+    build_legacy_reset_kb,
     build_manage_cluster_kb,
     build_select_group_servers_kb,
     build_select_subgroup_servers_kb,
     build_tariff_group_selection_for_servers_kb,
     build_tariff_group_selection_kb,
+    build_tariff_selection_kb,
     build_tariff_subgroup_selection_kb,
 )
 
@@ -76,22 +79,35 @@ async def apply_tariff_group(callback: CallbackQuery, callback_data: AdminCluste
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "set_subgroup"))
-async def show_servers_for_subgroup(
+async def show_servers_for_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
     cluster_name = callback_data.data
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
+
+    server_ids = [s.get("server_id") for s in cluster_servers if s.get("server_id")]
+    if server_ids and await has_legacy_subgroup_bindings(session, server_ids):
+        await callback.message.edit_text(
+            f"<b>⚠️ Обнаружены привязки старого формата</b>\n\n"
+            f"Кластер <code>{cluster_name}</code> содержит привязки по названиям подгрупп.\n"
+            f"Для использования новой системы необходимо сбросить текущие привязки.\n\n"
+            f"<i>После сброса вы сможете привязать тарифы по ID.</i>",
+            reply_markup=build_legacy_reset_kb(cluster_name),
+        )
+        return
+    
     data = await state.get_data()
     selected = set(data.get(f"subgrp_sel:{cluster_name}", []))
     await callback.message.edit_text(
-        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        f"<b>📋 Выберите серверы для привязки тарифов</b>\n"
+        f"<i>Кластер: {cluster_name}</i>",
         reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, selected),
     )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_subgroup"))
-async def toggle_server_for_subgroup(
+async def toggle_server_for_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
     cluster_name, idx_str = callback_data.data.split("|", 1)
@@ -119,34 +135,39 @@ async def toggle_server_for_subgroup(
         selected.add(server_name)
     await state.update_data({key: list(selected)})
     await callback.message.edit_text(
-        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        f"<b>📋 Выберите серверы для привязки тарифов</b>\n"
+        f"<i>Кластер: {cluster_name}</i>",
         reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, selected),
     )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "reset_subgroup_selection"))
-async def reset_subgroup_selection(
+async def reset_tariff_selection(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
     cluster_name = callback_data.data
     servers = await get_servers(session=session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
-    await state.update_data({f"subgrp_sel:{cluster_name}": []})
+    await state.update_data({
+        f"subgrp_sel:{cluster_name}": [],
+        f"tariff_sel:{cluster_name}": [],
+    })
     await callback.message.edit_text(
-        f"<b>🗂 Выберите серверы в кластере <code>{cluster_name}</code> для назначения подгруппы тарифов:</b>",
+        f"<b>📋 Выберите серверы для привязки тарифов</b>\n"
+        f"<i>Кластер: {cluster_name}</i>",
         reply_markup=build_select_subgroup_servers_kb(cluster_name, cluster_servers, set()),
     )
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "choose_subgroup"))
-async def choose_subgroup(
+async def choose_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
     cluster_name = callback_data.data
     key = f"subgrp_sel:{cluster_name}"
     data = await state.get_data()
-    selected = set(data.get(key, []))
-    if not selected:
+    selected_servers = set(data.get(key, []))
+    if not selected_servers:
         await callback.answer("Сначала выберите хотя бы один сервер", show_alert=True)
         return
 
@@ -158,83 +179,148 @@ async def choose_subgroup(
 
     group_code = group_codes[0]
 
-    res2 = await session.execute(
-        select(func.distinct(Tariff.subgroup_title))
-        .where(Tariff.group_code == group_code)
-        .where(Tariff.subgroup_title.isnot(None))
-        .order_by(Tariff.subgroup_title.asc())
+    result = await session.execute(
+        select(Tariff)
+        .where(Tariff.group_code == group_code, Tariff.is_active.is_(True))
+        .order_by(Tariff.subgroup_title.nulls_last(), Tariff.sort_order, Tariff.id)
     )
-    subgroups = [r[0] for r in res2.fetchall()]
-    if not subgroups:
-        await callback.message.edit_text("❌ Для этой группы нет доступных подгрупп.")
+    tariffs = result.scalars().all()
+    
+    if not tariffs:
+        await callback.message.edit_text("❌ Для этой группы нет доступных тарифов.")
         return
 
+    selected_tariffs = set(data.get(f"tariff_sel:{cluster_name}", []))
+
     await callback.message.edit_text(
-        f"<b>📚 Выберите подгруппу для {len(selected)} сервер(а/ов) кластера <code>{cluster_name}</code>:</b>",
-        reply_markup=build_tariff_subgroup_selection_kb(cluster_name, subgroups),
+        f"<b>📋 Выберите тарифы для {len(selected_servers)} сервер(а/ов)</b>\n"
+        f"<i>Кластер: {cluster_name}</i>",
+        reply_markup=build_tariff_selection_kb(cluster_name, tariffs, selected_tariffs),
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariff_subgroup"))
-async def apply_tariff_subgroup(
+@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_tariff"))
+async def toggle_tariff_selection(
+    callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
+):
+    cluster_name, tariff_id_str = callback_data.data.split("|", 1)
+    tariff_id = int(tariff_id_str)
+    
+    key = f"tariff_sel:{cluster_name}"
+    data = await state.get_data()
+    selected_tariffs = set(data.get(key, []))
+    
+    if tariff_id in selected_tariffs:
+        selected_tariffs.remove(tariff_id)
+    else:
+        selected_tariffs.add(tariff_id)
+    
+    await state.update_data({key: list(selected_tariffs)})
+
+    res = await session.execute(select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct())
+    group_codes = [r[0] for r in res.fetchall() if r[0]]
+    if not group_codes:
+        return
+    
+    result = await session.execute(
+        select(Tariff)
+        .where(Tariff.group_code == group_codes[0], Tariff.is_active.is_(True))
+        .order_by(Tariff.subgroup_title.nulls_last(), Tariff.sort_order, Tariff.id)
+    )
+    tariffs = result.scalars().all()
+    
+    selected_servers = set(data.get(f"subgrp_sel:{cluster_name}", []))
+    
+    await callback.message.edit_text(
+        f"<b>📋 Выберите тарифы для {len(selected_servers)} сервер(а/ов)</b>\n"
+        f"<i>Кластер: {cluster_name}</i>",
+        reply_markup=build_tariff_selection_kb(cluster_name, tariffs, selected_tariffs),
+    )
+
+
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariffs"))
+async def apply_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
     try:
-        cluster_name, idx_str = callback_data.data.split("|", 1)
-        i = int(idx_str)
-
-        res = await session.execute(select(Server.tariff_group).where(Server.cluster_name == cluster_name).distinct())
-        group_codes = [r[0] for r in res.fetchall() if r[0]]
-        if not group_codes:
-            await callback.answer("Не найдена тарифная группа кластера", show_alert=True)
-            return
-        group_code = group_codes[0]
-
-        res2 = await session.execute(
-            select(func.distinct(Tariff.subgroup_title))
-            .where(Tariff.group_code == group_code)
-            .where(Tariff.subgroup_title.isnot(None))
-            .order_by(Tariff.subgroup_title.asc())
-        )
-        subgroups = [r[0] for r in res2.fetchall()]
-        if i < 0 or i >= len(subgroups):
-            await callback.answer("Подгруппа не найдена", show_alert=True)
-            return
-        subgroup_title = subgroups[i]
-
-        key = f"subgrp_sel:{cluster_name}"
+        cluster_name = callback_data.data
         data = await state.get_data()
-        selected = set(data.get(key, []))
-        if not selected:
-            await callback.message.edit_text("❌ Не выбраны серверы для назначения подгруппы.")
+        
+        selected_servers = set(data.get(f"subgrp_sel:{cluster_name}", []))
+        selected_tariffs = set(data.get(f"tariff_sel:{cluster_name}", []))
+        
+        if not selected_servers:
+            await callback.answer("Не выбраны серверы", show_alert=True)
+            return
+        
+        if not selected_tariffs:
+            await callback.answer("Не выбраны тарифы", show_alert=True)
             return
 
-        servers_q = await session.execute(select(Server.id, Server.server_name).where(Server.server_name.in_(selected)))
-        id_by_name = {name: sid for sid, name in servers_q.fetchall()}
-        missing_ids = [id_by_name[n] for n in selected if n in id_by_name]
-        if not missing_ids:
+        servers_q = await session.execute(
+            select(Server.id, Server.server_name, Server.tariff_group)
+            .where(Server.server_name.in_(selected_servers))
+        )
+        servers_data = servers_q.fetchall()
+        server_ids = [row[0] for row in servers_data]
+        group_code = servers_data[0][2] if servers_data else "standard"
+        
+        if not server_ids:
             await callback.answer("Серверы не найдены", show_alert=True)
             return
 
-        existing_q = await session.execute(
-            select(ServerSubgroup.server_id)
-            .where(ServerSubgroup.server_id.in_(missing_ids))
-            .where(ServerSubgroup.subgroup_title == subgroup_title)
+        selected_tariff_strs = {str(tid) for tid in selected_tariffs}
+        
+        await session.execute(
+            delete(ServerSubgroup)
+            .where(ServerSubgroup.server_id.in_(server_ids))
+            .where(ServerSubgroup.subgroup_title.regexp_match(r'^\d+$'))
+            .where(ServerSubgroup.subgroup_title.notin_(selected_tariff_strs))
         )
-        already = {r[0] for r in existing_q.fetchall()}
-        to_insert = [sid for sid in missing_ids if sid not in already]
 
-        if to_insert:
-            session.add_all([
-                ServerSubgroup(server_id=sid, group_code=group_code, subgroup_title=subgroup_title) for sid in to_insert
-            ])
-            await session.commit()
+        for tariff_id in selected_tariffs:
+            tariff_id_str = str(tariff_id)
+            
+            existing_q = await session.execute(
+                select(ServerSubgroup.server_id)
+                .where(ServerSubgroup.server_id.in_(server_ids))
+                .where(ServerSubgroup.subgroup_title == tariff_id_str)
+            )
+            already = {r[0] for r in existing_q.fetchall()}
+            to_insert = [sid for sid in server_ids if sid not in already]
+            
+            if to_insert:
+                session.add_all([
+                    ServerSubgroup(server_id=sid, group_code=group_code, subgroup_title=tariff_id_str) 
+                    for sid in to_insert
+                ])
+        
+        await session.commit()
 
-        await state.update_data({key: []})
+        await state.update_data({
+            f"subgrp_sel:{cluster_name}": [],
+            f"tariff_sel:{cluster_name}": [],
+        })
 
         servers = await get_servers(session, include_enabled=True)
         cluster_servers = servers.get(cluster_name, [])
-        text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
+
+        all_tariff_ids = set()
+        for s in cluster_servers:
+            all_tariff_ids.update(s.get("tariff_ids") or [])
+        
+        tariffs_cache = {}
+        if all_tariff_ids:
+            result = await session.execute(select(Tariff).where(Tariff.id.in_(all_tariff_ids)))
+            for t in result.scalars().all():
+                tariffs_cache[t.id] = {
+                    "id": t.id,
+                    "name": t.name,
+                    "subgroup_title": t.subgroup_title,
+                    "group_code": t.group_code,
+                }
+        
+        text = render_attach_tariff_menu_text(cluster_name, cluster_servers, tariffs_cache)
         await callback.message.edit_text(
             text=text,
             reply_markup=build_attach_tariff_kb(cluster_name),
@@ -242,8 +328,8 @@ async def apply_tariff_subgroup(
         )
 
     except Exception as e:
-        logger.error(f"Ошибка при применении подгруппы тарифов: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка при назначении подгруппы.")
+        logger.error(f"Ошибка при применении тарифов: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка при назначении тарифов.")
 
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_subgroups"))
@@ -272,11 +358,23 @@ async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminC
         await callback.message.edit_text("❌ Не удалось сбросить подгруппы.")
 
 
-def render_attach_tariff_menu_text(cluster_name: str, cluster_servers: list[dict]) -> str:
-    sub_map: dict[str, list[str]] = {}
+def render_attach_tariff_menu_text(
+    cluster_name: str, 
+    cluster_servers: list[dict], 
+    tariffs_cache: dict[int, dict] | None = None
+) -> str:
+
+    tariff_map: dict[int, list[str]] = {}
+    legacy_map: dict[str, list[str]] = {}
+    
     for s in cluster_servers:
+        server_name = s["server_name"]
+
+        for tid in s.get("tariff_ids") or []:
+            tariff_map.setdefault(tid, []).append(server_name)
+
         for sg in s.get("tariff_subgroups") or []:
-            sub_map.setdefault(sg, []).append(s["server_name"])
+            legacy_map.setdefault(sg, []).append(server_name)
 
     allowed = tuple(ALLOWED_GROUP_CODES)
     spec_map: dict[str, list[str]] = {k: [] for k in allowed}
@@ -287,24 +385,57 @@ def render_attach_tariff_menu_text(cluster_name: str, cluster_servers: list[dict
 
     lines = [f"<b>🧩 Привязки тарифов • {cluster_name}</b>"]
 
-    lines.append("<b>Подгруппы:</b>")
-    if sub_map:
-        subs_lines = []
-        for k in sorted(sub_map):
-            servers_list = ", ".join(sorted(set(sub_map[k])))
-            subs_lines.append(f"• <b>{k}</b>: {servers_list}")
-        lines.append("<blockquote>\n" + "\n".join(subs_lines) + "\n</blockquote>")
+    lines.append("\n<b>📋 Тарифы:</b>")
+    if tariff_map and tariffs_cache:
+        grouped: dict[str | None, list[tuple[int, str, list[str]]]] = {}
+        for tid, servers in tariff_map.items():
+            tariff = tariffs_cache.get(tid, {})
+            subgroup = tariff.get("subgroup_title")
+            name = tariff.get("name", f"ID:{tid}")
+            grouped.setdefault(subgroup, []).append((tid, name, servers))
+        
+        tariff_lines = []
+        subgroups_sorted = sorted(grouped.keys(), key=lambda x: (x is None, x or ""))
+        
+        for subgroup in subgroups_sorted:
+            tariffs_list = grouped[subgroup]
+            if subgroup:
+                tariff_lines.append(f"<b>{subgroup}</b>")
+                for tid, name, servers in sorted(tariffs_list, key=lambda x: x[1]):
+                    servers_str = ", ".join(sorted(set(servers)))
+                    tariff_lines.append(f"  └ {name}: {servers_str}")
+            else:
+                for tid, name, servers in sorted(tariffs_list, key=lambda x: x[1]):
+                    servers_str = ", ".join(sorted(set(servers)))
+                    tariff_lines.append(f"• {name}: {servers_str}")
+        
+        lines.append("<blockquote>" + "\n".join(tariff_lines) + "</blockquote>")
+    elif tariff_map:
+        tariff_lines = []
+        for tid, servers in sorted(tariff_map.items()):
+            servers_str = ", ".join(sorted(set(servers)))
+            tariff_lines.append(f"• ID:{tid}: {servers_str}")
+        lines.append("<blockquote>" + "\n".join(tariff_lines) + "</blockquote>")
     else:
         lines.append("<blockquote>— нет привязок</blockquote>")
 
-    lines.append("<b>Спецгруппы:</b>")
+    if legacy_map:
+        lines.append("\n<b>⚠️ Старые привязки (по названию):</b>")
+        legacy_lines = []
+        for k in sorted(legacy_map):
+            servers_list = ", ".join(sorted(set(legacy_map[k])))
+            legacy_lines.append(f"• <b>{k}</b>: {servers_list}")
+        lines.append("<blockquote>" + "\n".join(legacy_lines) + "</blockquote>")
+        lines.append("<i>Рекомендуется сбросить и настроить заново</i>")
+
+    lines.append("\n<b>🎁 Спецгруппы:</b>")
     has_spec = any(spec_map[k] for k in allowed)
     if has_spec:
         spec_lines = []
         for k in allowed:
             vals = sorted(set(spec_map[k]))
             spec_lines.append(f"• <b>{k}</b>: {', '.join(vals) if vals else '—'}")
-        lines.append("<blockquote>\n" + "\n".join(spec_lines) + "\n</blockquote>")
+        lines.append("<blockquote>" + "\n".join(spec_lines) + "</blockquote>")
     else:
         lines.append("<blockquote>— нет привязок</blockquote>")
 
@@ -319,7 +450,24 @@ async def handle_attach_tariff_menu(callback: CallbackQuery, session: AsyncSessi
     servers = await get_servers(session, include_enabled=True)
     cluster_servers = servers.get(cluster_name, [])
 
-    text = render_attach_tariff_menu_text(cluster_name, cluster_servers)
+    all_tariff_ids = set()
+    for s in cluster_servers:
+        all_tariff_ids.update(s.get("tariff_ids") or [])
+    
+    tariffs_cache = {}
+    if all_tariff_ids:
+        result = await session.execute(
+            select(Tariff).where(Tariff.id.in_(all_tariff_ids))
+        )
+        for t in result.scalars().all():
+            tariffs_cache[t.id] = {
+                "id": t.id,
+                "name": t.name,
+                "subgroup_title": t.subgroup_title,
+                "group_code": t.group_code,
+            }
+
+    text = render_attach_tariff_menu_text(cluster_name, cluster_servers, tariffs_cache)
     await callback.message.edit_text(
         text=text,
         reply_markup=build_attach_tariff_kb(cluster_name),

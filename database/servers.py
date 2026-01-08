@@ -53,12 +53,16 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
 
         ids = [s.id for s in servers]
         subs_map = {}
+        tariffs_map = {}
         if ids:
             r = await session.execute(
                 select(ServerSubgroup.server_id, ServerSubgroup.subgroup_title).where(ServerSubgroup.server_id.in_(ids))
             )
             for sid, sg in r.all():
-                subs_map.setdefault(sid, []).append(sg)
+                if sg and sg.isdigit():
+                    tariffs_map.setdefault(sid, []).append(int(sg))
+                else:
+                    subs_map.setdefault(sid, []).append(sg)
 
         groups_map = {}
         if ids:
@@ -88,8 +92,10 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
                 "max_keys": s.max_keys,
                 "tariff_group": s.tariff_group,
                 "tariff_subgroups": subs_map.get(s.id, []),
+                "tariff_ids": tariffs_map.get(s.id, []),
                 "special_groups": special,
                 "cluster_name": cluster,
+                "server_id": s.id,
             })
         return grouped
     except SQLAlchemyError as e:
@@ -272,11 +278,31 @@ async def resolve_device_limit_from_group(session: AsyncSession, server_id: str)
 
 
 async def filter_cluster_by_subgroup(
-    session: AsyncSession, cluster: list, target_subgroup: str, cluster_id: str
+    session: AsyncSession, 
+    cluster: list, 
+    target_subgroup: str, 
+    cluster_id: str,
+    tariff_id: int | None = None,
 ) -> list:
     names = [s.get("server_name") for s in cluster if s.get("server_name")]
     if not names:
         return []
+
+    if tariff_id:
+        tariff_id_str = str(tariff_id)
+        q_by_tariff = await session.execute(
+            select(Server.server_name)
+            .join(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+            .where(
+                Server.server_name.in_(names),
+                Server.enabled.is_(True),
+                ServerSubgroup.subgroup_title == tariff_id_str,
+            )
+        )
+        allowed_by_tariff = {n for (n,) in q_by_tariff.all()}
+        if allowed_by_tariff:
+            logger.debug(f"Найдены серверы по tariff_id={tariff_id}: {allowed_by_tariff}")
+            return [s for s in cluster if s.get("server_name") in allowed_by_tariff]
 
     q_allowed = await session.execute(
         select(Server.server_name)
@@ -291,11 +317,15 @@ async def filter_cluster_by_subgroup(
     if allowed:
         return [s for s in cluster if s.get("server_name") in allowed]
 
-    total_for_subgroup = await session.scalar(
-        select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title == target_subgroup)
+    check_values = [target_subgroup]
+    if tariff_id:
+        check_values.append(str(tariff_id))
+    
+    total_bindings = await session.scalar(
+        select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title.in_(check_values))
     )
-    if not total_for_subgroup:
-        logger.info(f"Для подгруппы {target_subgroup} нет ни одного сервера. Используем весь кластер {cluster_id}.")
+    if not total_bindings:
+        logger.info(f"Для подгруппы/тарифа нет привязок. Используем весь кластер {cluster_id}.")
         return cluster
 
     q_any = await session.execute(
@@ -308,8 +338,68 @@ async def filter_cluster_by_subgroup(
     )
     any_bound = {n for (n,) in q_any.all()}
     if any_bound:
-        logger.warning(f"Нет серверов под подгруппу {target_subgroup} в кластере {cluster_id}. Продление пропущено.")
+        logger.warning(f"Нет серверов под подгруппу {target_subgroup} в кластере {cluster_id}.")
         return []
 
-    logger.info(f"В кластере {cluster_id} нет привязок подгрупп. Продлеваем по всему кластеру.")
+    logger.info(f"В кластере {cluster_id} нет привязок. Используем весь кластер.")
     return cluster
+
+
+async def filter_cluster_by_tariff(
+    session: AsyncSession, cluster: list, tariff_id: int, cluster_id: str
+) -> list:
+    names = [s.get("server_name") for s in cluster if s.get("server_name")]
+    if not names:
+        return []
+
+    tariff_id_str = str(tariff_id)
+
+    q_allowed = await session.execute(
+        select(Server.server_name)
+        .join(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+        .where(
+            Server.server_name.in_(names),
+            Server.enabled.is_(True),
+            ServerSubgroup.subgroup_title == tariff_id_str,
+        )
+    )
+    allowed = {n for (n,) in q_allowed.all()}
+    if allowed:
+        return [s for s in cluster if s.get("server_name") in allowed]
+
+    total_for_tariff = await session.scalar(
+        select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title == tariff_id_str)
+    )
+    if not total_for_tariff:
+        logger.info(f"Для тарифа {tariff_id} нет привязок серверов. Используем весь кластер {cluster_id}.")
+        return cluster
+
+    q_any = await session.execute(
+        select(Server.server_name)
+        .join(ServerSubgroup, ServerSubgroup.server_id == Server.id)
+        .where(
+            Server.server_name.in_(names),
+            Server.enabled.is_(True),
+        )
+    )
+    any_bound = {n for (n,) in q_any.all()}
+    if any_bound:
+        logger.warning(f"Нет серверов под тариф {tariff_id} в кластере {cluster_id}.")
+        return []
+
+    logger.info(f"В кластере {cluster_id} нет привязок тарифов. Используем весь кластер.")
+    return cluster
+
+
+async def has_legacy_subgroup_bindings(session: AsyncSession, server_ids: list[int]) -> bool:
+    if not server_ids:
+        return False
+    
+    result = await session.execute(
+        select(ServerSubgroup.subgroup_title)
+        .where(ServerSubgroup.server_id.in_(server_ids))
+    )
+    for (title,) in result.all():
+        if title and not title.isdigit():
+            return True
+    return False

@@ -124,7 +124,7 @@ async def handle_gift_delete(
     await callback.message.edit_text(
         text=(
             f"❓ <b>Удалить подарок?</b>\n\n"
-            f"📆 Длительность: {gift.selected_months} дн.\n"
+            f"📆 Длительность: {gift.selected_months} мес.\n"
             f"📅 Создан: {created_str}\n"
             f"📊 Статус: {status}\n\n"
             f"⚠️ Это действие необратимо!"

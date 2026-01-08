@@ -77,6 +77,16 @@ def build_attach_tariff_kb(cluster_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
+            text="📋 Привязать тарифы",
+            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
+        ),
+        InlineKeyboardButton(
+            text="🧹 Сбросить",
+            callback_data=AdminClusterCallback(action="reset_cluster_subgroups", data=cluster_name).pack(),
+        ),
+    )
+    builder.row(
+        InlineKeyboardButton(
             text="🗂 Спецгруппы",
             callback_data=AdminClusterCallback(action="set_group", data=cluster_name).pack(),
         ),
@@ -87,18 +97,25 @@ def build_attach_tariff_kb(cluster_name: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text="🗂 Подгруппы",
-            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
-        ),
+            text="🔙 Назад",
+            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+        )
+    )
+    return builder.as_markup()
+
+
+def build_legacy_reset_kb(cluster_name: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
         InlineKeyboardButton(
-            text="🧹 Сбросить",
+            text="🧹 Сбросить привязки",
             callback_data=AdminClusterCallback(action="reset_cluster_subgroups", data=cluster_name).pack(),
-        ),
+        )
     )
     builder.row(
         InlineKeyboardButton(
             text="🔙 Назад",
-            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+            callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
     return builder.as_markup()
@@ -128,7 +145,7 @@ def build_select_subgroup_servers_kb(
 
     builder.row(
         InlineKeyboardButton(
-            text="📚 Выбрать подгруппу",
+            text="📋 Выбрать тарифы",
             callback_data=AdminClusterCallback(action="choose_subgroup", data=cluster_name).pack(),
         )
     )
@@ -141,7 +158,7 @@ def build_select_subgroup_servers_kb(
     builder.row(
         InlineKeyboardButton(
             text="🔙 Назад",
-            callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
+            callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
 
@@ -162,6 +179,55 @@ def build_tariff_subgroup_selection_kb(cluster_name: str, subgroups: list[str]) 
         )
     )
     builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[int]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    grouped: dict[str | None, list] = {}
+    for t in tariffs:
+        subgroup = t.subgroup_title
+        grouped.setdefault(subgroup, []).append(t)
+
+    subgroups_sorted = sorted(grouped.keys(), key=lambda x: (x is None, x or ""))
+    
+    for subgroup in subgroups_sorted:
+        tariffs_list = grouped[subgroup]
+
+        if subgroup:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"━━ {subgroup} ━━",
+                    callback_data="noop",
+                )
+            )
+
+        for t in tariffs_list:
+            mark = "✅" if t.id in selected else "⬜️"
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"{mark} {t.name}",
+                    callback_data=AdminClusterCallback(
+                        action="toggle_tariff", 
+                        data=f"{cluster_name}|{t.id}"
+                    ).pack(),
+                )
+            )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Применить",
+            callback_data=AdminClusterCallback(action="apply_tariffs", data=cluster_name).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Назад к выбору серверов",
+            callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
+        )
+    )
+    
     return builder.as_markup()
 
 

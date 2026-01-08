@@ -41,9 +41,11 @@ async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
 
     if message and message.text:
         await message.edit_text(text=text, reply_markup=markup)
-    elif message and message.caption:
-        await message.edit_caption(caption=text, reply_markup=markup)
     else:
+        try:
+            await message.delete()
+        except Exception:
+            pass
         await message.answer(text=text, reply_markup=markup)
 
 
