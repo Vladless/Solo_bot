@@ -93,15 +93,31 @@ async def edit_key_by_email(
             setattr(db_key, field, value)
 
     try:
-        new_expiry_time = db_key.expiry_time
+        tariff = None
+        if db_key.tariff_id is not None:
+            tariff_result = await session.execute(select(Tariff).where(Tariff.id == db_key.tariff_id))
+            tariff = tariff_result.scalar_one_or_none()
+
+        total_gb = db_key.current_traffic_limit
+        if total_gb is None:
+            total_gb = db_key.selected_traffic_limit
+        if total_gb is None and tariff is not None:
+            total_gb = tariff.traffic_limit
+
+        hwid_device_limit = db_key.current_device_limit
+        if hwid_device_limit is None:
+            hwid_device_limit = db_key.selected_device_limit
+        if hwid_device_limit is None and tariff is not None:
+            hwid_device_limit = tariff.device_limit
+
         await renew_key_in_cluster(
             cluster_id=db_key.server_id,
             email=db_key.email,
             client_id=db_key.client_id,
-            new_expiry_time=new_expiry_time,
-            total_gb=getattr(db_key, "traffic_limit", None),
+            new_expiry_time=db_key.expiry_time,
+            total_gb=total_gb,
             session=session,
-            hwid_device_limit=getattr(db_key, "device_limit", None),
+            hwid_device_limit=hwid_device_limit,
             reset_traffic=True,
         )
         await session.commit()

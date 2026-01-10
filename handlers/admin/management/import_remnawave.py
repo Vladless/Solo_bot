@@ -1,4 +1,5 @@
 import json
+import re
 import time
 
 from datetime import datetime
@@ -24,17 +25,32 @@ def extract_tg_id_from_username(value: str | None) -> int | None:
         return None
 
     value = value.strip()
-    if "_" not in value:
+    match = re.search(r"_(\d+)(?:\D|$)", value)
+    if not match:
         return None
 
-    tail = value.rsplit("_", 1)[-1]
-    if not tail.isdigit():
-        return None
-
-    tg_id = int(tail)
+    tg_id = int(match.group(1))
     if tg_id <= 0:
         return None
 
+    return tg_id
+
+
+def extract_tg_id_from_user_payload(user: dict) -> int | None:
+    tg_id = user.get("telegramId")
+
+    if isinstance(tg_id, int):
+        if tg_id > 0:
+            return tg_id
+        return None
+
+    if isinstance(tg_id, str):
+        tg_id = tg_id.strip()
+        if tg_id.isdigit():
+            tg_id_int = int(tg_id)
+            return tg_id_int if tg_id_int > 0 else None
+
+    tg_id = extract_tg_id_from_username(user.get("username")) or extract_tg_id_from_username(user.get("email"))
     return tg_id
 
 
@@ -93,9 +109,7 @@ async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> in
     added = 0
 
     for user in users:
-        tg_id = user.get("telegramId")
-        if not tg_id:
-            tg_id = extract_tg_id_from_username(user.get("username")) or extract_tg_id_from_username(user.get("email"))
+        tg_id = extract_tg_id_from_user_payload(user)
         if not tg_id:
             continue
 
@@ -132,9 +146,7 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
     added = 0
 
     for user in users:
-        tg_id = user.get("telegramId")
-        if not tg_id:
-            tg_id = extract_tg_id_from_username(user.get("username")) or extract_tg_id_from_username(user.get("email"))
+        tg_id = extract_tg_id_from_user_payload(user)
 
         client_id = user.get("uuid")
         email = user.get("email") or user.get("username")
