@@ -120,7 +120,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
         extend_ids = [tg_id for tg_id in users_to_extend if tg_id in sent_tg_ids]
         if extend_ids:
             await session.execute(
-                update(User).where(User.tg_id.in_(extend_ids)).values(trial_extended=True)
+                update(User).where(User.tg_id.in_(extend_ids)).values(trial=-1)
             )
             await session.commit()
             logger.info(f"Bulk: отмечено {len(extend_ids)} пользователей с расширенным триалом")
