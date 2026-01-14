@@ -6,7 +6,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import filter_cluster_by_subgroup, get_servers, get_tariff_by_id, store_key
+from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
 from hooks.processors import process_extract_cryptolink_from_result
@@ -96,17 +96,24 @@ async def create_key_on_cluster(
             traffic_limit_bytes_value = int(traffic_limit_bytes or 0)
             device_limit_value = int(hwid_limit or 0)
 
-        if subgroup_title:
-            subgroup_servers = await filter_cluster_by_subgroup(
+        if plan is not None:
+            filtered = await filter_cluster_by_tariff(
+                session, enabled_servers, plan, cluster_id
+            )
+            if filtered is not enabled_servers:
+                enabled_servers = filtered
+            elif subgroup_title:
+                enabled_servers = await filter_cluster_by_subgroup(
+                    session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
+                )
+        elif subgroup_title:
+            enabled_servers = await filter_cluster_by_subgroup(
                 session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
             )
-            if subgroup_servers:
-                enabled_servers = subgroup_servers
-            else:
-                logger.warning(
-                    f"[Key Creation] В кластере {cluster_id} не найдено серверов для подгруппы '{subgroup_title}'. "
-                    f"Использую весь кластер."
-                )
+
+        if not enabled_servers:
+            logger.warning(f"[Key Creation] Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
+            return
 
         special = None
         if is_trial:

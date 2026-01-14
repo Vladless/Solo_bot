@@ -6,7 +6,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import filter_cluster_by_subgroup, get_servers, get_tariff_by_id, store_key
+from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
+from handlers.utils import ALLOWED_GROUP_CODES
 from database.models import Key, Tariff
 from handlers.tariffs.tariff_display import GB, get_effective_limits_for_key
 from handlers.utils import get_least_loaded_cluster
@@ -50,14 +51,39 @@ async def update_key_on_cluster(
             else:
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
-        if subgroup_code:
-            filtered = await filter_cluster_by_subgroup(
+        if tariff_id is not None:
+            filtered = await filter_cluster_by_tariff(
+                session, cluster, tariff_id, cluster_id
+            )
+            if filtered is not cluster:
+                cluster = filtered
+            elif subgroup_code:
+                cluster = await filter_cluster_by_subgroup(
+                    session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id
+                )
+        elif subgroup_code:
+            cluster = await filter_cluster_by_subgroup(
                 session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id
             )
-            if not filtered:
-                logger.warning(f"[Update] Нет серверов для подгруппы {subgroup_code} в кластере {cluster_id}.")
-                return client_id, remnawave_link
-            cluster = filtered
+
+        if not cluster:
+            logger.warning(f"[Update] Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
+            return client_id, remnawave_link
+
+        if tariff_id is not None:
+            tariff = await get_tariff_by_id(session, tariff_id)
+            if tariff:
+                gc = (tariff.get("group_code") or "").lower()
+                if gc in ALLOWED_GROUP_CODES:
+                    bound_servers = [s for s in cluster if gc in (s.get("special_groups") or [])]
+                    if bound_servers:
+                        cluster = bound_servers
+                    else:
+                        logger.info(f"[Update] Нет серверов со спецгруппой '{gc}' в {cluster_id}")
+
+        if not cluster:
+            logger.warning(f"[Update] Нет серверов после фильтрации по спецгруппам в кластере {cluster_id}")
+            return client_id, remnawave_link
 
         expire_iso = datetime.utcfromtimestamp(expiry_time / 1000).replace(tzinfo=timezone.utc).isoformat()
 
@@ -240,16 +266,41 @@ async def update_subscription(
         else:
             cluster_servers = []
 
-    if subgroup_code:
-        prefiltered = await filter_cluster_by_subgroup(
+    if tariff_id is not None:
+        filtered = await filter_cluster_by_tariff(
+            session, cluster_servers, tariff_id, new_cluster_id
+        )
+        if filtered is not cluster_servers:
+            cluster_servers = filtered
+        elif subgroup_code:
+            cluster_servers = await filter_cluster_by_subgroup(
+                session, cluster_servers, subgroup_code, new_cluster_id, tariff_id=tariff_id
+            )
+    elif subgroup_code:
+        cluster_servers = await filter_cluster_by_subgroup(
             session, cluster_servers, subgroup_code, new_cluster_id, tariff_id=tariff_id
         )
-        if not prefiltered:
-            logger.warning(
-                f"[Update] Пересоздание пропущено: нет серверов под подгруппу {subgroup_code} в {new_cluster_id}."
-            )
-            return
-        cluster_servers = prefiltered
+
+    if not cluster_servers:
+        logger.warning(
+            f"[Update] Пересоздание пропущено: нет серверов после фильтрации в {new_cluster_id}."
+        )
+        return
+
+    if tariff:
+        gc = (getattr(tariff, "group_code", None) or "").lower()
+        if gc in ALLOWED_GROUP_CODES:
+            bound_servers = [s for s in cluster_servers if gc in (s.get("special_groups") or [])]
+            if bound_servers:
+                cluster_servers = bound_servers
+            else:
+                logger.info(f"[Update] Нет серверов со спецгруппой '{gc}' в {new_cluster_id}")
+
+    if not cluster_servers:
+        logger.warning(
+            f"[Update] Пересоздание пропущено: нет серверов после фильтрации по спецгруппам в {new_cluster_id}."
+        )
+        return
 
     traffic_limit_gb = None
     device_limit = 0

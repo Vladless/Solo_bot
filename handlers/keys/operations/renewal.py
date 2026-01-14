@@ -8,6 +8,7 @@ from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import (
     delete_notification,
     filter_cluster_by_subgroup,
+    filter_cluster_by_tariff,
     get_key_details,
     get_servers,
     get_tariff_by_id,
@@ -15,6 +16,7 @@ from database import (
     update_key_expiry,
     update_key_link,
 )
+from handlers.utils import ALLOWED_GROUP_CODES
 from hooks.processors import process_get_cryptolink_after_renewal
 from logger import (
     CLOGGER as logger,
@@ -281,13 +283,40 @@ async def renew_key_in_cluster(
         if single_server:
             cluster_scope = [single_server]
         else:
-            if target_subgroup:
+            if plan is not None:
+                filtered = await filter_cluster_by_tariff(
+                    session, cluster, plan, cluster_id
+                )
+                if filtered is not cluster:
+                    cluster_scope = filtered
+                elif target_subgroup:
+                    cluster_scope = await filter_cluster_by_subgroup(
+                        session, cluster, target_subgroup, cluster_id, tariff_id=plan
+                    )
+                else:
+                    cluster_scope = cluster
+            elif target_subgroup:
                 target = await filter_cluster_by_subgroup(
                     session, cluster, target_subgroup, cluster_id, tariff_id=plan
                 )
                 cluster_scope = target if target else cluster
             else:
                 cluster_scope = cluster
+
+            if plan is not None:
+                tariff_for_filter = await get_tariff_by_id(session, plan)
+                if tariff_for_filter:
+                    gc = (tariff_for_filter.get("group_code") or "").lower()
+                    if gc in ALLOWED_GROUP_CODES:
+                        bound_servers = [s for s in cluster_scope if gc in (s.get("special_groups") or [])]
+                        if bound_servers:
+                            cluster_scope = bound_servers
+                        else:
+                            logger.info(f"[Renewal] Нет серверов со спецгруппой '{gc}' в {cluster_id}")
+
+            if not cluster_scope:
+                logger.warning(f"[Renewal] Нет серверов после фильтрации в кластере {cluster_id}")
+                return False
 
         remna_ok = await renew_on_remnawave(
             cluster=cluster_scope,

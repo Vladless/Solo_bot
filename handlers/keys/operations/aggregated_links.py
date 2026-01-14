@@ -39,10 +39,14 @@ async def _try_build_remna_vless(servers: list, email: str) -> tuple[str | None,
         return None, None, None
 
     sub_url = data.get("subscriptionUrl") or None
+    links = data.get("links") or []
 
     best_vless = None
-    if sub_url and sub_url.lower().startswith("vless://"):
-        best_vless = sub_url
+    for link in links:
+        if isinstance(link, str) and link.lower().startswith("vless://"):
+            best_vless = link
+            logger.debug(f"[Remnawave] Found VLESS in links: {link[:60]}...")
+            break
 
     happ_link = None
     if happ_cryptolink_enabled and sub_url:

@@ -137,6 +137,12 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         logger.info("INACTIVE_TRAFFIC_ENABLED <= 0, уведомления о нулевом трафике отключены.")
         return
 
+    trial_tariffs = await get_tariffs(session, group_code="trial")
+    trial_tariff_ids = {t["id"] for t in trial_tariffs} if trial_tariffs else set()
+    
+    if not trial_tariff_ids:
+        return
+
     remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
     
     messages = []
@@ -149,6 +155,10 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         client_id = key.client_id
         expiry_time = key.expiry_time
         notified = key.notified
+        tariff_id = key.tariff_id
+
+        if tariff_id not in trial_tariff_ids:
+            continue
 
         if created_at is None or notified:
             continue
