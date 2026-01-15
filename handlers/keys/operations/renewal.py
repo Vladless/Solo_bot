@@ -58,6 +58,7 @@ async def renew_on_remnawave(
     reset_traffic: bool,
     target_server_name: str | None = None,
     external_squad_uuid: str | None = None,
+    old_device_limit: int | None = None,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -73,6 +74,13 @@ async def renew_on_remnawave(
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
         return False
+
+    if old_device_limit is not None and hwid_device_limit < old_device_limit:
+        try:
+            await remna.clear_all_hwid_devices(client_id)
+            logger.info(f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})")
+        except Exception as e:
+            logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
 
     expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
@@ -203,6 +211,12 @@ async def renew_key_in_cluster(
         tg_id = int(kd["tg_id"])
         server_id = kd["server_id"]
 
+        old_device_limit = kd.get("current_device_limit") or kd.get("selected_device_limit")
+        if old_device_limit is None and kd.get("tariff_id"):
+            old_tariff = await get_tariff_by_id(session, kd["tariff_id"])
+            if old_tariff:
+                old_device_limit = old_tariff.get("device_limit")
+
         single_server = None
         if servers_map.get(server_id):
             cluster = servers_map[server_id]
@@ -330,6 +344,7 @@ async def renew_key_in_cluster(
             reset_traffic=reset_traffic,
             target_server_name=server_id if single_server else None,
             external_squad_uuid=external_squad_uuid,
+            old_device_limit=old_device_limit,
         )
 
         succeeded, _ = await renew_on_3xui(

@@ -147,45 +147,98 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
             await state.clear()
             return
 
-        for key in keys:
-            new_expiry = key.expiry_time + add_ms
+        servers = await get_servers(session=session)
+        cluster_servers = servers.get(cluster_name, [])
+        
+        if not cluster_servers:
+            await message.answer("❌ Не найдены серверы в кластере.")
+            await state.clear()
+            return
 
-            traffic_limit = 0
-            device_limit = 0
-            key_subgroup = None
-            if key.tariff_id:
-                result = await session.execute(
-                    select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(
-                        Tariff.id == key.tariff_id,
-                        Tariff.is_active.is_(True),
-                    )
-                )
-                tariff = result.first()
-                if tariff:
-                    traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
-                    device_limit = int(tariff[1]) if tariff[1] is not None else 0
-                    key_subgroup = tariff[2]
-
-            await renew_key_in_cluster(
-                cluster_name,
-                email=key.email,
-                client_id=key.client_id,
-                new_expiry_time=new_expiry,
-                total_gb=traffic_limit,
-                session=session,
-                hwid_device_limit=device_limit,
-                reset_traffic=False,
-                target_subgroup=key_subgroup,
-                old_subgroup=key_subgroup,
-                plan=key.tariff_id,
-            )
-            await update_key_expiry(session, key.client_id, new_expiry)
-
-            logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}")
-
-        await message.answer(
-            f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
+        is_full_remnawave = all(
+            str(s.get("panel_type", "")).lower() == "remnawave" 
+            for s in cluster_servers
         )
+
+        if is_full_remnawave:
+            uuids = [key.client_id for key in keys if key.client_id]
+
+            if not uuids:
+                await message.answer("❌ Нет валидных подписок для продления.")
+                await state.clear()
+                return
+
+            api_url = cluster_servers[0].get("api_url", "")
+            if not api_url:
+                await message.answer("❌ Не найден URL панели для кластера.")
+                await state.clear()
+                return
+
+            from panels.remnawave import RemnawaveAPI
+            remna = RemnawaveAPI(api_url)
+
+            try:
+                result_bulk = await remna.bulk_extend_expiration_date(uuids, days)
+            finally:
+                await remna.aclose()
+
+            if result_bulk is None:
+                await message.answer("❌ Ошибка при обращении к API панели.")
+                await state.clear()
+                return
+
+            affected = result_bulk.get("affectedRows", 0)
+            logger.info(f"[Cluster Extend] Bulk API: продлено {affected} подписок на {days} дней")
+
+            for key in keys:
+                new_expiry = key.expiry_time + add_ms
+                await update_key_expiry(session, key.client_id, new_expiry)
+
+            await session.commit()
+
+            await message.answer(
+                f"✅ Время подписки продлено на <b>{days} дней</b> для <b>{affected}</b> пользователей в кластере <b>{cluster_name}</b>."
+            )
+        else:
+            for key in keys:
+                new_expiry = key.expiry_time + add_ms
+
+                traffic_limit = 0
+                device_limit = 0
+                key_subgroup = None
+                if key.tariff_id:
+                    tariff_result = await session.execute(
+                        select(Tariff.traffic_limit, Tariff.device_limit, Tariff.subgroup_title).where(
+                            Tariff.id == key.tariff_id,
+                            Tariff.is_active.is_(True),
+                        )
+                    )
+                    tariff = tariff_result.first()
+                    if tariff:
+                        traffic_limit = int(tariff[0]) if tariff[0] is not None else 0
+                        device_limit = int(tariff[1]) if tariff[1] is not None else 0
+                        key_subgroup = tariff[2]
+
+                await renew_key_in_cluster(
+                    cluster_name,
+                    email=key.email,
+                    client_id=key.client_id,
+                    new_expiry_time=new_expiry,
+                    total_gb=traffic_limit,
+                    session=session,
+                    hwid_device_limit=device_limit,
+                    reset_traffic=False,
+                    target_subgroup=key_subgroup,
+                    old_subgroup=key_subgroup,
+                    plan=key.tariff_id,
+                )
+                await update_key_expiry(session, key.client_id, new_expiry)
+
+                logger.info(f"[Cluster Extend] {key.email} +{days}д → {datetime.utcfromtimestamp(new_expiry / 1000)}")
+
+            await message.answer(
+                f"✅ Время подписки продлено на <b>{days} дней</b> всем пользователям в кластере <b>{cluster_name}</b>."
+            )
 
     except ValueError:
         await message.answer("❌ Введите корректное число дней.")
