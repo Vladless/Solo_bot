@@ -35,6 +35,7 @@ async def update_key_on_cluster(
     remnawave_link: str = None,
     subgroup_code: str | None = None,
     tariff_id: int | None = None,
+    external_squad_uuid: str | None = None,
 ):
     try:
         servers = await get_servers(session)
@@ -123,6 +124,12 @@ async def update_key_on_cluster(
                     "activeInternalSquads": inbound_ids,
                     "uuid": client_id,
                 }
+
+                if external_squad_uuid:
+                    user_data["activeExternalSquads"] = [external_squad_uuid]
+                    user_data["activeExternalSquadUuids"] = [external_squad_uuid]
+                    user_data["externalSquadUuid"] = external_squad_uuid
+
                 if traffic_limit is not None:
                     user_data["trafficLimitBytes"] = traffic_limit * 1024**3
                 if device_limit is not None:
@@ -227,6 +234,7 @@ async def update_subscription(
 
     tariff = None
     subgroup_code = getattr(record, "subgroup_code", None)
+    external_squad_uuid = None
 
     if tariff_id:
         q = await session.execute(select(Tariff).where(Tariff.id == tariff_id, Tariff.is_active.is_(True)))
@@ -236,6 +244,7 @@ async def update_subscription(
         else:
             if not subgroup_code:
                 subgroup_code = getattr(tariff, "subgroup_code", None) or getattr(tariff, "subgroup_title", None)
+            external_squad_uuid = tariff.external_squad
     else:
         logger.warning("[LOG] update_subscription: tariff_id отсутствует!")
 
@@ -330,6 +339,7 @@ async def update_subscription(
         remnawave_link=remnawave_link,
         subgroup_code=subgroup_code,
         tariff_id=tariff_id,
+        external_squad_uuid=external_squad_uuid,
     )
 
     aggregated = await make_aggregated_link(
