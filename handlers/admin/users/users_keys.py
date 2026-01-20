@@ -757,7 +757,10 @@ async def handle_recreate_key_confirm(
     IsAdminFilter(),
 )
 async def handle_delete_key(
-    callback_query: CallbackQuery, callback_data: AdminUserEditorCallback, session: AsyncSession
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    state: FSMContext,
+    session: AsyncSession,
 ):
     email = callback_data.data
 
@@ -771,22 +774,34 @@ async def handle_delete_key(
         )
         return
 
+    await state.set_state(UserEditorState.confirm_delete_key)
+    await state.update_data(delete_key_email=email, delete_key_tg_id=int(callback_data.tg_id))
+
     await callback_query.message.edit_text(
         text="❓ Вы уверены, что хотите удалить ключ?",
-        reply_markup=build_key_delete_kb(callback_data.tg_id, email),
+        reply_markup=build_key_delete_kb(callback_data.tg_id),
     )
 
 
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"),
+    UserEditorState.confirm_delete_key,
     IsAdminFilter(),
 )
 async def handle_delete_key_confirm(
     callback_query: types.CallbackQuery,
     callback_data: AdminUserEditorCallback,
+    state: FSMContext,
     session: AsyncSession,
 ):
-    email = callback_data.data
+    data = await state.get_data()
+    email = data.get("delete_key_email")
+    expected_tg_id = data.get("delete_key_tg_id")
+    await state.clear()
+
+    if not email or int(expected_tg_id or 0) != int(callback_data.tg_id):
+        await callback_query.answer("Данные устарели", show_alert=True)
+        return
 
     result = await session.execute(select(Key.client_id).where(Key.email == email))
     client_id = result.scalar_one_or_none()

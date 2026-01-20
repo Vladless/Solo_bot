@@ -14,6 +14,7 @@ class UserEditorState(StatesGroup):
     config_menu = State()
     config_select_base = State()
     config_input_addon = State()
+    confirm_delete_key = State()
 
 
 class RenewTariffState(StatesGroup):

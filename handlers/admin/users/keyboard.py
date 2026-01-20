@@ -356,12 +356,16 @@ def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_key_delete_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+def build_key_delete_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text="✅ Да, удалить",
-            callback_data=AdminUserEditorCallback(action="users_delete_key_confirm", data=email, tg_id=tg_id).pack(),
+            callback_data=AdminUserEditorCallback(
+                action="users_delete_key_confirm",
+                data="ok",
+                tg_id=tg_id,
+            ).pack(),
         )
     )
     builder.row(build_editor_back_btn(tg_id))

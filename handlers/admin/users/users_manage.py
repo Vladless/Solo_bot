@@ -107,12 +107,15 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
     if message.text.isdigit():
         tg_id = int(message.text)
     else:
-        username = message.text.strip().lstrip("@")
-        username = username.replace("https://t.me/", "")
+        username = message.text.strip().lstrip("@").replace("https://t.me/", "")
 
-        stmt = select(User.tg_id).where(User.username == username)
-        result = await session.execute(stmt)
-        tg_id = result.scalar_one_or_none()
+        stmt = (
+            select(User.tg_id)
+            .where(func.lower(User.username) == func.lower(username))
+            .order_by(User.updated_at.desc())
+            .limit(1)
+        )
+        tg_id = (await session.execute(stmt)).scalar_one_or_none()
 
         if tg_id is None:
             await message.answer(
@@ -378,7 +381,11 @@ async def process_user_search(
     stmt = select(
         func.count(Payment.id),
         func.coalesce(func.sum(Payment.amount), 0),
-    ).where(Payment.status == "success", Payment.tg_id == tg_id)
+    ).where(
+        Payment.status == "success",
+        Payment.tg_id == tg_id,
+        Payment.payment_system != "admin",
+    )
     result = await session.execute(stmt)
     topups_amount, topups_sum = result.one_or_none() or (0, 0)
 
