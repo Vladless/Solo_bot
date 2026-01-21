@@ -273,11 +273,11 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
                 row.append(traffic_buttons[i])
             builder.row(*row)
     elif device_buttons:
-        for button in device_buttons:
-            builder.row(button)
+        for i in range(0, len(device_buttons), 2):
+            builder.row(*device_buttons[i : i + 2])
     elif traffic_buttons:
-        for button in traffic_buttons:
-            builder.row(button)
+        for i in range(0, len(traffic_buttons), 2):
+            builder.row(*traffic_buttons[i : i + 2])
 
     if allow_downgrade and (devices_downgrade or traffic_downgrade):
         builder.row(

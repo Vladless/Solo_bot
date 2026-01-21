@@ -498,11 +498,11 @@ async def render_user_config_screen(
                 row.append(traffic_buttons[i])
             builder.row(*row)
     elif device_buttons:
-        for b in device_buttons:
-            builder.row(b)
+        for i in range(0, len(device_buttons), 2):
+            builder.row(*device_buttons[i : i + 2])
     elif traffic_buttons:
-        for b in traffic_buttons:
-            builder.row(b)
+        for i in range(0, len(traffic_buttons), 2):
+            builder.row(*traffic_buttons[i : i + 2])
 
     is_renew_mode = data.get("renew_mode") == "renew"
     confirm_prefix = "cfg_renew_confirm" if is_renew_mode else "cfg_user_confirm"
@@ -852,6 +852,11 @@ async def handle_user_devices_choice(callback: CallbackQuery, state: FSMContext,
     _, _tariff_id_str, devices_str = callback.data.split("|", 2)
     devices = int(devices_str)
 
+    current = (await state.get_data()).get("config_selected_device_limit")
+    if current is not None and int(current) == devices:
+        await callback.answer()
+        return
+
     await state.update_data(config_selected_device_limit=devices)
     await render_user_config_screen(callback, state, session)
 
@@ -864,6 +869,11 @@ async def handle_user_traffic_choice(callback: CallbackQuery, state: FSMContext,
     """Обрабатывает выбор лимита трафика в конфигураторе."""
     _, _tariff_id_str, traffic_str = callback.data.split("|", 2)
     traffic = int(traffic_str)
+
+    current = (await state.get_data()).get("config_selected_traffic_gb")
+    if current is not None and int(current) == traffic:
+        await callback.answer()
+        return
 
     await state.update_data(config_selected_traffic_gb=traffic)
     await render_user_config_screen(callback, state, session=session)
