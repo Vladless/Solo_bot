@@ -138,13 +138,15 @@ def pick_currency(
 
 
 def fmt_money(amount: Decimal, currency: str, language_code: str | None) -> str:
-    q = _round2(amount)
     if currency == "USD":
+        q = _round2(amount)
         s = f"{q:,.2f}"
         if (language_code or "").startswith("ru"):
             s = s.replace(",", " ")
         return f"${s}"
-    s = f"{q:,.2f}".replace(",", " ")
+
+    q = amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    s = f"{q:,.0f}".replace(",", " ")
     return f"{s} ₽"
 
 
@@ -159,7 +161,7 @@ async def display_price(
     cur = pick_currency(language_code, user_currency=user_currency, force_currency=force_currency)
 
     if cur == "RUB":
-        val = _round2(Decimal(str(amount_rub)))
+        val = Decimal(str(amount_rub)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     else:
         val = await convert_from_rub(Decimal(str(amount_rub)), cur, session=session)
 

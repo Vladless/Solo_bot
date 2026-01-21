@@ -886,18 +886,22 @@ async def complete_key_renewal(
         if hook_commands:
             builder = insert_hook_buttons(builder, hook_commands)
 
+        renewal_media_path = "img/pic_renewed.jpg"
+
         try:
             if callback_query:
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text=response_message,
                     reply_markup=builder.as_markup(),
+                    media_path=renewal_media_path,
                 )
             elif waiting_message:
                 await edit_or_send_message(
                     target_message=waiting_message,
                     text=response_message,
                     reply_markup=builder.as_markup(),
+                    media_path=renewal_media_path,
                 )
             else:
                 await bot.send_message(tg_id, response_message, reply_markup=builder.as_markup())

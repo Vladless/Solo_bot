@@ -148,7 +148,7 @@ async def try_fast_payment_flow(
             required_amount,
             getattr(callback_query.from_user, "language_code", None),
         )
-        text = f"{lead_text}.\n\n{FAST_PAY_CHOOSE_CURRENCY}"
+        text = f"{lead_text}\n\n{FAST_PAY_CHOOSE_CURRENCY}"
         await state.update_data(
             temp_key=temp_key,
             temp_payload=temp_payload,
@@ -211,7 +211,7 @@ async def try_fast_payment_flow(
     )
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=f"{lead_text}.\n\n{FAST_PAY_CHOOSE_PROVIDER}",
+        text=f"{lead_text}\n\n{FAST_PAY_CHOOSE_PROVIDER}",
         reply_markup=keyboard.as_markup(),
     )
     return True
@@ -280,7 +280,7 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
         getattr(callback_query.from_user, "language_code", None),
         force_currency=currency,
     )
-    text = f"{lead_text}.\n\nВалюта: {currency_label(currency)}\n{FAST_PAY_CHOOSE_PROVIDER}"
+    text = f"{lead_text}\n\nВалюта: {currency_label(currency)}\n{FAST_PAY_CHOOSE_PROVIDER}"
     await edit_or_send_message(
         target_message=callback_query.message,
         text=text,
