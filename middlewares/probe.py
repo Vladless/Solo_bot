@@ -31,7 +31,9 @@ class MiddlewareProbe(BaseMiddleware):
         now = time.perf_counter()
         t0 = data.setdefault("_mw_t0", now)
         prev = data.setdefault("_mw_prev", now)
-        logger.info(f"[mw:{self.name}] +{(now - prev) * 1000:.2f} ms total {(now - t0) * 1000:.2f} ms")
+
+        data["_mw_prev"] = now
+        logger.info(f"[mw:{self.name}:enter] +{(now - prev) * 1000:.2f} ms total {(now - t0) * 1000:.2f} ms")
 
         downstream_ms = 0.0
 
@@ -47,7 +49,6 @@ class MiddlewareProbe(BaseMiddleware):
             return await self.inner(timed_handler, event, data)
         finally:
             end = time.perf_counter()
-            data["_mw_prev"] = end
             total_ms = (end - start) * 1000
             self_ms = total_ms - downstream_ms
             logger.info(f"[mw:{self.name}:self] {self_ms:.2f} ms")
@@ -63,13 +64,16 @@ class TailHandlerProbe(BaseMiddleware):
         now = time.perf_counter()
         t0 = data.setdefault("_mw_t0", now)
         prev = data.setdefault("_mw_prev", now)
+
+        data["_mw_prev"] = now
         logger.info(f"[mw:{self.name}:enter] +{(now - prev) * 1000:.2f} ms total {(now - t0) * 1000:.2f} ms")
+
         start = time.perf_counter()
         try:
             return await handler(event, data)
         finally:
             end = time.perf_counter()
-            data["_mw_prev"] = end
             handler_ms = (end - start) * 1000
             total = (end - t0) * 1000
             logger.info(f"[mw:{self.name}] {handler_ms:.2f} ms total {total:.2f} ms")
+            data["_mw_prev"] = end
