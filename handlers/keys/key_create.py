@@ -20,7 +20,6 @@ from config import (
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_user,
-    check_user_exists,
     get_tariffs_for_cluster,
     get_trial,
 )
@@ -393,18 +392,17 @@ async def create_key(
     selected_traffic_gb: int | None = None,
     selected_price_rub: int | None = None,
 ):
-    if not await check_user_exists(session, tg_id):
-        from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
-        if from_user:
-            await add_user(
-                tg_id=from_user.id,
-                username=from_user.username,
-                first_name=from_user.first_name,
-                last_name=from_user.last_name,
-                language_code=from_user.language_code,
-                is_bot=from_user.is_bot,
-                session=session,
-            )
+    from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
+    if from_user:
+        await add_user(
+            tg_id=from_user.id,
+            username=from_user.username,
+            first_name=from_user.first_name,
+            last_name=from_user.last_name,
+            language_code=from_user.language_code,
+            is_bot=from_user.is_bot,
+            session=session,
+        )
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 

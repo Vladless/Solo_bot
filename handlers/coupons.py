@@ -18,7 +18,6 @@ from database import (
     add_payment,
     add_user,
     check_coupon_usage,
-    check_user_exists,
     create_coupon_usage,
     get_coupon_by_code,
     get_keys,
@@ -108,20 +107,18 @@ async def activate_coupon(
         await state.clear()
         return
 
-    user_exists = await check_user_exists(session, user_id)
-    if not user_exists:
-        if isinstance(user, dict):
-            await add_user(session=session, **user)
-        else:
-            await add_user(
-                session=session,
-                tg_id=user.id,
-                username=getattr(user, "username", None),
-                first_name=getattr(user, "first_name", None),
-                last_name=getattr(user, "last_name", None),
-                language_code=getattr(user, "language_code", None),
-                is_bot=getattr(user, "is_bot", False),
-            )
+    if isinstance(user, dict):
+        await add_user(session=session, **user)
+    else:
+        await add_user(
+            session=session,
+            tg_id=user.id,
+            username=getattr(user, "username", None),
+            first_name=getattr(user, "first_name", None),
+            last_name=getattr(user, "last_name", None),
+            language_code=getattr(user, "language_code", None),
+            is_bot=getattr(user, "is_bot", False),
+        )
 
     if coupon.amount > 0:
         try:
