@@ -89,26 +89,12 @@ async def kassai_webhook(request: web.Request):
             payment = await get_payment_by_payment_id(session, order_id)
             if payment:
                 if payment.get("status") == "success":
-                    logger.info(
-                        f"KassaAI: платёж {order_id} уже обработан"
-                    )
+                    logger.info(f"KassaAI: платёж {order_id} уже обработан")
                     return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
-                ok = await update_payment_status(
-                    session=session,
-                    internal_id=int(payment["id"]),
-                    new_status="success",
-                )
+                ok = await update_payment_status(session=session, internal_id=int(payment["id"]), new_status="success")
                 if not ok:
-                    logger.error(
-                        f"KassaAI: не удалось обновить статус "
-                        f"платежа {order_id}"
-                    )
+                    logger.error(f"KassaAI: не удалось обновить статус платежа {order_id}")
                     return web.Response(status=500)
-                await update_balance(session, tg_id, amount)
-                await send_payment_success_notification(
-                    tg_id, amount, session
-                )
-                await session.commit()
             else:
                 await add_payment(
                     session=session,
@@ -120,11 +106,9 @@ async def kassai_webhook(request: web.Request):
                     payment_id=order_id,
                     metadata=None,
                 )
-                await update_balance(session, tg_id, amount)
-                await send_payment_success_notification(
-                    tg_id, amount, session
-                )
-                await session.commit()
+
+            await update_balance(session, tg_id, amount)
+            await send_payment_success_notification(tg_id, amount, session)
         logger.info(
             f"KassaAI: платёж {order_id} успешно обработан, "
             f"баланс пользователя {tg_id} пополнен на {amount} RUB"

@@ -135,7 +135,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Ошибка: данные повреждены.",
             reply_markup=types.InlineKeyboardMarkup(),
-            force_text=True,
         )
         return
 
@@ -150,7 +149,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Некорректная сумма.",
             reply_markup=types.InlineKeyboardMarkup(),
-            force_text=True,
         )
         return
 
@@ -175,7 +173,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=DEFAULT_PAYMENT_MESSAGE.format(amount=amount),
         reply_markup=confirm_keyboard,
-        force_text=True,
     )
     logger.info(f"Payment link sent to user {callback_query.message.chat.id}.")
 
@@ -280,7 +277,6 @@ async def process_custom_amount_selection(callback_query: types.CallbackQuery, s
         target_message=callback_query.message,
         text=ENTER_SUM,
         reply_markup=builder.as_markup(),
-        force_text=True,
     )
 
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_freekassa)

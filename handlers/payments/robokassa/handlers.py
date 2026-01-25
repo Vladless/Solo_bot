@@ -61,9 +61,12 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
         opts=opts,
     )
 
-    await callback_query.message.delete()
-    m = await callback_query.message.answer(text="Выберите сумму пополнения:", reply_markup=markup)
-    await state.update_data(message_id=m.message_id, chat_id=m.chat.id)
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text="Выберите сумму пополнения:",
+        reply_markup=markup,
+    )
+    await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
 
 
@@ -75,7 +78,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Некорректная сумма.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -95,14 +97,13 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=kb,
-        force_text=True,
     )
 
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     b = back_keyboard("pay_robokassa")
-    await edit_or_send_message(target_message=callback_query.message, text=ENTER_SUM, reply_markup=b, force_text=True)
+    await edit_or_send_message(target_message=callback_query.message, text=ENTER_SUM, reply_markup=b)
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
 
 

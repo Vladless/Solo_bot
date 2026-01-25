@@ -14,7 +14,7 @@ from logger import logger
 from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 
 from .service import (
-    KASSAI_PAYMENT_METHODS,
+    KASSAI_METHODS,
     generate_kassai_payment_link,
     process_callback_pay_kassai,
     router as service_router,
@@ -104,15 +104,8 @@ async def _handle_custom_amount_input_kassai(
         )
         return
 
-    method = next(
-        (
-            m
-            for m in KASSAI_PAYMENT_METHODS
-            if m["name"] == method_name and m["enable"]
-        ),
-        None,
-    )
-    if not method:
+    method = KASSAI_METHODS.get(method_name)
+    if not method or not method["enable"]:
         method_label = "картами" if method_name == "cards" else "через СБП"
         await edit_or_send_message(
             target_message=message,
