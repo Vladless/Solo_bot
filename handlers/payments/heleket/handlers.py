@@ -14,7 +14,7 @@ from logger import logger
 from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 
 from .service import (
-    HELEKET_PAYMENT_METHODS,
+    get_heleket_methods,
     generate_heleket_payment_link,
     process_callback_pay_heleket,
     router as service_router,
@@ -75,7 +75,7 @@ async def handle_custom_amount_input_heleket(
         )
         return
 
-    enabled_methods = [m for m in HELEKET_PAYMENT_METHODS if m["enable"]]
+    enabled_methods = [m for m in get_heleket_methods() if m["enable"]]
     if not enabled_methods:
         await edit_or_send_message(
             target_message=message,

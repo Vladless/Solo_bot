@@ -124,26 +124,12 @@ async def process_heleket_webhook(data: dict) -> bool:
                 payment = await get_payment_by_payment_id(session, order_id)
                 if payment:
                     if payment.get("status") == "success":
-                        logger.info(
-                            f"Heleket: платёж {order_id} уже обработан"
-                        )
+                        logger.info(f"Heleket: платёж {order_id} уже обработан")
                         return True
-                    ok = await update_payment_status(
-                        session=session,
-                        internal_id=int(payment["id"]),
-                        new_status="success",
-                    )
+                    ok = await update_payment_status(session=session, internal_id=int(payment["id"]), new_status="success")
                     if not ok:
-                        logger.error(
-                            f"Heleket: не удалось обновить статус "
-                            f"платежа {order_id}"
-                        )
+                        logger.error(f"Heleket: не удалось обновить статус платежа {order_id}")
                         return False
-                    await update_balance(session, tg_id, balance_amount)
-                    await send_payment_success_notification(
-                        tg_id, balance_amount, session
-                    )
-                    await session.commit()
                 else:
                     await add_payment(
                         session=session,
@@ -155,11 +141,9 @@ async def process_heleket_webhook(data: dict) -> bool:
                         payment_id=order_id,
                         metadata=None,
                     )
-                    await update_balance(session, tg_id, balance_amount)
-                    await send_payment_success_notification(
-                        tg_id, balance_amount, session
-                    )
-                    await session.commit()
+
+                await update_balance(session, tg_id, balance_amount)
+                await send_payment_success_notification(tg_id, balance_amount, session)
             logger.info(
                 f"Heleket: платёж {order_id} для пользователя {tg_id} "
                 f"успешно обработан, баланс пополнен на {balance_amount} RUB"

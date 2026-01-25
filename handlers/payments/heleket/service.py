@@ -64,17 +64,28 @@ class ReplenishBalanceHeleket(StatesGroup):
     entering_custom_amount = State()
 
 
-PROVIDERS = get_providers(PROVIDERS_ENABLED)
-HELEKET_PAYMENT_METHODS = [
-    {
-        "enable": bool(PROVIDERS.get("HELEKET", {}).get("enabled")),
-        "currency": (PROVIDERS.get("HELEKET", {}).get("currency") or "USD"),
-        "to_currency": None,
-        "name": "crypto",
-        "button": HELEKET,
-        "desc": HELEKET_CRYPTO_DESCRIPTION,
-    },
-]
+def _is_heleket_enabled() -> bool:
+    try:
+        from core.bootstrap import PAYMENTS_CONFIG
+        return bool(PAYMENTS_CONFIG.get("HELEKET", PROVIDERS_ENABLED.get("HELEKET", False)))
+    except ImportError:
+        return bool(PROVIDERS_ENABLED.get("HELEKET", False))
+
+
+def get_heleket_methods() -> list[dict]:
+    return [
+        {
+            "enable": _is_heleket_enabled(),
+            "currency": "USD",
+            "to_currency": None,
+            "name": "crypto",
+            "button": HELEKET,
+            "desc": HELEKET_CRYPTO_DESCRIPTION,
+        },
+    ]
+
+
+HELEKET_PAYMENT_METHODS = get_heleket_methods()
 
 
 async def process_callback_pay_heleket(
@@ -86,18 +97,17 @@ async def process_callback_pay_heleket(
         await state.clear()
 
         if not method_name:
-            enabled_methods = [m["name"] for m in HELEKET_PAYMENT_METHODS if m["enable"]]
+            methods = get_heleket_methods()
+            enabled_methods = [m["name"] for m in methods if m["enable"]]
             if len(enabled_methods) == 1:
                 method_name = enabled_methods[0]
 
         if method_name:
-            method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name and m["enable"]), None)
+            methods = get_heleket_methods()
+            method = next((m for m in methods if m["name"] == method_name and m["enable"]), None)
             if not method:
-                try:
-                    await callback_query.message.delete()
-                except Exception:
-                    pass
-                await callback_query.message.answer(
+                await edit_or_send_message(
+                    target_message=callback_query.message,
                     text="Ошибка: выбранный способ оплаты недоступен.",
                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
                 )
@@ -115,40 +125,36 @@ async def process_callback_pay_heleket(
                 opts=opts
             )
 
-            try:
-                await callback_query.message.delete()
-            except Exception:
-                pass
-            new_msg = await callback_query.message.answer(
+            await edit_or_send_message(
+                target_message=callback_query.message,
                 text=method["desc"],
                 reply_markup=builder,
             )
-
             await state.update_data(
                 heleket_method=method_name,
-                message_id=new_msg.message_id,
-                chat_id=new_msg.chat.id,
+                message_id=callback_query.message.message_id,
+                chat_id=callback_query.message.chat.id,
             )
             await state.set_state(ReplenishBalanceHeleket.choosing_amount)
             return
 
         builder = InlineKeyboardBuilder()
-        for method in HELEKET_PAYMENT_METHODS:
+        for method in get_heleket_methods():
             if method["enable"]:
                 builder.row(
                     InlineKeyboardButton(text=method["button"], callback_data=f"heleket_method|{method['name']}")
                 )
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
 
-        try:
-            await callback_query.message.delete()
-        except Exception:
-            pass
-        new_msg = await callback_query.message.answer(
+        await edit_or_send_message(
+            target_message=callback_query.message,
             text="Выберите способ оплаты через Heleket:",
             reply_markup=builder.as_markup(),
         )
-        await state.update_data(message_id=new_msg.message_id, chat_id=new_msg.chat.id)
+        await state.update_data(
+            message_id=callback_query.message.message_id,
+            chat_id=callback_query.message.chat.id,
+        )
         await state.set_state(ReplenishBalanceHeleket.choosing_method)
 
     except Exception as e:
@@ -166,7 +172,6 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Ошибка: выбранный способ оплаты недоступен.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -189,7 +194,6 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=method["desc"],
         reply_markup=builder,
-        force_text=True,
     )
     await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
     await state.set_state(ReplenishBalanceHeleket.choosing_amount)
@@ -211,7 +215,6 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
         target_message=callback_query.message,
         text=f"Пожалуйста, введите сумму пополнения в {currency_text}.",
         reply_markup=builder.as_markup(),
-        force_text=True,
     )
     await state.set_state(ReplenishBalanceHeleket.entering_custom_amount)
 
@@ -227,7 +230,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             target_message=message,
             text="Ошибка: выбранный способ оплаты недоступен.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -247,7 +249,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
                 target_message=message,
                 text=f"❌ Минимальная сумма для оплаты криптовалютой — {currency_symbol}{min_amount}.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-                force_text=True,
             )
             return
     except Exception:
@@ -255,7 +256,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             target_message=message,
             text="❌ Некорректная сумма. Введите целое число больше 0.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -273,7 +273,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             target_message=message,
             text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -286,7 +285,6 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         target_message=message,
         text=HELEKET_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=confirm_keyboard,
-        force_text=True,
     )
 
     await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
@@ -300,7 +298,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Некорректная сумма.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -312,7 +309,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Ошибка: выбранный способ оплаты недоступен.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -321,7 +317,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="❌ Минимальная сумма для оплаты криптовалютой — 10₽ (≈0.1$).",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -333,7 +328,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -347,7 +341,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=HELEKET_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=confirm_keyboard,
-        force_text=True,
     )
 
     await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
@@ -370,17 +363,6 @@ async def generate_heleket_payment_link(amount: int, tg_id: int, method: dict) -
             else:
                 rate = await get_rub_rate(pay_cur, session=session)
                 payment_amount = (Decimal(str(amount)) * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-            async with async_session_maker() as dbs:
-                await add_payment(
-                    session=dbs,
-                    tg_id=tg_id,
-                    amount=float(amount),
-                    payment_system="HELEKET",
-                    status="pending",
-                    currency="RUB",
-                    payment_id=unique_order_id,
-                )
 
             data = {
                 "amount": str(payment_amount),
@@ -412,6 +394,16 @@ async def generate_heleket_payment_link(amount: int, tg_id: int, method: dict) -
                         if resp_json.get("state") == 0:
                             payment_url = resp_json.get("result", {}).get("url")
                             if payment_url:
+                                async with async_session_maker() as dbs:
+                                    await add_payment(
+                                        session=dbs,
+                                        tg_id=tg_id,
+                                        amount=float(amount),
+                                        payment_system="HELEKET",
+                                        status="pending",
+                                        currency="RUB",
+                                        payment_id=unique_order_id,
+                                    )
                                 logger.info(f"Heleket payment URL created for user {tg_id}")
                                 return payment_url
                             else:
