@@ -64,34 +64,10 @@ class ReplenishBalanceKassaiState(StatesGroup):
     entering_custom_amount = State()
 
 
-def _is_kassai_enabled(provider: str) -> bool:
-    try:
-        from core.bootstrap import PAYMENTS_CONFIG
-        return bool(PAYMENTS_CONFIG.get(provider, PROVIDERS_ENABLED.get(provider, False)))
-    except ImportError:
-        return bool(PROVIDERS_ENABLED.get(provider, False))
-
-
-def get_kassai_methods() -> list[dict]:
-    return [
-        {
-            "enable": _is_kassai_enabled("KASSAI_CARDS"),
-            "method": 36,
-            "name": "cards",
-            "button": KASSAI_CARDS,
-            "desc": KASSAI_CARDS_DESCRIPTION,
-        },
-        {
-            "enable": _is_kassai_enabled("KASSAI_SBP"),
-            "method": 44,
-            "name": "sbp",
-            "button": KASSAI_SBP,
-            "desc": KASSAI_SBP_DESCRIPTION,
-        },
-    ]
-
-
-KASSAI_PAYMENT_METHODS = get_kassai_methods()
+KASSAI_METHODS = {
+    "cards": {"enable": PROVIDERS_ENABLED.get("KASSAI_CARDS", False), "method": 36, "button": KASSAI_CARDS, "desc": KASSAI_CARDS_DESCRIPTION},
+    "sbp": {"enable": PROVIDERS_ENABLED.get("KASSAI_SBP", False), "method": 44, "button": KASSAI_SBP, "desc": KASSAI_SBP_DESCRIPTION},
+}
 
 
 @router.callback_query(F.data == "pay_kassai")
@@ -108,12 +84,8 @@ async def process_callback_pay_kassai(
         await state.clear()
 
         if method_name:
-            methods = get_kassai_methods()
-            method = next(
-                (m for m in methods if m["name"] == method_name and m["enable"]),
-                None,
-            )
-            if not method:
+            method = KASSAI_METHODS.get(method_name)
+            if not method or not method["enable"]:
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text="Ошибка: выбранный способ оплаты недоступен.",
@@ -147,12 +119,12 @@ async def process_callback_pay_kassai(
             return
 
         builder = InlineKeyboardBuilder()
-        for method in get_kassai_methods():
+        for name, method in KASSAI_METHODS.items():
             if method["enable"]:
                 builder.row(
                     InlineKeyboardButton(
                         text=method["button"],
-                        callback_data=f"kassai_method|{method['name']}",
+                        callback_data=f"kassai_method|{name}",
                     )
                 )
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
@@ -182,7 +154,7 @@ async def process_callback_pay_kassai(
 @router.callback_query(F.data.startswith("kassai_method|"))
 async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
-    method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = KASSAI_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(
@@ -240,7 +212,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("kassai_method")
-    method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = KASSAI_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(
@@ -329,7 +301,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     method_name = "cards" if callback_query.data.startswith("kassai_cards") else "sbp"
-    method = next((m for m in KASSAI_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = KASSAI_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(

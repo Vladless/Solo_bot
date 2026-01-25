@@ -64,28 +64,9 @@ class ReplenishBalanceHeleket(StatesGroup):
     entering_custom_amount = State()
 
 
-def _is_heleket_enabled() -> bool:
-    try:
-        from core.bootstrap import PAYMENTS_CONFIG
-        return bool(PAYMENTS_CONFIG.get("HELEKET", PROVIDERS_ENABLED.get("HELEKET", False)))
-    except ImportError:
-        return bool(PROVIDERS_ENABLED.get("HELEKET", False))
-
-
-def get_heleket_methods() -> list[dict]:
-    return [
-        {
-            "enable": _is_heleket_enabled(),
-            "currency": "USD",
-            "to_currency": None,
-            "name": "crypto",
-            "button": HELEKET,
-            "desc": HELEKET_CRYPTO_DESCRIPTION,
-        },
-    ]
-
-
-HELEKET_PAYMENT_METHODS = get_heleket_methods()
+HELEKET_METHODS = {
+    "crypto": {"enable": PROVIDERS_ENABLED.get("HELEKET", False), "currency": "USD", "to_currency": None, "button": HELEKET, "desc": HELEKET_CRYPTO_DESCRIPTION},
+}
 
 
 async def process_callback_pay_heleket(
@@ -97,15 +78,13 @@ async def process_callback_pay_heleket(
         await state.clear()
 
         if not method_name:
-            methods = get_heleket_methods()
-            enabled_methods = [m["name"] for m in methods if m["enable"]]
+            enabled_methods = [name for name, m in HELEKET_METHODS.items() if m["enable"]]
             if len(enabled_methods) == 1:
                 method_name = enabled_methods[0]
 
         if method_name:
-            methods = get_heleket_methods()
-            method = next((m for m in methods if m["name"] == method_name and m["enable"]), None)
-            if not method:
+            method = HELEKET_METHODS.get(method_name)
+            if not method or not method["enable"]:
                 await edit_or_send_message(
                     target_message=callback_query.message,
                     text="Ошибка: выбранный способ оплаты недоступен.",
@@ -139,10 +118,10 @@ async def process_callback_pay_heleket(
             return
 
         builder = InlineKeyboardBuilder()
-        for method in get_heleket_methods():
+        for name, method in HELEKET_METHODS.items():
             if method["enable"]:
                 builder.row(
-                    InlineKeyboardButton(text=method["button"], callback_data=f"heleket_method|{method['name']}")
+                    InlineKeyboardButton(text=method["button"], callback_data=f"heleket_method|{name}")
                 )
         builder.row(InlineKeyboardButton(text=BACK, callback_data="balance"))
 
@@ -165,7 +144,7 @@ async def process_callback_pay_heleket(
 @router.callback_query(F.data.startswith("heleket_method|"))
 async def process_method_selection(callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession):
     method_name = callback_query.data.split("|")[1]
-    method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = HELEKET_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(
@@ -223,7 +202,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
 async def handle_custom_amount_input(message: types.Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     method_name = data.get("heleket_method")
-    method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = HELEKET_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(
@@ -302,7 +281,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     method_name = "crypto"
-    method = next((m for m in HELEKET_PAYMENT_METHODS if m["name"] == method_name), None)
+    method = HELEKET_METHODS.get(method_name)
 
     if not method or not method["enable"]:
         await edit_or_send_message(
