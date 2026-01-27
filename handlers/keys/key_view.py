@@ -88,6 +88,7 @@ class RenameKeyState(StatesGroup):
 async def process_callback_or_message_view_keys(
     callback_query_or_message: Message | CallbackQuery,
     session: AsyncSession,
+    page: int = 0,
 ):
     if isinstance(callback_query_or_message, CallbackQuery):
         target_message = callback_query_or_message.message
@@ -105,7 +106,7 @@ async def process_callback_or_message_view_keys(
             await render_key_info(target_message, session, key_name, image_path)
             return
 
-        inline_keyboard, response_message = await build_keys_response(records, session)
+        inline_keyboard, response_message = await build_keys_response(records, session, page=page)
         image_path = os.path.join("img", "pic_keys.jpg")
 
         await edit_or_send_message(
@@ -119,12 +120,33 @@ async def process_callback_or_message_view_keys(
         await target_message.answer(text=error_message)
 
 
-async def build_keys_response(records: list[Key] | None, session: AsyncSession):
+@router.callback_query(F.data.startswith("view_keys|"))
+async def process_callback_view_keys_paged(
+    callback_query: CallbackQuery,
+    session: AsyncSession,
+):
+    parts = callback_query.data.split("|")
+    page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    await process_callback_or_message_view_keys(callback_query, session, page=page)
+
+
+async def build_keys_response(records: list[Key] | None, session: AsyncSession, page: int = 0):
     builder = InlineKeyboardBuilder()
 
-    if records:
+    page_size = 5
+    records = records or []
+    total = len(records)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(0, min(page, total_pages - 1))
+
+    if total:
         response_message = KEYS_HEADER
-        for record in records:
+
+        start = page * page_size
+        end = start + page_size
+        page_records = records[start:end]
+
+        for record in page_records:
             alias = record.alias
             email = record.email
             client_id = record.client_id
@@ -156,6 +178,19 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession):
             response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
 
         response_message += KEYS_FOOTER
+
+        if total_pages > 1:
+            nav_row = []
+
+            if page > 0:
+                nav_row.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"view_keys|{page - 1}"))
+
+            nav_row.append(InlineKeyboardButton(text=f"({page + 1}/{total_pages})", callback_data=" "))
+
+            if page < total_pages - 1:
+                nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"view_keys|{page + 1}"))
+
+            builder.row(*nav_row)
     else:
         response_message = NO_SUBSCRIPTIONS_MSG
 
