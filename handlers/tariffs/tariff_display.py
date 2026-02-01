@@ -24,10 +24,10 @@ async def get_effective_limits_for_key(
 
     if tariff:
         base_devices = tariff.get("device_limit")
-        base_traffic_bytes = tariff.get("traffic_limit")
+        base_traffic_gb = tariff.get("traffic_limit")
     else:
         base_devices = None
-        base_traffic_bytes = None
+        base_traffic_gb = None
 
     if selected_device_limit is None:
         device_limit = int(base_devices or 0)
@@ -37,7 +37,7 @@ async def get_effective_limits_for_key(
         device_limit = int(selected_device_limit)
 
     if selected_traffic_gb is None:
-        traffic_limit_bytes = int(base_traffic_bytes or 0) * GB
+        traffic_limit_bytes = int(base_traffic_gb or 0) * GB
     elif selected_traffic_gb == 0:
         traffic_limit_bytes = 0
     else:
@@ -366,51 +366,37 @@ async def build_key_created_message(
     if tariff:
         tariff_name = tariff.get("name", "—")
         subgroup_title = tariff.get("subgroup_title") or ""
-        base_traffic = tariff.get("traffic_limit")
-        base_devices = tariff.get("device_limit")
     else:
         tariff_name = "—"
         subgroup_title = ""
-        base_traffic = None
-        base_devices = None
 
-    if selected_traffic_gb is not None:
-        try:
-            traffic_to_show = int(selected_traffic_gb)
-        except (TypeError, ValueError):
-            traffic_to_show = 0
-    else:
-        selected_traffic_limit = key_record.get("selected_traffic_limit")
-        if selected_traffic_limit is not None:
+    selected_device_limit_effective = selected_device_limit
+    if selected_device_limit_effective is None:
+        value = key_record.get("selected_device_limit")
+        if value is not None:
             try:
-                traffic_to_show = int(selected_traffic_limit)
+                selected_device_limit_effective = int(value)
             except (TypeError, ValueError):
-                traffic_to_show = 0
-        elif base_traffic is not None:
-            try:
-                traffic_to_show = int(base_traffic)
-            except (TypeError, ValueError):
-                traffic_to_show = 0
-        else:
-            traffic_to_show = 0
+                selected_device_limit_effective = None
 
-    if selected_device_limit is not None:
-        try:
-            devices_to_show = int(selected_device_limit)
-        except (TypeError, ValueError):
-            devices_to_show = 0
-    else:
-        selected_device_limit_db = key_record.get("selected_device_limit")
-        if selected_device_limit_db is not None:
+    selected_traffic_gb_effective = selected_traffic_gb
+    if selected_traffic_gb_effective is None:
+        value = key_record.get("selected_traffic_limit")
+        if value is not None:
             try:
-                devices_to_show = int(selected_device_limit_db)
+                selected_traffic_gb_effective = int(value)
             except (TypeError, ValueError):
-                devices_to_show = 0
-        else:
-            try:
-                devices_to_show = int(base_devices) if base_devices is not None else 0
-            except (TypeError, ValueError):
-                devices_to_show = 0
+                selected_traffic_gb_effective = None
+
+    device_limit, traffic_limit_bytes = await get_effective_limits_for_key(
+        session=session,
+        tariff_id=int(tariff_id) if tariff_id else None,
+        selected_device_limit=selected_device_limit_effective,
+        selected_traffic_gb=selected_traffic_gb_effective,
+    )
+
+    traffic_to_show = int(traffic_limit_bytes / GB) if traffic_limit_bytes else 0
+    devices_to_show = int(device_limit) if device_limit else 0
 
     return key_message_success(
         final_link or "Ссылка не найдена",
