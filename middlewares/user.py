@@ -70,10 +70,7 @@ class UserMiddleware(BaseMiddleware):
     async def _touch_user(self, tg_id: int, session: AsyncSession) -> dict | None:
         now = datetime.utcnow()
         res = await session.execute(
-            update(DbUser)
-            .where(DbUser.tg_id == tg_id)
-            .values(updated_at=now)
-            .returning(DbUser)
+            update(DbUser).where(DbUser.tg_id == tg_id).values(updated_at=now).returning(DbUser)
         )
         obj = res.scalar_one_or_none()
         if obj is None:
@@ -84,13 +81,11 @@ class UserMiddleware(BaseMiddleware):
         return d
 
     def _fingerprint(self, user: User) -> str:
-        return "|".join(
-            [
-                str(user.id),
-                user.username or "",
-                user.first_name or "",
-                user.last_name or "",
-                user.language_code or "",
-                "1" if user.is_bot else "0",
-            ]
-        )
+        return "|".join([
+            str(user.id),
+            user.username or "",
+            user.first_name or "",
+            user.last_name or "",
+            user.language_code or "",
+            "1" if user.is_bot else "0",
+        ])

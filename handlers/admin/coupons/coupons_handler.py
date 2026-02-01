@@ -34,6 +34,7 @@ router = Router()
 
 class AdminCouponsState(StatesGroup):
     waiting_for_coupon_type = State()
+    waiting_for_coupon_audience = State()
     waiting_for_balance_data = State()
     waiting_for_days_data = State()
 
@@ -62,30 +63,59 @@ async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext
     await state.set_state(AdminCouponsState.waiting_for_coupon_type)
 
 
-@router.callback_query(F.data == "coupon_type_balance")
-async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
-    text = (
-        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-        "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'COUPON1 50 5'</b> 👈\n\n"
-    )
+async def show_coupon_audience_step(callback_query: CallbackQuery, state: FSMContext, coupon_type: str):
+    await state.update_data(coupon_type=coupon_type)
+
+    text = "🎯 <b>Кому доступен купон?</b>"
     kb = InlineKeyboardBuilder()
+    kb.button(text="👤 Всем", callback_data="coupon_audience_all")
+    kb.button(text="🆕 Только новым", callback_data="coupon_audience_new")
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
 
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
-    await state.set_state(AdminCouponsState.waiting_for_balance_data)
+    await state.set_state(AdminCouponsState.waiting_for_coupon_audience)
 
 
-@router.callback_query(F.data == "coupon_type_days")
+@router.callback_query(F.data == "coupon_type_balance", IsAdminFilter())
+async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
+    await show_coupon_audience_step(callback_query, state, "balance")
+
+
+@router.callback_query(F.data == "coupon_type_days", IsAdminFilter())
 async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
+    await show_coupon_audience_step(callback_query, state, "days")
+
+
+@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter())
+async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    coupon_type = data.get("coupon_type")
+    if coupon_type not in ("balance", "days"):
+        await callback_query.answer("Ошибка: тип купона не найден", show_alert=True)
+        return
+
+    await state.update_data(new_users_only=callback_query.data == "coupon_audience_new")
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
+
+    if coupon_type == "balance":
+        text = (
+            "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
+            "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
+            "Пример: <b>'COUPON1 50 5'</b> 👈\n\n"
+        )
+        await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
+        await state.set_state(AdminCouponsState.waiting_for_balance_data)
+        return
+
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
         "Пример: <b>'DAYS10 10 50'</b> 👈\n\n"
     )
-    kb = InlineKeyboardBuilder()
-    kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
-
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_days_data)
 
@@ -97,6 +127,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
 
     kb = InlineKeyboardBuilder()
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
 
     if len(parts) != 3:
         text = (
@@ -119,13 +150,29 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         return
 
     try:
-        await create_coupon(session, coupon_code, coupon_amount, usage_limit, days=None)
+        data = await state.get_data()
+        new_users_only = bool(data.get("new_users_only"))
+
+        ok = await create_coupon(
+            session,
+            coupon_code,
+            coupon_amount,
+            usage_limit,
+            days=None,
+            new_users_only=new_users_only,
+        )
+        if not ok:
+            await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
+            return
 
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+        audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
+
         text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
             f"💰 Сумма: <b>{coupon_amount} рублей</b>\n"
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>\n"
+            f"🎯 Доступ: <b>{audience_txt}</b>\n"
             f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
         )
 
@@ -150,6 +197,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
 
     kb = InlineKeyboardBuilder()
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
 
     if len(parts) != 3:
         text = (
@@ -172,13 +220,29 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         return
 
     try:
-        await create_coupon(session, coupon_code, 0, usage_limit, days=days)
+        data = await state.get_data()
+        new_users_only = bool(data.get("new_users_only"))
+
+        ok = await create_coupon(
+            session,
+            coupon_code,
+            0,
+            usage_limit,
+            days=days,
+            new_users_only=new_users_only,
+        )
+        if not ok:
+            await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
+            return
 
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+        audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
+
         text = (
             f"✅ Купон с кодом <b>{coupon_code}</b> успешно создан!\n"
             f"⏳ <b>{format_days(days)}</b>\n"
             f"🔢 Лимит использования: <b>{usage_limit} раз</b>\n"
+            f"🎯 Доступ: <b>{audience_txt}</b>\n"
             f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
         )
 

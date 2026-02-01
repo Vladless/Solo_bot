@@ -97,9 +97,7 @@ async def create_key_on_cluster(
             device_limit_value = int(hwid_limit or 0)
 
         if plan is not None:
-            filtered = await filter_cluster_by_tariff(
-                session, enabled_servers, plan, cluster_id
-            )
+            filtered = await filter_cluster_by_tariff(session, enabled_servers, plan, cluster_id)
             if filtered is not enabled_servers:
                 enabled_servers = filtered
             elif subgroup_title:

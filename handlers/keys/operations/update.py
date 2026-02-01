@@ -53,9 +53,7 @@ async def update_key_on_cluster(
                 raise ValueError(f"Кластер или сервер с ID/именем {cluster_id} не найден.")
 
         if tariff_id is not None:
-            filtered = await filter_cluster_by_tariff(
-                session, cluster, tariff_id, cluster_id
-            )
+            filtered = await filter_cluster_by_tariff(session, cluster, tariff_id, cluster_id)
             if filtered is not cluster:
                 cluster = filtered
             elif subgroup_code:
@@ -63,9 +61,7 @@ async def update_key_on_cluster(
                     session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id
                 )
         elif subgroup_code:
-            cluster = await filter_cluster_by_subgroup(
-                session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id
-            )
+            cluster = await filter_cluster_by_subgroup(session, cluster, subgroup_code, cluster_id, tariff_id=tariff_id)
 
         if not cluster:
             logger.warning(f"[Update] Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
@@ -276,9 +272,7 @@ async def update_subscription(
             cluster_servers = []
 
     if tariff_id is not None:
-        filtered = await filter_cluster_by_tariff(
-            session, cluster_servers, tariff_id, new_cluster_id
-        )
+        filtered = await filter_cluster_by_tariff(session, cluster_servers, tariff_id, new_cluster_id)
         if filtered is not cluster_servers:
             cluster_servers = filtered
         elif subgroup_code:
@@ -291,9 +285,7 @@ async def update_subscription(
         )
 
     if not cluster_servers:
-        logger.warning(
-            f"[Update] Пересоздание пропущено: нет серверов после фильтрации в {new_cluster_id}."
-        )
+        logger.warning(f"[Update] Пересоздание пропущено: нет серверов после фильтрации в {new_cluster_id}.")
         return
 
     if tariff:

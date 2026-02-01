@@ -207,10 +207,14 @@ async def handle_user_renew_confirm(
         base_traffic_gb = int(base_traffic_gb) if base_traffic_gb is not None else None
 
         selected_devices = (
-            base_device_limit if base_device_limit is not None else (device_int_options[0] if device_int_options else None)
+            base_device_limit
+            if base_device_limit is not None
+            else (device_int_options[0] if device_int_options else None)
         )
         selected_traffic_gb = (
-            base_traffic_gb if base_traffic_gb is not None else (traffic_int_options[0] if traffic_int_options else None)
+            base_traffic_gb
+            if base_traffic_gb is not None
+            else (traffic_int_options[0] if traffic_int_options else None)
         )
 
         await state.update_data(
@@ -343,7 +347,9 @@ async def handle_user_renew_confirm(
             plan=tariff_id,
         )
     except Exception as e:
-        logger.error(f"[AdminRenew] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}")
+        logger.error(
+            f"[AdminRenew] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}"
+        )
         ok = False
 
     await state.clear()
@@ -353,7 +359,9 @@ async def handle_user_renew_confirm(
 
     callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
 
-    await handle_key_edit(callback_query=callback_query, callback_data=callback_data_back, session=session, update=False)
+    await handle_key_edit(
+        callback_query=callback_query, callback_data=callback_data_back, session=session, update=False
+    )
 
 
 @router.callback_query(F.data.startswith("cfg_renew_devices|"), IsAdminFilter())
@@ -662,7 +670,9 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
             plan=tariff_id,
         )
     except Exception as e:
-        logger.error(f"[AdminRenewCfg] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}")
+        logger.error(
+            f"[AdminRenewCfg] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}"
+        )
         ok = False
 
     await state.clear()
@@ -672,7 +682,9 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
 
     callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=int(tg_id))
 
-    await handle_key_edit(callback_query=callback_query, callback_data=callback_data_back, session=session, update=False)
+    await handle_key_edit(
+        callback_query=callback_query, callback_data=callback_data_back, session=session, update=False
+    )
 
 
 @router.callback_query(F.data == "back:group", IsAdminFilter())

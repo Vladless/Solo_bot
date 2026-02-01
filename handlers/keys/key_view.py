@@ -340,12 +340,14 @@ async def build_key_view_payload(session: AsyncSession, key_name: str):
             remna_server = None
             for cluster_name, cluster_servers in servers.items():
                 for srv in cluster_servers:
-                    if (srv.get("server_name") == server_name or cluster_name == server_name) and srv.get("panel_type") == "remnawave":
+                    if (srv.get("server_name") == server_name or cluster_name == server_name) and srv.get(
+                        "panel_type"
+                    ) == "remnawave":
                         remna_server = srv
                         break
                 if remna_server:
                     break
-            
+
             if remna_server:
                 api = RemnawaveAPI(remna_server["api_url"])
                 if await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):

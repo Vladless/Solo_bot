@@ -49,9 +49,7 @@ router = Router()
 
 async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
     """Получает язык пользователя из базы данных."""
-    result = await session.execute(
-        select(User.language_code).where(User.tg_id == tg_id)
-    )
+    result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
     return result.scalar_one_or_none()
 
 
@@ -65,8 +63,18 @@ class ReplenishBalanceKassaiState(StatesGroup):
 
 
 KASSAI_METHODS = {
-    "cards": {"enable": PROVIDERS_ENABLED.get("KASSAI_CARDS", False), "method": 36, "button": KASSAI_CARDS, "desc": KASSAI_CARDS_DESCRIPTION},
-    "sbp": {"enable": PROVIDERS_ENABLED.get("KASSAI_SBP", False), "method": 44, "button": KASSAI_SBP, "desc": KASSAI_SBP_DESCRIPTION},
+    "cards": {
+        "enable": PROVIDERS_ENABLED.get("KASSAI_CARDS", False),
+        "method": 36,
+        "button": KASSAI_CARDS,
+        "desc": KASSAI_CARDS_DESCRIPTION,
+    },
+    "sbp": {
+        "enable": PROVIDERS_ENABLED.get("KASSAI_SBP", False),
+        "method": 44,
+        "button": KASSAI_SBP,
+        "desc": KASSAI_SBP_DESCRIPTION,
+    },
 }
 
 
@@ -94,9 +102,7 @@ async def process_callback_pay_kassai(
                 return
 
             language_code = await get_user_language(session, tg_id)
-            opts = await payment_options_for_user(
-                session, tg_id, language_code, force_currency="RUB"
-            )
+            opts = await payment_options_for_user(session, tg_id, language_code, force_currency="RUB")
             builder = build_amounts_keyboard(
                 prefix=f"kassai_{method_name}",
                 pattern="{prefix}_amount|{price}",
@@ -141,10 +147,7 @@ async def process_callback_pay_kassai(
         await state.set_state(ReplenishBalanceKassaiState.choosing_method)
 
     except Exception as e:
-        logger.error(
-            f"Error in process_callback_pay_kassai for user "
-            f"{callback_query.message.chat.id}: {e}"
-        )
+        logger.error(f"Error in process_callback_pay_kassai for user {callback_query.message.chat.id}: {e}")
         await callback_query.answer(
             "Произошла ошибка при инициализации платежа. Попробуйте позже.",
             show_alert=True,
@@ -168,15 +171,13 @@ async def process_method_selection(callback_query: types.CallbackQuery, state: F
     tg_id = callback_query.from_user.id
 
     language_code = await get_user_language(session, tg_id)
-    opts = await payment_options_for_user(
-        session, tg_id, language_code, force_currency="RUB"
-    )
+    opts = await payment_options_for_user(session, tg_id, language_code, force_currency="RUB")
     builder = build_amounts_keyboard(
         prefix=f"kassai_{method_name}",
         pattern="{prefix}_amount|{price}",
         back_cb="pay_kassai",
         custom_cb=f"kassai_custom_amount|{method_name}",
-        opts=opts
+        opts=opts,
     )
 
     await edit_or_send_message(
@@ -198,7 +199,7 @@ async def process_custom_amount_button(callback_query: types.CallbackQuery, stat
 
     language_code = await get_user_language(session, callback_query.from_user.id)
     currency = pick_currency(language_code)
-    
+
     currency_text = "рублях (₽)" if currency == "RUB" else "долларах ($)"
     await edit_or_send_message(
         target_message=callback_query.message,
@@ -229,7 +230,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
         user_amount = int(message.text.strip())
         if user_amount <= 0:
             raise ValueError
-        
+
         if method_name == "cards":
             min_amount = 1 if currency == "USD" else 50
             currency_symbol = "$" if currency == "USD" else "₽"
@@ -260,7 +261,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
 
     if currency == "RUB":
         amount_rub = user_amount
-    else: 
+    else:
         async with aiohttp.ClientSession() as session_http:
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 

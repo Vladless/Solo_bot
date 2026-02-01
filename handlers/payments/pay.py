@@ -217,9 +217,7 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
             payment_system = record["payment_system"]
             status = record["status"]
             date = record["created_at"].strftime("%Y-%m-%d %H:%M:%S")
-            history_text += (
-                f"Сумма: {formatted_amount}\nОплата: {payment_system}\nСтатус: {status}\nДата: {date}\n\n"
-            )
+            history_text += f"Сумма: {formatted_amount}\nОплата: {payment_system}\nСтатус: {status}\nДата: {date}\n\n"
         history_text += "</blockquote>"
     else:
         history_text = "❌ У вас пока нет операций с балансом."

@@ -191,7 +191,7 @@ def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[in
         grouped.setdefault(subgroup, []).append(t)
 
     subgroups_sorted = sorted(grouped.keys(), key=lambda x: (x is None, x or ""))
-    
+
     for subgroup in subgroups_sorted:
         tariffs_list = grouped[subgroup]
 
@@ -208,10 +208,7 @@ def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[in
             builder.row(
                 InlineKeyboardButton(
                     text=f"{mark} {t.name}",
-                    callback_data=AdminClusterCallback(
-                        action="toggle_tariff", 
-                        data=f"{cluster_name}|{t.id}"
-                    ).pack(),
+                    callback_data=AdminClusterCallback(action="toggle_tariff", data=f"{cluster_name}|{t.id}").pack(),
                 )
             )
 
@@ -227,7 +224,7 @@ def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[in
             callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
         )
     )
-    
+
     return builder.as_markup()
 
 

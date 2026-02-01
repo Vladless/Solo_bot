@@ -26,18 +26,12 @@ def verify_kassai_signature(data: dict, signature: str) -> bool:
     """
     try:
         sign_string = (
-            f"{KASSAI_SHOP_ID}:{data.get('AMOUNT', '')}:"
-            f"{KASSAI_SECRET_KEY}:{data.get('MERCHANT_ORDER_ID', '')}"
+            f"{KASSAI_SHOP_ID}:{data.get('AMOUNT', '')}:{KASSAI_SECRET_KEY}:{data.get('MERCHANT_ORDER_ID', '')}"
         )
-        expected_signature = hashlib.md5(
-            sign_string.encode("utf-8")
-        ).hexdigest()
+        expected_signature = hashlib.md5(sign_string.encode("utf-8")).hexdigest()
         result = signature.upper() == expected_signature.upper()
         if not result:
-            logger.error(
-                f"KassaAI signature mismatch. "
-                f"Expected: {expected_signature}, Got: {signature}"
-            )
+            logger.error(f"KassaAI signature mismatch. Expected: {expected_signature}, Got: {signature}")
             logger.error(f"Sign string: {sign_string}")
         else:
             logger.info("KassaAI webhook: подпись успешно проверена")
@@ -64,9 +58,7 @@ async def kassai_webhook(request: web.Request):
         order_id = data.get("MERCHANT_ORDER_ID")
 
         if not amount_raw or not order_id:
-            logger.error(
-                "KassaAI webhook: отсутствуют обязательные параметры"
-            )
+            logger.error("KassaAI webhook: отсутствуют обязательные параметры")
             return web.Response(status=400)
 
         amount = float(amount_raw)
@@ -74,16 +66,10 @@ async def kassai_webhook(request: web.Request):
         try:
             tg_id = int(order_id.split("_")[1])
         except (IndexError, ValueError) as e:
-            logger.error(
-                f"KassaAI webhook: не удалось извлечь tg_id "
-                f"из order_id {order_id}: {e}"
-            )
+            logger.error(f"KassaAI webhook: не удалось извлечь tg_id из order_id {order_id}: {e}")
             return web.Response(status=400)
 
-        logger.info(
-            f"KassaAI: успешный платёж {order_id} на сумму {amount} RUB "
-            f"для пользователя {tg_id}"
-        )
+        logger.info(f"KassaAI: успешный платёж {order_id} на сумму {amount} RUB для пользователя {tg_id}")
 
         async with async_session_maker() as session:
             payment = await get_payment_by_payment_id(session, order_id)
@@ -110,8 +96,7 @@ async def kassai_webhook(request: web.Request):
             await update_balance(session, tg_id, amount)
             await send_payment_success_notification(tg_id, amount, session)
         logger.info(
-            f"KassaAI: платёж {order_id} успешно обработан, "
-            f"баланс пользователя {tg_id} пополнен на {amount} RUB"
+            f"KassaAI: платёж {order_id} успешно обработан, баланс пользователя {tg_id} пополнен на {amount} RUB"
         )
         return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
     except Exception as e:

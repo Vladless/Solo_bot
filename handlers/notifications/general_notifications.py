@@ -78,12 +78,12 @@ class NotificationContext:
     current_time: int
     preload_data: Optional[dict] = None
     bulk_updates: Optional[dict] = None
-    
+
     def get_balance(self, tg_id: int) -> float:
         if self.preload_data and tg_id in self.preload_data.get("balances_cache", {}):
             return self.preload_data["balances_cache"][tg_id]
         return 0.0
-    
+
     def get_tariff(self, tariff_id: int) -> Optional[dict]:
         if self.preload_data and tariff_id in self.preload_data.get("tariffs_cache", {}):
             return self.preload_data["tariffs_cache"][tariff_id]
@@ -139,26 +139,18 @@ async def execute_bulk_updates(session: AsyncSession, bulk_updates: dict[str, An
             for tg_id, balance_change in bulk_updates["balance_changes"].items():
                 await session.execute(
                     text("UPDATE users SET balance = balance + :change WHERE tg_id = :tg_id"),
-                    {"change": balance_change, "tg_id": tg_id}
+                    {"change": balance_change, "tg_id": tg_id},
                 )
             logger.info(f"Bulk: обновлено {len(bulk_updates['balance_changes'])} балансов")
 
         if bulk_updates["key_expiry_updates"]:
             for client_id, new_expiry in bulk_updates["key_expiry_updates"]:
-                await session.execute(
-                    update(Key)
-                    .where(Key.client_id == client_id)
-                    .values(expiry_time=new_expiry)
-                )
+                await session.execute(update(Key).where(Key.client_id == client_id).values(expiry_time=new_expiry))
             logger.info(f"Bulk: обновлено {len(bulk_updates['key_expiry_updates'])} сроков действия ключей")
 
         if bulk_updates["key_tariff_updates"]:
             for client_id, new_tariff_id in bulk_updates["key_tariff_updates"]:
-                await session.execute(
-                    update(Key)
-                    .where(Key.client_id == client_id)
-                    .values(tariff_id=new_tariff_id)
-                )
+                await session.execute(update(Key).where(Key.client_id == client_id).values(tariff_id=new_tariff_id))
             logger.info(f"Bulk: обновлено {len(bulk_updates['key_tariff_updates'])} тарифов ключей")
 
         for tg_id, notification_type in bulk_updates["notifications_to_add"]:
@@ -184,9 +176,9 @@ async def execute_bulk_updates(session: AsyncSession, bulk_updates: dict[str, An
 async def send_expiry_warning(ctx: NotificationContext, key, hours_left: int, photo: str) -> bool:
     tg_id = key.tg_id
     email = key.email or ""
-    
+
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
-    
+
     message_text = KEY_EXPIRY.format(
         email=email,
         hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -194,7 +186,7 @@ async def send_expiry_warning(ctx: NotificationContext, key, hours_left: int, ph
         tariff_name=expiry_data["tariff_name"],
         tariff_details=expiry_data["tariff_details"],
     )
-    
+
     keyboard = build_notification_kb(email)
     return await send_notification(ctx.bot, tg_id, photo, message_text, keyboard)
 
@@ -202,9 +194,9 @@ async def send_expiry_warning(ctx: NotificationContext, key, hours_left: int, ph
 async def send_cannot_renew(ctx: NotificationContext, key, photo: str) -> bool:
     tg_id = key.tg_id
     email = key.email or ""
-    
+
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
-    
+
     message_text = KEY_CANNOT_RENEW_CURRENT.format(
         email=email,
         hours_left_formatted=expiry_data["hours_left_formatted"],
@@ -212,7 +204,7 @@ async def send_cannot_renew(ctx: NotificationContext, key, photo: str) -> bool:
         tariff_name=expiry_data["tariff_name"],
         tariff_details=expiry_data["tariff_details"],
     )
-    
+
     keyboard = build_change_tariff_kb(email)
     return await send_notification(ctx.bot, tg_id, photo, message_text, keyboard)
 
@@ -220,7 +212,7 @@ async def send_cannot_renew(ctx: NotificationContext, key, photo: str) -> bool:
 async def send_expired_notification(ctx: NotificationContext, key, delay_minutes: int) -> bool:
     tg_id = key.tg_id
     email = key.email or ""
-    
+
     if delay_minutes > 0:
         hours = delay_minutes // 60
         minutes = delay_minutes % 60
@@ -233,7 +225,7 @@ async def send_expired_notification(ctx: NotificationContext, key, delay_minutes
         message_text = KEY_EXPIRED_DELAY_MSG.format(email=email, time_formatted=time_formatted)
     else:
         message_text = KEY_EXPIRED_NO_DELAY_MSG.format(email=email)
-    
+
     keyboard = build_notification_kb(email)
     return await send_notification(ctx.bot, tg_id, "notify_expired.jpg", message_text, keyboard)
 
@@ -241,7 +233,7 @@ async def send_expired_notification(ctx: NotificationContext, key, delay_minutes
 async def send_deleted_notification(ctx: NotificationContext, key) -> bool:
     tg_id = key.tg_id
     email = key.email or ""
-    
+
     message_text = KEY_DELETED_MSG.format(email=email)
     keyboard = build_notification_expired_kb()
     return await send_notification(ctx.bot, tg_id, "notify_expired.jpg", message_text, keyboard)
@@ -250,11 +242,11 @@ async def send_deleted_notification(ctx: NotificationContext, key) -> bool:
 async def send_renewed_notification(ctx: NotificationContext, key, tariff: dict, new_expiry_time: int) -> bool:
     tg_id = key.tg_id
     email = key.email or ""
-    
+
     selected_device_limit = getattr(key, "selected_device_limit", None)
     selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
     selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
-    
+
     device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
         session=ctx.session,
         tariff_id=int(tariff["id"]),
@@ -262,13 +254,13 @@ async def send_renewed_notification(ctx: NotificationContext, key, tariff: dict,
         selected_traffic_gb=selected_traffic_gb,
     )
     traffic_limit_gb = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
-    
+
     formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
     formatted_expiry_date = formatted_expiry_date.replace(
         datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
         get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
     )
-    
+
     message_text = get_renewal_message(
         tariff_name=tariff["name"],
         traffic_limit=traffic_limit_gb,
@@ -276,15 +268,15 @@ async def send_renewed_notification(ctx: NotificationContext, key, tariff: dict,
         expiry_date=formatted_expiry_date,
         subgroup_title=tariff.get("subgroup_title", ""),
     )
-    
+
     keyboard = build_notification_expired_kb()
     result = await send_notification(ctx.bot, tg_id, "notify_expired.jpg", message_text, keyboard)
-    
+
     if result:
         logger.info(f"✅ Уведомление о продлении подписки {email} отправлено пользователю {tg_id}.")
     else:
         logger.warning(f"📢 Не удалось отправить уведомление о продлении подписки {email} пользователю {tg_id}.")
-    
+
     return result
 
 
@@ -292,34 +284,34 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
     tg_id = key.tg_id
     email = key.email or ""
     renew_notification_id = f"{email}_renew"
-    
+
     can_renew = await check_notification_time(ctx.session, tg_id, renew_notification_id, hours=24)
     if not can_renew:
         logger.debug(f"⏳ Подписка {email} уже продлевалась в течение последних 24 часов.")
         return False, None, None
-    
+
     if ctx.preload_data and tg_id in ctx.preload_data.get("balances_cache", {}):
         balance = ctx.preload_data["balances_cache"][tg_id]
     else:
         balance = await get_balance(ctx.session, tg_id)
-    
+
     server_id = key.server_id
     tariff_id = key.tariff_id
-    
+
     tariffs = await get_tariffs_for_cluster(ctx.session, server_id)
     if not tariffs:
         logger.warning(f"⛔ Нет доступных тарифов для продления подписки {email}")
         return False, None, None
-    
+
     current_tariff = None
     if tariff_id:
         current_tariff = ctx.get_tariff(tariff_id)
         if not current_tariff and await check_tariff_exists(ctx.session, tariff_id):
             current_tariff = await get_tariff_by_id(ctx.session, tariff_id)
-    
+
     if not current_tariff:
         return False, None, None
-    
+
     forbidden_groups = ["discounts", "discounts_max", "gifts", "trial"]
     try:
         hook_results = await run_hooks("renewal_forbidden_groups", chat_id=tg_id, admin=False, session=ctx.session)
@@ -328,10 +320,10 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
             forbidden_groups.extend(additional_groups)
     except Exception as error:
         logger.warning(f"[AUTO_RENEW] Ошибка при получении дополнительных групп: {error}")
-    
+
     if current_tariff["group_code"] in forbidden_groups:
         return False, None, None
-    
+
     renewal_cost = await resolve_price_to_charge(
         ctx.session,
         {
@@ -341,18 +333,18 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
             "selected_price_rub": getattr(key, "selected_price_rub", None),
         },
     )
-    
+
     if renewal_cost is None or balance < renewal_cost:
         return False, None, None
-    
+
     client_id = key.client_id
     current_expiry = key.expiry_time
     duration_days = current_tariff["duration_days"]
-    
+
     selected_device_limit = getattr(key, "selected_device_limit", None)
     selected_traffic_limit = getattr(key, "selected_traffic_limit", None)
     selected_traffic_gb = int(selected_traffic_limit) if selected_traffic_limit is not None else None
-    
+
     device_limit_effective, traffic_limit_bytes_effective = await get_effective_limits_for_key(
         session=ctx.session,
         tariff_id=int(current_tariff["id"]),
@@ -360,20 +352,20 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
         selected_traffic_gb=selected_traffic_gb,
     )
     traffic_limit_gb = int(traffic_limit_bytes_effective / GB) if traffic_limit_bytes_effective else 0
-    
+
     new_expiry_time = (
         current_expiry
         if current_expiry > datetime.utcnow().timestamp() * 1000
         else datetime.utcnow().timestamp() * 1000
     ) + duration_days * 24 * 60 * 60 * 1000
-    
+
     logger.info(
         f"Продление подписки {email} на {duration_days} дней для пользователя {tg_id}. "
         f"Баланс: {balance}, списываем: {renewal_cost}"
     )
-    
+
     key_subgroup = current_tariff.get("subgroup_title")
-    
+
     await renew_key_in_cluster(
         cluster_id=server_id,
         email=email,
@@ -386,13 +378,13 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
         old_subgroup=key_subgroup,
         plan=current_tariff["id"],
     )
-    
+
     if ctx.bulk_updates is not None:
         if tg_id in ctx.bulk_updates["balance_changes"]:
             ctx.bulk_updates["balance_changes"][tg_id] -= renewal_cost
         else:
             ctx.bulk_updates["balance_changes"][tg_id] = -renewal_cost
-        
+
         ctx.bulk_updates["key_expiry_updates"].append((client_id, int(new_expiry_time)))
         ctx.bulk_updates["key_tariff_updates"].append((client_id, current_tariff["id"]))
         ctx.bulk_updates["notifications_to_add"].append((tg_id, renew_notification_id))
@@ -401,7 +393,7 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
         await update_key_expiry(ctx.session, client_id, int(new_expiry_time))
         await update_key_tariff(ctx.session, client_id, current_tariff["id"])
         await add_notification(ctx.session, tg_id, renew_notification_id)
-    
+
     return True, current_tariff, int(new_expiry_time)
 
 
@@ -418,47 +410,47 @@ async def notify_expiring_keys(
         logger.info(f"Начало проверки подписок, истекающих через {min_hours}-{max_hours} часов.")
     else:
         logger.info(f"Начало проверки подписок, истекающих через {max_hours} часов.")
-    
+
     min_threshold = int((datetime.now(moscow_tz) + timedelta(hours=min_hours)).timestamp() * 1000)
     max_threshold = int((datetime.now(moscow_tz) + timedelta(hours=max_hours)).timestamp() * 1000)
     expiring_keys = [key for key in keys if key.expiry_time and min_threshold < key.expiry_time <= max_threshold]
-    
+
     if min_hours > 0:
         logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через {min_hours}-{max_hours} часов.")
     else:
         logger.info(f"Найдено {len(expiring_keys)} подписок, истекающих через {max_hours} часов.")
-    
+
     tg_ids = [key.tg_id for key in expiring_keys]
     emails = [key.email or "" for key in expiring_keys]
     allowed = await check_notifications_bulk(ctx.session, notify_type, max_hours, tg_ids=tg_ids, emails=emails)
     allowed_set = {(user["tg_id"], user["email"]) for user in allowed}
-    
+
     messages = []
-    
+
     for key in expiring_keys:
         tg_id = key.tg_id
         email = key.email or ""
-        
+
         if (tg_id, email) not in allowed_set:
             continue
-        
+
         notification_id = f"{email}_{notify_type}"
-        
+
         can_notify = await check_notification_time(ctx.session, tg_id, notification_id, hours=max_hours)
         if not can_notify:
             continue
-        
+
         if notify_renew_enabled:
             try:
                 renewed, tariff, new_expiry = await try_auto_renew(ctx, key)
-                
+
                 if renewed and tariff and new_expiry:
                     await send_renewed_notification(ctx, key, tariff, new_expiry)
                     await add_notification(ctx.session, tg_id, notification_id)
                 else:
                     await send_cannot_renew(ctx, key, photo)
                     await add_notification(ctx.session, tg_id, notification_id)
-                    
+
             except Exception as error:
                 logger.error(f"Ошибка авто-продления/уведомления для пользователя {tg_id}: {error}")
         else:
@@ -479,7 +471,7 @@ async def notify_expiring_keys(
                 "notification_id": notification_id,
                 "email": email,
             })
-    
+
     if messages:
         results = await send_messages_with_limit(ctx.bot, messages, session=ctx.session)
         sent_count = 0
@@ -487,41 +479,43 @@ async def notify_expiring_keys(
             await add_notification(ctx.session, msg["tg_id"], msg["notification_id"])
             if result:
                 sent_count += 1
-                logger.info(f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {msg['tg_id']}.")
+                logger.info(
+                    f"Отправлено уведомление об истекающей подписке {msg['email']} пользователю {msg['tg_id']}."
+                )
         logger.info(f"Отправлено {sent_count} уведомлений типа {notify_type}.")
-    
+
     logger.info(f"Обработка уведомлений {notify_type} завершена.")
     await asyncio.sleep(1)
 
 
 async def handle_expired_keys(ctx: NotificationContext, keys: list):
     logger.info("Начало обработки истекших ключей.")
-    
+
     expired_keys = [key for key in keys if key.expiry_time and key.expiry_time < ctx.current_time]
     logger.info(f"Найдено {len(expired_keys)} истекших ключей.")
-    
+
     tg_ids = [key.tg_id for key in expired_keys]
     emails = [key.email or "" for key in expired_keys]
     users = await check_notifications_bulk(ctx.session, "key_expired", 0, tg_ids=tg_ids, emails=emails)
     users_set = {(user["tg_id"], user["email"]) for user in users}
-    
+
     notify_renew_expired_enabled = bool(NOTIFICATIONS_CONFIG.get("RENEW_EXPIRED_ENABLED", NOTIFY_RENEW_EXPIRED))
     notify_delete_key_enabled = bool(NOTIFICATIONS_CONFIG.get("DELETE_KEY_ENABLED", NOTIFY_DELETE_KEY))
     delete_key_delay_minutes = int(NOTIFICATIONS_CONFIG.get("DELETE_KEY_DELAY_MINUTES", NOTIFY_DELETE_DELAY))
-    
+
     for key in expired_keys:
         tg_id = key.tg_id
         email = key.email or ""
         client_id = key.client_id
         server_id = key.server_id
         notification_id = f"{email}_key_expired"
-        
+
         last_notification_time = await get_last_notification_time(ctx.session, tg_id, notification_id)
-        
+
         if notify_renew_expired_enabled:
             try:
                 renewed, tariff, new_expiry = await try_auto_renew(ctx, key)
-                
+
                 if renewed and tariff and new_expiry:
                     await send_renewed_notification(ctx, key, tariff, new_expiry)
                     if ctx.bulk_updates:
@@ -529,36 +523,36 @@ async def handle_expired_keys(ctx: NotificationContext, keys: list):
                     else:
                         await delete_notification(ctx.session, tg_id, notification_id)
                     continue
-                    
+
             except Exception as error:
                 logger.error(f"Ошибка авто-продления для пользователя {tg_id}: {error}")
                 continue
-        
+
         if notify_delete_key_enabled:
             should_delete = False
-            
+
             if delete_key_delay_minutes == 0:
                 should_delete = True
             elif last_notification_time is not None:
                 minutes_passed = (ctx.current_time - last_notification_time) / (1000 * 60)
                 should_delete = minutes_passed >= delete_key_delay_minutes
                 logger.info(f"Прошло минут={minutes_passed:.2f} DELETE_KEY_DELAY_MINUTES={delete_key_delay_minutes}")
-            
+
             if should_delete:
                 try:
                     await delete_key_from_cluster(server_id, email, client_id, ctx.session)
                     await delete_key(ctx.session, client_id)
                     logger.info(f"🗑 Ключ {client_id} для пользователя {tg_id} успешно удалён.")
-                    
+
                     await send_deleted_notification(ctx, key)
                 except Exception as error:
                     logger.error(f"Ошибка удаления ключа {client_id} для пользователя {tg_id}: {error}")
                 continue
-        
+
         if last_notification_time is None and (tg_id, email) in users_set:
             await send_expired_notification(ctx, key, delete_key_delay_minutes)
             await add_notification(ctx.session, tg_id, notification_id)
-    
+
     logger.info("Обработка истекших ключей завершена.")
     await asyncio.sleep(1)
 
@@ -566,20 +560,20 @@ async def handle_expired_keys(ctx: NotificationContext, keys: list):
 async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
     while True:
         notification_interval = int(NOTIFICATIONS_CONFIG.get("BASE_NOTIFICATION_MINUTE", NOTIFICATION_TIME))
-        
+
         if notification_lock.locked():
             logger.warning("Уведомления уже выполняются. Пропуск...")
             await asyncio.sleep(notification_interval)
             continue
-        
+
         async with notification_lock:
             try:
                 async with sessionmaker() as session:
                     logger.info("Запуск обработки уведомлений")
-                    
+
                     current_time = int(datetime.now(moscow_tz).timestamp() * 1000)
                     start_time = datetime.now()
-                    
+
                     try:
                         preload_data = await preload_notification_data(session)
                         keys_data = preload_data["keys_data"]
@@ -589,7 +583,7 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                             f"Предзагружено данных: {len(keys)} ключей, "
                             f"{len(preload_data['tariffs_cache'])} тарифов за {preload_time:.2f}s"
                         )
-                        
+
                         bulk_updates = {
                             "balance_changes": {},
                             "key_expiry_updates": [],
@@ -597,7 +591,7 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                             "notifications_to_add": [],
                             "notifications_to_delete": [],
                         }
-                        
+
                     except Exception as error:
                         logger.error(f"Ошибка при предварительной загрузке данных: {error}")
                         try:
@@ -612,7 +606,7 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                             keys = []
                             preload_data = None
                             bulk_updates = None
-                    
+
                     ctx = NotificationContext(
                         bot=bot,
                         session=session,
@@ -620,85 +614,93 @@ async def periodic_notifications(bot: Bot, *, sessionmaker: async_sessionmaker):
                         preload_data=preload_data,
                         bulk_updates=bulk_updates,
                     )
-                    
+
                     trial_time_disable = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
                     if not trial_time_disable:
                         try:
                             await notify_inactive_trial_users(bot, session)
                         except Exception as error:
                             logger.error(f"Ошибка в notify_inactive_trial_users: {error}")
-                    
+
                     notify_24_enabled = bool(NOTIFICATIONS_CONFIG.get("EXPIRY_24H_ENABLED", NOTIFY_24H_ENABLED))
                     notify_24_hours = int(NOTIFICATIONS_CONFIG.get("EXPIRY_24H_BEFORE_HOURS", NOTIFY_24H_HOURS))
                     notify_10_enabled = bool(NOTIFICATIONS_CONFIG.get("EXPIRY_10H_ENABLED", NOTIFY_10H_ENABLED))
                     notify_10_hours = int(NOTIFICATIONS_CONFIG.get("EXPIRY_10H_BEFORE_HOURS", NOTIFY_10H_HOURS))
                     notify_renew_enabled = bool(NOTIFICATIONS_CONFIG.get("RENEW_ENABLED", NOTIFY_RENEW))
-                    inactive_traffic_enabled = bool(NOTIFICATIONS_CONFIG.get("INACTIVE_TRAFFIC_ENABLED", NOTIFY_INACTIVE_TRAFFIC))
+                    inactive_traffic_enabled = bool(
+                        NOTIFICATIONS_CONFIG.get("INACTIVE_TRAFFIC_ENABLED", NOTIFY_INACTIVE_TRAFFIC)
+                    )
                     notify_hot_leads_enabled = bool(NOTIFICATIONS_CONFIG.get("HOT_LEADS_ENABLED", NOTIFY_HOT_LEADS))
-                    
+
                     if notify_24_enabled:
                         try:
                             await notify_expiring_keys(
-                                ctx, keys, 
+                                ctx,
+                                keys,
                                 min_hours=notify_10_hours if notify_10_enabled else 0,
                                 max_hours=notify_24_hours,
-                                notify_type="key_24h", 
-                                photo="notify_24h.jpg", 
-                                notify_renew_enabled=notify_renew_enabled
+                                notify_type="key_24h",
+                                photo="notify_24h.jpg",
+                                notify_renew_enabled=notify_renew_enabled,
                             )
                         except Exception as error:
                             logger.error(f"Ошибка в notify_expiring_keys (24h): {error}")
-                    
+
                     if notify_10_enabled:
                         try:
                             await notify_expiring_keys(
-                                ctx, keys, 
+                                ctx,
+                                keys,
                                 min_hours=0,
                                 max_hours=notify_10_hours,
-                                notify_type="key_10h", 
-                                photo="notify_10h.jpg", 
-                                notify_renew_enabled=notify_renew_enabled
+                                notify_type="key_10h",
+                                photo="notify_10h.jpg",
+                                notify_renew_enabled=notify_renew_enabled,
                             )
                         except Exception as error:
                             logger.error(f"Ошибка в notify_expiring_keys (10h): {error}")
-                    
+
                     try:
                         await handle_expired_keys(ctx, keys)
                     except Exception as error:
                         logger.error(f"Ошибка в handle_expired_keys: {error}")
-                    
+
                     if inactive_traffic_enabled:
                         try:
                             await notify_users_no_traffic(bot, session, current_time, keys)
                         except Exception as error:
                             logger.error(f"Ошибка в notify_users_no_traffic: {error}")
-                    
+
                     try:
                         await run_hooks("periodic_notifications", bot=bot, session=session, keys=keys)
                     except Exception as error:
                         logger.error(f"Ошибка в хуках periodic_notifications: {error}")
-                    
+
                     if notify_hot_leads_enabled:
                         try:
                             await notify_hot_leads(bot, session)
                         except Exception as error:
                             logger.error(f"Ошибка в notify_hot_leads: {error}")
-                    
+
                     if bulk_updates:
                         bulk_start = datetime.now()
                         await execute_bulk_updates(session, bulk_updates)
                         bulk_time = (datetime.now() - bulk_start).total_seconds()
                         total_renewals = len(bulk_updates["balance_changes"])
-                        total_key_updates = len(bulk_updates["key_expiry_updates"]) + len(bulk_updates["key_tariff_updates"])
-                        total_notification_updates = len(bulk_updates["notifications_to_add"]) + len(bulk_updates["notifications_to_delete"])
+                        total_key_updates = len(bulk_updates["key_expiry_updates"]) + len(
+                            bulk_updates["key_tariff_updates"]
+                        )
+                        total_notification_updates = len(bulk_updates["notifications_to_add"]) + len(
+                            bulk_updates["notifications_to_delete"]
+                        )
                         logger.info(
                             f"Bulk-операции выполнены за {bulk_time:.2f}s. Обработано: {total_renewals} продлений, {total_key_updates} ключей, {total_notification_updates} уведомлений"
                         )
-                    
+
                     total_time = (datetime.now() - start_time).total_seconds()
                     logger.info(f"Уведомления завершены за {total_time:.2f}s")
-                    
+
             except Exception as error:
                 logger.error(f"Ошибка в periodic_notifications: {error}")
-        
+
         await asyncio.sleep(notification_interval)

@@ -18,7 +18,7 @@ def build_currency_choice_kb(
     kb.row(InlineKeyboardButton(text=RUB_CURRENCY, callback_data=f"{prefix}|RUB"))
     kb.row(InlineKeyboardButton(text=USD_CURRENCY, callback_data=f"{prefix}|USD"))
     trib = (TRIBUTE_LINK or "").strip()
-    trib_enabled = (bool(trib) if show_tribute is None else bool(show_tribute) and bool(trib))
+    trib_enabled = bool(trib) if show_tribute is None else bool(show_tribute) and bool(trib)
 
     if show_stars:
         row = [InlineKeyboardButton(text=STARS, callback_data=f"{prefix}|STARS")]

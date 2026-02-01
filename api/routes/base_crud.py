@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,11 +9,21 @@ from api.depends import get_session, verify_admin_token
 from database.models import Admin
 
 
-def _cast_identifier_type(field: InstrumentedAttribute, value: int | str):
+def cast_identifier_type(field: InstrumentedAttribute, value: int | str):
     column_type = type(field.property.columns[0].type).__name__
     if column_type in ("Integer", "BigInteger"):
         return int(value)
     return value
+
+
+def normalize_outgoing_object(obj: object) -> None:
+    if hasattr(obj, "vless") and getattr(obj, "vless") is None:
+        setattr(obj, "vless", False)
+
+
+def to_schema(schema_response: type, obj: object):
+    normalize_outgoing_object(obj)
+    return schema_response.model_validate(obj, from_attributes=True)
 
 
 def generate_crud_router(
@@ -35,7 +47,10 @@ def generate_crud_router(
             session: AsyncSession = Depends(get_session),
         ):
             result = await session.execute(select(model))
-            return result.scalars().all()
+            items = result.scalars().all()
+            for item in items:
+                normalize_outgoing_object(item)
+            return [schema_response.model_validate(item, from_attributes=True) for item in items]
 
     if "get_by_email" in enabled_methods and extra_get_by_email:
 
@@ -49,7 +64,7 @@ def generate_crud_router(
             obj = result.scalar_one_or_none()
             if not obj:
                 raise HTTPException(status_code=404, detail="Not found by email")
-            return obj
+            return to_schema(schema_response, obj)
 
     if "get_one" in enabled_methods:
 
@@ -60,12 +75,12 @@ def generate_crud_router(
             session: AsyncSession = Depends(get_session),
         ):
             field = getattr(model, identifier_field)
-            casted = _cast_identifier_type(field, value)
+            casted = cast_identifier_type(field, value)
             result = await session.execute(select(model).where(field == casted))
             obj = result.scalar_one_or_none()
             if not obj:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
-            return obj
+            return to_schema(schema_response, obj)
 
     if "get_all_by_field" in enabled_methods:
 
@@ -76,52 +91,56 @@ def generate_crud_router(
             session: AsyncSession = Depends(get_session),
         ):
             field = getattr(model, identifier_field)
-            casted = _cast_identifier_type(field, value)
+            casted = cast_identifier_type(field, value)
             result = await session.execute(select(model).where(field == casted))
             objs = result.scalars().all()
             if not objs:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
-            return objs
+            for obj in objs:
+                normalize_outgoing_object(obj)
+            return [schema_response.model_validate(obj, from_attributes=True) for obj in objs]
 
     if "create" in enabled_methods:
 
         @router.post("/", response_model=schema_response)
         async def create(
-            payload: schema_create,  # type: ignore
+            payload: Any,
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
-            data = payload.dict(exclude_unset=True)
+            validated = schema_create.model_validate(payload)
+            data = validated.model_dump(exclude_unset=True)
             if "days" in data and data["days"] == 0:
                 data["days"] = None
             obj = model(**data)
             session.add(obj)
             await session.commit()
             await session.refresh(obj)
-            return obj
+            return to_schema(schema_response, obj)
 
     if "update" in enabled_methods:
 
         @router.patch(f"/{{{parameter_name}}}", response_model=schema_response)
         async def update(
-            payload: schema_update,  # type: ignore
+            payload: Any,
             value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
             field = getattr(model, identifier_field)
-            casted = _cast_identifier_type(field, value)
+            casted = cast_identifier_type(field, value)
             result = await session.execute(select(model).where(field == casted))
             obj = result.scalar_one_or_none()
             if not obj:
                 raise HTTPException(status_code=404, detail=f"{model.__name__} not found")
 
-            for k, v in payload.dict(exclude_unset=True).items():
+            validated = schema_update.model_validate(payload)
+            for k, v in validated.model_dump(exclude_unset=True).items():
                 setattr(obj, k, v)
 
             await session.commit()
             await session.refresh(obj)
-            return obj
+            return to_schema(schema_response, obj)
 
     if "delete" in enabled_methods:
 
@@ -132,7 +151,7 @@ def generate_crud_router(
             session: AsyncSession = Depends(get_session),
         ):
             field = getattr(model, identifier_field)
-            casted = _cast_identifier_type(field, value)
+            casted = cast_identifier_type(field, value)
             result = await session.execute(select(model).where(field == casted))
             obj = result.scalar_one_or_none()
             if not obj:

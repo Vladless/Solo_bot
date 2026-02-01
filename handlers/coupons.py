@@ -107,6 +107,15 @@ async def activate_coupon(
         await state.clear()
         return
 
+    from database.models import User
+
+    if getattr(coupon, "new_users_only", False):
+        exists = await session.scalar(select(User.tg_id).where(User.tg_id == user_id))
+        if exists is not None:
+            await message.answer("❌ Этот купон доступен только для новых пользователей.")
+            await state.clear()
+            return
+
     if isinstance(user, dict):
         await add_user(session=session, **user)
     else:
@@ -184,7 +193,7 @@ async def handle_key_extension(
     session: AsyncSession,
     admin: bool = False,
 ):
-    from database.models import Coupon, Key
+    from database.models import Coupon, Key, User
 
     parts = callback_query.data.split("|")
     client_id = parts[1]
@@ -204,6 +213,13 @@ async def handle_key_extension(
             await callback_query.message.edit_text("❌ Вы уже активировали этот купон.")
             await state.clear()
             return
+
+        if getattr(coupon, "new_users_only", False):
+            exists = await session.scalar(select(User.tg_id).where(User.tg_id == tg_id))
+            if exists is not None:
+                await callback_query.message.edit_text("❌ Этот купон доступен только для новых пользователей.")
+                await state.clear()
+                return
 
         result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         key = result.scalar_one_or_none()

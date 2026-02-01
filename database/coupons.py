@@ -8,7 +8,14 @@ from database.models import Coupon, CouponUsage
 from logger import logger
 
 
-async def create_coupon(session: AsyncSession, code: str, amount: int, usage_limit: int, days: int = None) -> bool:
+async def create_coupon(
+    session: AsyncSession,
+    code: str,
+    amount: int,
+    usage_limit: int,
+    days: int = None,
+    new_users_only: bool = False,
+) -> bool:
     try:
         exists = await session.scalar(select(Coupon.id).where(Coupon.code == code))
         if exists:
@@ -23,6 +30,7 @@ async def create_coupon(session: AsyncSession, code: str, amount: int, usage_lim
                 usage_count=0,
                 is_used=False,
                 days=days,
+                new_users_only=new_users_only,
             )
         )
         await session.commit()

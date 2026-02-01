@@ -481,9 +481,7 @@ def build_user_gifts_kb(tg_id: int, gifts: list, page: int = 0) -> InlineKeyboar
                     callback_data=f"user_gift_page|{tg_id}|{page - 1}",
                 )
             )
-        nav_buttons.append(
-            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop")
-        )
+        nav_buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
         if page < total_pages - 1:
             nav_buttons.append(
                 InlineKeyboardButton(

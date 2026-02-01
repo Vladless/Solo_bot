@@ -225,9 +225,7 @@ async def mark_trial_extended(tg_id: int, session: AsyncSession):
 async def get_user_snapshot(session: AsyncSession, tg_id: int) -> tuple[int, int] | None:
     keys_count_sq = select(func.count(Key.client_id)).where(Key.tg_id == tg_id).scalar_subquery()
 
-    res = await session.execute(
-        select(func.coalesce(User.trial, 0), keys_count_sq).where(User.tg_id == tg_id)
-    )
+    res = await session.execute(select(func.coalesce(User.trial, 0), keys_count_sq).where(User.tg_id == tg_id))
     row = res.first()
     if row is None:
         return None

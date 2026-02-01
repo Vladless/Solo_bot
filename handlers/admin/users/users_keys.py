@@ -110,7 +110,12 @@ async def handle_key_edit(
     if key_obj.tariff_id:
         result = await session.execute(
             select(
-                Tariff.name, Tariff.subgroup_title, Tariff.group_code, Tariff.device_limit, Tariff.traffic_limit, Tariff.configurable
+                Tariff.name,
+                Tariff.subgroup_title,
+                Tariff.group_code,
+                Tariff.device_limit,
+                Tariff.traffic_limit,
+                Tariff.configurable,
             ).where(Tariff.id == key_obj.tariff_id)
         )
         row = result.first()

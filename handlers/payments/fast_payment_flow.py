@@ -119,18 +119,10 @@ async def try_fast_payment_flow(
 
     tribute_cfg = providers_map.get("TRIBUTE") or {}
     tribute_link = (TRIBUTE_LINK or "").strip()
-    tribute_enabled = (
-        "TRIBUTE" in configured_set
-        and tribute_cfg.get("enabled", True)
-        and bool(tribute_link)
-    )
+    tribute_enabled = "TRIBUTE" in configured_set and tribute_cfg.get("enabled", True) and bool(tribute_link)
 
     stars_cfg = providers_map.get("STARS") or {}
-    stars_enabled_for_fast = (
-        "STARS" in configured_set
-        and stars_cfg.get("fast")
-        and stars_cfg.get("enabled", True)
-    )
+    stars_enabled_for_fast = "STARS" in configured_set and stars_cfg.get("fast") and stars_cfg.get("enabled", True)
 
     if multicurrency_mode and not one_screen:
         show_stars = stars_enabled_for_fast

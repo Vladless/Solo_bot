@@ -78,7 +78,9 @@ async def renew_on_remnawave(
     if old_device_limit is not None and hwid_device_limit < old_device_limit:
         try:
             await remna.clear_all_hwid_devices(client_id)
-            logger.info(f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})")
+            logger.info(
+                f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})"
+            )
         except Exception as e:
             logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
 
@@ -298,9 +300,7 @@ async def renew_key_in_cluster(
             cluster_scope = [single_server]
         else:
             if plan is not None:
-                filtered = await filter_cluster_by_tariff(
-                    session, cluster, plan, cluster_id
-                )
+                filtered = await filter_cluster_by_tariff(session, cluster, plan, cluster_id)
                 if filtered is not cluster:
                     cluster_scope = filtered
                 elif target_subgroup:
@@ -310,9 +310,7 @@ async def renew_key_in_cluster(
                 else:
                     cluster_scope = cluster
             elif target_subgroup:
-                target = await filter_cluster_by_subgroup(
-                    session, cluster, target_subgroup, cluster_id, tariff_id=plan
-                )
+                target = await filter_cluster_by_subgroup(session, cluster, target_subgroup, cluster_id, tariff_id=plan)
                 cluster_scope = target if target else cluster
             else:
                 cluster_scope = cluster

@@ -788,7 +788,9 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
 
             if has_device_option and selected_devices is not None:
                 pack_devices_val = int(selected_devices)
-                if pack_devices_val <= 0 or (new_device_limit_effective is not None and new_device_limit_effective <= 0):
+                if pack_devices_val <= 0 or (
+                    new_device_limit_effective is not None and new_device_limit_effective <= 0
+                ):
                     new_device_limit_effective = 0
                 else:
                     if new_device_limit_effective is None:

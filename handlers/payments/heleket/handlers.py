@@ -31,9 +31,7 @@ async def handle_pay_heleket_crypto(
     session: AsyncSession,
 ):
     """Обработчик оплаты через Heleket криптовалютой."""
-    await process_callback_pay_heleket(
-        callback_query, state, session, method_name="crypto"
-    )
+    await process_callback_pay_heleket(callback_query, state, session, method_name="crypto")
 
 
 async def handle_custom_amount_input_heleket(
@@ -85,34 +83,23 @@ async def handle_custom_amount_input_heleket(
     method = enabled_methods[0]
 
     try:
-        payment_url = await generate_heleket_payment_link(
-            amount, tg_id, method
-        )
+        payment_url = await generate_heleket_payment_link(amount, tg_id, method)
 
         if not payment_url or payment_url == "https://heleket.com/":
             await edit_or_send_message(
                 target_message=message,
-                text=(
-                    "❌ Произошла ошибка при создании платежа. "
-                    "Попробуйте позже или выберите другой способ оплаты."
-                ),
+                text=("❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты."),
             )
             return
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=pay_button_text, url=payment_url)],
-                [
-                    InlineKeyboardButton(
-                        text=main_menu_text, callback_data="profile"
-                    )
-                ],
+                [InlineKeyboardButton(text=main_menu_text, callback_data="profile")],
             ]
         )
 
-        result = await session.execute(
-            select(User.language_code).where(User.tg_id == tg_id)
-        )
+        result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
         language_code = result.scalar_one_or_none()
         amount_text = await format_for_user(
             session,
@@ -123,17 +110,11 @@ async def handle_custom_amount_input_heleket(
         )
         text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
 
-        await edit_or_send_message(
-            target_message=message, text=text_out, reply_markup=markup
-        )
+        await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
     except Exception as e:
-        logger.error(
-            f"Ошибка при создании платежа Heleket "
-            f"для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при создании платежа Heleket для пользователя {tg_id}: {e}")
         await edit_or_send_message(
             target_message=message,
             text="Произошла ошибка при создании платежа. Попробуйте позже.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
         )
-

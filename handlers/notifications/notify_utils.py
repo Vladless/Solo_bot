@@ -152,6 +152,7 @@ class FastNotificationSender:
         try:
             from sqlalchemy.dialects.postgresql import insert
             from database.models import BlockedUser
+
             values = [{"tg_id": tg_id} for tg_id in self.blocked_users]
             stmt = insert(BlockedUser).values(values).on_conflict_do_nothing(index_elements=[BlockedUser.tg_id])
             await self.session.execute(stmt)

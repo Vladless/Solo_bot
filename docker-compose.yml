@@ -1,0 +1,10 @@
+services:
+  bot:
+    container_name: solobot
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /etc/machine-id:/etc/machine-id:ro
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
+

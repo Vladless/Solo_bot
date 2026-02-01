@@ -244,9 +244,7 @@ async def migrate_between_subgroups(
     external_squad_uuid: str | None = None,
     tariff_id: int | None = None,
 ) -> tuple[str, str | None]:
-    target = await filter_cluster_by_subgroup(
-        session, cluster_all, target_subgroup, cluster_id, tariff_id=tariff_id
-    )
+    target = await filter_cluster_by_subgroup(session, cluster_all, target_subgroup, cluster_id, tariff_id=tariff_id)
     xui_tgt, remna_tgt = split_by_panel(target)
 
     old_set = await filter_cluster_by_subgroup(session, cluster_all, old_subgroup, cluster_id)

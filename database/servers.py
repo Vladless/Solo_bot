@@ -278,9 +278,9 @@ async def resolve_device_limit_from_group(session: AsyncSession, server_id: str)
 
 
 async def filter_cluster_by_subgroup(
-    session: AsyncSession, 
-    cluster: list, 
-    target_subgroup: str, 
+    session: AsyncSession,
+    cluster: list,
+    target_subgroup: str,
     cluster_id: str,
     tariff_id: int | None = None,
 ) -> list:
@@ -320,7 +320,7 @@ async def filter_cluster_by_subgroup(
     check_values = [target_subgroup]
     if tariff_id:
         check_values.append(str(tariff_id))
-    
+
     total_bindings = await session.scalar(
         select(func.count()).select_from(ServerSubgroup).where(ServerSubgroup.subgroup_title.in_(check_values))
     )
@@ -345,9 +345,7 @@ async def filter_cluster_by_subgroup(
     return cluster
 
 
-async def filter_cluster_by_tariff(
-    session: AsyncSession, cluster: list, tariff_id: int, cluster_id: str
-) -> list:
+async def filter_cluster_by_tariff(session: AsyncSession, cluster: list, tariff_id: int, cluster_id: str) -> list:
     names = [s.get("server_name") for s in cluster if s.get("server_name")]
     if not names:
         return []
@@ -394,10 +392,9 @@ async def filter_cluster_by_tariff(
 async def has_legacy_subgroup_bindings(session: AsyncSession, server_ids: list[int]) -> bool:
     if not server_ids:
         return False
-    
+
     result = await session.execute(
-        select(ServerSubgroup.subgroup_title)
-        .where(ServerSubgroup.server_id.in_(server_ids))
+        select(ServerSubgroup.subgroup_title).where(ServerSubgroup.server_id.in_(server_ids))
     )
     for (title,) in result.all():
         if title and not title.isdigit():

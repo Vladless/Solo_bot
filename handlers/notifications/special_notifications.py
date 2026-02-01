@@ -49,7 +49,7 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
 
     users = await check_notifications_bulk(session, "inactive_trial", inactive_hours)
     logger.info(f"Найдено {len(users)} неактивных пользователей для уведомления.")
-    
+
     if not users:
         logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
         return
@@ -106,22 +106,20 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
             source_file="special_notifications",
             messages_per_second=25,
         )
-        
+
         sent_tg_ids = []
         for msg, result in zip(messages, results, strict=False):
             if result:
                 sent_tg_ids.append(msg["tg_id"])
-        
+
         if sent_tg_ids:
             for tg_id in sent_tg_ids:
                 await add_notification(session, tg_id, "inactive_trial")
             logger.info(f"Отправлено {len(sent_tg_ids)} уведомлений неактивным пользователям.")
-        
+
         extend_ids = [tg_id for tg_id in users_to_extend if tg_id in sent_tg_ids]
         if extend_ids:
-            await session.execute(
-                update(User).where(User.tg_id.in_(extend_ids)).values(trial=-1)
-            )
+            await session.execute(update(User).where(User.tg_id.in_(extend_ids)).values(trial=-1))
             await session.commit()
             logger.info(f"Bulk: отмечено {len(extend_ids)} пользователей с расширенным триалом")
 
@@ -139,12 +137,12 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
     trial_tariff_ids = {t["id"] for t in trial_tariffs} if trial_tariffs else set()
-    
+
     if not trial_tariff_ids:
         return
 
     remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
-    
+
     messages = []
     keys_to_mark_notified = []
 
@@ -232,9 +230,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
 
     if keys_to_mark_notified:
         try:
-            await session.execute(
-                update(Key).where(Key.client_id.in_(keys_to_mark_notified)).values(notified=True)
-            )
+            await session.execute(update(Key).where(Key.client_id.in_(keys_to_mark_notified)).values(notified=True))
             await session.commit()
             logger.info(f"Bulk: отмечено {len(keys_to_mark_notified)} ключей как notified")
         except Exception as error:

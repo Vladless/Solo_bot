@@ -29,10 +29,7 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
     gifts = await get_user_gifts(session, tg_id)
 
     if not gifts:
-        text = (
-            f"🎁 <b>Подарки пользователя</b> <code>{tg_id}</code>\n\n"
-            f"У пользователя нет созданных подарков."
-        )
+        text = f"🎁 <b>Подарки пользователя</b> <code>{tg_id}</code>\n\nУ пользователя нет созданных подарков."
         await message.edit_text(
             text=text,
             reply_markup=build_user_gifts_kb(tg_id, [], page),
@@ -40,6 +37,7 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
         return
 
     from .keyboard import GIFTS_PER_PAGE
+
     start_idx = page * GIFTS_PER_PAGE
     end_idx = start_idx + GIFTS_PER_PAGE
     page_gifts = gifts[start_idx:end_idx]
@@ -61,11 +59,7 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
 
         created_str = gift.created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
 
-        lines.append(
-            f"\n<b>{i}.🎁 </b> {gift.selected_months} мес.\n"
-            f"   📅 Создан: {created_str}\n"
-            f"   {status}"
-        )
+        lines.append(f"\n<b>{i}.🎁 </b> {gift.selected_months} мес.\n   📅 Создан: {created_str}\n   {status}")
 
     lines.append("\n\n<i>Нажмите кнопку для удаления:</i>")
 

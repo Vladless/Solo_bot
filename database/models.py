@@ -183,6 +183,7 @@ class Coupon(DictLikeMixin, Base):
     usage_count = Column(Integer, default=0)
     is_used = Column(Boolean, default=False)
     days = Column(Integer, nullable=True)
+    new_users_only = Column(Boolean, default=False, nullable=False)
 
 
 class CouponUsage(DictLikeMixin, Base):

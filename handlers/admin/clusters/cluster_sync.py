@@ -293,7 +293,7 @@ async def handle_sync_server(
                         has_new_binding = tid and tid in (server_info.get("tariff_ids") or [])
                         has_old_binding = subgroup and subgroup in (server_info.get("tariff_subgroups") or [])
                         has_any_binding = bool(server_info.get("tariff_ids") or server_info.get("tariff_subgroups"))
-                        
+
                         if has_any_binding and subgroup and not has_new_binding and not has_old_binding:
                             continue
 
@@ -565,7 +565,8 @@ async def handle_sync_cluster(
                             if subgroup_title or (tariff and tariff.get("id")):
                                 tid = tariff.get("id") if tariff else None
                                 filtered_servers = [
-                                    s for s in cluster_servers 
+                                    s
+                                    for s in cluster_servers
                                     if (tid and tid in (s.get("tariff_ids") or []))
                                     or (subgroup_title and subgroup_title in (s.get("tariff_subgroups") or []))
                                 ]

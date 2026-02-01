@@ -342,7 +342,9 @@ async def process_user_search(
 ) -> None:
     await state.clear()
 
-    stmt_user = select(User.username, User.balance, User.created_at, User.updated_at, User.trial).where(User.tg_id == tg_id)
+    stmt_user = select(User.username, User.balance, User.created_at, User.updated_at, User.trial).where(
+        User.tg_id == tg_id
+    )
     result_user = await session.execute(stmt_user)
     user_data = result_user.first()
 

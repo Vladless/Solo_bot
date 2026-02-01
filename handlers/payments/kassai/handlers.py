@@ -31,9 +31,7 @@ async def handle_pay_kassai_cards(
     session: AsyncSession,
 ):
     """Обработчик оплаты через KassaI картами."""
-    await process_callback_pay_kassai(
-        callback_query, state, session, method_name="cards"
-    )
+    await process_callback_pay_kassai(callback_query, state, session, method_name="cards")
 
 
 @router.callback_query(F.data == "pay_kassai_sbp")
@@ -43,9 +41,7 @@ async def handle_pay_kassai_sbp(
     session: AsyncSession,
 ):
     """Обработчик оплаты через KassaI СБП."""
-    await process_callback_pay_kassai(
-        callback_query, state, session, method_name="sbp"
-    )
+    await process_callback_pay_kassai(callback_query, state, session, method_name="sbp")
 
 
 async def _handle_custom_amount_input_kassai(
@@ -94,10 +90,7 @@ async def _handle_custom_amount_input_kassai(
 
     if amount < min_amount:
         method_label = method_labels.get(method_name, "")
-        error_msg = (
-            f"❌ Минимальная сумма для оплаты {method_label} — "
-            f"{min_amount}₽."
-        )
+        error_msg = f"❌ Минимальная сумма для оплаты {method_label} — {min_amount}₽."
         await edit_or_send_message(
             target_message=message,
             text=error_msg,
@@ -114,34 +107,23 @@ async def _handle_custom_amount_input_kassai(
         return
 
     try:
-        payment_url = await generate_kassai_payment_link(
-            amount, tg_id, method
-        )
+        payment_url = await generate_kassai_payment_link(amount, tg_id, method)
 
         if not payment_url or payment_url == "https://fk.life/":
             await edit_or_send_message(
                 target_message=message,
-                text=(
-                    "❌ Произошла ошибка при создании платежа. "
-                    "Попробуйте позже или выберите другой способ оплаты."
-                ),
+                text=("❌ Произошла ошибка при создании платежа. Попробуйте позже или выберите другой способ оплаты."),
             )
             return
 
         markup = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=pay_button_text, url=payment_url)],
-                [
-                    InlineKeyboardButton(
-                        text=main_menu_text, callback_data="profile"
-                    )
-                ],
+                [InlineKeyboardButton(text=main_menu_text, callback_data="profile")],
             ]
         )
 
-        result = await session.execute(
-            select(User.language_code).where(User.tg_id == tg_id)
-        )
+        result = await session.execute(select(User.language_code).where(User.tg_id == tg_id))
         language_code = result.scalar_one_or_none()
         amount_text = await format_for_user(
             session,
@@ -152,15 +134,10 @@ async def _handle_custom_amount_input_kassai(
         )
         text_out = DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text)
 
-        await edit_or_send_message(
-            target_message=message, text=text_out, reply_markup=markup
-        )
+        await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
     except Exception as e:
         method_label = "Cards" if method_name == "cards" else "SBP"
-        logger.error(
-            f"Ошибка при создании платежа KassaAI {method_label} "
-            f"для пользователя {tg_id}: {e}"
-        )
+        logger.error(f"Ошибка при создании платежа KassaAI {method_label} для пользователя {tg_id}: {e}")
         await edit_or_send_message(
             target_message=message,
             text="Произошла ошибка при создании платежа. Попробуйте позже.",
@@ -175,9 +152,7 @@ async def handle_custom_amount_input_kassai_cards(
     main_menu_text: str = MAIN_MENU,
 ):
     """Функция быстрого потока для KassaI Cards."""
-    await _handle_custom_amount_input_kassai(
-        event, session, "cards", pay_button_text, main_menu_text
-    )
+    await _handle_custom_amount_input_kassai(event, session, "cards", pay_button_text, main_menu_text)
 
 
 async def handle_custom_amount_input_kassai_sbp(
@@ -187,7 +162,4 @@ async def handle_custom_amount_input_kassai_sbp(
     main_menu_text: str = MAIN_MENU,
 ):
     """Функция быстрого потока для KassaI SBP."""
-    await _handle_custom_amount_input_kassai(
-        event, session, "sbp", pay_button_text, main_menu_text
-    )
-
+    await _handle_custom_amount_input_kassai(event, session, "sbp", pay_button_text, main_menu_text)

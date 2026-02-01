@@ -149,16 +149,13 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
 
         servers = await get_servers(session=session)
         cluster_servers = servers.get(cluster_name, [])
-        
+
         if not cluster_servers:
             await message.answer("❌ Не найдены серверы в кластере.")
             await state.clear()
             return
 
-        is_full_remnawave = all(
-            str(s.get("panel_type", "")).lower() == "remnawave" 
-            for s in cluster_servers
-        )
+        is_full_remnawave = all(str(s.get("panel_type", "")).lower() == "remnawave" for s in cluster_servers)
 
         if is_full_remnawave:
             uuids = [key.client_id for key in keys if key.client_id]
@@ -175,6 +172,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 return
 
             from panels.remnawave import RemnawaveAPI
+
             remna = RemnawaveAPI(api_url)
 
             try:
