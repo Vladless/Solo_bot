@@ -134,7 +134,11 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
     builder = InlineKeyboardBuilder()
 
     page_size = 5
-    records = records or []
+    records = sorted(
+        records or [],
+        key=lambda r: r.created_at or 0,
+    )
+
     total = len(records)
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = max(0, min(page, total_pages - 1))
@@ -164,15 +168,20 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
             if getattr(record, "tariff_id", None):
                 try:
                     from handlers.tariffs.tariff_display import resolve_vless_enabled
-
                     is_vless = await resolve_vless_enabled(session, int(record.tariff_id))
                 except Exception:
                     is_vless = False
 
             icon = "📶" if is_vless else "🔑"
 
-            key_button = InlineKeyboardButton(text=f"{icon} {key_display}", callback_data=f"view_key|{email}")
-            rename_button = InlineKeyboardButton(text=ALIAS, callback_data=f"rename_key|{client_id}")
+            key_button = InlineKeyboardButton(
+                text=f"{icon} {key_display}",
+                callback_data=f"view_key|{email}",
+            )
+            rename_button = InlineKeyboardButton(
+                text=ALIAS,
+                callback_data=f"rename_key|{client_id}",
+            )
             builder.row(key_button, rename_button)
 
             response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
@@ -183,12 +192,27 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
             nav_row = []
 
             if page > 0:
-                nav_row.append(InlineKeyboardButton(text="⬅️ Пред.", callback_data=f"view_keys|{page - 1}"))
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text="⬅️ Пред.",
+                        callback_data=f"view_keys|{page - 1}",
+                    )
+                )
 
-            nav_row.append(InlineKeyboardButton(text=f"({page + 1}/{total_pages})", callback_data=" "))
+            nav_row.append(
+                InlineKeyboardButton(
+                    text=f"({page + 1}/{total_pages})",
+                    callback_data=" ",
+                )
+            )
 
             if page < total_pages - 1:
-                nav_row.append(InlineKeyboardButton(text="След. ➡️", callback_data=f"view_keys|{page + 1}"))
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text="След. ➡️",
+                        callback_data=f"view_keys|{page + 1}",
+                    )
+                )
 
             builder.row(*nav_row)
     else:
@@ -196,8 +220,7 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    inline_keyboard = builder.as_markup()
-    return inline_keyboard, response_message
+    return builder.as_markup(), response_message
 
 
 @router.callback_query(F.data.startswith("rename_key|"))
