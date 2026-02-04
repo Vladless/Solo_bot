@@ -168,6 +168,7 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
             if getattr(record, "tariff_id", None):
                 try:
                     from handlers.tariffs.tariff_display import resolve_vless_enabled
+
                     is_vless = await resolve_vless_enabled(session, int(record.tariff_id))
                 except Exception:
                     is_vless = False

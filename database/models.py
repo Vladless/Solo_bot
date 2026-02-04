@@ -16,7 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    text
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
@@ -185,6 +185,10 @@ class Coupon(DictLikeMixin, Base):
     is_used = Column(Boolean, default=False)
     days = Column(Integer, nullable=True)
     new_users_only = Column(Boolean, nullable=False, server_default=text("false"))
+
+    percent = Column(Integer, nullable=True)
+    max_discount_amount = Column(Integer, nullable=True)
+    min_order_amount = Column(Integer, nullable=True)
 
 
 class CouponUsage(DictLikeMixin, Base):

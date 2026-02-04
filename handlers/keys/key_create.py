@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
@@ -296,6 +297,9 @@ async def handle_key_creation(
             target_message=target_message,
             text=SELECT_TARIFF_PLAN_MSG + discount_message,
             reply_markup=builder.as_markup(),
+            media_path=os.path.join("img", "tariffs.jpg"),
+            disable_web_page_preview=False,
+            force_text=True,
         )
 
         await state.update_data(

@@ -1,4 +1,5 @@
 from datetime import datetime
+from aiogram.exceptions import TelegramBadRequest
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -464,16 +465,20 @@ async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMCont
         else (f"{int(selected_traffic_gb)} ГБ" if selected_traffic_gb is not None else "—")
     )
 
-    await callback_query.message.edit_text(
-        text=(
-            "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
-            f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
-            f"📱 <b>Устройства:</b> {devices_label}\n"
-            f"📊 <b>Трафик:</b> {traffic_label}\n\n"
-            "Выберите параметры и нажмите «✅ Применить»."
-        ),
-        reply_markup=builder.as_markup(),
+    text = (
+        "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
+        f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
+        f"📱 <b>Устройства:</b> {devices_label}\n"
+        f"📊 <b>Трафик:</b> {traffic_label}\n\n"
+        "Выберите параметры и нажмите «✅ Применить»."
     )
+
+    try:
+        await callback_query.message.edit_text(text=text, reply_markup=builder.as_markup())
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
     await callback_query.answer()
 
 
@@ -577,16 +582,20 @@ async def handle_cfg_renew_traffic(callback_query: CallbackQuery, state: FSMCont
     )
     traffic_label = "Безлимит трафика" if selected_traffic_gb <= 0 else f"{selected_traffic_gb} ГБ"
 
-    await callback_query.message.edit_text(
-        text=(
-            "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
-            f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
-            f"📱 <b>Устройства:</b> {devices_label}\n"
-            f"📊 <b>Трафик:</b> {traffic_label}\n\n"
-            "Выберите параметры и нажмите «✅ Применить»."
-        ),
-        reply_markup=builder.as_markup(),
+    text = (
+        "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
+        f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
+        f"📱 <b>Устройства:</b> {devices_label}\n"
+        f"📊 <b>Трафик:</b> {traffic_label}\n\n"
+        "Выберите параметры и нажмите «✅ Применить»."
     )
+
+    try:
+        await callback_query.message.edit_text(text=text, reply_markup=builder.as_markup())
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
     await callback_query.answer()
 
 
