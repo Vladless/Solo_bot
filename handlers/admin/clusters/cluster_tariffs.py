@@ -187,11 +187,23 @@ async def choose_tariffs(
         await callback.message.edit_text("❌ Для этой группы нет доступных тарифов.")
         return
 
-    selected_tariffs = set(data.get(f"tariff_sel:{cluster_name}", []))
+    servers_q = await session.execute(
+        select(Server.id).where(Server.server_name.in_(selected_servers))
+    )
+    server_ids = [row[0] for row in servers_q.fetchall()]
+
+    current_bindings_q = await session.execute(
+        select(ServerSubgroup.subgroup_title)
+        .where(ServerSubgroup.server_id.in_(server_ids))
+        .where(ServerSubgroup.subgroup_title.regexp_match(r"^\d+$"))
+    )
+    current_tariff_ids = {int(row[0]) for row in current_bindings_q.fetchall()}
+
+    await state.update_data({f"tariff_sel:{cluster_name}": list(current_tariff_ids)})
 
     await callback.message.edit_text(
         f"<b>📋 Выберите тарифы для {len(selected_servers)} сервер(а/ов)</b>\n<i>Кластер: {cluster_name}</i>",
-        reply_markup=build_tariff_selection_kb(cluster_name, tariffs, selected_tariffs),
+        reply_markup=build_tariff_selection_kb(cluster_name, tariffs, current_tariff_ids),
     )
 
 
@@ -246,10 +258,6 @@ async def apply_tariffs(
 
         if not selected_servers:
             await callback.answer("Не выбраны серверы", show_alert=True)
-            return
-
-        if not selected_tariffs:
-            await callback.answer("Не выбраны тарифы", show_alert=True)
             return
 
         servers_q = await session.execute(
