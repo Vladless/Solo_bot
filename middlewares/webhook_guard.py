@@ -5,7 +5,7 @@ def telegram_webhook_guard_middleware(webhook_path: str, secret_token: str):
     @web.middleware
     async def middleware(request: web.Request, handler):
         if request.path != webhook_path:
-            return web.Response(status=204)
+            return await handler(request)
 
         if request.method != "POST":
             return web.Response(status=204)
