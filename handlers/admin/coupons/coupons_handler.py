@@ -431,7 +431,7 @@ async def update_coupons_list(message, session: Any, page: int = 1):
     await message.edit_text(text=text, reply_markup=kb)
 
 
-@router.inline_query(F.query.startswith("coupon_"))
+@router.inline_query(F.query.startswith("coupon_"),)
 async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
     if not INLINE_MODE:
         return

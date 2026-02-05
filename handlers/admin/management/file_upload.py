@@ -6,6 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from filters.admin import IsAdminFilter
 from logger import logger
 
 from ..panel.keyboard import build_admin_back_kb
@@ -18,7 +19,7 @@ class FileUploadState(StatesGroup):
     waiting_for_file = State()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "upload_file"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "upload_file"), IsAdminFilter())
 async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
     text = (
         "📤 <b>Загрузка файла</b>\n\n"
@@ -41,7 +42,7 @@ async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
     await state.set_state(FileUploadState.waiting_for_target)
 
 
-@router.callback_query(F.data.startswith("upload_target:"), FileUploadState.waiting_for_target)
+@router.callback_query(F.data.startswith("upload_target:"), FileUploadState.waiting_for_target, IsAdminFilter())
 async def select_upload_target(callback: CallbackQuery, state: FSMContext):
     target = callback.data.split(":", 1)[1]
     if target not in {"root", "handlers"}:
@@ -61,7 +62,7 @@ async def select_upload_target(callback: CallbackQuery, state: FSMContext):
     await state.set_state(FileUploadState.waiting_for_file)
 
 
-@router.message(FileUploadState.waiting_for_file, F.document)
+@router.message(FileUploadState.waiting_for_file, F.document, IsAdminFilter())
 async def handle_admin_file_upload(message: Message, state: FSMContext):
     document = message.document
     file_name = document.file_name

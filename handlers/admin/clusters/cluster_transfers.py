@@ -3,6 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from filters.admin import IsAdminFilter
 
 from config import USE_COUNTRY_SELECTION
 from core.bootstrap import MODES_CONFIG
@@ -13,7 +14,7 @@ from ..panel.keyboard import build_admin_back_kb
 from .base import router
 
 
-@router.callback_query(F.data.startswith("transfer_to_server|"))
+@router.callback_query(F.data.startswith("transfer_to_server|"), IsAdminFilter())
 async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     try:
         data = callback_query.data.split("|")
@@ -55,7 +56,7 @@ async def handle_server_transfer(callback_query: CallbackQuery, state: FSMContex
         await state.clear()
 
 
-@router.callback_query(F.data.startswith("transfer_to_cluster|"))
+@router.callback_query(F.data.startswith("transfer_to_cluster|"), IsAdminFilter())
 async def handle_cluster_transfer(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     try:
         data = callback_query.data.split("|")

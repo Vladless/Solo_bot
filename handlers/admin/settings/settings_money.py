@@ -5,12 +5,15 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import MONEY_CONFIG, update_money_config
+from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import MONEY_FIELDS, build_settings_money_kb
 
 
 router = Router()
+router.callback_query.filter(IsAdminFilter())
+router.message.filter(IsAdminFilter())
 
 
 class MoneySettingsState(StatesGroup):

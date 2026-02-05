@@ -28,7 +28,7 @@ async def handle_management(callback_query: CallbackQuery, session: AsyncSession
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "toggle_maintenance"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "toggle_maintenance"), IsAdminFilter())
 async def toggle_maintenance_mode(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id
 

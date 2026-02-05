@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Admin
+from filters.admin import IsAdminFilter
 
 from . import router
 from .keyboard import (
@@ -26,14 +27,14 @@ class AdminState(StatesGroup):
     waiting_for_tg_id = State()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "admins"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "admins"), IsAdminFilter())
 async def show_admins(callback: CallbackQuery, session: AsyncSession):
     result = await session.execute(select(Admin.tg_id, Admin.role))
     admins = result.all()
     await callback.message.edit_text("👑 <b>Список админов</b>", reply_markup=build_admins_kb(admins))
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "add_admin"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "add_admin"), IsAdminFilter())
 async def prompt_new_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Введите <code>tg_id</code> нового админа:", reply_markup=build_admin_back_kb_to_admins()
@@ -41,7 +42,7 @@ async def prompt_new_admin(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminState.waiting_for_tg_id)
 
 
-@router.message(AdminState.waiting_for_tg_id)
+@router.message(AdminState.waiting_for_tg_id, IsAdminFilter())
 async def save_new_admin(message: Message, session: AsyncSession, state: FSMContext):
     try:
         tg_id = int(message.text.strip())
@@ -60,7 +61,7 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
     await state.clear()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("admin_menu|")))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("admin_menu|")), IsAdminFilter())
 async def open_admin_menu(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     tg_id = int(callback_data.action.split("|")[1])
 
@@ -73,7 +74,7 @@ async def open_admin_menu(callback: CallbackQuery, callback_data: AdminPanelCall
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("generate_token|")))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("generate_token|")), IsAdminFilter())
 async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     tg_id = int(callback_data.action.split("|")[1])
 
@@ -102,7 +103,7 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
         pass
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("edit_role|")))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("edit_role|")), IsAdminFilter())
 async def edit_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallback):
     tg_id = int(callback_data.action.split("|")[1])
     await callback.message.edit_text(
@@ -110,7 +111,7 @@ async def edit_admin_role(callback: CallbackQuery, callback_data: AdminPanelCall
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("set_role|")))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("set_role|")), IsAdminFilter())
 async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     try:
         _, tg_id_str, role = callback_data.action.split("|")
@@ -141,7 +142,7 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("delete_admin|")))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("delete_admin|")), IsAdminFilter())
 async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     tg_id = int(callback_data.action.split("|")[1])
 

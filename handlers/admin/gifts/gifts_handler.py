@@ -8,6 +8,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from filters.admin import IsAdminFilter
 from database.models import Gift, GiftUsage
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.utils import edit_or_send_message, format_days, format_months
@@ -25,14 +26,14 @@ class GiftCreationState(StatesGroup):
     waiting_for_limit_input_or_unlimited = State()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "gifts"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "gifts"), IsAdminFilter())
 async def admin_gift_menu(callback: CallbackQuery):
     await callback.message.edit_text(
         text="🎁 <b>Подарки</b>\nВыберите, что хотите сделать:", reply_markup=build_admin_gifts_kb()
     )
 
 
-@router.callback_query(F.data == "admin_gift_create")
+@router.callback_query(F.data == "admin_gift_create", IsAdminFilter())
 async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession):
     tariffs_data = await get_tariffs(session, group_code="gifts", with_subgroup_weights=True)
     tariffs = [t for t in tariffs_data["tariffs"] if t.get("is_active")]
@@ -78,7 +79,7 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
     await callback.message.edit_text("🎁 Выберите тариф для подарка:", reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("admin_gift_subgroup|"))
+@router.callback_query(F.data.startswith("admin_gift_subgroup|"), IsAdminFilter())
 async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: AsyncSession):
     try:
         subgroup_hash = callback.data.split("|", 1)[1]
@@ -121,7 +122,7 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
         await callback.message.answer("❌ Произошла ошибка при отображении тарифов.")
 
 
-@router.callback_query(F.data.startswith("admin_gift_select|"))
+@router.callback_query(F.data.startswith("admin_gift_select|"), IsAdminFilter())
 async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
     tariff_id = int(callback.data.split("|")[1])
     await state.update_data(tariff_id=tariff_id)
@@ -134,7 +135,7 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "gift_limit_unlimited")
+@router.callback_query(F.data == "gift_limit_unlimited", IsAdminFilter())
 async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot):
     from handlers.payments.gift import finalize_gift
 
@@ -144,7 +145,7 @@ async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot:
     await finalize_gift(callback.message, session, bot, data, is_unlimited=True)
 
 
-@router.message(GiftCreationState.waiting_for_limit_input_or_unlimited)
+@router.message(GiftCreationState.waiting_for_limit_input_or_unlimited, IsAdminFilter())
 async def handle_limited_gift_input(message: types.Message, session: AsyncSession, state: FSMContext, bot: Bot):
     from handlers.payments.gift import finalize_gift
 
@@ -162,12 +163,12 @@ async def handle_limited_gift_input(message: types.Message, session: AsyncSessio
     await finalize_gift(message, session, bot, data, is_unlimited=False)
 
 
-@router.callback_query(F.data == "admin_gifts_all")
+@router.callback_query(F.data == "admin_gifts_all", IsAdminFilter())
 async def show_gifts_page(callback: CallbackQuery, session: AsyncSession):
     await show_gift_list(callback, session, page=1)
 
 
-@router.callback_query(F.data.startswith("gifts_page|"))
+@router.callback_query(F.data.startswith("gifts_page|"), IsAdminFilter())
 async def paginate_gifts(callback: CallbackQuery, session: AsyncSession):
     page = int(callback.data.split("|")[1])
     await show_gift_list(callback, session, page)
@@ -195,7 +196,7 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
     )
 
 
-@router.callback_query(F.data.startswith("gift_view|"))
+@router.callback_query(F.data.startswith("gift_view|"), IsAdminFilter())
 async def view_gift(callback: CallbackQuery, session: AsyncSession):
     gift_id = callback.data.split("|")[1]
 
@@ -233,7 +234,7 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("gift_delete|"))
+@router.callback_query(F.data.startswith("gift_delete|"), IsAdminFilter())
 async def delete_gift(callback: CallbackQuery, session: AsyncSession):
     gift_id = callback.data.split("|")[1]
 

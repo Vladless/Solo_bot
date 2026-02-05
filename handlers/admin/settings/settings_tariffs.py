@@ -6,11 +6,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
+from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback
 
 
 router = Router()
+router.callback_query.filter(IsAdminFilter())
 
 PACK_MODES = ["", "traffic", "devices", "all"]
 
