@@ -28,7 +28,7 @@ async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(AdminManagementStates.waiting_for_new_domain)
+@router.message(AdminManagementStates.waiting_for_new_domain, IsAdminFilter())
 async def process_new_domain(message: Message, state: FSMContext, session: AsyncSession):
     new_domain = message.text.strip()
 

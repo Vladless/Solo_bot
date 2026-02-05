@@ -105,7 +105,7 @@ async def edit_notification_interval_setting(
     await callback.answer()
 
 
-@router.message(NotificationIntervalEditState.waiting_for_value)
+@router.message(NotificationIntervalEditState.waiting_for_value, IsAdminFilter())
 async def notification_interval_value_input(message: Message, state: FSMContext, session: AsyncSession) -> None:
     text_value = (message.text or "").strip()
 
