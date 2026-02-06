@@ -379,6 +379,17 @@ async def try_auto_renew(ctx: NotificationContext, key) -> tuple[bool, Optional[
         plan=current_tariff["id"],
     )
 
+    new_tariff_device_limit = current_tariff.get("device_limit")
+    new_tariff_traffic_limit = current_tariff.get("traffic_limit")
+    reset_values = {
+        "selected_device_limit": new_tariff_device_limit,
+        "current_device_limit": new_tariff_device_limit,
+        "selected_traffic_limit": new_tariff_traffic_limit,
+        "current_traffic_limit": new_tariff_traffic_limit,
+        "selected_price_rub": int(current_tariff["price_rub"]) if current_tariff.get("price_rub") is not None else None,
+    }
+    await ctx.session.execute(update(Key).where(Key.client_id == client_id).values(**reset_values))
+
     if ctx.bulk_updates is not None:
         if tg_id in ctx.bulk_updates["balance_changes"]:
             ctx.bulk_updates["balance_changes"][tg_id] -= renewal_cost

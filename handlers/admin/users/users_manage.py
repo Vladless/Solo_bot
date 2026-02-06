@@ -11,7 +11,7 @@ from aiogram.types import (
 )
 from aiogram.utils.formatting import BlockQuote, Bold, Text
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
@@ -287,25 +287,22 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
     IsAdminFilter(),
 )
 async def restore_trials(callback_query: types.CallbackQuery, session: AsyncSession):
-    users_result = await session.execute(select(User.tg_id).where(User.trial == 1))
-    users_with_trial_used = [row[0] for row in users_result.all()]
-
-    users_to_reset = []
-    for tg_id in users_with_trial_used:
-        has_keys = await session.execute(select(Key.tg_id).where(Key.tg_id == tg_id).limit(1))
-        if not has_keys.scalar():
-            users_to_reset.append(tg_id)
-
-    if users_to_reset:
-        stmt = update(User).where(User.tg_id.in_(users_to_reset)).values(trial=0)
-        await session.execute(stmt)
-        await session.commit()
+    stmt = (
+        update(User)
+        .where(
+            User.trial == 1,
+            ~exists(select(Key.tg_id).where(Key.tg_id == User.tg_id)),
+        )
+        .values(trial=0)
+    )
+    result = await session.execute(stmt)
+    await session.commit()
 
     builder = InlineKeyboardBuilder()
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"✅ Пробники восстановлены для {len(users_to_reset)} пользователей без подписок.",
+        text=f"✅ Пробники восстановлены для {result.rowcount} пользователей без подписок.",
         reply_markup=builder.as_markup(),
     )
 
