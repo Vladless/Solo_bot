@@ -27,7 +27,7 @@ from handlers.payments.currency_flow import (
     shortfall_lead_text,
     currency_label,
 )
-from handlers.payments.providers import get_providers_with_hooks
+from handlers.payments.providers import get_providers_with_hooks, sort_provider_names
 from handlers.texts import FAST_PAY_CHOOSE_CURRENCY, FAST_PAY_CHOOSE_PROVIDER, FASTFLOW_COUPON_APPLIED_TEMPLATE
 from handlers.utils import edit_or_send_message
 from logger import logger
@@ -115,6 +115,7 @@ async def try_fast_payment_flow(
         cfg = providers_map.get(p_up) or {}
         if cfg.get("fast") and cfg.get("enabled", True):
             providers.append(p_up)
+    providers = sort_provider_names(providers, providers_map)
 
     mode, one_screen = get_currency_mode()
     multicurrency_mode = mode == "RUB+USD"
@@ -425,6 +426,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         cfg = providers_map.get(p_up) or {}
         if cfg.get("fast") and cfg.get("enabled", True):
             providers.append(p_up)
+    providers = sort_provider_names(providers, providers_map)
 
     mode, one_screen = get_currency_mode()
     multicurrency_mode = mode == "RUB+USD"
@@ -541,13 +543,16 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
         configured = [str(p) for p in (USE_NEW_PAYMENT_FLOW or [])]
         providers = [p.upper() for p in configured]
 
-    filtered = [
-        provider_upper
-        for provider_upper in (p.upper() for p in providers)
-        if (providers_map.get(provider_upper) or {}).get("currency") == currency
-        and (providers_map.get(provider_upper) or {}).get("fast")
-        and (providers_map.get(provider_upper) or {}).get("enabled", True)
-    ]
+    filtered = sort_provider_names(
+        [
+            provider_upper
+            for provider_upper in (p.upper() for p in providers)
+            if (providers_map.get(provider_upper) or {}).get("currency") == currency
+            and (providers_map.get(provider_upper) or {}).get("fast")
+            and (providers_map.get(provider_upper) or {}).get("enabled", True)
+        ],
+        providers_map,
+    )
     await state.update_data(chosen_currency=currency)
 
     if not filtered:
