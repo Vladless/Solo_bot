@@ -97,13 +97,62 @@ def build_settings_buttons_kb(buttons_state: dict[str, bool]) -> InlineKeyboardM
 
 
 def build_settings_cashboxes_kb(providers_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    order_button = InlineKeyboardButton(
+        text="📋 Порядок касс",
+        callback_data=AdminPanelCallback(action="settings_providers_order").pack(),
+    )
     return build_toggle_section_keyboard(
         titles=PAYMENT_PROVIDER_TITLES,
         state=providers_state,
         action="settings_cashbox_toggle",
         columns=2,
         back_action="settings",
+        extra_rows=[[order_button]],
     )
+
+
+def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
+    """Клавиатура для управления порядком отображения касс."""
+    builder = InlineKeyboardBuilder()
+
+    for idx, name in enumerate(sorted_names):
+        title = PAYMENT_PROVIDER_TITLES.get(name, name)
+        pos = idx + 1 
+        builder.row(
+            InlineKeyboardButton(
+                text="⬆️",
+                callback_data=AdminPanelCallback(
+                    action="settings_order_up", page=pos,
+                ).pack(),
+            ),
+            InlineKeyboardButton(
+                text=f"{pos}. {title}",
+                callback_data=AdminPanelCallback(
+                    action="settings_providers_order",
+                ).pack(),
+            ),
+            InlineKeyboardButton(
+                text="⬇️",
+                callback_data=AdminPanelCallback(
+                    action="settings_order_down", page=pos,
+                ).pack(),
+            ),
+        )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="🔄 Сбросить порядок",
+            callback_data=AdminPanelCallback(action="settings_order_reset").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="Назад",
+            callback_data=AdminPanelCallback(action="settings_cashboxes").pack(),
+        )
+    )
+
+    return builder.as_markup()
 
 
 def build_settings_notifications_kb(notifications_state: dict[str, object]) -> InlineKeyboardMarkup:
