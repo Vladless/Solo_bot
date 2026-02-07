@@ -15,6 +15,7 @@ BUTTON_TITLES: Final[dict[str, str]] = {
     "QRCODE_BUTTON_ENABLE": "QR подписки",
     "HWID_RESET_BUTTON_ENABLE": "Сброс HWID",
     "ANDROID_TV_BUTTON_ENABLE": "Android TV",
+    "COUPON_BUTTON_ENABLE": "Активировать купон",
 }
 
 NOTIFICATION_TITLES: Final[dict[str, str]] = {

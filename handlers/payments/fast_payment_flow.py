@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from config import USE_NEW_PAYMENT_FLOW, TRIBUTE_LINK
 from core.bootstrap import PAYMENTS_CONFIG
+from core.settings.buttons_config import BUTTONS_CONFIG
 from core.settings.money_config import get_currency_mode
 from database import (
     check_coupon_usage,
@@ -163,7 +164,8 @@ async def try_fast_payment_flow(
         for row in kept_rows:
             keyboard.row(*row)
 
-        keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
+        if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+            keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
 
         if profile_row:
             keyboard.row(*profile_row)
@@ -225,7 +227,8 @@ async def try_fast_payment_flow(
             )
         )
 
-    keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
+    if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+        keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
     keyboard.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
     lead_text = await shortfall_lead_text(
@@ -481,7 +484,8 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         for row in kept_rows:
             keyboard.row(*row)
 
-        keyboard.row(InlineKeyboardButton(text=btn.COUPON_RESTART, callback_data="fastflow_coupon"))
+        if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+            keyboard.row(InlineKeyboardButton(text=btn.COUPON_RESTART, callback_data="fastflow_coupon"))
 
         if profile_row:
             keyboard.row(*profile_row)
@@ -521,7 +525,8 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
             )
         )
 
-    keyboard.row(InlineKeyboardButton(text=btn.COUPON_RESTART, callback_data="fastflow_coupon"))
+    if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+        keyboard.row(InlineKeyboardButton(text=btn.COUPON_RESTART, callback_data="fastflow_coupon"))
     keyboard.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
     await message.answer(
@@ -587,7 +592,8 @@ async def choose_payment_currency(callback_query: CallbackQuery, state: FSMConte
             )
         )
 
-    keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
+    if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+        keyboard.row(InlineKeyboardButton(text=btn.COUPON, callback_data="fastflow_coupon"))
     keyboard.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
     lead_text = await shortfall_lead_text(

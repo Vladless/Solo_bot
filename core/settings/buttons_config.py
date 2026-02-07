@@ -8,6 +8,7 @@ from ..defaults import DEFAULT_BUTTONS_CONFIG
 
 BUTTONS_CONFIG: dict[str, bool] = DEFAULT_BUTTONS_CONFIG.copy()
 BUTTONS_CONFIG.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
+BUTTONS_CONFIG.setdefault("COUPON_BUTTON_ENABLE", True)
 
 
 async def load_buttons_config(session: AsyncSession) -> None:
@@ -18,6 +19,7 @@ async def load_buttons_config(session: AsyncSession) -> None:
     if setting is None:
         buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
         buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
+        buttons_config.setdefault("COUPON_BUTTON_ENABLE", True)
         setting = Setting(
             key="BUTTONS_CONFIG",
             value=buttons_config,
@@ -29,6 +31,7 @@ async def load_buttons_config(session: AsyncSession) -> None:
         buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
         buttons_config.update(stored)
         buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
+        buttons_config.setdefault("COUPON_BUTTON_ENABLE", True)
         setting.value = buttons_config
 
     BUTTONS_CONFIG.clear()
@@ -56,6 +59,7 @@ async def update_buttons_config(session: AsyncSession, new_values: dict[str, boo
     buttons_config = DEFAULT_BUTTONS_CONFIG.copy()
     buttons_config.update(new_values)
     buttons_config.setdefault("ANDROID_TV_BUTTON_ENABLE", False)
+    buttons_config.setdefault("COUPON_BUTTON_ENABLE", True)
 
     BUTTONS_CONFIG.clear()
     BUTTONS_CONFIG.update(buttons_config)

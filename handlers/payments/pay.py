@@ -185,7 +185,8 @@ async def balance_handler(callback_query: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=btn.PAYMENT, callback_data="pay"))
     builder.row(InlineKeyboardButton(text=btn.BALANCE_HISTORY, callback_data="balance_history"))
-    builder.row(InlineKeyboardButton(text=btn.COUPON, callback_data="activate_coupon"))
+    if BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+        builder.row(InlineKeyboardButton(text=btn.COUPON, callback_data="activate_coupon"))
     builder.row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
 
     text = BALANCE_MANAGEMENT_TEXT.format(balance=balance_text)

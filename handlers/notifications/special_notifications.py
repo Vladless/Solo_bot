@@ -98,6 +98,11 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
             "notification_id": "inactive_trial",
         })
 
+    if users_to_extend:
+        await session.execute(update(User).where(User.tg_id.in_(users_to_extend)).values(trial=-1))
+        await session.commit()
+        logger.info(f"Bulk: отмечено {len(users_to_extend)} пользователей с расширенным триалом")
+
     if messages:
         results = await send_messages_with_limit(
             bot,
@@ -116,12 +121,6 @@ async def notify_inactive_trial_users(bot: Bot, session: AsyncSession):
             for tg_id in sent_tg_ids:
                 await add_notification(session, tg_id, "inactive_trial")
             logger.info(f"Отправлено {len(sent_tg_ids)} уведомлений неактивным пользователям.")
-
-        extend_ids = [tg_id for tg_id in users_to_extend if tg_id in sent_tg_ids]
-        if extend_ids:
-            await session.execute(update(User).where(User.tg_id.in_(extend_ids)).values(trial=-1))
-            await session.commit()
-            logger.info(f"Bulk: отмечено {len(extend_ids)} пользователей с расширенным триалом")
 
     logger.info("Проверка пользователей с неактивным пробным периодом завершена.")
 
