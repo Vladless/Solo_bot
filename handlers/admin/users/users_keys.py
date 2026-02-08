@@ -90,13 +90,13 @@ async def handle_key_edit(
     alias_part = f" (<i>{key_obj.alias}</i>)" if key_obj.alias else ""
 
     if key_obj.created_at:
-        created_at_dt = datetime.fromtimestamp(int(key_obj.created_at) / 1000) + timedelta(hours=3)
+        created_at_dt = datetime.fromtimestamp(int(key_obj.created_at) / 1000, tz=MOSCOW_TZ)
         created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
     else:
         created_at = "—"
 
     if key_obj.expiry_time:
-        expiry_dt = datetime.fromtimestamp(int(key_obj.expiry_time) / 1000)
+        expiry_dt = datetime.fromtimestamp(int(key_obj.expiry_time) / 1000, tz=MOSCOW_TZ)
         expiry_date = expiry_dt.strftime("%d %B %Y года %H:%M")
     else:
         expiry_date = "—"
@@ -288,7 +288,7 @@ async def handle_expiry_set(
     text = (
         "✍️ Введите новое время действия ключа:"
         "\n\n📌 Формат: <b>год-месяц-день час:минута</b>"
-        f"\n\n📄 Текущая дата: {datetime.fromtimestamp(key_details['expiry_time'] / 1000).strftime('%Y-%m-%d %H:%M')}"
+        f"\n\n📄 Текущая дата: {datetime.fromtimestamp(key_details['expiry_time'] / 1000, tz=MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')} (МСК)"
     )
 
     await callback_query.message.edit_text(
