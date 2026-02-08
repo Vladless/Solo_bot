@@ -16,6 +16,7 @@ from logger import logger
 
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
+from handlers.buttons import BACK
 
 
 router = Router()
@@ -41,7 +42,7 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
 
     if not tariffs:
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+        builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
         await callback.message.edit_text("❌ Нет активных тарифов в группе 'gifts'.", reply_markup=builder.as_markup())
         return
 
@@ -74,7 +75,7 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
             )
         )
 
-    builder.row(types.InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
+    builder.row(types.InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack()))
 
     await callback.message.edit_text("🎁 Выберите тариф для подарка:", reply_markup=builder.as_markup())
 
@@ -109,7 +110,7 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
                 )
             )
 
-        builder.row(types.InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_gift_create"))
+        builder.row(types.InlineKeyboardButton(text=BACK, callback_data="admin_gift_create"))
 
         await edit_or_send_message(
             target_message=callback.message,
@@ -129,7 +130,7 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GiftCreationState.waiting_for_limit_input_or_unlimited)
 
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔙 Назад", callback_data="admin_gift_create")
+    kb.button(text=BACK, callback_data="admin_gift_create")
     await callback.message.edit_text(
         "🔢 Введите максимальное количество активаций подарка:", reply_markup=kb.as_markup()
     )
@@ -184,7 +185,7 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
 
     if not gifts:
         builder = InlineKeyboardBuilder()
-        builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+        builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
         await callback.message.edit_text("❌ Подарки не найдены.", reply_markup=builder.as_markup())
         return
 
@@ -229,7 +230,7 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
 
     builder = InlineKeyboardBuilder()
     builder.button(text="🗑 Удалить", callback_data=f"gift_delete|{gift_id}")
-    builder.button(text="🔙 Назад", callback_data="admin_gifts_all")
+    builder.button(text=BACK, callback_data="admin_gifts_all")
 
     await callback.message.edit_text(text, reply_markup=builder.as_markup())
 

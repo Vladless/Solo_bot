@@ -28,7 +28,7 @@ from database.models import Admin
 from database.notifications import check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_tariffs
 from handlers.admin.panel.keyboard import AdminPanelCallback
-from handlers.buttons import MAIN_MENU
+from handlers.buttons import MAIN_MENU, BACK
 from handlers.texts import (
     CREATING_CONNECTION_MSG,
     DISCOUNT_OFFER_MESSAGE,
@@ -362,7 +362,7 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
             callback_prefix="select_tariff_plan",
         )
 
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_tariff_group_list"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await edit_or_send_message(

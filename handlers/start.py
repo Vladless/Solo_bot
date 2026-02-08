@@ -39,6 +39,7 @@ from handlers.buttons import (
     SUB_CHANELL_DONE,
     SUPPORT,
     TRIAL_SUB,
+    ADMIN_BTN,
 )
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
@@ -313,7 +314,7 @@ async def show_start_menu(
         kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
 
     if admin:
-        kb.row(InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack()))
+        kb.row(InlineKeyboardButton(text=ADMIN_BTN, callback_data=AdminPanelCallback(action="admin").pack()))
 
     try:
         module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)

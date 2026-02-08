@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
@@ -104,7 +104,7 @@ def generate_crud_router(
 
         @router.post("/", response_model=schema_response)
         async def create(
-            payload: Any,
+            payload: Any = Body(...),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),
         ):
@@ -122,7 +122,7 @@ def generate_crud_router(
 
         @router.patch(f"/{{{parameter_name}}}", response_model=schema_response)
         async def update(
-            payload: Any,
+            payload: Any = Body(...),
             value: int | str = Path(..., alias=parameter_name),
             admin: Admin = Depends(verify_admin_token),
             session: AsyncSession = Depends(get_session),

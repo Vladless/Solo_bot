@@ -1,6 +1,7 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import AdminPanelCallback
+from handlers.buttons import BACK
 
 
 def build_bans_kb():
@@ -19,7 +20,7 @@ def build_bans_kb():
         callback_data=AdminPanelCallback(action="bans_manual_menu").pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminPanelCallback(action="management").pack(),
     )
 
@@ -43,7 +44,7 @@ def build_blocked_users_kb():
         callback_data=AdminPanelCallback(action="bans_clear_blocked").pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminPanelCallback(action="bans").pack(),
     )
 
@@ -67,7 +68,7 @@ def build_shadow_bans_kb():
         callback_data=AdminPanelCallback(action="bans_clear_shadow").pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminPanelCallback(action="bans").pack(),
     )
 
@@ -87,7 +88,7 @@ def build_manual_bans_kb():
         callback_data=AdminPanelCallback(action="bans_clear_manual").pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminPanelCallback(action="bans").pack(),
     )
 

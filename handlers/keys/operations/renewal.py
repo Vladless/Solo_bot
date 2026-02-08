@@ -74,6 +74,7 @@ async def renew_on_remnawave(
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
         return False
+    hwid_device_limit = int(hwid_device_limit or 0)
 
     if old_device_limit is not None and hwid_device_limit < old_device_limit:
         try:

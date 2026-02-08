@@ -28,6 +28,7 @@ from handlers.buttons import (
     MY_SUB,
     MY_SUBS,
     TRIAL_SUB,
+    ADMIN_BTN,
 )
 from handlers.payments.currency_rates import format_for_user
 from handlers.texts import ADD_SUBSCRIPTION_HINT
@@ -135,7 +136,7 @@ async def process_callback_view_profile(
     if admin:
         builder.row(
             InlineKeyboardButton(
-                text="📊 Администратор",
+                text=ADMIN_BTN,
                 callback_data=AdminPanelCallback(action="admin").pack(),
             )
         )

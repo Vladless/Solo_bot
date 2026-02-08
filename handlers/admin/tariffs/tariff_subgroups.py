@@ -9,6 +9,7 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.buttons import BACK
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +41,7 @@ async def start_subgrouping(callback: CallbackQuery, state: FSMContext, session:
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                            text=BACK, callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
                         )
                     ]
                 ]
@@ -211,7 +212,7 @@ async def view_subgroup_tariffs(callback: CallbackQuery, session: AsyncSession):
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminTariffCallback(action=f"group|{group_code}").pack(),
         )
     )
@@ -296,7 +297,7 @@ async def save_new_subgroup_title(message: Message, state: FSMContext, session: 
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                        text=BACK, callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
                     )
                 ]
             ]
@@ -355,7 +356,7 @@ async def perform_subgroup_deletion(callback: CallbackQuery, state: FSMContext, 
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
+                        text=BACK, callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
                     )
                 ]
             ]
@@ -387,7 +388,7 @@ async def start_edit_subgroup_tariffs(callback: CallbackQuery, state: FSMContext
             "❌ Нет доступных тарифов для редактирования.",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
+                    [InlineKeyboardButton(text=BACK, callback_data=f"view_subgroup|{subgroup_hash}|{group_code}")]
                 ]
             ),
         )

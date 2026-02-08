@@ -3,6 +3,7 @@ from collections import defaultdict
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from handlers.buttons import BACK
 
 from database.tariffs import create_subgroup_hash
 
@@ -33,7 +34,7 @@ def build_tariff_menu_kb() -> InlineKeyboardMarkup:
             callback_data=AdminTariffCallback(action="arrange").pack(),
         )
     )
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=AdminPanelCallback(action="admin").pack()))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="admin").pack()))
     return builder.as_markup()
 
 
@@ -60,7 +61,7 @@ def build_tariff_arrangement_groups_kb(groups: list[str]) -> InlineKeyboardMarku
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminTariffCallback(action="list").pack(),
         )
     )
@@ -116,7 +117,7 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="tariffs").pack(),
         )
     )
@@ -146,7 +147,7 @@ def build_tariff_groups_kb(groups: list[str]) -> InlineKeyboardMarkup:
             row = []
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="tariffs").pack(),
         )
     )
@@ -196,7 +197,7 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminTariffCallback(action="list").pack(),
         )
     )
@@ -251,7 +252,7 @@ def build_single_tariff_kb(
             ],
             [
                 InlineKeyboardButton(
-                    text="⬅️ Назад",
+                    text=BACK,
                     callback_data=AdminTariffCallback(action=f"group|{group_code}").pack()
                     if group_code
                     else AdminTariffCallback(action="list").pack(),
@@ -297,10 +298,6 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
                 )
             ],
             [InlineKeyboardButton(text="🔘 Активность", callback_data=f"toggle_active|{tariff_id}")],
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
-                )
-            ],
+            [InlineKeyboardButton(text=BACK, callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack())],
         ]
     )

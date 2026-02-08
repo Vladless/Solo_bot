@@ -68,6 +68,7 @@ async def toggle_cashbox_setting(
     )
     await callback.answer("Настройка обновлена")
 
+
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_providers_order"))
 async def open_providers_order_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     sorted_names = _get_sorted_provider_names()

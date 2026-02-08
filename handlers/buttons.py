@@ -21,6 +21,7 @@ TRIAL_SUB = "🎁 Пробная подписка"
 TRIAL_BONUS = "🚀 Активировать пробный период"
 MY_SUB = "🔐 Моя подписка"
 RENEW_SUB = "🔄 Обновить подписку"
+ADMIN_BTN = "📊 Администратор"
 
 ADDONS_BUTTON_DEVICES = "➕ Добавить устройства"
 ADDONS_BUTTON_TRAFFIC = "➕ Добавить трафик"

@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.buttons import BACK
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
@@ -349,7 +350,7 @@ def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
         callback_data=AdminUserEditorCallback(action="users_hwid_reset", data=email, tg_id=tg_id).pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
     )
     builder.adjust(1)
@@ -431,7 +432,7 @@ def build_user_ban_type_kb(tg_id: int) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminUserEditorCallback(action="users_editor", tg_id=tg_id, edit=True).pack(),
         )
     )

@@ -64,9 +64,7 @@ async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext
     await state.set_state(AdminCouponsState.waiting_for_coupon_type)
 
 
-async def show_coupon_audience_step(callback_query: CallbackQuery, state: FSMContext, coupon_type: str):
-    await state.update_data(coupon_type=coupon_type)
-
+async def show_coupon_audience_step(callback_query: CallbackQuery, state: FSMContext):
     text = "🎯 <b>Кому доступен купон?</b>"
     kb = InlineKeyboardBuilder()
     kb.button(text="👤 Всем", callback_data="coupon_audience_all")
@@ -80,52 +78,34 @@ async def show_coupon_audience_step(callback_query: CallbackQuery, state: FSMCon
 
 @router.callback_query(F.data == "coupon_type_balance", IsAdminFilter())
 async def handle_balance_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
-    await show_coupon_audience_step(callback_query, state, "balance")
+    await state.update_data(coupon_type="balance")
+    await show_coupon_audience_step(callback_query, state)
 
 
 @router.callback_query(F.data == "coupon_type_days", IsAdminFilter())
 async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
-    await show_coupon_audience_step(callback_query, state, "days")
-
-
-@router.callback_query(F.data == "coupon_type_percent", IsAdminFilter())
-async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
-    await show_coupon_audience_step(callback_query, state, "percent")
-
-
-@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter())
-async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    coupon_type = data.get("coupon_type")
-    if coupon_type not in ("balance", "days", "percent"):
-        await callback_query.answer("Ошибка: тип купона не найден", show_alert=True)
-        return
-
-    await state.update_data(new_users_only=callback_query.data == "coupon_audience_new")
+    await state.update_data(coupon_type="days", new_users_only=False)
 
     kb = InlineKeyboardBuilder()
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
     kb.adjust(1)
 
-    if coupon_type == "balance":
-        text = (
-            "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-            "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
-            "Пример: <b>'COUPON1 50 5'</b>\n\n"
-        )
-        await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
-        await state.set_state(AdminCouponsState.waiting_for_balance_data)
-        return
+    text = (
+        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
+        "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
+        "Пример: <b>'DAYS10 10 50'</b>\n\n"
+    )
+    await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
+    await state.set_state(AdminCouponsState.waiting_for_days_data)
 
-    if coupon_type == "days":
-        text = (
-            "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-            "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
-            "Пример: <b>'DAYS10 10 50'</b>\n\n"
-        )
-        await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
-        await state.set_state(AdminCouponsState.waiting_for_days_data)
-        return
+
+@router.callback_query(F.data == "coupon_type_percent", IsAdminFilter())
+async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: FSMContext):
+    await state.update_data(coupon_type="percent", new_users_only=False)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
 
     text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
@@ -135,6 +115,29 @@ async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContex
     )
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_percent_data)
+
+
+@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter())
+async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    coupon_type = data.get("coupon_type")
+    if coupon_type != "balance":
+        await callback_query.answer("Ошибка: режим доступен только для купонов на баланс", show_alert=True)
+        return
+
+    await state.update_data(new_users_only=callback_query.data == "coupon_audience_new")
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
+    kb.adjust(1)
+
+    text = (
+        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
+        "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
+        "Пример: <b>'COUPON1 50 5'</b>\n\n"
+    )
+    await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
+    await state.set_state(AdminCouponsState.waiting_for_balance_data)
 
 
 @router.message(AdminCouponsState.waiting_for_balance_data, IsAdminFilter())
@@ -239,16 +242,13 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         return
 
     try:
-        data = await state.get_data()
-        new_users_only = bool(data.get("new_users_only"))
-
         ok = await create_coupon(
             session,
             coupon_code,
             0,
             usage_limit,
             days=days,
-            new_users_only=new_users_only,
+            new_users_only=False,
             percent=None,
         )
         if not ok:
@@ -256,13 +256,11 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
             return
 
         coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
-        audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
 
         text = (
             f"✅ Купон <b>{coupon_code}</b> создан!\n"
             f"⏳ <b>{format_days(days)}</b>\n"
             f"🔢 Лимит: <b>{usage_limit} раз</b>\n"
-            f"🎯 Доступ: <b>{audience_txt}</b>\n"
             f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
         )
 
@@ -311,29 +309,21 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         return
 
     try:
-        data = await state.get_data()
-        new_users_only = bool(data.get("new_users_only"))
-
         ok = await create_coupon(
             session,
             coupon_code,
             0,
             usage_limit,
             days=None,
-            new_users_only=new_users_only,
+            new_users_only=False,
             percent=percent,
         )
         if not ok:
             await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
             return
 
-        audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
-
         text = (
-            f"✅ Купон <b>{coupon_code}</b> создан!\n"
-            f"📉 Скидка: <b>{percent}%</b>\n"
-            f"🔢 Лимит: <b>{usage_limit} раз</b>\n"
-            f"🎯 Доступ: <b>{audience_txt}</b>\n"
+            f"✅ Купон <b>{coupon_code}</b> создан!\n📉 Скидка: <b>{percent}%</b>\n🔢 Лимит: <b>{usage_limit} раз</b>\n"
         )
 
         kb = InlineKeyboardBuilder()
@@ -431,7 +421,7 @@ async def update_coupons_list(message, session: Any, page: int = 1):
     await message.edit_text(text=text, reply_markup=kb)
 
 
-@router.inline_query(F.query.startswith("coupon_"),)
+@router.inline_query(F.query.startswith("coupon_"))
 async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
     if not INLINE_MODE:
         return

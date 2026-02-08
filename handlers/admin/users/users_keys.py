@@ -3,7 +3,7 @@ import time
 import uuid
 
 from datetime import datetime, timedelta, timezone
-from core.settings.tariffs_config import normalize_tariff_config
+from handlers.buttons import BACK
 
 import pytz
 
@@ -419,7 +419,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
             )
             builder.row(
                 InlineKeyboardButton(
-                    text="🔙 Назад",
+                    text=BACK,
                     callback_data=AdminUserEditorCallback(
                         action="users_key_edit",
                         tg_id=tg_id,
@@ -450,7 +450,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
                 )
             builder.row(
                 InlineKeyboardButton(
-                    text="Назад",
+                    text=BACK,
                     callback_data=f"users_key_edit|{email}",
                 )
             )
@@ -503,7 +503,7 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
                 )
                 builder.row(
                     InlineKeyboardButton(
-                        text="🔙 Назад",
+                        text=BACK,
                         callback_data=AdminUserEditorCallback(
                             action="users_key_edit",
                             tg_id=tg_id,
@@ -588,7 +588,7 @@ async def handle_recreate_key_start(
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=email).pack(),
         )
     )
@@ -735,7 +735,7 @@ async def handle_recreate_key_confirm(
         builder = InlineKeyboardBuilder()
         builder.row(
             InlineKeyboardButton(
-                text="🔙 Назад",
+                text=BACK,
                 callback_data=AdminUserEditorCallback(
                     action="users_key_edit",
                     tg_id=tg_id,
@@ -1478,7 +1478,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     builder.row(InlineKeyboardButton(text="💾 Сохранить", callback_data="cfg_save"))
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
         )
     )
@@ -1499,7 +1499,7 @@ async def handle_cfg_edit_base(callback_query: CallbackQuery, state: FSMContext,
         builder.row(InlineKeyboardButton(text="📱 Устройства", callback_data="cfg_base_devices"))
     if traffic_options:
         builder.row(InlineKeyboardButton(text="📊 Трафик", callback_data="cfg_base_traffic"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="cfg_back_menu"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
         "<b>📦 Редактирование базы тарифа</b>\n\nВыберите параметр:",
@@ -1519,7 +1519,7 @@ async def handle_cfg_edit_addon(callback_query: CallbackQuery, state: FSMContext
         builder.row(InlineKeyboardButton(text="📱 Устройства", callback_data="cfg_addon_devices"))
     if traffic_options:
         builder.row(InlineKeyboardButton(text="📊 Трафик", callback_data="cfg_addon_traffic"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="cfg_back_menu"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
         "<b>➕ Редактирование докупки</b>\n\nВыберите параметр:",
@@ -1544,7 +1544,7 @@ async def handle_cfg_base_devices(callback_query: CallbackQuery, state: FSMConte
         mark = " ✅" if int(opt) == int(base_devices) else ""
         builder.button(text=f"{opt} устр.{mark}", callback_data=f"cfg_set_base_dev:{opt}")
     builder.adjust(3)
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="cfg_back_menu"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="devices")
@@ -1568,7 +1568,7 @@ async def handle_cfg_base_traffic(callback_query: CallbackQuery, state: FSMConte
         label = "безлимит" if opt == 0 else f"{opt} ГБ"
         builder.button(text=f"{label}{mark}", callback_data=f"cfg_set_base_traf:{opt}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="cfg_back_menu"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="traffic")
@@ -1698,7 +1698,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     builder.row(InlineKeyboardButton(text="💾 Сохранить", callback_data="cfg_save"))
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
         )
     )

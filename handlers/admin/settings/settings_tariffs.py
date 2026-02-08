@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.buttons import BACK
 
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
 from filters.admin import IsAdminFilter
@@ -61,7 +62,7 @@ def build_tariffs_settings_kb() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="settings").pack(),
         )
     )
@@ -137,7 +138,7 @@ def build_tariffs_packs_kb() -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="settings_tariffs").pack(),
         )
     )

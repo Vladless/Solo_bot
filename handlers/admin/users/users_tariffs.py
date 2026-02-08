@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.buttons import BACK
 
 from core.settings.tariffs_config import normalize_tariff_config
 from database import get_tariff_by_id
@@ -70,7 +71,7 @@ async def handle_user_choose_tariff_group(
     builder = InlineKeyboardBuilder()
     for group_code in groups:
         builder.button(text=group_code, callback_data=f"group:{group_code}")
-    builder.button(text="🔙 Назад", callback_data="back:renew")
+    builder.button(text=BACK, callback_data="back:renew")
     builder.adjust(1)
 
     await callback_query.message.edit_text(
@@ -101,7 +102,7 @@ async def handle_user_choose_tariff(
     builder = InlineKeyboardBuilder()
     for tariff in tariffs:
         builder.button(text=f"{tariff.name} – {int(tariff.price_rub)}₽", callback_data=f"confirm:{tariff.id}")
-    builder.button(text="🔙 Назад", callback_data="back:group")
+    builder.button(text=BACK, callback_data="back:group")
     builder.adjust(1)
 
     await callback_query.message.edit_text(
@@ -271,7 +272,7 @@ async def handle_user_renew_confirm(
                 builder.row(b)
 
         builder.row(InlineKeyboardButton(text="✅ Применить", callback_data=f"cfg_renew_apply|{tariff_id}"))
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back:group"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="back:group"))
 
         devices_label = (
             "Безлимит устройств"
@@ -456,7 +457,7 @@ async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMCont
             builder.row(b)
 
     builder.row(InlineKeyboardButton(text="✅ Применить", callback_data=f"cfg_renew_apply|{tariff_id}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back:group"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="back:group"))
 
     devices_label = "Безлимит устройств" if selected_devices <= 0 else f"{selected_devices} устройств"
     traffic_label = (
@@ -573,7 +574,7 @@ async def handle_cfg_renew_traffic(callback_query: CallbackQuery, state: FSMCont
             builder.row(b)
 
     builder.row(InlineKeyboardButton(text="✅ Применить", callback_data=f"cfg_renew_apply|{tariff_id}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="back:group"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="back:group"))
 
     devices_label = (
         "Безлимит устройств"
@@ -708,7 +709,7 @@ async def handle_back_to_group(
     builder = InlineKeyboardBuilder()
     for group_code in groups:
         builder.button(text=group_code, callback_data=f"group:{group_code}")
-    builder.button(text="🔙 Назад", callback_data="back:renew")
+    builder.button(text=BACK, callback_data="back:renew")
     builder.adjust(1)
 
     await callback_query.message.edit_text(

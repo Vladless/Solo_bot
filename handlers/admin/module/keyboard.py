@@ -29,7 +29,7 @@ def build_modules_kb(page: int, total_pages: int, items: list[tuple[str, str | N
         if page > 1:
             nav.append(
                 InlineKeyboardButton(
-                    text="⬅️ Назад",
+                    text=BACK,
                     callback_data=AdminPanelCallback(action="modules", page=page - 1).pack(),
                 )
             )

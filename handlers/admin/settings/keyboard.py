@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
+from handlers.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from .settings_config import (
@@ -44,7 +45,7 @@ def build_toggle_section_keyboard(
 
     builder.row(
         InlineKeyboardButton(
-            text="Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action=back_action).pack(),
         )
     )
@@ -117,12 +118,13 @@ def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
 
     for idx, name in enumerate(sorted_names):
         title = PAYMENT_PROVIDER_TITLES.get(name, name)
-        pos = idx + 1 
+        pos = idx + 1
         builder.row(
             InlineKeyboardButton(
                 text="⬆️",
                 callback_data=AdminPanelCallback(
-                    action="settings_order_up", page=pos,
+                    action="settings_order_up",
+                    page=pos,
                 ).pack(),
             ),
             InlineKeyboardButton(
@@ -134,7 +136,8 @@ def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="⬇️",
                 callback_data=AdminPanelCallback(
-                    action="settings_order_down", page=pos,
+                    action="settings_order_down",
+                    page=pos,
                 ).pack(),
             ),
         )
@@ -147,7 +150,7 @@ def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text="Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="settings_cashboxes").pack(),
         )
     )
@@ -192,7 +195,7 @@ def build_settings_notifications_intervals_kb(notifications_state: dict[str, obj
 
     builder.row(
         InlineKeyboardButton(
-            text="Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="settings_notifications").pack(),
         )
     )
@@ -261,7 +264,7 @@ def build_settings_money_kb(money_state: dict[str, object]) -> InlineKeyboardMar
 
     builder.row(
         InlineKeyboardButton(
-            text="Назад",
+            text=BACK,
             callback_data=AdminPanelCallback(action="settings").pack(),
         )
     )

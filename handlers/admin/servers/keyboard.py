@@ -37,7 +37,7 @@ def build_manage_server_kb(server_name: str, cluster_name: str, enabled: bool) -
     )
 
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=f"cluster_servers|{cluster_name}",
     )
 
@@ -70,9 +70,7 @@ def build_edit_server_fields_kb(server_name: str, server_data: dict) -> InlineKe
     builder.row(InlineKeyboardButton(text="⚙️ Тип панели", callback_data=f"select_panel_type|{server_name}"))
 
     builder.row(
-        InlineKeyboardButton(
-            text="⬅️ Назад", callback_data=AdminServerCallback(action="manage", data=server_name).pack()
-        )
+        InlineKeyboardButton(text=BACK, callback_data=AdminServerCallback(action="manage", data=server_name).pack())
     )
 
     return builder.as_markup()
@@ -83,7 +81,7 @@ def build_panel_type_selection_kb(server_name: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🌐 3x-ui", callback_data=f"set_panel_type|{server_name}|3x-ui")],
             [InlineKeyboardButton(text="🌀 remnawave", callback_data=f"set_panel_type|{server_name}|remnawave")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"edit_server|{server_name}")],
+            [InlineKeyboardButton(text=BACK, callback_data=f"edit_server|{server_name}")],
         ]
     )
 
@@ -94,7 +92,7 @@ def build_cluster_selection_kb(server_name: str, clusters: list[str]) -> InlineK
     for cluster in clusters:
         builder.row(InlineKeyboardButton(text=cluster, callback_data=f"set_cluster|{server_name}|{cluster}"))
 
-    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"edit_server|{server_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"edit_server|{server_name}"))
 
     return builder.as_markup()
 

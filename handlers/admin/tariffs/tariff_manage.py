@@ -18,6 +18,7 @@ from database.models import Gift, Key, Server, Tariff
 from filters.admin import IsAdminFilter
 
 from ..panel.keyboard import AdminPanelCallback
+from handlers.buttons import BACK
 from . import router
 from .keyboard import (
     AdminTariffCallback,
@@ -331,7 +332,7 @@ async def confirm_tariff_deletion(callback: CallbackQuery, callback_data: AdminT
                         inline_keyboard=[
                             [
                                 InlineKeyboardButton(
-                                    text="⬅️ Назад", callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
+                                    text=BACK, callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack()
                                 )
                             ]
                         ]
@@ -465,7 +466,7 @@ async def ask_new_value(callback: CallbackQuery, state: FSMContext):
                     ],
                     [
                         InlineKeyboardButton(
-                            text="⬅️ Назад",
+                            text=BACK,
                             callback_data=AdminTariffCallback(action=f"view|{tariff_id}").pack(),
                         )
                     ],

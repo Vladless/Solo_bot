@@ -13,9 +13,7 @@ class IsAdminFilter(BaseFilter):
 
         try:
             async with async_session_maker() as session:
-                result = await session.execute(
-                    select(exists().where(Admin.tg_id == event.from_user.id))
-                )
+                result = await session.execute(select(exists().where(Admin.tg_id == event.from_user.id)))
                 return result.scalar()
         except (Exception,):
             return False

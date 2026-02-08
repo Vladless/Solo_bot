@@ -27,7 +27,7 @@ def build_gift_tariffs_kb(tariffs: list[Tariff]) -> InlineKeyboardMarkup:
             text=f"{tariff.name} — {tariff.duration_days // 30} мес.",
             callback_data=f"admin_gift_confirm|{tariff.id}",
         )
-    builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+    builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
     builder.adjust(1)
     return builder.as_markup()
 
@@ -61,6 +61,6 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
     if nav:
         builder.row(*nav)
 
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack()))
 
     return builder.as_markup()

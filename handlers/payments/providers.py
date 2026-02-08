@@ -79,9 +79,7 @@ def _get_effective_order(name: str, cfg: dict[str, Any]) -> int:
 
 def _sort_providers(providers: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Сортирует провайдеров по полю 'order' (меньше = выше)."""
-    return dict(
-        sorted(providers.items(), key=lambda item: _get_effective_order(item[0], item[1]))
-    )
+    return dict(sorted(providers.items(), key=lambda item: _get_effective_order(item[0], item[1])))
 
 
 def sort_provider_names(names: list[str], providers_map: dict[str, dict[str, Any]]) -> list[str]:

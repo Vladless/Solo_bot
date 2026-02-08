@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.buttons import BACK
 
 from database.models import ManualBan
 from filters.admin import IsAdminFilter
@@ -41,7 +42,7 @@ async def handle_ban_forever_start(callback: CallbackQuery, callback_data: Admin
     await state.update_data(tg_id=callback_data.tg_id)
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn("⬅️ Назад", tg_id=callback_data.tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
 
     await callback.message.edit_text(
         text="✏️ Введите причину <b>постоянной блокировки</b> (или <code>-</code>, чтобы пропустить):",
@@ -97,7 +98,7 @@ async def handle_ban_temporary(callback: CallbackQuery, callback_data: AdminUser
     await state.update_data(tg_id=callback_data.tg_id)
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn("⬅️ Назад", tg_id=callback_data.tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
 
     await callback.message.edit_text(
         text="✏️ Введите причину <b>временной блокировки</b> (или <code>-</code>, чтобы пропустить):",
@@ -114,7 +115,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     tg_id = user_data.get("tg_id")
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn("⬅️ Назад", tg_id=tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, tg_id=tg_id, edit=True))
 
     await message.answer(
         "⏳ Введите срок блокировки в днях (0 — навсегда):",

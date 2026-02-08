@@ -186,9 +186,7 @@ async def choose_tariffs(
         await callback.message.edit_text("❌ Для этой группы нет доступных тарифов.")
         return
 
-    servers_q = await session.execute(
-        select(Server.id).where(Server.server_name.in_(selected_servers))
-    )
+    servers_q = await session.execute(select(Server.id).where(Server.server_name.in_(selected_servers)))
     server_ids = [row[0] for row in servers_q.fetchall()]
 
     current_bindings_q = await session.execute(
@@ -244,7 +242,7 @@ async def toggle_tariff_selection(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariffs"),IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariffs"), IsAdminFilter())
 async def apply_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):

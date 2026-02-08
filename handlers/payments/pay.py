@@ -19,7 +19,12 @@ from handlers.payments.currency_rates import format_for_user
 from handlers.payments.providers import get_providers_with_hooks
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
-from handlers.texts import FAST_PAY_CHOOSE_CURRENCY, BALANCE_MANAGEMENT_TEXT, PAYMENT_METHODS_MSG
+from handlers.texts import (
+    FAST_PAY_CHOOSE_CURRENCY,
+    BALANCE_MANAGEMENT_TEXT,
+    PAYMENT_METHODS_MSG,
+    BALANCE_HISTORY_HEADER,
+)
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 
@@ -211,7 +216,7 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
 
     if records:
         language_code = getattr(callback_query.from_user, "language_code", None)
-        history_text = "<b>💳 История операций:</b>\n\n<blockquote>"
+        history_text = f"{BALANCE_HISTORY_HEADER}</b>\n\n<blockquote>"
         for record in records:
             amount_rub = record["amount"] or 0
             formatted_amount = await format_for_user(session, callback_query.from_user.id, amount_rub, language_code)

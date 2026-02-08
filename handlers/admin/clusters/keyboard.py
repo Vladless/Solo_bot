@@ -4,6 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 from ..servers.keyboard import AdminServerCallback
+from handlers.buttons import BACK
 
 
 class AdminClusterCallback(CallbackData, prefix="admin_cluster"):
@@ -65,7 +66,7 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
     )
@@ -97,7 +98,7 @@ def build_attach_tariff_kb(cluster_name: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
     )
@@ -114,7 +115,7 @@ def build_legacy_reset_kb(cluster_name: str) -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
@@ -157,7 +158,7 @@ def build_select_subgroup_servers_kb(
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
@@ -273,7 +274,7 @@ def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
             callback_data=AdminClusterCallback(action="set_tariff", data=cluster_name).pack(),
         )
     )
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="clusters").pack()))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="clusters").pack()))
 
     return builder.as_markup()
 
@@ -321,7 +322,7 @@ def build_tariff_group_selection_kb(cluster_name: str, groups: list[tuple[int, s
         )
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
     )
@@ -363,7 +364,7 @@ def build_select_group_servers_kb(cluster_name: str, cluster_servers: list, sele
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔙 Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
     )
@@ -383,7 +384,7 @@ def build_tariff_group_selection_for_servers_kb(
         )
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminClusterCallback(action="set_group", data=cluster_name).pack(),
         )
     )
@@ -402,7 +403,7 @@ def build_availability_kb(cluster_name: str) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="⬅️ Назад", callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack()
+                    text=BACK, callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack()
                 )
             ],
         ]

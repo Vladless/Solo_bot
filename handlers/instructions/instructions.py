@@ -167,17 +167,20 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data.startswith("connect_tv|"))
 async def process_connect_tv(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_name = callback_query.data.split("|", 1)[1]
 
     record = await get_key_details(session, key_name)
     final_link = None
     is_full_remnawave = False
     use_webapp = False
+    is_remnawave_webapp = False
 
     if record:
-        server_name = record["server_id"]
+        server_name = record.get("server_id")
         final_link = record.get("key") or record.get("remnawave_link")
-        is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
+
+        if server_name:
+            is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
 
         remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
         happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
@@ -191,22 +194,23 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
             )
 
         is_remnawave_webapp = bool(is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled)
-    else:
-        is_remnawave_webapp = False
 
-    if is_remnawave_webapp:
-        back_callback = f"view_key|{key_name}"
-    else:
-        back_callback = f"connect_device|{key_name}"
+    if not final_link:
+        await callback_query.answer("❌ Ссылка подписки не найдена", show_alert=True)
+        return
+
+    back_callback = f"view_key|{key_name}" if is_remnawave_webapp else f"connect_device|{key_name}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=back_callback))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
+    text = CONNECT_TV_TEXT.format(subscription_link=final_link)
+
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=CONNECT_TV_TEXT,
+        text=text,
         reply_markup=builder.as_markup(),
         media_path=None,
         disable_web_page_preview=True,
