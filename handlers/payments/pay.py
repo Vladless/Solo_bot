@@ -216,7 +216,7 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
 
     if records:
         language_code = getattr(callback_query.from_user, "language_code", None)
-        history_text = f"{BALANCE_HISTORY_HEADER}</b>\n\n<blockquote>"
+        history_text = f"{BALANCE_HISTORY_HEADER}\n\n<blockquote>"
         for record in records:
             amount_rub = record["amount"] or 0
             formatted_amount = await format_for_user(session, callback_query.from_user.id, amount_rub, language_code)

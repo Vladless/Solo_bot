@@ -1,5 +1,7 @@
 from aiogram import Router
 
+from filters.admin import IsSuperAdminFilter
+
 from .settings_buttons import router as settings_buttons_router
 from .settings_cashboxes import router as settings_cashboxes_router
 from .settings_manage import router as settings_manage_router
@@ -10,6 +12,8 @@ from .settings_tariffs import router as settings_tariffs_router
 
 
 router = Router(name="admin_settings")
+router.callback_query.filter(IsSuperAdminFilter())
+router.message.filter(IsSuperAdminFilter())
 router.include_router(settings_manage_router)
 router.include_router(settings_buttons_router)
 router.include_router(settings_cashboxes_router)
