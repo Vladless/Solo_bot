@@ -7,6 +7,7 @@ from .backups import router as backups_router
 from .bans import router as bans_router
 from .clusters import router as clusters_router
 from .coupons import router as coupons_router
+from .emoji import router as emoji_router
 from .gifts import router as gifts_router
 from .management import router as management_router
 from .module import router as modules_router
@@ -33,6 +34,7 @@ router.include_routers(
     backups_router,
     sender_router,
     coupons_router,
+    emoji_router,
     restart_router,
     bans_router,
     ads_router,

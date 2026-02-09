@@ -5,6 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import API_TOKEN
 from filters.private import IsPrivateFilter
+from utils.custom_emojis import initialize_custom_emojis
 from utils.errors import setup_error_handlers
 from utils.modules_loader import load_modules_from_folder, modules_hub
 
@@ -21,3 +22,4 @@ dp.message.filter(IsPrivateFilter())
 dp.callback_query.filter(IsPrivateFilter())
 
 setup_error_handlers(dp)
+initialize_custom_emojis()
