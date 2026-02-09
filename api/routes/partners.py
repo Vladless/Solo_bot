@@ -7,8 +7,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token
 
+try:
+    from modules.partner_program.settings import PARTNER_BONUS_PERCENTAGES
+except Exception:
+    PARTNER_BONUS_PERCENTAGES = {1: 0.0}
+
 
 router = APIRouter()
+
+
+def _parse_percent(value: float) -> float | None:
+    """Normalize percent input to 0-100 range."""
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if 0.0 <= val <= 1.0:
+        val *= 100.0
+
+    if 0.0 <= val <= 100.0:
+        return val
+    return None
+
+
+def _default_partner_percent() -> float:
+    try:
+        return float(PARTNER_BONUS_PERCENTAGES.get(1, 0.0)) * 100.0
+    except Exception:
+        return 0.0
 
 
 @router.get("/all")
@@ -41,14 +68,15 @@ async def get_all_partners(
         SELECT 
             p.partner_tg_id AS tg_id,
             COALESCE(u.partner_balance, 0) AS partner_balance,
-            COALESCE(u.partner_percent, 0) AS partner_percent,
+            u.partner_percent,
+            COALESCE(u.partner_percent_custom, false) AS partner_percent_custom,
             u.partner_code,
             u.payout_method,
             COUNT(p.joined_tg_id) as joined_count
         FROM partners p
         LEFT JOIN users u ON u.tg_id = p.partner_tg_id
         WHERE p.partner_tg_id IS NOT NULL
-        GROUP BY p.partner_tg_id, u.partner_balance, u.partner_percent, u.partner_code, u.payout_method
+        GROUP BY p.partner_tg_id, u.partner_balance, u.partner_percent, u.partner_percent_custom, u.partner_code, u.payout_method
         ORDER BY partner_balance DESC
         LIMIT :limit OFFSET :offset
         """
@@ -67,17 +95,26 @@ async def get_all_partners(
     count_result = await session.execute(count_sql)
     total = count_result.scalar() or 0
 
-    partners_list = [
-        {
-            "tg_id": int(partner[0]),
-            "balance": float(partner[1] or 0),
-            "percent": float(partner[2] or 0),
-            "code": partner[3] or None,
-            "method": partner[4] or None,
-            "referred_count": int(partner[5] or 0),
-        }
-        for partner in partners
-    ]
+    partners_list = []
+    default_percent = _default_partner_percent()
+    for partner in partners:
+        percent_value = partner[2]
+        percent_custom = bool(partner[3])
+        if percent_custom and percent_value is not None:
+            percent = float(percent_value)
+        else:
+            percent = float(default_percent)
+
+        partners_list.append(
+            {
+                "tg_id": int(partner[0]),
+                "balance": float(partner[1] or 0),
+                "percent": percent,
+                "code": partner[4] or None,
+                "method": partner[5] or None,
+                "referred_count": int(partner[6] or 0),
+            }
+        )
 
     return JSONResponse(content={"total": total, "items": partners_list})
 
@@ -215,7 +252,8 @@ async def get_partner_data(
         """
         SELECT 
             COALESCE(u.partner_balance, 0) AS partner_balance,
-            COALESCE(u.partner_percent, 0) AS partner_percent,
+            u.partner_percent,
+            COALESCE(u.partner_percent_custom, false) AS partner_percent_custom,
             u.partner_code,
             u.payout_method
         FROM users u
@@ -251,12 +289,20 @@ async def get_partner_data(
     invited_res = await session.execute(invited_sql, {"tg_id": tg_id})
     invited_rows = invited_res.fetchall()
 
+    default_percent = _default_partner_percent()
+    percent = default_percent
+    if meta_row:
+        percent_value = meta_row[1]
+        percent_custom = bool(meta_row[2])
+        if percent_custom and percent_value is not None:
+            percent = float(percent_value)
+
     response = {
         "tg_id": tg_id,
         "partner_balance": float(meta_row[0] or 0) if meta_row else 0.0,
-        "partner_percent": float(meta_row[1] or 0) if meta_row else 0.0,
-        "partner_code": meta_row[2] if meta_row else None,
-        "payout_method": meta_row[3] if meta_row else None,
+        "partner_percent": percent,
+        "partner_code": meta_row[3] if meta_row else None,
+        "payout_method": meta_row[4] if meta_row else None,
         "invited": [
             {
                 "tg_id": row[0],
@@ -270,6 +316,230 @@ async def get_partner_data(
     }
 
     return JSONResponse(content=response)
+
+
+@router.post("/{tg_id}/invited")
+async def add_partner_invited(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    joined_tg_id: int = Query(..., description="Telegram ID приглашённого"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Добавляет приглашённого пользователю партнёра."""
+
+    if joined_tg_id == tg_id:
+        return JSONResponse(
+            content={"success": False, "message": "Нельзя привязать пользователя к самому себе"},
+            status_code=400,
+        )
+
+    try:
+        partner_exists = await session.execute(
+            text("SELECT 1 FROM users WHERE tg_id = :tg_id"),
+            {"tg_id": tg_id},
+        )
+        if not partner_exists.scalar():
+            return JSONResponse(
+                content={"success": False, "message": "Партнёр не найден"},
+                status_code=404,
+            )
+
+        invited_exists = await session.execute(
+            text("SELECT 1 FROM users WHERE tg_id = :joined_tg_id"),
+            {"joined_tg_id": joined_tg_id},
+        )
+        if not invited_exists.scalar():
+            return JSONResponse(
+                content={"success": False, "message": "Приглашённый пользователь не найден"},
+                status_code=404,
+            )
+
+        existing = await session.execute(
+            text("SELECT partner_tg_id FROM partners WHERE joined_tg_id = :joined_tg_id"),
+            {"joined_tg_id": joined_tg_id},
+        )
+        existing_partner = existing.scalar()
+        if existing_partner is not None:
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "message": f"Пользователь уже привязан к партнёру {existing_partner}",
+                },
+                status_code=409,
+            )
+
+        await session.execute(
+            text(
+                """
+                INSERT INTO partners (partner_tg_id, joined_tg_id)
+                VALUES (:partner_tg_id, :joined_tg_id)
+                """
+            ),
+            {"partner_tg_id": tg_id, "joined_tg_id": joined_tg_id},
+        )
+        await session.commit()
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": "Приглашённый добавлен",
+                "partner_tg_id": tg_id,
+                "joined_tg_id": joined_tg_id,
+            },
+            status_code=201,
+        )
+    except Exception as e:
+        await session.rollback()
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+
+
+@router.delete("/{tg_id}/invited/{joined_tg_id}")
+async def delete_partner_invited(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    joined_tg_id: int = Path(..., description="Telegram ID приглашённого"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Удаляет приглашённого у партнёра."""
+
+    try:
+        result = await session.execute(
+            text(
+                """
+                DELETE FROM partners
+                WHERE partner_tg_id = :partner_tg_id
+                  AND joined_tg_id = :joined_tg_id
+                """
+            ),
+            {"partner_tg_id": tg_id, "joined_tg_id": joined_tg_id},
+        )
+        await session.commit()
+
+        if result.rowcount > 0:
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "message": "Приглашённый удалён",
+                    "partner_tg_id": tg_id,
+                    "joined_tg_id": joined_tg_id,
+                },
+                status_code=200,
+            )
+        return JSONResponse(
+            content={"success": False, "message": "Связка партнёр-приглашённый не найдена"},
+            status_code=404,
+        )
+    except Exception as e:
+        await session.rollback()
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+
+
+@router.patch("/{tg_id}/percent")
+async def update_partner_percent(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    percent: float = Query(..., description="Новый персональный процент (0-100 или 0.0-1.0)"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Обновляет персональный процент партнёра."""
+
+    normalized = _parse_percent(percent)
+    if normalized is None:
+        return JSONResponse(
+            content={"success": False, "message": "Неверный процент. Допустимо 0-100 или 0.0-1.0"},
+            status_code=400,
+        )
+
+    try:
+        result = await session.execute(
+            text(
+                """
+                UPDATE users
+                SET partner_percent = :percent, partner_percent_custom = true
+                WHERE tg_id = :tg_id
+                """
+            ),
+            {"tg_id": tg_id, "percent": normalized},
+        )
+        await session.commit()
+
+        if result.rowcount > 0:
+            return JSONResponse(
+                content={"success": True, "message": "Процент обновлён", "percent": normalized},
+                status_code=200,
+            )
+        return JSONResponse(content={"success": False, "message": "Партнёр не найден"}, status_code=404)
+    except Exception as e:
+        await session.rollback()
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
+
+
+@router.patch("/{tg_id}/balance")
+async def update_partner_balance(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    amount: float = Query(..., description="Сумма операции"),
+    mode: str = Query("set", description="Режим: set, add, subtract"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Изменяет баланс партнёрской программы."""
+
+    mode_normalized = (mode or "set").strip().lower()
+    if mode_normalized not in {"set", "add", "subtract"}:
+        return JSONResponse(
+            content={"success": False, "message": "Неверный режим. Используйте set, add или subtract"},
+            status_code=400,
+        )
+
+    try:
+        amount_val = float(amount)
+    except (TypeError, ValueError):
+        return JSONResponse(
+            content={"success": False, "message": "Неверная сумма"},
+            status_code=400,
+        )
+
+    if amount_val < 0:
+        return JSONResponse(
+            content={"success": False, "message": "Сумма не может быть отрицательной"},
+            status_code=400,
+        )
+
+    try:
+        current_res = await session.execute(
+            text("SELECT partner_balance FROM users WHERE tg_id = :tg_id"),
+            {"tg_id": tg_id},
+        )
+        current_balance = current_res.scalar()
+        if current_balance is None:
+            return JSONResponse(content={"success": False, "message": "Партнёр не найден"}, status_code=404)
+
+        current_balance = float(current_balance or 0.0)
+
+        if mode_normalized == "set":
+            new_balance = amount_val
+        elif mode_normalized == "add":
+            new_balance = current_balance + amount_val
+        else:
+            if current_balance < amount_val:
+                return JSONResponse(
+                    content={"success": False, "message": "Недостаточно средств"},
+                    status_code=400,
+                )
+            new_balance = current_balance - amount_val
+
+        await session.execute(
+            text("UPDATE users SET partner_balance = :balance WHERE tg_id = :tg_id"),
+            {"tg_id": tg_id, "balance": new_balance},
+        )
+        await session.commit()
+
+        return JSONResponse(
+            content={"success": True, "message": "Баланс обновлён", "balance": new_balance},
+            status_code=200,
+        )
+    except Exception as e:
+        await session.rollback()
+        return JSONResponse(content={"success": False, "message": str(e)}, status_code=500)
 
 
 @router.get("/{tg_id}/invited")
