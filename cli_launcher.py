@@ -210,7 +210,10 @@ def restore_from_backup():
     install_rsync_if_needed()
 
     console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
-    rc = subprocess.run(f"rsync -a --delete {sel_path}/ {PROJECT_DIR}/", shell=True).returncode
+    rc = subprocess.run(
+        ["rsync", "-a", "--delete", f"{sel_path}/", f"{PROJECT_DIR}/"],
+        check=False,
+    ).returncode
     if rc != 0:
         console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
         return
@@ -239,7 +242,7 @@ def auto_update_cli():
             console.print("[green]Доступна новая версия CLI. Обновляю...[/green]")
             with open(current_path, "w", encoding="utf-8") as f:
                 f.write(latest_text)
-            os.chmod(current_path, 0o755)
+            os.chmod(current_path, 0o644)
             console.print("[green]CLI обновлён. Перезапуск...[/green]")
             os.execv(sys.executable, [sys.executable, current_path])
         else:
@@ -370,13 +373,13 @@ def install_dependencies():
                 shutil.rmtree("venv")
                 console.print("[yellow]Удалён старый venv[/yellow]")
 
-            subprocess.run(f"{python312_path} -m venv venv", shell=True, check=True)
+            subprocess.run([python312_path, "-m", "venv", "venv"], check=True)
 
             progress.update(task_id, description="Установка зависимостей...")
             subprocess.run(
-                "bash -c 'source venv/bin/activate && pip install -r requirements.txt'",
-                shell=True,
+                [os.path.join("venv", "bin", "pip"), "install", "-r", "requirements.txt"],
                 check=True,
+                cwd=PROJECT_DIR,
             )
 
             progress.update(task_id, description="Установка завершена")
@@ -390,7 +393,7 @@ def restart_service():
     if is_service_exists(SERVICE_NAME):
         console.print("[blue]🚀 Перезапуск службы...[/blue]")
         with console.status("[bold yellow]Перезапуск...[/bold yellow]"):
-            subprocess.run(f"sudo systemctl restart {SERVICE_NAME}", shell=True)
+            subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
     else:
         console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
 
@@ -482,7 +485,8 @@ def update_from_beta():
         exclude_options += "--exclude=handlers/buttons.py "
     exclude_options += "--exclude=modules "
 
-    subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+    rsync_cmd = ["rsync", "-a"] + [x for x in exclude_options.split() if x] + [f"{TEMP_DIR}/", f"{PROJECT_DIR}/"]
+    subprocess.run(rsync_cmd)
 
     modules_path = os.path.join(PROJECT_DIR, "modules")
     if not os.path.exists(modules_path):
@@ -544,8 +548,7 @@ def update_from_release():
         console.print(f"[cyan]Клонируем релиз {tag_name} во временную папку...[/cyan]")
         subprocess.run(["rm", "-rf", TEMP_DIR])
         subprocess.run(
-            f"git clone --branch {tag_name} {GITHUB_REPO} {TEMP_DIR}",
-            shell=True,
+            ["git", "clone", "--branch", tag_name, GITHUB_REPO, TEMP_DIR],
             check=True,
         )
 
@@ -560,7 +563,8 @@ def update_from_release():
             exclude_options += "--exclude=handlers/buttons.py "
         exclude_options += "--exclude=modules "
 
-        subprocess.run(f"rsync -a {exclude_options} {TEMP_DIR}/ {PROJECT_DIR}/", shell=True)
+        rsync_cmd = ["rsync", "-a"] + exclude_options.split() + [f"{TEMP_DIR}/", f"{PROJECT_DIR}/"]
+        subprocess.run(rsync_cmd)
 
         modules_path = os.path.join(PROJECT_DIR, "modules")
         if not os.path.exists(modules_path):
@@ -608,7 +612,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.3.8", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.3.9", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")

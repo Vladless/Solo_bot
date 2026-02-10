@@ -57,7 +57,12 @@ class ModulesManager:
         rec.enabled = True
         self.registry[name] = rec
 
+    def _is_safe_module_name(self, name: str) -> bool:
+        return bool(name and name.isidentifier() and "." not in name and "/" not in name and "\\" not in name)
+
     async def start(self, name: str) -> None:
+        if not self._is_safe_module_name(name):
+            raise ValueError(f"[Modules] Недопустимое имя модуля: {name!r}")
         rec = self.registry.get(name) or ModuleRecord(name, self.pkg(name))
         if rec.enabled:
             logger.info(f"[Modules] {name} уже активен.")

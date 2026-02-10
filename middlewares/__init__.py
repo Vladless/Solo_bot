@@ -1,7 +1,6 @@
 from collections.abc import Iterable
 
-from aiogram import Dispatcher
-from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from aiogram import BaseMiddleware, Dispatcher
 
 from config import CHANNEL_REQUIRED, DISABLE_DIRECT_START
 from middlewares.ban_checker import BanCheckerMiddleware

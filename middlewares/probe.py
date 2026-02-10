@@ -1,6 +1,6 @@
 import time
 
-from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from aiogram import BaseMiddleware
 
 from logger import logger
 

@@ -161,7 +161,10 @@ async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, m
         """
         )
 
-    result = await session.execute(text(bonus_query), {"tg_id": referrer_tg_id, "max_levels": max_levels})
+    result = await session.execute(
+        text(bonus_query),  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        {"tg_id": referrer_tg_id, "max_levels": max_levels},
+    )
     total_bonus_raw = result.scalar()
     total_bonus = round(float(total_bonus_raw or 0), 2)
 
@@ -189,7 +192,10 @@ async def get_referrals_by_level(session: AsyncSession, referrer_tg_id: int, max
         GROUP BY level
         ORDER BY level
     """
-    result = await session.execute(text(query), {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels})
+    result = await session.execute(
+        text(query),  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels},
+    )
     return {
         row["level"]: {
             "total": row["level_count"],
