@@ -13,6 +13,7 @@ from config import (
     NOTIFY_INACTIVE,
     NOTIFY_INACTIVE_TRAFFIC,
     REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     SUPPORT_CHAT_URL,
 )
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
@@ -141,6 +142,7 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
         return
 
     remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
 
     messages = []
     keys_to_mark_notified = []
@@ -195,7 +197,10 @@ async def notify_users_no_traffic(bot: Bot, session: AsyncSession, current_time:
                 final_link = key.key or key.remnawave_link
 
                 if is_full_remnawave and final_link and remnawave_webapp_enabled:
-                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+                    if open_in_browser:
+                        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=final_link))
+                    else:
+                        builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 else:
                     builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{email}"))
             except Exception as error:

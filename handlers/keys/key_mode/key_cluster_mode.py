@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import update
 
 from bot import bot
-from config import REMNAWAVE_WEBAPP, SUPPORT_CHAT_URL
+from config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER, SUPPORT_CHAT_URL
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     get_key_details,
@@ -216,6 +216,7 @@ async def key_cluster_mode(
     else:
         if await is_full_remnawave_cluster(least_loaded_cluster, session):
             use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+            open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
             if use_webapp and final_link:
                 use_webapp = await process_remnawave_webapp_override(
                     remnawave_webapp=use_webapp,
@@ -229,7 +230,10 @@ async def key_cluster_mode(
                 and isinstance(final_link, str)
                 and final_link.startswith(("http://", "https://"))
             ):
-                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+                if open_in_browser:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=final_link))
+                else:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
                 if tv_button_enabled:
                     builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:
