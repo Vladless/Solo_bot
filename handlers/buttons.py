@@ -1,5 +1,5 @@
 BUTTON_ICON_CONFIG: dict[str, dict[str, str]] = {
-    "partner": {"icon_custom_emoji_id": "5310169226856644648", "style": "primary"},
+    # "partner": {"icon_custom_emoji_id": "5310169226856644648", "style": "primary"},
     # Примеры по callback_data:
     # "profile": {"icon_custom_emoji_id": "5310169226856644648", "style": "primary"},   # синяя
     # "view_keys": {"icon_custom_emoji_id": "5310169226856644648", "style": "success"},  # зеленая
