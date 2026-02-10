@@ -1,7 +1,9 @@
 from datetime import datetime
+import csv
+from io import StringIO
 
 from fastapi import APIRouter, Depends, Path, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +38,12 @@ def _default_partner_percent() -> float:
         return float(PARTNER_BONUS_PERCENTAGES.get(1, 0.0)) * 100.0
     except Exception:
         return 0.0
+
+
+def _row_dt_iso(value) -> str | None:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return None
 
 
 @router.get("/all")
@@ -129,6 +137,7 @@ async def get_partners_stats(
     Структура ответа:
     {
       "total_partners": int,
+            "partners_today": int,
       "total_referred": int,
       "total_balance": float,
       "top_partner_tg_id": int,
@@ -146,6 +155,12 @@ async def get_partners_stats(
         )
         SELECT 
             (SELECT COUNT(*) FROM partner_refs) AS total_partners,
+            (
+                SELECT COUNT(DISTINCT partner_tg_id)
+                FROM partners
+                WHERE partner_tg_id IS NOT NULL
+                  AND DATE(created_at) = CURRENT_DATE
+            ) AS partners_today,
             (SELECT COUNT(DISTINCT joined_tg_id) FROM partners WHERE partner_tg_id IS NOT NULL) AS total_referred,
             (
                 SELECT COALESCE(SUM(u.partner_balance), 0.0)
@@ -163,14 +178,16 @@ async def get_partners_stats(
     if stats_row:
         stats = {
             "total_partners": int(stats_row[0] or 0),
-            "total_referred": int(stats_row[1] or 0),
-            "total_balance": float(stats_row[2] or 0.0),
-            "top_partner_tg_id": int(stats_row[3] or 0),
-            "top_partner_refs": int(stats_row[4] or 0),
+            "partners_today": int(stats_row[1] or 0),
+            "total_referred": int(stats_row[2] or 0),
+            "total_balance": float(stats_row[3] or 0.0),
+            "top_partner_tg_id": int(stats_row[4] or 0),
+            "top_partner_refs": int(stats_row[5] or 0),
         }
     else:
         stats = {
             "total_partners": 0,
+            "partners_today": 0,
             "total_referred": 0,
             "total_balance": 0.0,
             "top_partner_tg_id": 0,
@@ -593,3 +610,359 @@ async def get_partner_invited(
     ]
 
     return JSONResponse(content=invited_list)
+
+
+@router.get("/payouts/pending")
+async def get_partner_payouts_pending(
+    limit: int = Query(50, ge=1, le=200, description="Лимит результатов"),
+    offset: int = Query(0, ge=0, description="Смещение"),
+    partner_tg_id: int | None = Query(None, description="Фильтр по TG ID партнёра"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Возвращает список ожидающих заявок на вывод."""
+
+    where_clause = "WHERE pr.status = 'pending'"
+    params = {"limit": limit, "offset": offset}
+    if partner_tg_id is not None:
+        where_clause += " AND pr.tg_id = :partner_tg_id"
+        params["partner_tg_id"] = partner_tg_id
+
+    count_sql = text(f"SELECT COUNT(*) FROM payout_requests pr {where_clause}")
+    rows_sql = text(
+        f"""
+        SELECT
+            pr.id,
+            pr.tg_id,
+            pr.amount,
+            pr.status,
+            pr.created_at,
+            COALESCE(pr.method, u.payout_method) AS method,
+            COALESCE(pr.destination, u.card_number) AS destination
+        FROM payout_requests pr
+        LEFT JOIN users u ON u.tg_id = pr.tg_id
+        {where_clause}
+        ORDER BY pr.created_at ASC, pr.id ASC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+
+    total = await session.scalar(count_sql) or 0
+    result = await session.execute(rows_sql, params)
+    items = []
+    for row in result.fetchall():
+        items.append(
+            {
+                "id": int(row[0]),
+                "tg_id": int(row[1]),
+                "amount": float(row[2] or 0.0),
+                "status": row[3] or "pending",
+                "created_at": _row_dt_iso(row[4]),
+                "method": row[5] or None,
+                "destination": row[6] or None,
+            }
+        )
+
+    return JSONResponse(content={"total": int(total), "items": items})
+
+
+@router.get("/payouts/history")
+async def get_partner_payouts_history(
+    limit: int = Query(50, ge=1, le=200, description="Лимит результатов"),
+    offset: int = Query(0, ge=0, description="Смещение"),
+    partner_tg_id: int | None = Query(None, description="Фильтр по TG ID партнёра"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Возвращает историю выплат (approved/rejected)."""
+
+    where_clause = "WHERE pr.status IN ('approved','rejected')"
+    params = {"limit": limit, "offset": offset}
+    if partner_tg_id is not None:
+        where_clause += " AND pr.tg_id = :partner_tg_id"
+        params["partner_tg_id"] = partner_tg_id
+
+    count_sql = text(f"SELECT COUNT(*) FROM payout_requests pr {where_clause}")
+    rows_sql = text(
+        f"""
+        SELECT
+            pr.id,
+            pr.tg_id,
+            pr.amount,
+            pr.status,
+            pr.created_at,
+            COALESCE(pr.method, u.payout_method) AS method,
+            COALESCE(pr.destination, u.card_number) AS destination
+        FROM payout_requests pr
+        LEFT JOIN users u ON u.tg_id = pr.tg_id
+        {where_clause}
+        ORDER BY pr.created_at DESC, pr.id DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+
+    total = await session.scalar(count_sql) or 0
+    result = await session.execute(rows_sql, params)
+    items = []
+    for row in result.fetchall():
+        items.append(
+            {
+                "id": int(row[0]),
+                "tg_id": int(row[1]),
+                "amount": float(row[2] or 0.0),
+                "status": row[3] or "—",
+                "created_at": _row_dt_iso(row[4]),
+                "method": row[5] or None,
+                "destination": row[6] or None,
+            }
+        )
+
+    return JSONResponse(content={"total": int(total), "items": items})
+
+
+@router.post("/payouts/{payout_id}/approve")
+async def approve_partner_payout(
+    payout_id: int = Path(..., description="ID заявки"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Одобряет заявку на вывод."""
+
+    req_row = await session.execute(
+        text("SELECT id, tg_id, amount FROM payout_requests WHERE id = :id AND status = 'pending'"),
+        {"id": payout_id},
+    )
+    req = req_row.fetchone()
+    if not req:
+        return JSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"},
+            status_code=404,
+        )
+
+    user_row = await session.execute(
+        text("SELECT payout_method, card_number FROM users WHERE tg_id = :tg_id"),
+        {"tg_id": req[1]},
+    )
+    user = user_row.fetchone()
+    payout_method = (user[0] if user else None) or "card"
+    destination = (user[1] if user else None) or None
+    destination = (destination or "").strip() or None
+
+    await session.execute(
+        text(
+            """
+            UPDATE payout_requests
+            SET status = 'approved', method = :method, destination = :destination
+            WHERE id = :id
+            """
+        ),
+        {"id": payout_id, "method": payout_method, "destination": destination},
+    )
+    await session.commit()
+
+    return JSONResponse(content={"success": True, "message": "Заявка одобрена"}, status_code=200)
+
+
+@router.post("/payouts/{payout_id}/reject")
+async def reject_partner_payout(
+    payout_id: int = Path(..., description="ID заявки"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Отклоняет заявку на вывод и возвращает сумму на баланс."""
+
+    req_row = await session.execute(
+        text("SELECT id, tg_id, amount FROM payout_requests WHERE id = :id AND status = 'pending'"),
+        {"id": payout_id},
+    )
+    req = req_row.fetchone()
+    if not req:
+        return JSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"},
+            status_code=404,
+        )
+
+    user_row = await session.execute(
+        text("SELECT payout_method, card_number, partner_balance FROM users WHERE tg_id = :tg_id"),
+        {"tg_id": req[1]},
+    )
+    user = user_row.fetchone()
+    payout_method = (user[0] if user else None) or "card"
+    destination = (user[1] if user else None) or None
+    destination = (destination or "").strip() or None
+
+    await session.execute(
+        text(
+            """
+            UPDATE payout_requests
+            SET status = 'rejected', method = :method, destination = :destination
+            WHERE id = :id
+            """
+        ),
+        {"id": payout_id, "method": payout_method, "destination": destination},
+    )
+
+    if user is not None:
+        current_balance = float(user[2] or 0.0)
+        await session.execute(
+            text("UPDATE users SET partner_balance = :balance WHERE tg_id = :tg_id"),
+            {"balance": current_balance + float(req[2] or 0.0), "tg_id": req[1]},
+        )
+
+    await session.commit()
+
+    return JSONResponse(content={"success": True, "message": "Заявка отклонена"}, status_code=200)
+
+
+@router.patch("/{tg_id}/percent/reset")
+async def reset_partner_percent(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Сбрасывает персональный процент партнёра к дефолту."""
+
+    result = await session.execute(
+        text(
+            """
+            UPDATE users
+            SET partner_percent = NULL, partner_percent_custom = false
+            WHERE tg_id = :tg_id
+            """
+        ),
+        {"tg_id": tg_id},
+    )
+    await session.commit()
+
+    if result.rowcount > 0:
+        return JSONResponse(content={"success": True, "message": "Процент сброшен"}, status_code=200)
+    return JSONResponse(content={"success": False, "message": "Партнёр не найден"}, status_code=404)
+
+
+@router.patch("/{tg_id}/code")
+async def update_partner_code(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    code: str = Query(..., description="Новый код партнёра (латиница/цифры/_)"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Обновляет код партнёрской ссылки."""
+
+    raw = (code or "").strip().lower()
+    if not raw:
+        return JSONResponse(content={"success": False, "message": "Код не может быть пустым"}, status_code=400)
+
+    import re
+
+    if not re.fullmatch(r"[a-z0-9_]{3,32}", raw):
+        return JSONResponse(
+            content={"success": False, "message": "Неверный код. Разрешены a-z, 0-9, _ (3-32 символа)"},
+            status_code=400,
+        )
+
+    exists = await session.execute(
+        text("SELECT 1 FROM users WHERE partner_code = :code AND tg_id != :tg_id"),
+        {"code": raw, "tg_id": tg_id},
+    )
+    if exists.first():
+        return JSONResponse(content={"success": False, "message": "Такой код уже занят"}, status_code=409)
+
+    result = await session.execute(
+        text("UPDATE users SET partner_code = :code WHERE tg_id = :tg_id"),
+        {"code": raw, "tg_id": tg_id},
+    )
+    await session.commit()
+
+    if result.rowcount > 0:
+        return JSONResponse(content={"success": True, "message": "Код обновлён", "code": raw}, status_code=200)
+    return JSONResponse(content={"success": False, "message": "Партнёр не найден"}, status_code=404)
+
+
+@router.post("/reset-disabled-methods")
+async def reset_disabled_payout_methods(
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Сбрасывает реквизиты для отключённых способов вывода."""
+
+    try:
+        from modules.partner_program.settings import (
+            ENABLE_PAYOUT_CARD,
+            ENABLE_PAYOUT_SBP,
+            ENABLE_PAYOUT_TON,
+            ENABLE_PAYOUT_USDT,
+        )
+        from modules.partner_program import buttons as B
+    except Exception:
+        ENABLE_PAYOUT_CARD = True
+        ENABLE_PAYOUT_USDT = True
+        ENABLE_PAYOUT_TON = True
+        ENABLE_PAYOUT_SBP = True
+        B = None
+
+    disabled = []
+    if not ENABLE_PAYOUT_CARD and B:
+        disabled.append(B.METHOD_CARD)
+    if not ENABLE_PAYOUT_USDT and B:
+        disabled.append(B.METHOD_USDT)
+    if not ENABLE_PAYOUT_TON and B:
+        disabled.append(B.METHOD_TON)
+    if not ENABLE_PAYOUT_SBP and B:
+        disabled.append(B.METHOD_SBP)
+
+    if not disabled:
+        return JSONResponse(content={"success": True, "message": "Отключённых методов нет"}, status_code=200)
+
+    await session.execute(
+        text(
+            """
+            UPDATE users
+            SET card_number = NULL
+            WHERE payout_method = ANY(:methods)
+            """
+        ),
+        {"methods": disabled},
+    )
+    await session.commit()
+
+    return JSONResponse(content={"success": True, "message": "Отключённые методы сброшены"}, status_code=200)
+
+
+@router.get("/{tg_id}/export")
+async def export_partner_invites_csv(
+    tg_id: int = Path(..., description="Telegram ID партнёра"),
+    admin=Depends(verify_admin_token),
+    session: AsyncSession = Depends(get_session),
+):
+    """Экспортирует приглашённых партнёром в CSV."""
+
+    rows = await session.execute(
+        text(
+            """
+            SELECT joined_tg_id, created_at
+            FROM partners
+            WHERE partner_tg_id = :tg_id
+            ORDER BY created_at ASC
+            """
+        ),
+        {"tg_id": tg_id},
+    )
+    data = rows.fetchall()
+
+    if not data:
+        return JSONResponse(content={"success": False, "message": "Нет приглашённых"}, status_code=404)
+
+    buffer = StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(["joined_tg_id", "created_at"])
+    for joined_tg_id, created_at in data:
+        writer.writerow([int(joined_tg_id), created_at.isoformat() if created_at else ""])
+
+    content = buffer.getvalue().encode("utf-8-sig")
+    filename = f"partner_invites_{tg_id}.csv"
+
+    return StreamingResponse(
+        iter([content]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

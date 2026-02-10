@@ -105,7 +105,6 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
         emoji_button = InlineKeyboardButton(
             text="😀 Эмоджи",
             callback_data=AdminPanelCallback(action="emoji").pack(),
-            style="primary",
         )
 
         inserted = False
