@@ -23,6 +23,7 @@ from config import (
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     TOGGLE_CLIENT,
     USE_COUNTRY_SELECTION,
 )
@@ -393,6 +394,7 @@ async def build_key_view_payload(session: AsyncSession, key_name: str):
 
     country_selection_enabled = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
     remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
     happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
     response_message = key_message(
@@ -423,6 +425,10 @@ async def build_key_view_payload(session: AsyncSession, key_name: str):
     if is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled:
         if vless_enabled:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
+        elif open_in_browser:
+            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=final_link))
+            if tv_button_enabled:
+                builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{key_name}"))
         else:
             builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
             if tv_button_enabled:

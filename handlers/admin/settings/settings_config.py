@@ -60,6 +60,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "RANDOM_SUBSCRIPTIONS_ENABLED": "Случайные страны",
     "COUNTRY_SELECTION_ENABLED": "Режим стран",
     "REMNAWAVE_WEBAPP_ENABLED": "Remna WebApp",
+    "REMNAWAVE_WEBAPP_OPEN_IN_BROWSER": "WebApp в браузере",
     "HAPP_CRYPTOLINK_ENABLED": "Happ-ссылки",
     "LEGACY_LINKS_ENABLED": "Старые ссылки",
     "DIRECT_START_DISABLED": "Тихий режим",

@@ -22,6 +22,7 @@ from config import (
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     SUPPORT_CHAT_URL,
 )
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
@@ -756,6 +757,7 @@ async def finalize_key_creation(
     )
 
     use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
     if use_webapp and webapp_url:
         use_webapp = await process_remnawave_webapp_override(
             remnawave_webapp=use_webapp,
@@ -770,7 +772,10 @@ async def finalize_key_creation(
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
             if use_webapp and webapp_url:
-                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
+                if open_in_browser:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=webapp_url))
+                else:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
                 if tv_button_enabled:
                     builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:
