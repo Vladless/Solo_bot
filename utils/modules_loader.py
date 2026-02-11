@@ -12,6 +12,7 @@ from .modules_manager import manager
 
 modules_hub = Router(name="modules_hub")
 
+
 def _is_safe_module_name(name: str) -> bool:
     return bool(name and name.isidentifier() and "." not in name and "/" not in name and "\\" not in name)
 

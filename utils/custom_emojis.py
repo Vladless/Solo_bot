@@ -283,9 +283,7 @@ def patch_bot_methods() -> bool:
                 _set_parse_mode_none(kwargs)
             return await self._original_answer(text=processed, entities=merged, **kwargs)
 
-        async def patched_edit_text(
-            self, text: str, entities: list[MessageEntity] | None = None, **kwargs
-        ):
+        async def patched_edit_text(self, text: str, entities: list[MessageEntity] | None = None, **kwargs):
             processed, merged = await _process_text(text, entities)
             if merged:
                 _set_parse_mode_none(kwargs)
@@ -298,15 +296,11 @@ def patch_bot_methods() -> bool:
             **kwargs,
         ):
             if not caption:
-                return await self._original_edit_caption(
-                    caption=caption, caption_entities=caption_entities, **kwargs
-                )
+                return await self._original_edit_caption(caption=caption, caption_entities=caption_entities, **kwargs)
             processed, merged = await _process_text(caption, caption_entities)
             if merged:
                 _set_parse_mode_none(kwargs)
-            return await self._original_edit_caption(
-                caption=processed, caption_entities=merged, **kwargs
-            )
+            return await self._original_edit_caption(caption=processed, caption_entities=merged, **kwargs)
 
         async def patched_answer_photo(
             self,
@@ -322,9 +316,7 @@ def patch_bot_methods() -> bool:
             processed, merged = await _process_text(caption, caption_entities)
             if merged:
                 _set_parse_mode_none(kwargs)
-            return await self._original_answer_photo(
-                photo=photo, caption=processed, caption_entities=merged, **kwargs
-            )
+            return await self._original_answer_photo(photo=photo, caption=processed, caption_entities=merged, **kwargs)
 
         async def patched_answer_video(
             self,
@@ -340,9 +332,7 @@ def patch_bot_methods() -> bool:
             processed, merged = await _process_text(caption, caption_entities)
             if merged:
                 _set_parse_mode_none(kwargs)
-            return await self._original_answer_video(
-                video=video, caption=processed, caption_entities=merged, **kwargs
-            )
+            return await self._original_answer_video(video=video, caption=processed, caption_entities=merged, **kwargs)
 
         async def patched_answer_animation(
             self,
@@ -370,9 +360,7 @@ def patch_bot_methods() -> bool:
 
         async def patched_edit_media(self, media: Any, **kwargs):
             if hasattr(media, "caption") and media.caption:
-                processed, merged = await _process_text(
-                    media.caption, getattr(media, "caption_entities", None)
-                )
+                processed, merged = await _process_text(media.caption, getattr(media, "caption_entities", None))
                 media.caption = processed
                 if merged:
                     if hasattr(media, "parse_mode"):
@@ -402,6 +390,8 @@ def initialize_custom_emojis() -> bool:
     except Exception as e:
         logger.error(f"[CustomEmojis] Init failed: {e}", exc_info=True)
         return False
+
+
 """
 Support custom Telegram emojis in bot texts.
 Allows writing custom emoji IDs in texts via a special syntax.
@@ -502,15 +492,13 @@ def _parse_html_entities(text: str) -> list[MessageEntity]:
     for open_pattern, close_pattern in link_patterns:
         for open_match in re.finditer(open_pattern, text):
             url = open_match.group(1)
-            link_tags.append(
-                {
-                    "type": "open",
-                    "url": url,
-                    "open_start": open_match.start(),
-                    "open_end": open_match.end(),
-                    "close_pattern": close_pattern,
-                }
-            )
+            link_tags.append({
+                "type": "open",
+                "url": url,
+                "open_start": open_match.start(),
+                "open_end": open_match.end(),
+                "close_pattern": close_pattern,
+            })
 
     for close_match in re.finditer(r"</a>", text):
         link_tags.append({"type": "close", "pos": close_match.start()})
@@ -530,15 +518,13 @@ def _parse_html_entities(text: str) -> list[MessageEntity]:
                 close_pos = tag["pos"]
                 content = text[open_pos:close_pos]
 
-                tag_positions.append(
-                    {
-                        "open_pos": open_pos,
-                        "close_pos": close_pos,
-                        "content": content,
-                        "entity_type": "text_link",
-                        "url": matching_open["url"],
-                    }
-                )
+                tag_positions.append({
+                    "open_pos": open_pos,
+                    "close_pos": close_pos,
+                    "content": content,
+                    "entity_type": "text_link",
+                    "url": matching_open["url"],
+                })
 
     other_patterns = [
         (r"<b\s*>", r"</b>", "bold"),
@@ -558,19 +544,15 @@ def _parse_html_entities(text: str) -> list[MessageEntity]:
     other_tags = []
     for open_pattern, close_pattern, entity_type in other_patterns:
         for open_match in re.finditer(open_pattern, text):
-            other_tags.append(
-                {
-                    "type": "open",
-                    "entity_type": entity_type,
-                    "open_end": open_match.end(),
-                    "close_pattern": close_pattern,
-                }
-            )
+            other_tags.append({
+                "type": "open",
+                "entity_type": entity_type,
+                "open_end": open_match.end(),
+                "close_pattern": close_pattern,
+            })
 
         for close_match in re.finditer(close_pattern, text):
-            other_tags.append(
-                {"type": "close", "entity_type": entity_type, "pos": close_match.start()}
-            )
+            other_tags.append({"type": "close", "entity_type": entity_type, "pos": close_match.start()})
 
     other_tags.sort(key=lambda x: x.get("open_end", x.get("pos", 0)))
 
@@ -590,15 +572,13 @@ def _parse_html_entities(text: str) -> list[MessageEntity]:
                 close_pos = tag["pos"]
                 content = text[open_pos:close_pos]
 
-                tag_positions.append(
-                    {
-                        "open_pos": open_pos,
-                        "close_pos": close_pos,
-                        "content": content,
-                        "entity_type": entity_type,
-                        "url": None,
-                    }
-                )
+                tag_positions.append({
+                    "open_pos": open_pos,
+                    "close_pos": close_pos,
+                    "content": content,
+                    "entity_type": entity_type,
+                    "url": None,
+                })
 
     tag_positions.sort(key=lambda x: x["open_pos"])
 
@@ -678,10 +658,7 @@ def patch_bot_methods() -> bool:
 
                 while html_pos < len(processed_text_with_html):
                     if processed_text_with_html[html_pos] == "<":
-                        while (
-                            html_pos < len(processed_text_with_html)
-                            and processed_text_with_html[html_pos] != ">"
-                        ):
+                        while html_pos < len(processed_text_with_html) and processed_text_with_html[html_pos] != ">":
                             char = processed_text_with_html[html_pos]
                             char_utf16_len = _get_utf16_length(char)
                             for i in range(char_utf16_len):
@@ -718,11 +695,7 @@ def patch_bot_methods() -> bool:
                         else:
                             break
 
-                    return (
-                        utf16_offset_map[best_match]
-                        if best_match is not None
-                        else entity_offset_utf16
-                    )
+                    return utf16_offset_map[best_match] if best_match is not None else entity_offset_utf16
 
                 html_entities = []
                 for entity in html_entities_with_html:
@@ -757,31 +730,21 @@ def patch_bot_methods() -> bool:
 
             return text, entities
 
-        async def patched_message_answer(
-            self, text: str, entities: list[MessageEntity] | None = None, **kwargs
-        ):
+        async def patched_message_answer(self, text: str, entities: list[MessageEntity] | None = None, **kwargs):
             """Patched Message.answer."""
-            processed_text, final_entities = await process_text_and_entities(
-                text, entities, kwargs.get("parse_mode")
-            )
+            processed_text, final_entities = await process_text_and_entities(text, entities, kwargs.get("parse_mode"))
             if final_entities:
                 kwargs["parse_mode"] = None
             return await self._original_answer(
                 text=processed_text, entities=final_entities if final_entities else None, **kwargs
             )
 
-        async def patched_message_edit_text(
-            self, text: str, entities: list[MessageEntity] | None = None, **kwargs
-        ):
+        async def patched_message_edit_text(self, text: str, entities: list[MessageEntity] | None = None, **kwargs):
             """Patched Message.edit_text."""
-            processed_text, final_entities = await process_text_and_entities(
-                text, entities, kwargs.get("parse_mode")
-            )
+            processed_text, final_entities = await process_text_and_entities(text, entities, kwargs.get("parse_mode"))
             if final_entities:
                 kwargs["parse_mode"] = None
-            return await self._original_edit_text(
-                text=processed_text, entities=final_entities, **kwargs
-            )
+            return await self._original_edit_text(text=processed_text, entities=final_entities, **kwargs)
 
         async def patched_message_edit_caption(
             self,
@@ -791,9 +754,7 @@ def patch_bot_methods() -> bool:
         ):
             """Patched Message.edit_caption."""
             if not caption:
-                return await self._original_edit_caption(
-                    caption=caption, caption_entities=caption_entities, **kwargs
-                )
+                return await self._original_edit_caption(caption=caption, caption_entities=caption_entities, **kwargs)
             processed_caption, final_entities = await process_text_and_entities(
                 caption, caption_entities, kwargs.get("parse_mode")
             )

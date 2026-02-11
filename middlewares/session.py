@@ -1,5 +1,6 @@
 from aiogram import BaseMiddleware
 
+
 class SessionMiddleware(BaseMiddleware):
     def __init__(self, sessionmaker):
         self.sessionmaker = sessionmaker

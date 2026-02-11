@@ -216,7 +216,9 @@ async def key_cluster_mode(
     else:
         if await is_full_remnawave_cluster(least_loaded_cluster, session):
             use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
-            open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
+            open_in_browser = bool(
+                MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER)
+            )
             if use_webapp and final_link:
                 use_webapp = await process_remnawave_webapp_override(
                     remnawave_webapp=use_webapp,

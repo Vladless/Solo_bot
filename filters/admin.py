@@ -27,9 +27,7 @@ class IsSuperAdminFilter(BaseFilter):
         try:
             async with async_session_maker() as session:
                 admin = (
-                    await session.execute(
-                        select(Admin).where(Admin.tg_id == event.from_user.id)
-                    )
+                    await session.execute(select(Admin).where(Admin.tg_id == event.from_user.id))
                 ).scalar_one_or_none()
                 if not admin:
                     return False

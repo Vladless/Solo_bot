@@ -36,18 +36,24 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
     )
 
     if is_super:
-        builder.row(InlineKeyboardButton(
-            text="🖥️ Управление серверами",
-            callback_data=AdminPanelCallback(action="clusters").pack(),
-        ))
-        builder.row(InlineKeyboardButton(
-            text="💸Управление тарифами",
-            callback_data=AdminPanelCallback(action="tariffs").pack(),
-        ))
-        builder.row(InlineKeyboardButton(
-            text="🤖 Управление ботом",
-            callback_data=AdminPanelCallback(action="management").pack(),
-        ))
+        builder.row(
+            InlineKeyboardButton(
+                text="🖥️ Управление серверами",
+                callback_data=AdminPanelCallback(action="clusters").pack(),
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="💸Управление тарифами",
+                callback_data=AdminPanelCallback(action="tariffs").pack(),
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text="🤖 Управление ботом",
+                callback_data=AdminPanelCallback(action="management").pack(),
+            )
+        )
 
     builder.row(
         InlineKeyboardButton(
@@ -82,19 +88,23 @@ async def build_panel_kb(admin_role: str) -> InlineKeyboardMarkup:
             ),
         )
     else:
-        builder.row(InlineKeyboardButton(
-            text="🎁 Подарки",
-            callback_data=AdminPanelCallback(action="gifts").pack(),
-        ))
+        builder.row(
+            InlineKeyboardButton(
+                text="🎁 Подарки",
+                callback_data=AdminPanelCallback(action="gifts").pack(),
+            )
+        )
 
     module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
     builder = insert_hook_buttons(builder, module_buttons)
 
     if not is_moderator:
-        builder.row(InlineKeyboardButton(
-            text="⚙️ Настройки",
-            callback_data=AdminPanelCallback(action="settings").pack(),
-        ))
+        builder.row(
+            InlineKeyboardButton(
+                text="⚙️ Настройки",
+                callback_data=AdminPanelCallback(action="settings").pack(),
+            )
+        )
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 

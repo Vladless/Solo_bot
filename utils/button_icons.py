@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 import aiogram.types
+from pydantic import ConfigDict
+
+
+_UniqueGiftColors = getattr(aiogram.types, "UniqueGiftColors", None)
+if _UniqueGiftColors is not None:
+    _cfg = getattr(_UniqueGiftColors, "model_config", None)
+    _base = dict(_cfg) if _cfg is not None else {}
+    _UniqueGiftColors.model_config = ConfigDict(**_base, protected_namespaces=())
 
 _OriginalInlineKeyboardButton = aiogram.types.InlineKeyboardButton
 

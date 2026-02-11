@@ -113,16 +113,14 @@ async def get_all_partners(
         else:
             percent = float(default_percent)
 
-        partners_list.append(
-            {
-                "tg_id": int(partner[0]),
-                "balance": float(partner[1] or 0),
-                "percent": percent,
-                "code": partner[4] or None,
-                "method": partner[5] or None,
-                "referred_count": int(partner[6] or 0),
-            }
-        )
+        partners_list.append({
+            "tg_id": int(partner[0]),
+            "balance": float(partner[1] or 0),
+            "percent": percent,
+            "code": partner[4] or None,
+            "method": partner[5] or None,
+            "referred_count": int(partner[6] or 0),
+        })
 
     return JSONResponse(content={"total": total, "items": partners_list})
 
@@ -651,17 +649,15 @@ async def get_partner_payouts_pending(
     result = await session.execute(rows_sql, params)
     items = []
     for row in result.fetchall():
-        items.append(
-            {
-                "id": int(row[0]),
-                "tg_id": int(row[1]),
-                "amount": float(row[2] or 0.0),
-                "status": row[3] or "pending",
-                "created_at": _row_dt_iso(row[4]),
-                "method": row[5] or None,
-                "destination": row[6] or None,
-            }
-        )
+        items.append({
+            "id": int(row[0]),
+            "tg_id": int(row[1]),
+            "amount": float(row[2] or 0.0),
+            "status": row[3] or "pending",
+            "created_at": _row_dt_iso(row[4]),
+            "method": row[5] or None,
+            "destination": row[6] or None,
+        })
 
     return JSONResponse(content={"total": int(total), "items": items})
 
@@ -705,17 +701,15 @@ async def get_partner_payouts_history(
     result = await session.execute(rows_sql, params)
     items = []
     for row in result.fetchall():
-        items.append(
-            {
-                "id": int(row[0]),
-                "tg_id": int(row[1]),
-                "amount": float(row[2] or 0.0),
-                "status": row[3] or "—",
-                "created_at": _row_dt_iso(row[4]),
-                "method": row[5] or None,
-                "destination": row[6] or None,
-            }
-        )
+        items.append({
+            "id": int(row[0]),
+            "tg_id": int(row[1]),
+            "amount": float(row[2] or 0.0),
+            "status": row[3] or "—",
+            "created_at": _row_dt_iso(row[4]),
+            "method": row[5] or None,
+            "destination": row[6] or None,
+        })
 
     return JSONResponse(content={"total": int(total), "items": items})
 
