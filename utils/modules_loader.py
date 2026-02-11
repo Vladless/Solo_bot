@@ -22,6 +22,7 @@ def load_modules_from_folder(folder: str = "modules") -> list[Router]:
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
         if not _is_safe_module_name(name):
             logger.warning(f"[Modules] Пропуск недопустимого имени модуля: {name!r}")
             continue
@@ -50,6 +51,7 @@ def load_module_webhooks(folder: str = "modules") -> list[dict]:
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
         if not _is_safe_module_name(name):
             continue
         if not manager.should_autostart(name):
@@ -74,6 +76,7 @@ def load_module_fast_flow_handlers(folder: str = "modules") -> dict:
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
         if not _is_safe_module_name(name):
             continue
         if not manager.should_autostart(name):

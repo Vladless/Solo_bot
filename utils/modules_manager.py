@@ -13,6 +13,10 @@ IGNORE_SUBMODULES = {"models", "schemas", "db"}
 STATE_FILE = os.getenv("MODULES_STATE_FILE", "storage/modules_state.json")
 
 
+def _normalize_module_name(name: str | None) -> str:
+    return (name or "").strip()
+
+
 class ModuleRecord:
     def __init__(self, name: str, pkg: str) -> None:
         self.name = name
@@ -36,7 +40,8 @@ class ModulesManager:
             if os.path.isfile(STATE_FILE):
                 with open(STATE_FILE, encoding="utf-8") as f:
                     data = json.load(f)
-                self.disabled = set(data.get("disabled", []))
+                raw = data.get("disabled", [])
+                self.disabled = {_normalize_module_name(n) for n in raw if _normalize_module_name(n)}
             else:
                 os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
                 self._save_state()
@@ -52,6 +57,7 @@ class ModulesManager:
             logger.warning(f"[Modules] Не удалось сохранить состояние: {e}")
 
     def adopt(self, name: str, router: Router):
+        name = _normalize_module_name(name)
         rec = self.registry.get(name) or ModuleRecord(name, self.pkg(name))
         rec.router = router
         rec.enabled = True
@@ -61,6 +67,7 @@ class ModulesManager:
         return bool(name and name.isidentifier() and "." not in name and "/" not in name and "\\" not in name)
 
     async def start(self, name: str) -> None:
+        name = _normalize_module_name(name)
         if not self._is_safe_module_name(name):
             raise ValueError(f"[Modules] Недопустимое имя модуля: {name!r}")
         rec = self.registry.get(name) or ModuleRecord(name, self.pkg(name))
@@ -95,6 +102,7 @@ class ModulesManager:
         logger.info(f"[Modules] {name} запущен.")
 
     async def stop(self, name: str) -> None:
+        name = _normalize_module_name(name)
         rec = self.registry.get(name)
         if not rec or not rec.enabled:
             logger.info(f"[Modules] {name} уже остановлен или не найден.")
@@ -124,6 +132,7 @@ class ModulesManager:
         logger.info(f"[Modules] {name} остановлен.")
 
     async def restart(self, name: str) -> None:
+        name = _normalize_module_name(name)
         logger.info(f"[Modules] Перезапуск {name}...")
         await self.stop(name)
         await self.start(name)
@@ -142,6 +151,7 @@ class ModulesManager:
         importlib.invalidate_caches()
 
     def is_enabled(self, name: str) -> bool:
+        name = _normalize_module_name(name)
         rec = self.registry.get(name)
         if not rec or not rec.router:
             return False
@@ -153,10 +163,10 @@ class ModulesManager:
         return bool(sub and rec.router in sub)
 
     def is_disabled(self, name: str) -> bool:
-        return name in self.disabled
+        return _normalize_module_name(name) in self.disabled
 
     def should_autostart(self, name: str) -> bool:
-        return name not in self.disabled
+        return _normalize_module_name(name) not in self.disabled
 
 
 manager = ModulesManager()

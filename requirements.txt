@@ -13,7 +13,7 @@ asyncpg==0.30.0
 attrs==24.2.0
 babel==2.17.0
 cachetools==5.5.1
-certifi==2023.11.17  # aiocryptopay требует certifi<2024; обновить после выхода совместимой версии aiocryptopay
+certifi==2023.11.17
 cffi==1.17.1
 charset-normalizer==3.4.0
 click==8.2.2

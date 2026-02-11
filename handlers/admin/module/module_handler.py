@@ -21,9 +21,12 @@ def list_installed_modules() -> list[tuple[str, str | None]]:
     if not os.path.isdir(base):
         return []
     items: list[tuple[str, str | None]] = []
-    for name in sorted(os.listdir(base)):
-        path = os.path.join(base, name)
-        if os.path.isdir(path) and not name.startswith("."):
+    for raw_name in sorted(os.listdir(base)):
+        path = os.path.join(base, raw_name)
+        if os.path.isdir(path) and not raw_name.startswith("."):
+            name = (raw_name or "").strip()
+            if not name:
+                continue
             ver = None
             vp = os.path.join(path, "VERSION")
             if os.path.isfile(vp):
