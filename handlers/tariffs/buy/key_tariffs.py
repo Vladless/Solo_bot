@@ -12,7 +12,7 @@ from config import USE_NEW_PAYMENT_FLOW
 from core.settings.tariffs_config import normalize_tariff_config
 from database import get_balance, get_tariff_by_id
 from database.notifications import check_hot_lead_discount
-from handlers.buttons import CONFIG_PAY_BUTTON_TEXT, MAIN_MENU, PAYMENT
+from handlers.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU, PAYMENT
 from handlers.payments.currency_rates import format_for_user
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.tariffs.tariff_display import GB
@@ -237,6 +237,7 @@ async def proceed_purchase_with_values(
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
+        builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         await edit_or_send_message(
             target_message=callback_query.message,
@@ -507,12 +508,18 @@ async def render_user_config_screen(
     is_renew_mode = data.get("renew_mode") == "renew"
     confirm_prefix = "cfg_renew_confirm" if is_renew_mode else "cfg_user_confirm"
 
+    back_callback = (
+        "back_to_subgroup_tariffs"
+        if data.get("tariff_subgroup_hash")
+        else "back_to_tariff_group_list"
+    )
     builder.row(
         InlineKeyboardButton(
             text=CONFIG_PAY_BUTTON_TEXT.format(amount=price_text),
             callback_data=f"{confirm_prefix}|{tariff_id}",
         )
     )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=back_callback))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     await state.update_data(
@@ -590,30 +597,16 @@ async def start_user_tariff_configurator(
     await render_user_config_screen(callback_query, state, session)
 
 
-async def show_price_and_confirm(callback_query: CallbackQuery, state: FSMContext, session: Any | None):
+async def show_price_and_confirm(callback_query: CallbackQuery, state: FSMContext, session: Any):
     """Обновляет экран конфигурации и показывает актуальную цену."""
-    if session is None:
-        from database import async_session_maker
-
-        async with async_session_maker() as new_session:
-            await show_price_and_confirm(callback_query, state, new_session)
-        return
-
     await render_user_config_screen(callback_query, state, session)
 
 
-async def finalize_config_and_purchase(callback_query: CallbackQuery, state: FSMContext, session: Any | None):
+async def finalize_config_and_purchase(callback_query: CallbackQuery, state: FSMContext, session: Any):
     """Фиксирует выбор пользователя и проводит оплату тарифа."""
     data = await state.get_data()
     tariff_id = data.get("config_tariff_id")
     cfg = data.get("tariff_config") or {}
-
-    if session is None:
-        from database import async_session_maker
-
-        async with async_session_maker() as new_session:
-            await finalize_config_and_purchase(callback_query, state, new_session)
-        return
 
     tariff = await get_tariff_by_id(session, int(tariff_id))
     if not tariff:

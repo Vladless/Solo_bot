@@ -15,8 +15,14 @@ class CallbackAnswerMiddleware(BaseMiddleware):
         data: dict[str, Any],
     ) -> Any:
         if isinstance(event, CallbackQuery):
-            await event.answer()
+            try:
+                await event.answer()
+            except Exception:
+                pass
             if isinstance(event.message, InaccessibleMessage):
-                new_message = await bot.send_message(event.message.chat.id, "⏳")
-                object.__setattr__(event, "message", new_message)
+                try:
+                    new_message = await bot.send_message(event.message.chat.id, "⏳")
+                    object.__setattr__(event, "message", new_message)
+                except Exception:
+                    pass
         return await handler(event, data)

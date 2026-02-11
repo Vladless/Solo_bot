@@ -16,7 +16,6 @@ from database import (
     get_key_details,
     get_tariff_by_id,
     save_key_config_with_mode,
-    update_balance,
 )
 from database.models import User
 from handlers.buttons import BACK, CONFIRM_ADDON_BUTTON_TEXT, PAYMENT

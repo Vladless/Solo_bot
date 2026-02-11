@@ -83,7 +83,7 @@ async def handle_custom_amount_input_heleket(
     method = enabled_methods[0]
 
     try:
-        payment_url = await generate_heleket_payment_link(amount, tg_id, method)
+        payment_url = await generate_heleket_payment_link(amount, tg_id, method, session)
 
         if not payment_url or payment_url == "https://heleket.com/":
             await edit_or_send_message(

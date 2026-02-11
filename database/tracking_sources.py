@@ -21,6 +21,7 @@ async def create_tracking_source(session: AsyncSession, name: str, code: str, ty
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при создании источника {code}: {e}")
         await session.rollback()
+        raise
 
 
 async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:

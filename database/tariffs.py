@@ -73,6 +73,7 @@ async def get_tariffs(
         return tariffs
     except SQLAlchemyError as e:
         logger.error(f"[TARIFF] Ошибка при получении тарифов: {e}")
+        await session.rollback()
         return []
 
 
@@ -83,6 +84,7 @@ async def get_tariff_by_id(session: AsyncSession, tariff_id: int):
         return dict(tariff.__dict__) if tariff else None
     except SQLAlchemyError as e:
         logger.error(f"[TARIFF] Ошибка при получении тарифа по ID {tariff_id}: {e}")
+        await session.rollback()
         return None
 
 
@@ -179,6 +181,7 @@ async def check_tariff_exists(session: AsyncSession, tariff_id: int):
         return False
     except SQLAlchemyError as e:
         logger.error(f"[TARIFF] Ошибка при проверке тарифа {tariff_id}: {e}")
+        await session.rollback()
         return False
 
 
@@ -195,6 +198,7 @@ async def get_tariff_sort_order(session: AsyncSession, tariff_id: int) -> int:
         return sort_order
     except SQLAlchemyError as e:
         logger.error(f"[TARIFF] Ошибка при получении sort_order для тарифа {tariff_id}: {e}")
+        await session.rollback()
         return None
 
 

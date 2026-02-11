@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 from aiogram import F, Router
@@ -63,36 +62,28 @@ async def process_callback_view_profile(
     chat_id = chat.id
     username = get_username(user or chat)
 
-    key_count, balance_rub, trial_status = await asyncio.gather(
-        get_key_count(session, chat_id),
-        get_balance(session, chat_id),
-        get_trial(session, chat_id),
-    )
+    key_count = await get_key_count(session, chat_id)
+    balance_rub = await get_balance(session, chat_id)
+    trial_status = await get_trial(session, chat_id)
     balance_rub = balance_rub or 0
 
-    balance_text_task = asyncio.create_task(
-        format_for_user(
-            session,
-            chat_id,
-            balance_rub,
-            getattr(user, "language_code", None),
-        )
+    balance_text = await format_for_user(
+        session,
+        chat_id,
+        balance_rub,
+        getattr(user, "language_code", None),
     )
-    profile_menu_buttons_task = asyncio.create_task(
-        run_hooks("profile_menu", chat_id=chat_id, admin=admin, session=session)
+    profile_menu_buttons = await run_hooks(
+        "profile_menu", chat_id=chat_id, admin=admin, session=session
     )
-    profile_text_hooks_task = asyncio.create_task(
-        run_hooks(
-            "profile_text",
-            username=username,
-            chat_id=chat_id,
-            balance=int(balance_rub),
-            key_count=key_count,
-            session=session,
-        )
+    text_hooks = await run_hooks(
+        "profile_text",
+        username=username,
+        chat_id=chat_id,
+        balance=int(balance_rub),
+        key_count=key_count,
+        session=session,
     )
-
-    balance_text = await balance_text_task
 
     profile_message = profile_message_send(username, chat_id, balance_text, key_count)
     if key_count == 0:
@@ -100,7 +91,6 @@ async def process_callback_view_profile(
     else:
         profile_message += f"\n<blockquote><i>{NEWS_MESSAGE}</i></blockquote>"
 
-    text_hooks = await profile_text_hooks_task
     if text_hooks:
         profile_message = text_hooks[0]
 
@@ -127,7 +117,6 @@ async def process_callback_view_profile(
     if extra_buttons:
         builder.row(*extra_buttons)
 
-    profile_menu_buttons = await profile_menu_buttons_task
     builder = insert_hook_buttons(builder, profile_menu_buttons)
 
     if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):

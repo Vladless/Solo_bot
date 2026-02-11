@@ -92,8 +92,9 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
                         updated_at=datetime.utcnow(),
                     )
                 )
-            except SQLAlchemyError:
-                continue
+            except SQLAlchemyError as e:
+                await session.rollback()
+                raise RuntimeError(f"Ошибка при импорте пользователя tg_id={tg_id}") from e
 
         key_exists = await session.execute(select(Key).where(Key.client_id == client_id))
         if key_exists.scalar():
@@ -119,8 +120,9 @@ async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple
                 )
             )
             imported += 1
-        except SQLAlchemyError:
-            continue
+        except SQLAlchemyError as e:
+            await session.rollback()
+            raise RuntimeError(f"Ошибка при импорте ключа client_id={client_id}") from e
 
     await session.commit()
     return imported, skipped

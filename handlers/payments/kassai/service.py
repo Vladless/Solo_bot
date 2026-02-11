@@ -266,7 +266,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
     await state.update_data(amount=amount_rub)
-    payment_url = await generate_kassai_payment_link(amount_rub, message.chat.id, method)
+    payment_url = await generate_kassai_payment_link(amount_rub, message.chat.id, method, session)
 
     if not payment_url or payment_url == "https://fk.life/":
         await edit_or_send_message(
@@ -328,7 +328,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method)
+    payment_url = await generate_kassai_payment_link(amount, callback_query.message.chat.id, method, session)
 
     if not payment_url or payment_url == "https://fk.life/":
         await edit_or_send_message(
@@ -353,9 +353,12 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceKassaiState.waiting_for_payment_confirmation)
 
 
-async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) -> str:
+async def generate_kassai_payment_link(
+    amount: int, tg_id: int, method: dict, session: AsyncSession | None = None
+) -> str:
     """
-    Создание заказа в KassaAI и получение ссылки на оплату
+    Создание заказа в KassaAI и получение ссылки на оплату.
+    session — сессия из хендлера; если не передана, создаётся своя (лишняя нагрузка на пул).
     """
     nonce = int(time.time())
     unique_payment_id = f"{nonce}_{tg_id}"
@@ -393,9 +396,9 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
                         if resp_json.get("type") == "success":
                             payment_url = resp_json.get("location")
                             if payment_url:
-                                async with async_session_maker() as dbs:
+                                if session is not None:
                                     await add_payment(
-                                        session=dbs,
+                                        session=session,
                                         tg_id=tg_id,
                                         amount=float(amount),
                                         payment_system="KASSAI",
@@ -403,6 +406,17 @@ async def generate_kassai_payment_link(amount: int, tg_id: int, method: dict) ->
                                         currency="RUB",
                                         payment_id=unique_payment_id,
                                     )
+                                else:
+                                    async with async_session_maker() as dbs:
+                                        await add_payment(
+                                            session=dbs,
+                                            tg_id=tg_id,
+                                            amount=float(amount),
+                                            payment_system="KASSAI",
+                                            status="pending",
+                                            currency="RUB",
+                                            payment_id=unique_payment_id,
+                                        )
                                 logger.info(f"KassaAI payment URL created for user {tg_id}")
                                 return payment_url
                             logger.error(f"KassaAI: No location in response: {resp_json}")

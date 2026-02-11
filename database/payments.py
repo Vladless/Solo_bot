@@ -106,6 +106,7 @@ async def get_payment_by_id(session: AsyncSession, internal_id: int) -> dict | N
         }
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при поиске платежа id={internal_id}: {e}")
+        await session.rollback()
         return None
 
 
@@ -161,6 +162,7 @@ async def get_payment_by_payment_id(session: AsyncSession, pid: str) -> dict | N
         }
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при поиске платежа payment_id={pid}: {e}")
+        await session.rollback()
         return None
 
 

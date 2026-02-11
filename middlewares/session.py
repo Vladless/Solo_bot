@@ -9,10 +9,20 @@ class SessionMiddleware(BaseMiddleware):
         if data.get("session"):
             return await handler(event, data)
 
-        async with self.sessionmaker() as session:
-            data["session"] = session
+        session = self.sessionmaker()
+        data["session"] = session
+        try:
+            result = await handler(event, data)
+            await session.commit()
+            return result
+        except Exception:
             try:
-                return await handler(event, data)
-            except Exception:
                 await session.rollback()
-                raise
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                await session.close()
+            except Exception:
+                pass

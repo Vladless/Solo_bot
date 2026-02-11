@@ -113,6 +113,7 @@ async def create_coupon_usage(session: AsyncSession, coupon_id: int, user_id: in
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении использования купона: {e}")
         await session.rollback()
+        raise
 
 
 async def check_coupon_usage(session: AsyncSession, coupon_id: int, user_id: int) -> bool:
@@ -136,6 +137,7 @@ async def update_coupon_usage_count(session: AsyncSession, coupon_id: int):
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при обновлении купона {coupon_id}: {e}")
         await session.rollback()
+        raise
 
 
 def apply_percent_coupon(price_rub: int, coupon: Coupon) -> tuple[int, int]:

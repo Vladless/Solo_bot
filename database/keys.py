@@ -85,6 +85,7 @@ async def store_key(
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
         await session.rollback()
+        raise
 
 
 async def get_keys(session: AsyncSession, tg_id: int):
@@ -155,10 +156,11 @@ async def get_key_count(session: AsyncSession, tg_id: int) -> int:
     return result.scalar() or 0
 
 
-async def delete_key(session: AsyncSession, identifier: int | str):
+async def delete_key(session: AsyncSession, identifier: int | str, commit: bool = True):
     stmt = delete(Key).where(Key.tg_id == identifier if str(identifier).isdigit() else Key.client_id == identifier)
     await session.execute(stmt)
-    await session.commit()
+    if commit:
+        await session.commit()
     logger.info(f"Ключ с идентификатором {identifier} удалён")
 
 

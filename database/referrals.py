@@ -224,6 +224,7 @@ async def get_referral_stats(session: AsyncSession, referrer_tg_id: int):
 
     except Exception as e:
         logger.error(f"[ReferralStats] Ошибка при получении статистики для пользователя {referrer_tg_id}: {e}")
+        await session.rollback()
         raise
 
 

@@ -8,6 +8,7 @@ from middlewares.subscription import SubscriptionMiddleware
 
 from .admin import AdminMiddleware
 from .answer import CallbackAnswerMiddleware
+from .concurrency import ConcurrencyLimiterMiddleware
 from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware
 from .maintenance import MaintenanceModeMiddleware
@@ -34,6 +35,7 @@ def register_middleware(
         dispatcher.update.outer_middleware(StreamProbeMiddleware("global"))
 
     if sessionmaker:
+        dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
         dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
 
     if DISABLE_DIRECT_START:

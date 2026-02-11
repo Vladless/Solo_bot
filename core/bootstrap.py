@@ -1,4 +1,6 @@
 from database import async_session_maker
+from database.db import warm_pool
+from database.tariffs import initialize_all_tariff_weights
 
 from .settings.buttons_config import BUTTONS_CONFIG, load_buttons_config, update_buttons_config
 from .settings.management_config import MANAGEMENT_CONFIG, load_management_config, update_management_config
@@ -11,7 +13,9 @@ from .settings.tariffs_config import TARIFFS_CONFIG, load_tariffs_config, update
 
 
 async def bootstrap() -> None:
+    await warm_pool()
     async with async_session_maker() as session:
+        await initialize_all_tariff_weights(session)
         await load_buttons_config(session)
         await load_notifications_config(session)
         await load_modes_config(session)

@@ -243,7 +243,7 @@ async def handle_custom_amount_input(message: types.Message, state: FSMContext, 
             amount_rub = int(await to_rub(user_amount, "USD", session=session_http))
 
     await state.update_data(amount=amount_rub)
-    payment_url = await generate_heleket_payment_link(amount_rub, message.chat.id, method)
+    payment_url = await generate_heleket_payment_link(amount_rub, message.chat.id, method, session)
 
     if not payment_url or payment_url == "https://heleket.com/":
         await edit_or_send_message(
@@ -298,7 +298,7 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         return
 
     await state.update_data(amount=amount)
-    payment_url = await generate_heleket_payment_link(amount, callback_query.message.chat.id, method)
+    payment_url = await generate_heleket_payment_link(amount, callback_query.message.chat.id, method, session)
 
     if not payment_url or payment_url == "https://heleket.com/":
         await edit_or_send_message(
@@ -323,10 +323,13 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
     await state.set_state(ReplenishBalanceHeleket.waiting_for_payment_confirmation)
 
 
-async def generate_heleket_payment_link(amount: int, tg_id: int, method: dict) -> str:
+async def generate_heleket_payment_link(
+    amount: int, tg_id: int, method: dict, session: AsyncSession | None = None
+) -> str:
     """
     Создание платежа в Heleket и получение ссылки на оплату.
     amount — сумма в RUB, method['currency'] — валюта провайдера (обычно USD).
+    session — сессия из хендлера; если не передана, создаётся своя (лишняя нагрузка на пул).
     """
     url = "https://api.heleket.com/v1/payment"
     unique_order_id = f"{int(time.time())}_{tg_id}"
@@ -371,9 +374,9 @@ async def generate_heleket_payment_link(amount: int, tg_id: int, method: dict) -
                         if resp_json.get("state") == 0:
                             payment_url = resp_json.get("result", {}).get("url")
                             if payment_url:
-                                async with async_session_maker() as dbs:
+                                if session is not None:
                                     await add_payment(
-                                        session=dbs,
+                                        session=session,
                                         tg_id=tg_id,
                                         amount=float(amount),
                                         payment_system="HELEKET",
@@ -381,6 +384,17 @@ async def generate_heleket_payment_link(amount: int, tg_id: int, method: dict) -
                                         currency="RUB",
                                         payment_id=unique_order_id,
                                     )
+                                else:
+                                    async with async_session_maker() as dbs:
+                                        await add_payment(
+                                            session=dbs,
+                                            tg_id=tg_id,
+                                            amount=float(amount),
+                                            payment_system="HELEKET",
+                                            status="pending",
+                                            currency="RUB",
+                                            payment_id=unique_order_id,
+                                        )
                                 logger.info(f"Heleket payment URL created for user {tg_id}")
                                 return payment_url
                             else:

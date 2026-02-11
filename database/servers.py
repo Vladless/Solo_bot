@@ -100,6 +100,7 @@ async def get_servers(session: AsyncSession, include_enabled: bool = False) -> d
         return grouped
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при получении серверов: {e}")
+        await session.rollback()
         return {}
 
 
@@ -124,6 +125,7 @@ async def check_server_name_by_cluster(session: AsyncSession, server_name: str) 
         return {"cluster_name": row[0]} if row else None
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при поиске кластера для сервера {server_name}: {e}")
+        await session.rollback()
         return None
 
 
@@ -161,6 +163,7 @@ async def get_server_by_name(session: AsyncSession, server_name: str) -> dict | 
         return None
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при получении сервера {server_name}: {e}")
+        await session.rollback()
         return None
 
 
@@ -209,6 +212,7 @@ async def get_available_clusters(session: AsyncSession) -> list[str]:
         return [row[0] for row in result.all()]
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при получении списка кластеров: {e}")
+        await session.rollback()
         return []
 
 

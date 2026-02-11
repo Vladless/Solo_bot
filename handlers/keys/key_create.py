@@ -306,6 +306,7 @@ async def handle_key_creation(
             tg_id=tg_id,
             cluster_name=cluster_name,
             group_code=group_code,
+            tariff_subgroup_hash=None,
         )
         await state.set_state(Form.waiting_for_server_selection)
 
@@ -328,6 +329,8 @@ async def show_tariffs_in_subgroup_user(callback: CallbackQuery, state: FSMConte
             reply_markup=None,
         )
         return
+
+    await state.update_data(tariff_subgroup_hash=subgroup_hash)
 
     tariffs_for_cluster = await get_tariffs_for_cluster(session, cluster_name)
     filtered: list[dict[str, Any]] = []
@@ -381,6 +384,59 @@ async def back_to_tariff_group_list(callback: CallbackQuery, state: FSMContext, 
         session=session,
         message_or_query=callback,
     )
+
+
+@router.callback_query(F.data == "back_to_subgroup_tariffs")
+async def back_to_subgroup_tariffs(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+    """Возврат к списку тарифов текущей подгруппы (из конфигуратора)."""
+    data = await state.get_data()
+    subgroup_hash = data.get("tariff_subgroup_hash")
+    if not subgroup_hash:
+        await back_to_tariff_group_list(callback, state, session)
+        return
+    cluster_name = data.get("cluster_name")
+    group_code = data.get("group_code")
+
+    subgroup = await find_subgroup_by_hash(session, subgroup_hash, group_code)
+    if not subgroup:
+        await back_to_tariff_group_list(callback, state, session)
+        return
+
+    tariffs_for_cluster = await get_tariffs_for_cluster(session, cluster_name)
+    filtered: list[dict[str, Any]] = []
+    if tariffs_for_cluster:
+        gc = tariffs_for_cluster[0].get("group_code")
+        if gc:
+            tariffs = await get_tariffs(session, group_code=gc)
+            filtered = [
+                t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")
+            ]
+
+    if not filtered:
+        await back_to_tariff_group_list(callback, state, session)
+        return
+
+    tg_id = callback.from_user.id
+    language_code = getattr(callback.from_user, "language_code", None)
+    builder = InlineKeyboardBuilder()
+    for tariff in filtered:
+        await add_tariff_button_generic(
+            builder=builder,
+            tariff=tariff,
+            session=session,
+            tg_id=tg_id,
+            language_code=language_code,
+            callback_prefix="select_tariff_plan",
+        )
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
+    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+        reply_markup=builder.as_markup(),
+    )
+    await callback.answer()
 
 
 async def create_key(

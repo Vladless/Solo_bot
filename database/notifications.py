@@ -31,6 +31,7 @@ async def add_notification(session: AsyncSession, tg_id: int, notification_type:
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при добавлении уведомления: {e}")
         await session.rollback()
+        raise
 
 
 async def delete_notification(session: AsyncSession, tg_id: int, notification_type: str):
@@ -101,6 +102,7 @@ async def check_hot_lead_discount(session: AsyncSession, tg_id: int) -> dict:
 
     except Exception as e:
         logger.error(f"❌ Ошибка при проверке скидки горячего лида для {tg_id}: {e}")
+        await session.rollback()
         return {"available": False}
 
 
@@ -173,4 +175,5 @@ async def check_notifications_bulk(
 
     except Exception as e:
         logger.error(f"Ошибка при массовой проверке уведомлений типа {notification_type}: {e}")
+        await session.rollback()
         return []

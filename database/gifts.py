@@ -50,4 +50,4 @@ async def store_gift_link(
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении подарка {gift_id}: {e}")
         await session.rollback()
-        return False
+        raise

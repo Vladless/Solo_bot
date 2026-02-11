@@ -100,6 +100,7 @@ async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) ->
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def update_trial(session: AsyncSession, tg_id: int, status: int):
@@ -110,6 +111,7 @@ async def update_trial(session: AsyncSession, tg_id: int, status: int):
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при обновлении триала пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def get_trial(session: AsyncSession, tg_id: int) -> int:
@@ -205,7 +207,7 @@ async def delete_user_data(session: AsyncSession, tg_id: int):
             delete(Referral).where(or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id))
         )
         await session.execute(delete(CouponUsage).where(CouponUsage.user_id == tg_id))
-        await delete_key(session, tg_id)
+        await delete_key(session, tg_id, commit=False)
         await session.execute(delete(TemporaryData).where(TemporaryData.tg_id == tg_id))
         await session.execute(delete(BlockedUser).where(BlockedUser.tg_id == tg_id))
         await session.execute(delete(User).where(User.tg_id == tg_id))

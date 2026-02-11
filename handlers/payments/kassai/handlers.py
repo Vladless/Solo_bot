@@ -107,7 +107,7 @@ async def _handle_custom_amount_input_kassai(
         return
 
     try:
-        payment_url = await generate_kassai_payment_link(amount, tg_id, method)
+        payment_url = await generate_kassai_payment_link(amount, tg_id, method, session)
 
         if not payment_url or payment_url == "https://fk.life/":
             await edit_or_send_message(

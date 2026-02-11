@@ -71,8 +71,7 @@ async def _fetch_placeholder(emoji_id: str) -> str:
 
 
 async def _replace_markers(text: str) -> tuple[str, list[MessageEntity]]:
-    """Replace markers with placeholders and build custom emoji entities.
-    """
+    """Replace markers with placeholders and build custom emoji entities."""
     if not text:
         return text, []
 

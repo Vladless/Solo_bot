@@ -1,3 +1,5 @@
+import html
+import re
 import traceback
 
 from aiogram import Bot, Dispatcher
@@ -9,6 +11,15 @@ from aiogram.utils.markdown import hbold
 from config import ADMIN_ID
 from database import async_session_maker
 from logger import logger
+
+
+_OBFUSCATED_MIN_SEQ = 15
+_PLACEHOLDER = "<obfuscated>"
+
+
+def _sanitize_traceback(text: str) -> str:
+    """Убирает из текста длинные последовательности \\xNN (обфусцированный код)."""
+    return re.sub(r"(\\x[0-9a-fA-F]{2}){" + str(_OBFUSCATED_MIN_SEQ) + r",}", _PLACEHOLDER, text)
 
 
 def setup_error_handlers(dp: Dispatcher) -> None:
@@ -27,11 +38,13 @@ def setup_error_handlers(dp: Dispatcher) -> None:
                 or "message to delete not found" in error_message
             ):
                 try:
-                    tb = "".join(
-                        traceback.format_exception(
-                            type(event.exception),
-                            event.exception,
-                            event.exception.__traceback__,
+                    tb = _sanitize_traceback(
+                        "".join(
+                            traceback.format_exception(
+                                type(event.exception),
+                                event.exception,
+                                event.exception.__traceback__,
+                            )
                         )
                     )
                     logger.warning(f"Показываем стартовое меню из-за TelegramBadRequest: {error_message}")
@@ -109,14 +122,16 @@ def setup_error_handlers(dp: Dispatcher) -> None:
             return True
 
         try:
+            tb_text = _sanitize_traceback(traceback.format_exc())
             for admin_id in ADMIN_ID:
+                exc_text = html.escape(str(event.exception)[:1021])
                 await bot.send_document(
                     chat_id=admin_id,
                     document=BufferedInputFile(
-                        traceback.format_exc().encode(),
+                        tb_text.encode(),
                         filename=f"error_{event.update.update_id}.txt",
                     ),
-                    caption=f"{hbold(type(event.exception).__name__)}: {str(event.exception)[:1021]}...",
+                    caption=f"{hbold(type(event.exception).__name__)}: {exc_text}...",
                 )
 
             from handlers.start import start_entry
