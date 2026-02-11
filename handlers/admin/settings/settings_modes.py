@@ -41,12 +41,10 @@ async def toggle_mode_setting(
 
     key = keys[index - 1]
 
-    config = dict(MODES_CONFIG or {})
-    current = bool(config.get(key, False))
-    config[key] = not current
+    config = {k: bool((MODES_CONFIG or {}).get(k, False)) for k in MODES_TITLES.keys()}
+    config[key] = not config[key]
 
     await update_modes_config(session, config)
-    await session.commit()
 
     modes_state = {k: bool(config.get(k, False)) for k in MODES_TITLES.keys()}
     await callback.message.edit_reply_markup(reply_markup=build_settings_modes_kb(modes_state))
