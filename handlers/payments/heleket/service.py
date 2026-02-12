@@ -333,15 +333,16 @@ async def generate_heleket_payment_link(
     """
     url = "https://api.heleket.com/v1/payment"
     unique_order_id = f"{int(time.time())}_{tg_id}"
+    db_session = session
 
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession() as http_session:
             pay_cur = str(method["currency"]).upper()
 
             if pay_cur == "RUB":
                 payment_amount = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             else:
-                rate = await get_rub_rate(pay_cur, session=session)
+                rate = await get_rub_rate(pay_cur, session=http_session)
                 payment_amount = (Decimal(str(amount)) * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
             data = {
@@ -367,16 +368,16 @@ async def generate_heleket_payment_link(
                 "Content-Type": "application/json",
             }
 
-            async with session.post(url, headers=headers, data=json_data, timeout=60) as resp:
+            async with http_session.post(url, headers=headers, data=json_data, timeout=60) as resp:
                 if resp.status == 200:
                     try:
                         resp_json = await resp.json()
                         if resp_json.get("state") == 0:
                             payment_url = resp_json.get("result", {}).get("url")
                             if payment_url:
-                                if session is not None:
+                                if db_session is not None:
                                     await add_payment(
-                                        session=session,
+                                        session=db_session,
                                         tg_id=tg_id,
                                         amount=float(amount),
                                         payment_system="HELEKET",

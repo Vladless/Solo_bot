@@ -387,18 +387,20 @@ async def generate_kassai_payment_link(
 
     data = {**data_for_signature, "signature": signature}
 
+    db_session = session
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json=data, timeout=60) as resp:
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.post(url, headers=headers, json=data, timeout=60) as resp:
                 if resp.status == 200:
                     try:
                         resp_json = await resp.json()
                         if resp_json.get("type") == "success":
                             payment_url = resp_json.get("location")
                             if payment_url:
-                                if session is not None:
+                                if db_session is not None:
                                     await add_payment(
-                                        session=session,
+                                        session=db_session,
                                         tg_id=tg_id,
                                         amount=float(amount),
                                         payment_system="KASSAI",
