@@ -117,6 +117,7 @@ async def process_callback_unfreeze_subscription_confirm(callback_query: Callbac
             session=session,
             hwid_device_limit=hwid_limit,
             reset_traffic=False,
+            plan=record.get("tariff_id"),
         )
 
         text_ok = SUBSCRIPTION_UNFROZEN_MSG

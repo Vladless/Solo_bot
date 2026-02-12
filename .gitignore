@@ -43,7 +43,6 @@ database.db
 bot_old.py
 bot_old_2.py
 backup_pg.sh
-docker-compose.yml
 config copy.py
 handlers/texts.py
 
@@ -53,7 +52,6 @@ Thumbs.db
 
 nginx.conf
 scripts
-Dockerfile
 .csv
 /logs
 setup.py
@@ -61,3 +59,5 @@ setup.py
 .github/workflows/
 modules/
 storage/
+
+.license_state

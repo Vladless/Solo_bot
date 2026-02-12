@@ -8,12 +8,16 @@ from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import (
     delete_notification,
     filter_cluster_by_subgroup,
+    filter_cluster_by_tariff,
     get_key_details,
     get_servers,
+    get_tariff_by_id,
     resolve_device_limit_from_group,
     update_key_expiry,
     update_key_link,
 )
+from handlers.utils import ALLOWED_GROUP_CODES
+from hooks.processors import process_get_cryptolink_after_renewal
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -23,10 +27,11 @@ from panels._3xui import extend_client_key, get_xui_instance
 from panels.remnawave import RemnawaveAPI
 
 from .aggregated_links import make_aggregated_link
-from .subgroup_migration import migrate_between_subgroups
+from ...tariffs.subgroup_migration import migrate_between_subgroups
 
 
 async def resolve_cluster(session: AsyncSession, cluster_id: str):
+    """Возвращает список серверов для кластера или конкретного сервера."""
     servers = await get_servers(session)
     cluster = servers.get(cluster_id)
     if cluster:
@@ -52,6 +57,8 @@ async def renew_on_remnawave(
     session: AsyncSession,
     reset_traffic: bool,
     target_server_name: str | None = None,
+    external_squad_uuid: str | None = None,
+    old_device_limit: int | None = None,
 ) -> bool:
     remnawave_nodes = [
         s for s in cluster if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
@@ -62,20 +69,36 @@ async def renew_on_remnawave(
         remnawave_nodes = [s for s in remnawave_nodes if s.get("server_name") == target_server_name] or remnawave_nodes[
             :1
         ]
+
     remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
     if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
         return False
+    hwid_device_limit = int(hwid_device_limit or 0)
+
+    if old_device_limit is not None and hwid_device_limit < old_device_limit:
+        try:
+            await remna.clear_all_hwid_devices(client_id)
+            logger.info(
+                f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})"
+            )
+        except Exception as e:
+            logger.warning(f"{PANEL_REMNA} Ошибка сброса HWID: {e}")
+
     expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
     traffic_limit_bytes = total_gb * 1024 * 1024 * 1024 if total_gb else 0
     active_inbounds = [s["inbound_id"] for s in remnawave_nodes]
-    updated = await remna.update_user(
-        uuid=client_id,
-        expire_at=expire_iso,
-        active_user_inbounds=active_inbounds,
-        traffic_limit_bytes=traffic_limit_bytes,
-        hwid_device_limit=hwid_device_limit,
-    )
+
+    update_kwargs = {
+        "uuid": client_id,
+        "expire_at": expire_iso,
+        "active_user_inbounds": active_inbounds,
+        "traffic_limit_bytes": traffic_limit_bytes,
+        "hwid_device_limit": hwid_device_limit,
+        "external_squad_uuid": external_squad_uuid,
+    }
+
+    updated = await remna.update_user(**update_kwargs)
     if updated:
         if reset_traffic:
             try:
@@ -99,6 +122,7 @@ async def renew_on_3xui(
     update_links: bool = False,
     target_server_name: str | None = None,
 ):
+    """Продлевает подписку на 3x-ui серверах кластера."""
     tasks = []
     for server_info in cluster:
         if target_server_name and server_info.get("server_name") != target_server_name:
@@ -178,6 +202,7 @@ async def renew_key_in_cluster(
     old_subgroup: str | None = None,
     plan=None,
 ):
+    """Продлевает ключ в кластере с учётом подгрупп и Remnawave/3x-ui."""
     try:
         servers_map = await get_servers(session)
 
@@ -188,6 +213,12 @@ async def renew_key_in_cluster(
 
         tg_id = int(kd["tg_id"])
         server_id = kd["server_id"]
+
+        old_device_limit = kd.get("current_device_limit") or kd.get("selected_device_limit")
+        if old_device_limit is None and kd.get("tariff_id"):
+            old_tariff = await get_tariff_by_id(session, kd["tariff_id"])
+            if old_tariff:
+                old_device_limit = old_tariff.get("device_limit")
 
         single_server = None
         if servers_map.get(server_id):
@@ -206,9 +237,24 @@ async def renew_key_in_cluster(
                 else servers_map.get(cluster_id) or await resolve_cluster(session, cluster_id)
             )
 
-        dl = await resolve_device_limit_from_group(session, server_id)
-        if dl is not None:
-            hwid_device_limit = dl
+        external_squad_uuid = None
+        if plan is not None:
+            tariff = await get_tariff_by_id(session, plan)
+            if tariff:
+                raw_external_squad = tariff.get("external_squad")
+                if raw_external_squad:
+                    external_squad_uuid = raw_external_squad
+                else:
+                    external_squad_uuid = ""
+                is_configurable = tariff.get("configurable", False)
+                if not is_configurable:
+                    tariff_device_limit = tariff.get("device_limit")
+                    if tariff_device_limit is not None:
+                        hwid_device_limit = int(tariff_device_limit)
+        else:
+            dl = await resolve_device_limit_from_group(session, server_id)
+            if dl is not None:
+                hwid_device_limit = dl
 
         if (target_subgroup or "") != (old_subgroup or "") and not single_server:
             new_client_id, remna_link = await migrate_between_subgroups(
@@ -224,6 +270,8 @@ async def renew_key_in_cluster(
                 reset_traffic=reset_traffic,
                 old_subgroup=old_subgroup,
                 target_subgroup=target_subgroup,
+                external_squad_uuid=external_squad_uuid,
+                tariff_id=plan,
             )
 
             await update_key_expiry(session, new_client_id or client_id, new_expiry_time)
@@ -252,11 +300,36 @@ async def renew_key_in_cluster(
         if single_server:
             cluster_scope = [single_server]
         else:
-            if target_subgroup:
-                target = await filter_cluster_by_subgroup(session, cluster, target_subgroup, cluster_id)
+            if plan is not None:
+                filtered = await filter_cluster_by_tariff(session, cluster, plan, cluster_id)
+                if filtered is not cluster:
+                    cluster_scope = filtered
+                elif target_subgroup:
+                    cluster_scope = await filter_cluster_by_subgroup(
+                        session, cluster, target_subgroup, cluster_id, tariff_id=plan
+                    )
+                else:
+                    cluster_scope = cluster
+            elif target_subgroup:
+                target = await filter_cluster_by_subgroup(session, cluster, target_subgroup, cluster_id, tariff_id=plan)
                 cluster_scope = target if target else cluster
             else:
                 cluster_scope = cluster
+
+            if plan is not None:
+                tariff_for_filter = await get_tariff_by_id(session, plan)
+                if tariff_for_filter:
+                    gc = (tariff_for_filter.get("group_code") or "").lower()
+                    if gc in ALLOWED_GROUP_CODES:
+                        bound_servers = [s for s in cluster_scope if gc in (s.get("special_groups") or [])]
+                        if bound_servers:
+                            cluster_scope = bound_servers
+                        else:
+                            logger.info(f"[Renewal] Нет серверов со спецгруппой '{gc}' в {cluster_id}")
+
+            if not cluster_scope:
+                logger.warning(f"[Renewal] Нет серверов после фильтрации в кластере {cluster_id}")
+                return False
 
         remna_ok = await renew_on_remnawave(
             cluster=cluster_scope,
@@ -269,6 +342,8 @@ async def renew_key_in_cluster(
             session=session,
             reset_traffic=reset_traffic,
             target_server_name=server_id if single_server else None,
+            external_squad_uuid=external_squad_uuid,
+            old_device_limit=old_device_limit,
         )
 
         succeeded, _ = await renew_on_3xui(
@@ -287,6 +362,41 @@ async def renew_key_in_cluster(
             await update_key_expiry(session, client_id, new_expiry_time)
             for prefix in ["key_24h", "key_10h", "key_expired", "renew"]:
                 await delete_notification(session, tg_id, f"{email}_{prefix}")
+
+            try:
+                remna_link_override = None
+                if remna_ok and cluster_scope:
+                    remnawave_nodes = [
+                        s
+                        for s in cluster_scope
+                        if str(s.get("panel_type", "3x-ui")).lower() == "remnawave" and s.get("inbound_id")
+                    ]
+                    if remnawave_nodes:
+                        remna_link_override = await process_get_cryptolink_after_renewal(
+                            email=email,
+                            cluster_id=cluster_id,
+                            plan=plan,
+                            session=session,
+                            tg_id=tg_id,
+                            remnawave_nodes=remnawave_nodes,
+                        )
+
+                key_link = await make_aggregated_link(
+                    session=session,
+                    cluster_all=cluster_scope,
+                    cluster_id=cluster_id,
+                    email=email,
+                    client_id=client_id,
+                    tg_id=tg_id,
+                    subgroup_code=target_subgroup,
+                    remna_link_override=remna_link_override,
+                    plan=plan,
+                )
+                if key_link:
+                    await update_key_link(session, email, key_link)
+            except Exception as le:
+                logger.warning(f"[Link] ошибка генерации/сохранения после продления: {le}")
+
             return True
 
         return False

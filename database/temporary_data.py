@@ -25,6 +25,7 @@ async def create_temporary_data(session: AsyncSession, tg_id: int, state: str, d
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении временных данных для {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def get_temporary_data(session: AsyncSession, tg_id: int) -> dict | None:

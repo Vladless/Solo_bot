@@ -16,6 +16,13 @@ class KeyBase(BaseModel):
     notified: bool | None = False
     notified_24h: bool | None = False
 
+    selected_device_limit: int | None = None
+    selected_traffic_limit: int | None = None
+    selected_price_rub: int | None = None
+
+    current_device_limit: int | None = None
+    current_traffic_limit: int | None = None
+
 
 class KeyResponse(KeyBase):
     class Config:
@@ -41,6 +48,13 @@ class KeyDetailsResponse(BaseModel):
     location_name: str | None
     tariff_id: int | None
 
+    selected_device_limit: int | None = None
+    selected_traffic_limit: int | None = None
+    selected_price_rub: int | None = None
+
+    current_device_limit: int | None = None
+    current_traffic_limit: int | None = None
+
     class Config:
         from_attributes = True
 
@@ -56,6 +70,13 @@ class KeyUpdate(BaseModel):
     alias: str | None = None
     notified: bool | None = None
     notified_24h: bool | None = None
+
+    selected_device_limit: int | None = None
+    selected_traffic_limit: int | None = None
+    selected_price_rub: int | None = None
+
+    current_device_limit: int | None = None
+    current_traffic_limit: int | None = None
 
     class Config:
         from_attributes = True

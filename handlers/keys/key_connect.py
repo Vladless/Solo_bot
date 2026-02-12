@@ -41,7 +41,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import process_connect_device_menu
 from logger import logger
 
 
@@ -60,20 +60,16 @@ async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSes
         builder.row(InlineKeyboardButton(text=TV, callback_data=f"connect_tv|{key_name}"))
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{key_name}"))
 
-        try:
-            hook_builder = InlineKeyboardBuilder()
-            hook_builder.attach(builder)
+        hook_builder = InlineKeyboardBuilder()
+        hook_builder.attach(builder)
 
-            hook_commands = await run_hooks(
-                "connect_device_menu", chat_id=callback_query.from_user.id, admin=False, session=session
-            )
-            if hook_commands:
-                hook_builder = insert_hook_buttons(hook_builder, hook_commands)
+        hook_commands = await process_connect_device_menu(
+            chat_id=callback_query.from_user.id, admin=False, session=session
+        )
+        if hook_commands:
+            hook_builder = insert_hook_buttons(hook_builder, hook_commands)
 
-            final_markup = hook_builder.as_markup()
-        except Exception as e:
-            logger.warning(f"[CONNECT_DEVICE] Ошибка при применении хуков: {e}")
-            final_markup = builder.as_markup()
+        final_markup = hook_builder.as_markup()
 
         await edit_or_send_message(
             target_message=callback_query.message,

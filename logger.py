@@ -3,6 +3,7 @@ import os
 import sys
 
 from datetime import timedelta
+from pathlib import Path
 
 from loguru import logger
 
@@ -42,6 +43,16 @@ os.makedirs(log_folder, exist_ok=True)
 
 logger.remove()
 
+logger.configure(
+    patcher=lambda r: r["extra"].update(
+        module_tag=(
+            f"[MODULE:{Path(r['file'].path).parts[Path(r['file'].path).parts.index('modules') + 1]}]"
+            if "modules" in Path(r["file"].path).parts
+            else ""
+        )
+    )
+)
+
 level_mapping = {50: "CRITICAL", 40: "ERROR", 30: "WARNING", 20: "INFO", 10: "DEBUG", 0: "NOTSET"}
 
 
@@ -78,7 +89,7 @@ def _filter(record):
 logger.add(
     sys.stderr,
     level=BASE_LEVEL,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{module}:{function}:{line}</cyan> | <level>{message}</level>",
+    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{module}:{function}:{line}</cyan> | <magenta>{extra[module_tag]}</magenta> <level>{message}</level>",
     colorize=True,
     filter=_filter,
 )
@@ -87,7 +98,7 @@ log_file_path = os.path.join(log_folder, "logging.log")
 logger.add(
     log_file_path,
     level=BASE_LEVEL,
-    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {message}",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{function}:{line} | {extra[module_tag]} {message}",
     rotation=LOG_ROTATION_TIME,
     retention=timedelta(days=3),
     filter=_filter,

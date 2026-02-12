@@ -1,14 +1,13 @@
 from collections.abc import Iterable
 
-from aiogram import Dispatcher
-from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from aiogram import BaseMiddleware, Dispatcher
 
-from config import CHANNEL_REQUIRED, DISABLE_DIRECT_START
 from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
 
 from .admin import AdminMiddleware
 from .answer import CallbackAnswerMiddleware
+from .concurrency import ConcurrencyLimiterMiddleware
 from .direct_start_blocker import DirectStartBlockerMiddleware
 from .loggings import LoggingMiddleware
 from .maintenance import MaintenanceModeMiddleware
@@ -34,17 +33,18 @@ def register_middleware(
     if PROBE_LOGGING:
         dispatcher.update.outer_middleware(StreamProbeMiddleware("global"))
 
-    if DISABLE_DIRECT_START:
-        dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
-
     if sessionmaker:
-        if CHANNEL_REQUIRED:
-            dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
-        dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(sessionmaker), "ban_checker"))
+        dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
+        dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
+
+    dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
+
+    dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
+
+    dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(), "ban_checker"))
 
     if middlewares is None:
         available_middlewares = {
-            "session": (SessionMiddleware(sessionmaker) if sessionmaker else SessionMiddleware()),
             "admin": AdminMiddleware(),
             "maintenance": MaintenanceModeMiddleware(),
             "logging": LoggingMiddleware(),

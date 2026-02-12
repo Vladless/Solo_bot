@@ -1,21 +1,22 @@
 from datetime import datetime, timedelta
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import DISCOUNT_ACTIVE_HOURS
-from database import get_keys, get_tariffs
+from core.bootstrap import NOTIFICATIONS_CONFIG
+from database import get_keys, get_tariffs, get_tariffs_for_cluster
 from database.models import Notification
 from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
 from handlers.notifications.notify_kb import build_tariffs_keyboard
+from handlers.tariffs.buy.key_tariffs import select_tariff_plan
 from handlers.texts import DISCOUNT_TARIFF, DISCOUNT_TARIFF_MAX
-from handlers.utils import format_discount_time_left
+from handlers.utils import format_discount_time_left, get_least_loaded_cluster
 from logger import logger
-
-from .key_create import select_tariff_plan
 
 
 router = Router()
@@ -37,8 +38,10 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
+    discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+
     now = datetime.utcnow()
-    if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
+    if now - last_time > timedelta(hours=discount_active_hours):
         await callback.message.edit_text("⏳ Срок действия скидки истёк.")
         return
 
@@ -49,20 +52,32 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-        expires_at = last_time + timedelta(hours=DISCOUNT_ACTIVE_HOURS)
+        expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            f"🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
-            f"💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
-            f"🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
-            f"</blockquote>\n"
-            f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, DISCOUNT_ACTIVE_HOURS)} — не упустите свой шанс!</b>",
+            "🎯 <b>ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            "💎 <b>Специальные тарифы</b> — доступные только для вас!\n"
+            "🚀 <b>Получите максимум возможностей</b> по выгодной цене!\n"
+            "</blockquote>\n"
+            f"⏰ <b>Предложение действует всего: {format_discount_time_left(expires_at, discount_active_hours)} — не упустите свой шанс!</b>",
             reply_markup=builder.as_markup(),
         )
     else:
         tariffs = await get_tariffs(session=session, group_code="discounts")
         if not tariffs:
-            await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
-            return
+            try:
+                cluster_name = await get_least_loaded_cluster(session)
+                cluster_tariffs = await get_tariffs_for_cluster(session, cluster_name)
+                if cluster_tariffs:
+                    group_code = cluster_tariffs[0].get("group_code")
+                    if group_code:
+                        logger.warning(f"[DISCOUNT] Нет тарифов discounts, fallback на {group_code}")
+                        tariffs = await get_tariffs(session=session, group_code=group_code)
+            except Exception as e:
+                logger.error(f"[DISCOUNT] Не удалось получить обычные тарифы: {e}")
+
+            if not tariffs:
+                await callback.message.edit_text("❌ Тарифы временно недоступны.")
+                return
 
         await callback.message.edit_text(
             DISCOUNT_TARIFF,
@@ -71,18 +86,15 @@ async def handle_discount_entry(callback: CallbackQuery, session: AsyncSession):
 
 
 @router.callback_query(F.data.startswith("discount_tariff|"))
-async def handle_discount_tariff_selection(callback: CallbackQuery, session, state):
+async def handle_discount_tariff_selection(callback: CallbackQuery, session: AsyncSession, state: FSMContext):
     try:
         tariff_id = int(callback.data.split("|")[1])
-        fake_callback = CallbackQuery.model_construct(
-            id=callback.id,
-            from_user=callback.from_user,
-            chat_instance=callback.chat_instance,
-            message=callback.message,
-            data=f"select_tariff_plan|{tariff_id}",
-        )
-        await select_tariff_plan(fake_callback, session=session, state=state)
-
+        original_data = callback.data
+        object.__setattr__(callback, "data", f"select_tariff_plan|{tariff_id}")
+        try:
+            await select_tariff_plan(callback, session=session, state=state)
+        finally:
+            object.__setattr__(callback, "data", original_data)
     except Exception as e:
         logger.error(f"Ошибка при выборе скидочного тарифа: {e}")
         await callback.message.answer("❌ Произошла ошибка при выборе тарифа.")
@@ -104,8 +116,10 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         await callback.message.edit_text("❌ Скидка недоступна.")
         return
 
+    discount_active_hours = int(NOTIFICATIONS_CONFIG.get("DISCOUNT_ACTIVE_HOURS", DISCOUNT_ACTIVE_HOURS))
+
     now = datetime.utcnow()
-    if now - last_time > timedelta(hours=DISCOUNT_ACTIVE_HOURS):
+    if now - last_time > timedelta(hours=discount_active_hours):
         await callback.message.edit_text("⏳ Срок действия финальной скидки истёк.")
         return
 
@@ -116,19 +130,32 @@ async def handle_ultra_discount(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text=RENEW_KEY_NOTIFICATION, callback_data=f"renew_key|{keys[0].email}"))
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
+        expires_at = last_time + timedelta(hours=discount_active_hours)
         await callback.message.edit_text(
-            f"🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
-            f"💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
-            f"🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
-            f"</blockquote>\n"
-            f"⏰ <b>Время ограничено: {format_discount_time_left(last_time, DISCOUNT_ACTIVE_HOURS)} — не упустите шанс!</b>",
+            "🎯 <b>УНИКАЛЬНОЕ ФИНАЛЬНОЕ ПРЕДЛОЖЕНИЕ!</b>\n\n<blockquote>"
+            "💎 <b>Доступ к тарифам с МАКСИМАЛЬНОЙ выгодой</b> — только для вас!\n"
+            "🚀 <b>Уникальные условия</b> — получите максимум преимуществ по минимальной цене!\n"
+            "</blockquote>\n"
+            f"⏰ <b>Время ограничено: {format_discount_time_left(expires_at, discount_active_hours)} — не упустите шанс!</b>",
             reply_markup=builder.as_markup(),
         )
     else:
-        tariffs = await get_tariffs(session, group_code="discounts_max")
+        tariffs = await get_tariffs(session=session, group_code="discounts_max")
         if not tariffs:
-            await callback.message.edit_text("❌ Скидочные тарифы временно недоступны.")
-            return
+            try:
+                cluster_name = await get_least_loaded_cluster(session)
+                cluster_tariffs = await get_tariffs_for_cluster(session, cluster_name)
+                if cluster_tariffs:
+                    group_code = cluster_tariffs[0].get("group_code")
+                    if group_code:
+                        logger.warning(f"[DISCOUNT_MAX] Нет тарифов discounts_max, fallback на {group_code}")
+                        tariffs = await get_tariffs(session=session, group_code=group_code)
+            except Exception as e:
+                logger.error(f"[DISCOUNT_MAX] Не удалось получить обычные тарифы: {e}")
+
+            if not tariffs:
+                await callback.message.edit_text("❌ Тарифы временно недоступны.")
+                return
 
         await callback.message.edit_text(
             DISCOUNT_TARIFF_MAX,

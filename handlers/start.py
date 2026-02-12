@@ -21,6 +21,7 @@ from config import (
     SUPPORT_CHAT_URL,
     TRIAL_TIME_DISABLE,
 )
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_user,
     get_coupon_by_code,
@@ -38,11 +39,16 @@ from handlers.buttons import (
     SUB_CHANELL_DONE,
     SUPPORT,
     TRIAL_SUB,
+    ADMIN_BTN,
 )
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
+from handlers.instructions.instructions import send_instructions
+from handlers.keys.key_create import confirm_create_new_key
+from handlers.keys.key_view import process_callback_or_message_view_keys
 from handlers.payments.gift import handle_gift_link
 from handlers.profile import process_callback_view_profile
+from handlers.refferal import invite_handler
 from handlers.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
@@ -64,20 +70,50 @@ router = Router()
 processing_gifts = set()
 
 
+async def get_or_load_user_snapshot(
+    session: AsyncSession,
+    cached_snapshot: tuple[int, int] | None,
+    tg_id: int,
+) -> tuple[int, int] | None:
+    """Возвращает снапшот пользователя, используя кеш если есть."""
+    if cached_snapshot is not None:
+        return cached_snapshot
+    return await get_user_snapshot(session, tg_id)
+
+
 @router.message(Command("start"))
 @router.callback_query(F.data == "start")
 async def start_entry(
-    event: Message | CallbackQuery, state: FSMContext, session: Any, admin: bool, captcha: bool = True
+    event: Message | CallbackQuery,
+    state: FSMContext,
+    session: Any,
+    admin: bool,
+    captcha: bool = True,
 ):
     message = event.message if isinstance(event, CallbackQuery) else event
-    if CAPTCHA_ENABLE and captcha:
-        exists = await get_user_snapshot(session, message.chat.id)
-        if exists is None:
+
+    try:
+        await run_hooks("start_entry", message=message, event=event, state=state, session=session, admin=admin)
+    except Exception as e:
+        logger.error(f"[Hooks:start_entry] Ошибка: {e}", exc_info=True)
+
+    user_snapshot = None
+
+    captcha_enabled = bool(MODES_CONFIG.get("CAPTCHA_ENABLED", CAPTCHA_ENABLE))
+    if captcha_enabled and captcha:
+        user_snapshot = await get_user_snapshot(session, message.chat.id)
+        if user_snapshot is None:
             captcha_data = await generate_captcha(message, state)
             await edit_or_send_message(message, captcha_data["text"], reply_markup=captcha_data["markup"])
             return
+
     text = getattr(event, "data", None) or message.text
-    await process_start_logic(message, state, session, admin, text)
+
+    user_data = None
+    if isinstance(event, CallbackQuery):
+        user_data = extract_user_data(event.from_user)
+
+    await process_start_logic(message, state, session, admin, text, user_data, user_snapshot=user_snapshot)
 
 
 @router.callback_query(F.data == "check_subscription")
@@ -104,39 +140,33 @@ async def process_start_logic(
     state: FSMContext,
     session: Any,
     admin: bool,
-    text_to_process: str = None,
+    text_to_process: str | None = None,
     user_data: dict | None = None,
+    user_snapshot: tuple[int, int] | None = None,
 ):
     user_data = user_data or extract_user_data(message.from_user or message.chat)
     text = text_to_process or message.text or message.caption
-    if not text:
-        trial_key = await get_user_snapshot(session, user_data["tg_id"])
-        trial = 0
-        key_count = 0
-        if trial_key is not None:
-            trial, key_count = trial_key
-        await show_start_menu(message, admin, session, trial=trial, key_count=key_count)
-        return
 
-    if text.startswith("/start "):
+    if text and text.startswith("/start "):
         text = text.split(maxsplit=1)[1]
 
     await state.update_data(original_text=text, user_data=user_data)
 
     gift_detected = False
-    for part in text.split("-"):
-        await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
-        if "coupons" in part:
-            await handle_coupon_link(part, message, state, session, admin, user_data)
-            continue
-        if "gift" in part:
-            gift_detected = await handle_gift(part, message, state, session, user_data)
-            break
-        if "referral" in part:
-            await handle_referral_link_safe(part, message, state, session, user_data)
-            continue
-        if "utm" in part:
-            await handle_utm_link(part, message, state, session, user_data)
+    if text:
+        for part in text.split("-"):
+            await run_hooks("start_link", message=message, state=state, session=session, user_data=user_data, part=part)
+            if "coupons" in part:
+                await handle_coupon_link(part, message, state, session, admin, user_data)
+                continue
+            if "gift" in part:
+                gift_detected = await handle_gift(part, message, state, session, user_data)
+                break
+            if "referral" in part:
+                await handle_referral_link_safe(part, message, state, session, user_data)
+                continue
+            if "utm" in part:
+                await handle_utm_link(part, message, state, session, user_data)
 
     await state.clear()
     if gift_detected:
@@ -144,13 +174,35 @@ async def process_start_logic(
 
     await add_user(session=session, **user_data)
 
-    trial_key = await get_user_snapshot(session, user_data["tg_id"])
+    tl = (text or "").strip().lower()
+    if tl == "trial":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "profile":
+        await process_callback_view_profile(message, state, admin, session)
+        return
+    if tl == "buy":
+        await confirm_create_new_key(message, state, session)
+        return
+    if tl == "subs":
+        await process_callback_or_message_view_keys(message, session)
+        return
+    if tl == "invite":
+        await invite_handler(message, session)
+        return
+    if tl == "instructions":
+        await send_instructions(message)
+        return
+
+    trial_key = await get_or_load_user_snapshot(session, user_snapshot, user_data["tg_id"])
     trial = 0
     key_count = 0
     if trial_key is not None:
         trial, key_count = trial_key
 
-    if SHOW_START_MENU_ONCE:
+    show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
+
+    if show_start_menu_once:
         if key_count > 0 or trial == 1:
             await process_callback_view_profile(message, state, admin, session)
         else:
@@ -236,9 +288,16 @@ async def show_start_menu(
         trial_status = trial
         key_cnt = key_count or 0
 
-    show_trial = (trial_status in (-1, 0)) and (not TRIAL_TIME_DISABLE) and (key_cnt == 0)
+    trial_time_disable = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
+
+    show_trial = (trial_status in (-1, 0)) and (not trial_time_disable) and (key_cnt == 0)
     show_profile = (key_cnt > 0) or (
-        ((not SHOW_START_MENU_ONCE) or (trial_status not in (-1, 0)) or TRIAL_TIME_DISABLE) and (not show_trial)
+        (
+            (not bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE)))
+            or (trial_status not in (-1, 0))
+            or trial_time_disable
+        )
+        and (not show_trial)
     )
 
     if show_trial:
@@ -246,7 +305,7 @@ async def show_start_menu(
     if show_profile:
         kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    if CHANNEL_EXISTS:
+    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(
             InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL),
             InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL),
@@ -255,13 +314,13 @@ async def show_start_menu(
         kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
 
     if admin:
-        kb.row(InlineKeyboardButton(text="📊 Администратор", callback_data=AdminPanelCallback(action="admin").pack()))
+        kb.row(InlineKeyboardButton(text=ADMIN_BTN, callback_data=AdminPanelCallback(action="admin").pack()))
 
     try:
         module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
         kb = insert_hook_buttons(kb, module_buttons)
     except Exception as e:
-        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}")
+        logger.error(f"[Hooks:start_menu] Ошибка вставки кнопок: {e}", exc_info=True)
 
     kb.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
 
@@ -273,14 +332,15 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     user_id = callback.from_user.id
     snap = await get_user_snapshot(session, user_id)
     trial = 0 if snap is None else snap[0]
-    back_target = "profile" if SHOW_START_MENU_ONCE and trial > 0 else "start"
+    show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
+    back_target = "profile" if show_start_menu_once and trial > 0 else "start"
 
     kb = InlineKeyboardBuilder()
-    if DONATIONS_ENABLE:
+    if BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE):
         kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
     kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
-    if CHANNEL_EXISTS:
+    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
 
     module_buttons = await run_hooks("about_menu", chat_id=user_id, trial=trial, session=session)
@@ -294,5 +354,9 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
         text = text_hooks[0]
 
     await edit_or_send_message(
-        callback.message, text, reply_markup=kb.as_markup(), media_path=os.path.join("img", "pic.jpg"), force_text=False
+        callback.message,
+        text,
+        reply_markup=kb.as_markup(),
+        media_path=os.path.join("img", "pic.jpg"),
+        force_text=False,
     )

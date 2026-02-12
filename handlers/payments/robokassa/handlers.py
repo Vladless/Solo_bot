@@ -15,11 +15,11 @@ from handlers.payments.keyboards import (
     pay_keyboard as build_pay_keyboard,
     payment_options_for_user,
 )
-
 from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM
 from handlers.payments.currency_rates import format_for_user
 from handlers.utils import edit_or_send_message
 from logger import logger
+from ..constants import ALLOWED_TEMP_PAYMENT_STATES
 
 from .service import create_and_store_robokassa_payment
 
@@ -61,9 +61,12 @@ async def process_callback_pay_robokassa(callback_query: types.CallbackQuery, st
         opts=opts,
     )
 
-    await callback_query.message.delete()
-    m = await callback_query.message.answer(text="Выберите сумму пополнения:", reply_markup=markup)
-    await state.update_data(message_id=m.message_id, chat_id=m.chat.id)
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text="Выберите сумму пополнения:",
+        reply_markup=markup,
+    )
+    await state.update_data(message_id=callback_query.message.message_id, chat_id=callback_query.message.chat.id)
     await state.set_state(ReplenishBalanceState.choosing_amount_robokassa)
 
 
@@ -75,7 +78,6 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
             target_message=callback_query.message,
             text="Некорректная сумма.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[]),
-            force_text=True,
         )
         return
 
@@ -95,14 +97,13 @@ async def process_amount_selection(callback_query: types.CallbackQuery, state: F
         target_message=callback_query.message,
         text=DEFAULT_PAYMENT_MESSAGE.format(amount=amount_text),
         reply_markup=kb,
-        force_text=True,
     )
 
 
 @router.callback_query(F.data == "enter_custom_amount_robokassa")
 async def process_custom_amount_selection(callback_query: types.CallbackQuery, state: FSMContext):
     b = back_keyboard("pay_robokassa")
-    await edit_or_send_message(target_message=callback_query.message, text=ENTER_SUM, reply_markup=b, force_text=True)
+    await edit_or_send_message(target_message=callback_query.message, text=ENTER_SUM, reply_markup=b)
     await state.set_state(ReplenishBalanceState.waiting_for_payment_confirmation_robokassa)
 
 
@@ -117,7 +118,7 @@ async def handle_custom_amount_input(
         from_user = event.from_user
         tg_id = from_user.id
         temp_data = await get_temporary_data(session, tg_id)
-        if not temp_data or temp_data["state"] not in ["waiting_for_payment", "waiting_for_renewal_payment", "waiting_for_gift_payment"]:
+        if not temp_data or temp_data["state"] not in ALLOWED_TEMP_PAYMENT_STATES:
             await edit_or_send_message(target_message=message, text="❌ Не удалось получить данные для оплаты.")
             return
         amount = int(temp_data["data"].get("required_amount", 0))
@@ -153,8 +154,7 @@ async def handle_custom_amount_input(
 
         await edit_or_send_message(target_message=message, text=text_out, reply_markup=markup)
     except Exception as e:
-        from logger import logger as _lg
-        _lg.error(f"Ошибка при создании платежа для пользователя {tg_id}: {e}")
+        logger.error(f"Ошибка при создании платежа для пользователя {tg_id}: {e}")
         await edit_or_send_message(
             target_message=message,
             text="Произошла ошибка при создании платежа. Попробуйте позже.",

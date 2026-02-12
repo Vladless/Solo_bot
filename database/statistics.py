@@ -3,6 +3,7 @@ from datetime import date, datetime
 from sqlalchemy import and_, exists, func, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Key, Payment, Referral, Tariff, User
 
 
@@ -33,10 +34,28 @@ async def count_active_keys(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Key).where(Key.expiry_time > current_time_ms))
 
 
-async def count_trial_keys(session: AsyncSession) -> int:
+async def count_active_paid_keys(session: AsyncSession) -> int:
+    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
     trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
 
-    return await session.scalar(select(func.count()).select_from(Key).where(Key.tariff_id.in_(trial_tariffs_subquery)))
+    return await session.scalar(
+        select(func.count())
+        .select_from(Key)
+        .where(Key.expiry_time > current_time_ms)
+        .where(~Key.tariff_id.in_(trial_tariffs_subquery))
+    )
+
+
+async def count_active_trial_keys(session: AsyncSession) -> int:
+    current_time_ms = int(datetime.utcnow().timestamp() * 1000)
+    trial_tariffs_subquery = select(Tariff.id).where(Tariff.group_code == "trial")
+
+    return await session.scalar(
+        select(func.count())
+        .select_from(Key)
+        .where(Key.expiry_time > current_time_ms)
+        .where(Key.tariff_id.in_(trial_tariffs_subquery))
+    )
 
 
 async def get_tariff_distribution(
@@ -80,6 +99,14 @@ async def get_tariff_durations(session: AsyncSession, tariff_ids: list[int]) -> 
     return dict(result.all())
 
 
+async def get_tariff_subgroups(session: AsyncSession, tariff_ids: list[int]) -> dict[int, str | None]:
+    if not tariff_ids:
+        return {}
+
+    result = await session.execute(select(Tariff.id, Tariff.subgroup_title).where(Tariff.id.in_(tariff_ids)))
+    return dict(result.all())
+
+
 async def count_total_referrals(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Referral))
 
@@ -90,7 +117,7 @@ async def sum_payments_since(session: AsyncSession, since: date) -> float:
             and_(
                 Payment.created_at >= since,
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -104,7 +131,7 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
                 Payment.created_at >= start,
                 Payment.created_at < end,
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -116,7 +143,7 @@ async def sum_total_payments(session: AsyncSession) -> float:
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
             and_(
                 Payment.status == "success",
-                Payment.payment_system.notin_(["referral", "coupon", "cashback"]),
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
             )
         )
     )
@@ -132,7 +159,7 @@ async def count_hot_leads(session: AsyncSession) -> int:
         select(Payment.tg_id)
         .where(Payment.amount > 0)
         .where(Payment.status == "success")
-        .where(Payment.payment_system.notin_(["referral", "coupon", "cashback"]))
+        .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
         .where(not_(exists(subquery_active_keys.where(Key.tg_id == Payment.tg_id))))
         .distinct()
     )

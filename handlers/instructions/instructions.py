@@ -12,10 +12,14 @@ from config import (
     CONNECT_WINDOWS,
     DOWNLOAD_MACOS,
     DOWNLOAD_PC,
+    HAPP_CRYPTOLINK,
+    REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     SUPPORT_CHAT_URL,
     WEBHOOK_HOST,
 )
-from database import get_subscription_link
+from core.bootstrap import MODES_CONFIG
+from database import get_key_details, get_subscription_link
 from handlers.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,
@@ -38,7 +42,8 @@ from handlers.texts import (
     ROUTER_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, is_full_remnawave_cluster
+from hooks.processors import process_remnawave_webapp_override
 
 
 router = Router()
@@ -163,16 +168,50 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data.startswith("connect_tv|"))
 async def process_connect_tv(callback_query: CallbackQuery, session: Any):
-    key_name = callback_query.data.split("|")[1]
+    key_name = callback_query.data.split("|", 1)[1]
+
+    record = await get_key_details(session, key_name)
+    final_link = None
+    is_full_remnawave = False
+    use_webapp = False
+    is_remnawave_webapp = False
+
+    if record:
+        server_name = record.get("server_id")
+        final_link = record.get("key") or record.get("remnawave_link")
+
+        if server_name:
+            is_full_remnawave = await is_full_remnawave_cluster(server_name, session)
+
+        remnawave_webapp_enabled = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+        happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
+
+        use_webapp = remnawave_webapp_enabled
+        if is_full_remnawave and final_link and remnawave_webapp_enabled and not happ_cryptolink_enabled:
+            use_webapp = await process_remnawave_webapp_override(
+                remnawave_webapp=remnawave_webapp_enabled,
+                final_link=final_link,
+                session=session,
+            )
+
+        is_remnawave_webapp = bool(is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled)
+
+    if not final_link:
+        await callback_query.answer("❌ Ссылка подписки не найдена", show_alert=True)
+        return
+
+    back_callback = f"view_key|{key_name}" if is_remnawave_webapp else f"connect_device|{key_name}"
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=TV_CONTINUE, callback_data=f"continue_tv|{key_name}"))
-    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"connect_device|{key_name}"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=back_callback))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+
+    text = CONNECT_TV_TEXT.format(subscription_link=final_link)
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=CONNECT_TV_TEXT,
+        text=text,
         reply_markup=builder.as_markup(),
         media_path=None,
         disable_web_page_preview=True,

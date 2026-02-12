@@ -1,0 +1,9 @@
+services:
+  bot:
+    container_name: solobot
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /:/host:ro
+

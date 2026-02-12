@@ -13,7 +13,7 @@ async def payment_options_for_user(
     tg_id: int,
     language_code: str | None,
     *,
-    force_currency: str | None = None,  
+    force_currency: str | None = None,
 ) -> list[dict]:
     items = []
     for price_rub in RENEWAL_PRICES.values():
@@ -22,7 +22,7 @@ async def payment_options_for_user(
             tg_id,
             price_rub,
             language_code,
-            force_currency=force_currency, 
+            force_currency=force_currency,
         )
         items.append({"text": txt, "callback_data": f"amount|{int(price_rub)}"})
     return items

@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import CHECK_REFERRAL_REWARD_ISSUED, REFERRAL_BONUS_PERCENTAGES
+from core.bootstrap import BUTTONS_CONFIG
 from database.models import Referral
 from logger import logger
 
@@ -57,6 +58,11 @@ async def mark_referral_reward_issued(session: AsyncSession, referred_tg_id: int
 
 
 async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, max_levels: int) -> float:
+    referral_enabled = bool(BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLED", True))
+    if not referral_enabled:
+        logger.debug("Реферальная программа отключена, бонусы не начисляются")
+        return 0.0
+
     if CHECK_REFERRAL_REWARD_ISSUED:
         bonus_cte = """
             WITH RECURSIVE
@@ -81,7 +87,8 @@ async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, m
             earliest_payments AS (
                 SELECT DISTINCT ON (tg_id) tg_id, amount, created_at
                 FROM payments
-                WHERE status = 'success'
+                WHERE status = 'success' 
+                  AND payment_system NOT IN ('coupon', 'admin', 'referral')
                 ORDER BY tg_id, created_at
             )
         """
@@ -148,11 +155,16 @@ async def get_total_referral_bonus(session: AsyncSession, referrer_tg_id: int, m
                 ), 0) AS total_bonus
             FROM referral_levels rl
             JOIN payments p ON rl.referred_tg_id = p.tg_id
-            WHERE p.status = 'success' AND rl.level <= :max_levels
+            WHERE p.status = 'success' 
+              AND p.payment_system NOT IN ('coupon', 'admin', 'referral')
+              AND rl.level <= :max_levels
         """
         )
 
-    result = await session.execute(text(bonus_query), {"tg_id": referrer_tg_id, "max_levels": max_levels})
+    result = await session.execute(
+        text(bonus_query),  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        {"tg_id": referrer_tg_id, "max_levels": max_levels},
+    )
     total_bonus_raw = result.scalar()
     total_bonus = round(float(total_bonus_raw or 0), 2)
 
@@ -180,7 +192,10 @@ async def get_referrals_by_level(session: AsyncSession, referrer_tg_id: int, max
         GROUP BY level
         ORDER BY level
     """
-    result = await session.execute(text(query), {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels})
+    result = await session.execute(
+        text(query),  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+        {"referrer_tg_id": referrer_tg_id, "max_levels": max_levels},
+    )
     return {
         row["level"]: {
             "total": row["level_count"],
@@ -209,6 +224,7 @@ async def get_referral_stats(session: AsyncSession, referrer_tg_id: int):
 
     except Exception as e:
         logger.error(f"[ReferralStats] Ошибка при получении статистики для пользователя {referrer_tg_id}: {e}")
+        await session.rollback()
         raise
 
 

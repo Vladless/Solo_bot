@@ -30,7 +30,8 @@ async def add_user(
     language_code: str = None,
     is_bot: bool = False,
     source_code: str = None,
-):
+    commit: bool = True,
+) -> bool:
     try:
         stmt = (
             insert(User)
@@ -43,11 +44,17 @@ async def add_user(
                 is_bot=is_bot,
                 source_code=source_code,
             )
-            .on_conflict_do_nothing(index_elements=[User.tg_id])
+            .on_conflict_do_nothing(index_elements=["tg_id"])
+            .returning(User.tg_id)
         )
-        await session.execute(stmt)
-        await session.commit()
+        res = await session.execute(stmt)
+        inserted_tg_id = res.scalar_one_or_none()
+        if inserted_tg_id is None:
+            return False
+        if commit:
+            await session.commit()
         logger.info(f"[DB] Новый пользователь добавлен: {tg_id} (source: {source_code})")
+        return True
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при добавлении пользователя {tg_id}: {e}")
         await session.rollback()
@@ -82,7 +89,8 @@ async def check_user_exists(session: AsyncSession, tg_id: int) -> bool:
 
 async def get_balance(session: AsyncSession, tg_id: int) -> float:
     result = await session.execute(select(func.coalesce(User.balance, 0.0)).where(User.tg_id == tg_id))
-    return round(float(result.scalar_one()), 1)
+    balance = result.scalar_one_or_none()
+    return round(float(balance or 0.0), 1)
 
 
 async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) -> None:
@@ -92,6 +100,7 @@ async def set_user_balance(session: AsyncSession, tg_id: int, balance: float) ->
     except SQLAlchemyError as e:
         logger.error(f"Ошибка при установке баланса для пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def update_trial(session: AsyncSession, tg_id: int, status: int):
@@ -102,11 +111,13 @@ async def update_trial(session: AsyncSession, tg_id: int, status: int):
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при обновлении триала пользователя {tg_id}: {e}")
         await session.rollback()
+        raise
 
 
 async def get_trial(session: AsyncSession, tg_id: int) -> int:
     result = await session.execute(select(func.coalesce(User.trial, 0)).where(User.tg_id == tg_id))
-    return int(result.scalar_one())
+    trial = result.scalar_one_or_none()
+    return int(trial or 0)
 
 
 async def upsert_user(
@@ -119,58 +130,64 @@ async def upsert_user(
     is_bot: bool = False,
     only_if_exists: bool = False,
 ) -> dict | None:
+    """Создаёт пользователя или обновляет поля профиля."""
     try:
+        now = datetime.utcnow()
+        returning_cols = list(User.__table__.c)
+
         if only_if_exists:
-            result = await session.execute(select(User).where(User.tg_id == tg_id))
-            user = result.scalar_one_or_none()
-            if not user:
-                return None
-            await session.execute(
+            username_value = username if username else User.username
+            first_name_value = first_name if first_name else User.first_name
+            last_name_value = last_name if last_name else User.last_name
+            language_code_value = language_code if language_code else User.language_code
+
+            res = await session.execute(
                 update(User)
                 .where(User.tg_id == tg_id)
                 .values(
-                    username=username or user.username,
-                    first_name=first_name or user.first_name,
-                    last_name=last_name or user.last_name,
-                    language_code=language_code or user.language_code,
+                    username=username_value,
+                    first_name=first_name_value,
+                    last_name=last_name_value,
+                    language_code=language_code_value,
                     is_bot=is_bot,
-                    updated_at=datetime.utcnow(),
+                    updated_at=now,
                 )
+                .returning(*returning_cols)
             )
+            row = res.mappings().one_or_none()
+            if row is None:
+                return None
             await session.commit()
-            result = await session.execute(select(User).where(User.tg_id == tg_id))
-            return dict(result.scalar_one().__dict__)
-        else:
-            res = await session.execute(
-                insert(User)
-                .values(
-                    tg_id=tg_id,
-                    username=username,
-                    first_name=first_name,
-                    last_name=last_name,
-                    language_code=language_code,
-                    is_bot=is_bot,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                .on_conflict_do_update(
-                    index_elements=[User.tg_id],
-                    set_={
-                        "username": username,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "language_code": language_code,
-                        "is_bot": is_bot,
-                        "updated_at": datetime.utcnow(),
-                    },
-                )
-                .returning(User)
+            return dict(row)
+
+        res = await session.execute(
+            insert(User)
+            .values(
+                tg_id=tg_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                language_code=language_code,
+                is_bot=is_bot,
+                created_at=now,
+                updated_at=now,
             )
-            obj = res.scalar_one()
-            await session.commit()
-            d = obj.__dict__.copy()
-            d.pop("_sa_instance_state", None)
-            return d
+            .on_conflict_do_update(
+                index_elements=[User.tg_id],
+                set_={
+                    "username": username,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "language_code": language_code,
+                    "is_bot": is_bot,
+                    "updated_at": now,
+                },
+            )
+            .returning(*returning_cols)
+        )
+        row = res.mappings().one()
+        await session.commit()
+        return dict(row)
     except SQLAlchemyError as e:
         logger.error(f"[DB] Ошибка при UPSERT пользователя {tg_id}: {e}")
         await session.rollback()
@@ -190,7 +207,7 @@ async def delete_user_data(session: AsyncSession, tg_id: int):
             delete(Referral).where(or_(Referral.referrer_tg_id == tg_id, Referral.referred_tg_id == tg_id))
         )
         await session.execute(delete(CouponUsage).where(CouponUsage.user_id == tg_id))
-        await delete_key(session, tg_id)
+        await delete_key(session, tg_id, commit=False)
         await session.execute(delete(TemporaryData).where(TemporaryData.tg_id == tg_id))
         await session.execute(delete(BlockedUser).where(BlockedUser.tg_id == tg_id))
         await session.execute(delete(User).where(User.tg_id == tg_id))
@@ -208,30 +225,37 @@ async def mark_trial_extended(tg_id: int, session: AsyncSession):
 
 
 async def get_user_snapshot(session: AsyncSession, tg_id: int) -> tuple[int, int] | None:
-    res = await session.execute(
-        select(func.coalesce(User.trial, 0), func.count(Key.client_id))
-        .select_from(User)
-        .join(Key, Key.tg_id == User.tg_id, isouter=True)
-        .where(User.tg_id == tg_id)
-        .group_by(User.tg_id, User.trial)
-    )
+    keys_count_sq = select(func.count(Key.client_id)).where(Key.tg_id == tg_id).scalar_subquery()
+
+    res = await session.execute(select(func.coalesce(User.trial, 0), keys_count_sq).where(User.tg_id == tg_id))
     row = res.first()
     if row is None:
         return None
     return int(row[0]), int(row[1])
 
 
-async def upsert_source_if_empty(session: AsyncSession, tg_id: int, source_code: str) -> None:
+async def upsert_source_if_empty(
+    session: AsyncSession,
+    tg_id: int,
+    source_code: str,
+    commit: bool = True,
+) -> bool:
     if not source_code:
-        return
+        return False
     stmt = (
         insert(User)
         .values(tg_id=tg_id, source_code=source_code)
         .on_conflict_do_update(
-            index_elements=[User.tg_id],
+            index_elements=["tg_id"],
             set_={"source_code": insert(User).excluded.source_code},
             where=(User.source_code.is_(None)),
         )
+        .returning(User.tg_id)
     )
-    await session.execute(stmt)
-    await session.commit()
+    res = await session.execute(stmt)
+    changed_tg_id = res.scalar_one_or_none()
+    if changed_tg_id is None:
+        return False
+    if commit:
+        await session.commit()
+    return True

@@ -5,11 +5,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from handlers.buttons import BACK
 
 from config import HWID_RESET_BUTTON
 from database import get_clusters
 from database.models import Key, Tariff
-from handlers.buttons import BACK
+from handlers.buttons import BACK, FREEZE, UNFREEZE
 from handlers.utils import format_days
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
@@ -69,7 +70,11 @@ async def build_user_edit_kb(tg_id: int, key_records: list, is_banned: bool = Fa
         InlineKeyboardButton(
             text="🤝 Выгрузить рефералов",
             callback_data=AdminUserEditorCallback(action="users_export_referrals", tg_id=tg_id).pack(),
-        )
+        ),
+        InlineKeyboardButton(
+            text="🎁 Подарки",
+            callback_data=AdminUserEditorCallback(action="users_gifts", tg_id=tg_id).pack(),
+        ),
     )
 
     builder.row(
@@ -140,6 +145,12 @@ async def build_users_balance_kb(session: AsyncSession, tg_id: int) -> InlineKey
         InlineKeyboardButton(
             text="💵 Установить баланс",
             callback_data=AdminUserEditorCallback(action="users_balance_set", tg_id=tg_id).pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="Выгрузить платежи",
+            callback_data=AdminUserEditorCallback(action="users_balance_export", tg_id=tg_id).pack(),
         )
     )
 
@@ -243,8 +254,12 @@ def build_user_key_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
+def build_key_edit_kb(key_details: dict, email: str, is_configurable: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    is_frozen = (
+        key_details.get("is_frozen") if isinstance(key_details, dict) else getattr(key_details, "is_frozen", False)
+    )
 
     builder.button(
         text="⏳ Время истечения",
@@ -253,13 +268,22 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
         ).pack(),
     )
     builder.button(
-        text="🔄 Перевыпустить",
-        callback_data=AdminUserEditorCallback(action="users_update_key", data=email, tg_id=key_details["tg_id"]).pack(),
+        text="🔄 Перевыпуск подписки",
+        callback_data=AdminUserEditorCallback(
+            action="users_reissue_menu", data=email, tg_id=key_details["tg_id"]
+        ).pack(),
     )
     builder.button(
         text="📦 Тариф",
         callback_data=AdminUserEditorCallback(action="users_renew", data=email, tg_id=key_details["tg_id"]).pack(),
     )
+    if is_configurable:
+        builder.button(
+            text="📱 Конфигурация",
+            callback_data=AdminUserEditorCallback(
+                action="users_edit_config", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
     builder.button(
         text="❌ Удалить",
         callback_data=AdminUserEditorCallback(action="users_delete_key", data=email, tg_id=key_details["tg_id"]).pack(),
@@ -274,6 +298,20 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
             action="users_reset_traffic", data=email, tg_id=key_details["tg_id"]
         ).pack(),
     )
+
+    if is_frozen:
+        builder.button(
+            text=UNFREEZE,
+            callback_data=AdminUserEditorCallback(
+                action="users_unfreeze", data=email, tg_id=key_details["tg_id"]
+            ).pack(),
+        )
+    else:
+        builder.button(
+            text=FREEZE,
+            callback_data=AdminUserEditorCallback(action="users_freeze", data=email, tg_id=key_details["tg_id"]).pack(),
+        )
+
     if HWID_RESET_BUTTON:
         builder.button(
             text="💻 HWID",
@@ -287,6 +325,24 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def build_reissue_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="📦 Полный перевыпуск",
+        callback_data=AdminUserEditorCallback(action="users_update_key", data=email, tg_id=tg_id).pack(),
+    )
+    builder.button(
+        text="🔗 Сменить ссылку",
+        callback_data=AdminUserEditorCallback(action="users_recreate_key", data=email, tg_id=tg_id).pack(),
+    )
+    builder.button(
+        text=BACK,
+        callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
+    )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
@@ -294,19 +350,23 @@ def build_hwid_menu_kb(email: str, tg_id: int) -> InlineKeyboardMarkup:
         callback_data=AdminUserEditorCallback(action="users_hwid_reset", data=email, tg_id=tg_id).pack(),
     )
     builder.button(
-        text="🔙 Назад",
+        text=BACK,
         callback_data=AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id).pack(),
     )
     builder.adjust(1)
     return builder.as_markup()
 
 
-def build_key_delete_kb(tg_id: int, email: str) -> InlineKeyboardMarkup:
+def build_key_delete_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text="✅ Да, удалить",
-            callback_data=AdminUserEditorCallback(action="users_delete_key_confirm", data=email, tg_id=tg_id).pack(),
+            callback_data=AdminUserEditorCallback(
+                action="users_delete_key_confirm",
+                data="ok",
+                tg_id=tg_id,
+            ).pack(),
         )
     )
     builder.row(build_editor_back_btn(tg_id))
@@ -372,8 +432,84 @@ def build_user_ban_type_kb(tg_id: int) -> InlineKeyboardMarkup:
 
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад",
+            text=BACK,
             callback_data=AdminUserEditorCallback(action="users_editor", tg_id=tg_id, edit=True).pack(),
+        )
+    )
+
+    return builder.as_markup()
+
+
+class AdminUserGiftCallback(CallbackData, prefix="admin_gift"):
+    action: str
+    tg_id: int
+    gift_id: str | None = None
+    page: int = 0
+
+
+GIFTS_PER_PAGE = 10
+
+
+def build_user_gifts_kb(tg_id: int, gifts: list, page: int = 0) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    total_pages = (len(gifts) + GIFTS_PER_PAGE - 1) // GIFTS_PER_PAGE if gifts else 1
+    start_idx = page * GIFTS_PER_PAGE
+    end_idx = start_idx + GIFTS_PER_PAGE
+    page_gifts = gifts[start_idx:end_idx]
+
+    row_buttons = []
+    for gift in page_gifts:
+        created_str = gift.created_at.strftime("%d.%m.%Y") if gift.created_at else "—"
+        row_buttons.append(
+            InlineKeyboardButton(
+                text=f"Удалить {created_str}",
+                callback_data=f"user_gift_del|{tg_id}|{gift.gift_id}|{page}",
+            )
+        )
+        if len(row_buttons) == 1:
+            builder.row(*row_buttons)
+            row_buttons = []
+    if row_buttons:
+        builder.row(*row_buttons)
+
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="◀️",
+                    callback_data=f"user_gift_page|{tg_id}|{page - 1}",
+                )
+            )
+        nav_buttons.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="▶️",
+                    callback_data=f"user_gift_page|{tg_id}|{page + 1}",
+                )
+            )
+        builder.row(*nav_buttons)
+
+    builder.row(build_editor_back_btn(tg_id, True))
+    return builder.as_markup()
+
+
+def build_gift_delete_confirm_kb(tg_id: int, gift_id: str, page: int = 0) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Да, удалить",
+            callback_data=f"user_gift_del_c|{tg_id}|{gift_id}",
+        )
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text=BACK,
+            callback_data=f"user_gift_page|{tg_id}|{page}",
         )
     )
 

@@ -2,11 +2,9 @@ from sqlalchemy import and_, func, insert, not_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Payment, TrackingSource, User
 from logger import logger
-
-
-EXCLUDED_PAYMENT_MARKERS = ["coupon", "referral", "cashback"]
 
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):
@@ -23,6 +21,7 @@ async def create_tracking_source(session: AsyncSession, name: str, code: str, ty
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при создании источника {code}: {e}")
         await session.rollback()
+        raise
 
 
 async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
@@ -43,7 +42,11 @@ async def get_all_tracking_sources(session: AsyncSession) -> list[dict]:
     payments_subq = (
         select(func.count(func.distinct(Payment.tg_id)))
         .join(User, Payment.tg_id == User.tg_id)
-        .where((User.source_code == TrackingSource.code) & (Payment.status == "success"))
+        .where(
+            (User.source_code == TrackingSource.code)
+            & (Payment.status == "success")
+            & Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED)
+        )
         .correlate(TrackingSource)
         .scalar_subquery()
     )
@@ -103,7 +106,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         .where(
             (User.source_code == code)
             & (Payment.status == "success")
-            & not_(Payment.payment_system.in_(EXCLUDED_PAYMENT_MARKERS))
+            & Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED)
             & (Payment.created_at >= created_at)
         )
         .scalar_subquery()
@@ -115,7 +118,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         .where(
             (User.source_code == code)
             & (Payment.status == "success")
-            & not_(Payment.payment_system.in_(EXCLUDED_PAYMENT_MARKERS))
+            & Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED)
             & (Payment.created_at >= created_at)
         )
         .scalar_subquery()
@@ -146,7 +149,7 @@ async def get_tracking_source_stats(session: AsyncSession, code: str) -> dict | 
         .where(
             (User.source_code == code)
             & (Payment.status == "success")
-            & not_(Payment.payment_system.in_(EXCLUDED_PAYMENT_MARKERS))
+            & Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED)
             & (Payment.created_at >= created_at)
         )
         .subquery()

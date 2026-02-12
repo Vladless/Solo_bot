@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..panel.keyboard import build_admin_back_btn
+from handlers.buttons import BACK
 
 
 class AdminAdsCallback(CallbackData, prefix="admin_ads"):
@@ -43,7 +44,7 @@ def build_ads_list_kb(ads: list, current_page: int, total_pages: int) -> InlineK
     if current_page > 1:
         pagination_buttons.append(
             InlineKeyboardButton(
-                text="⬅️ Назад",
+                text=BACK,
                 callback_data=AdminAdsCallback(action="list", code=f"{current_page - 1}").pack(),
             )
         )

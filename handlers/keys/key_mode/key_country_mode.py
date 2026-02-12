@@ -19,13 +19,13 @@ from bot import bot
 from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
-    CONNECT_PHONE_BUTTON,
-    HAPP_CRYPTOLINK,
     REMNAWAVE_LOGIN,
     REMNAWAVE_PASSWORD,
     REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
     SUPPORT_CHAT_URL,
 )
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_user,
     check_server_name_by_cluster,
@@ -37,37 +37,45 @@ from database import (
     update_balance,
     update_trial,
 )
-from database.models import Key, Server, Tariff
+from database.models import Key, Server, ServerSpecialgroup
 from handlers.buttons import (
     BACK,
     CONNECT_DEVICE,
-    CONNECT_PHONE,
     MAIN_MENU,
     MY_SUB,
-    PC_BUTTON,
     ROUTER_BUTTON,
     SUPPORT,
     TV_BUTTON,
 )
 from handlers.keys.operations import create_client_on_server
 from handlers.keys.operations.aggregated_links import make_aggregated_link
-from handlers.texts import SELECT_COUNTRY_MSG, key_message_success
+from handlers.tariffs.tariff_display import (
+    build_key_created_message,
+    get_effective_limits_for_key,
+)
+from handlers.texts import SELECT_COUNTRY_MSG
 from handlers.utils import (
+    ALLOWED_GROUP_CODES,
     edit_or_send_message,
     generate_random_email,
     get_least_loaded_cluster,
     is_full_remnawave_cluster,
 )
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
+from hooks.processors import (
+    process_cluster_override,
+    process_intercept_key_creation_message,
+    process_key_creation_complete,
+    process_remnawave_webapp_override,
+)
 from logger import logger
 from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
 
 
 router = Router()
-
 moscow_tz = pytz.timezone("Europe/Moscow")
+GB = 1024 * 1024 * 1024
 
 
 async def key_country_mode(
@@ -76,14 +84,27 @@ async def key_country_mode(
     state: FSMContext,
     session: AsyncSession,
     message_or_query: Message | CallbackQuery | None = None,
-    old_key_name: str = None,
-    plan: int = None,
+    old_key_name: str | None = None,
+    plan: int | None = None,
+    selected_device_limit: int | None = None,
+    selected_traffic_gb: int | None = None,
+    selected_price_rub: int | None = None,
 ):
     target_message = None
     safe_to_edit = False
 
     if state and plan:
         await state.update_data(tariff_id=plan)
+
+    if state and any(value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub)):
+        data = await state.get_data()
+        if selected_device_limit is not None:
+            data["config_selected_device_limit"] = selected_device_limit
+        if selected_traffic_gb is not None:
+            data["config_selected_traffic_gb"] = selected_traffic_gb
+        if selected_price_rub is not None:
+            data["config_selected_price_rub"] = selected_price_rub
+        await state.set_data(data)
 
     if isinstance(message_or_query, CallbackQuery) and message_or_query.message:
         target_message = message_or_query.message
@@ -94,11 +115,14 @@ async def key_country_mode(
 
     data = await state.get_data() if state else {}
 
-    forced_cluster_results = await run_hooks(
-        "cluster_override", tg_id=tg_id, state_data=data, session=session, plan=plan
+    forced_cluster = await process_cluster_override(
+        tg_id=tg_id,
+        state_data=data,
+        session=session,
+        plan=plan,
     )
-    if forced_cluster_results and forced_cluster_results[0]:
-        least_loaded_cluster = forced_cluster_results[0]
+    if forced_cluster:
+        least_loaded_cluster = forced_cluster
     else:
         try:
             least_loaded_cluster = await get_least_loaded_cluster(session)
@@ -111,8 +135,9 @@ async def key_country_mode(
             return
 
     subgroup_title = None
+    tariff: dict[str, Any] | None = None
     if plan:
-        tariff = await get_tariff_by_id(session, plan)
+        tariff = await get_tariff_by_id(session, int(plan))
         if tariff:
             subgroup_title = tariff.get("subgroup_title")
 
@@ -134,8 +159,24 @@ async def key_country_mode(
             await bot.send_message(chat_id=tg_id, text=text)
         return
 
+    server_ids = [s["id"] for s in servers]
+    groups_map: dict[int, list[str]] = {}
+    if server_ids:
+        r = await session.execute(
+            select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                ServerSpecialgroup.server_id.in_(server_ids)
+            )
+        )
+        for sid, gc in r.all():
+            groups_map.setdefault(sid, []).append(gc)
+
+    for server in servers:
+        server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
+
     if subgroup_title:
-        servers = await filter_cluster_by_subgroup(session, servers, subgroup_title, least_loaded_cluster)
+        servers = await filter_cluster_by_subgroup(
+            session, servers, subgroup_title, least_loaded_cluster, tariff_id=plan
+        )
         if not servers:
             text = "❌ Нет доступных серверов в выбранном кластере."
             if safe_to_edit:
@@ -144,7 +185,25 @@ async def key_country_mode(
                 await bot.send_message(chat_id=tg_id, text=text)
             return
 
-    available_servers = []
+    special = None
+    if tariff:
+        gc = (tariff.get("group_code") or "").lower()
+        if gc in ALLOWED_GROUP_CODES:
+            special = gc
+
+    if special:
+        bound_servers = [s for s in servers if special in (s.get("special_groups") or [])]
+        if bound_servers:
+            servers = bound_servers
+        else:
+            text = f"❌ Нет доступных серверов для тарифа с группой '{special}'."
+            if safe_to_edit:
+                await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
+            else:
+                await bot.send_message(chat_id=tg_id, text=text)
+            return
+
+    available_servers: list[str] = []
     tasks = [asyncio.create_task(check_server_availability(dict(server), session)) for server in servers]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -162,12 +221,19 @@ async def key_country_mode(
 
     builder = InlineKeyboardBuilder()
     ts = int(expiry_time.timestamp())
-    for server_name in available_servers:
-        if old_key_name:
-            callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
-        else:
-            callback_data = f"select_country|{server_name}|{ts}"
-        builder.row(InlineKeyboardButton(text=server_name, callback_data=callback_data))
+
+    for i in range(0, len(available_servers), 2):
+        row_buttons = []
+        for server_name in available_servers[i : i + 2]:
+            if old_key_name:
+                callback_data = f"select_country|{server_name}|{ts}|{old_key_name}"
+            else:
+                if plan:
+                    callback_data = f"select_country|{server_name}|{ts}||{plan}"
+                else:
+                    callback_data = f"select_country|{server_name}|{ts}"
+            row_buttons.append(InlineKeyboardButton(text=server_name, callback_data=callback_data))
+        builder.row(*row_buttons)
 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
@@ -211,10 +277,12 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
         cluster_name = cluster_info["cluster_name"]
 
         key_tariff_id = record.get("tariff_id")
+        tariff_dict: dict[str, Any] | None = None
         subgroup_title = None
         if key_tariff_id:
-            res = await session.execute(select(Tariff.subgroup_title).where(Tariff.id == key_tariff_id))
-            subgroup_title = res.scalar_one_or_none()
+            tariff_dict = await get_tariff_by_id(session, int(key_tariff_id))
+            if tariff_dict:
+                subgroup_title = tariff_dict.get("subgroup_title")
 
         q = (
             select(
@@ -233,13 +301,21 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             await callback_query.answer("❌ Доступных серверов в кластере не найдено", show_alert=True)
             return
 
-        if subgroup_title:
-            servers = await filter_cluster_by_subgroup(session, servers, subgroup_title.strip(), cluster_name)
-            if not servers:
-                await callback_query.answer("❌ Доступных серверов в этой подгруппе нет", show_alert=True)
-                return
+        server_ids = [s["id"] for s in servers]
+        groups_map: dict[int, list[str]] = {}
+        if server_ids:
+            r = await session.execute(
+                select(ServerSpecialgroup.server_id, ServerSpecialgroup.group_code).where(
+                    ServerSpecialgroup.server_id.in_(server_ids)
+                )
+            )
+            for sid, gc in r.all():
+                groups_map.setdefault(sid, []).append(gc)
 
-        available_servers = []
+        for server in servers:
+            server["special_groups"] = [g for g in groups_map.get(server["id"], []) if g in ALLOWED_GROUP_CODES]
+
+        available_servers: list[str] = []
         tasks = [
             asyncio.create_task(
                 check_server_availability(
@@ -260,14 +336,67 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
             if result_ok is True:
                 available_servers.append(server["server_name"])
 
+        if subgroup_title and available_servers:
+            available_servers_dict = [s for s in servers if s["server_name"] in available_servers]
+            filtered_servers = await filter_cluster_by_subgroup(
+                session,
+                available_servers_dict,
+                subgroup_title.strip(),
+                cluster_name,
+                tariff_id=key_tariff_id,
+            )
+            if filtered_servers:
+                available_servers = [s["server_name"] for s in filtered_servers]
+            else:
+                builder = InlineKeyboardBuilder()
+                builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+                await edit_or_send_message(
+                    target_message=callback_query.message,
+                    text="❌ Нет доступных стран для смены локации.",
+                    reply_markup=builder.as_markup(),
+                )
+                return
+
+        if available_servers and tariff_dict:
+            special = None
+            gc = (tariff_dict.get("group_code") or "").lower()
+            if gc and gc in ALLOWED_GROUP_CODES:
+                special = gc
+
+            if special:
+                available_servers_dict = [s for s in servers if s["server_name"] in available_servers]
+                bound_servers = [s for s in available_servers_dict if special in (s.get("special_groups") or [])]
+                if bound_servers:
+                    available_servers = [s["server_name"] for s in bound_servers]
+                else:
+                    builder = InlineKeyboardBuilder()
+                    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+                    await edit_or_send_message(
+                        target_message=callback_query.message,
+                        text="❌ Нет доступных стран для смены локации.",
+                        reply_markup=builder.as_markup(),
+                    )
+                    return
+
         if not available_servers:
-            await callback_query.answer("❌ Нет доступных серверов для смены локации", show_alert=True)
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Нет доступных стран для смены локации.",
+                reply_markup=builder.as_markup(),
+            )
             return
 
         builder = InlineKeyboardBuilder()
-        for country in available_servers:
-            callback_data = f"select_country|{country}|{ts}|{old_key_name}"
-            builder.row(InlineKeyboardButton(text=country, callback_data=callback_data))
+
+        for i in range(0, len(available_servers), 2):
+            row_buttons = []
+            for country in available_servers[i : i + 2]:
+                callback_data = f"select_country|{country}|{ts}|{old_key_name}"
+                row_buttons.append(InlineKeyboardButton(text=country, callback_data=callback_data))
+            builder.row(*row_buttons)
+
         builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
 
         await edit_or_send_message(
@@ -295,7 +424,9 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         await callback_query.message.answer("❌ Некорректное время истечения. Попробуйте снова.")
         return
 
-    old_key_name = data[3] if len(data) > 3 else None
+    old_key_name = data[3] if len(data) > 3 and data[3] else None
+    tariff_id = int(data[4]) if len(data) > 4 and data[4] else None
+
     tg_id = callback_query.from_user.id
 
     fsm_data = await state.get_data()
@@ -318,13 +449,14 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
     try:
         expiry_time = datetime.fromtimestamp(ts, tz=moscow_tz)
         await finalize_key_creation(
-            tg_id,
-            expiry_time,
-            selected_country,
-            state,
-            session,
-            callback_query,
-            old_key_name,
+            tg_id=tg_id,
+            expiry_time=expiry_time,
+            selected_country=selected_country,
+            state=state,
+            session=session,
+            callback_query=callback_query,
+            old_key_name=old_key_name,
+            tariff_id=tariff_id,
         )
     finally:
         fsm_data = await state.get_data()
@@ -339,7 +471,7 @@ async def finalize_key_creation(
     state: FSMContext | None,
     session: AsyncSession,
     callback_query: CallbackQuery,
-    old_key_name: str = None,
+    old_key_name: str | None = None,
     tariff_id: int | None = None,
 ):
     from_user = callback_query.from_user
@@ -357,6 +489,7 @@ async def finalize_key_creation(
 
     expiry_time = expiry_time.astimezone(moscow_tz)
 
+    old_key_details: dict[str, Any] | None = None
     if old_key_name:
         old_key_details = await get_key_details(session, old_key_name)
         if not old_key_details:
@@ -377,24 +510,51 @@ async def finalize_key_creation(
         email = key_name.lower()
         expiry_timestamp = int(expiry_time.timestamp() * 1000)
 
-    traffic_limit_bytes = None
-    device_limit = 0
     data = await state.get_data() if state else {}
     is_trial = data.get("is_trial", False)
 
-    if data.get("tariff_id") or tariff_id:
-        tariff_id = data.get("tariff_id") or tariff_id
-        result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
-        tariff = result.scalar_one_or_none()
-        if tariff:
-            if tariff.traffic_limit is not None:
-                traffic_limit_bytes = int(tariff.traffic_limit) * 1024**3
-            if tariff.device_limit is not None:
-                device_limit = int(tariff.device_limit)
-    else:
-        tariff = None
+    selected_traffic_gb = data.get("config_selected_traffic_gb")
+    if selected_traffic_gb is None:
+        selected_traffic_gb = data.get("selected_traffic_limit_gb")
 
-    need_vless_key = bool(getattr(tariff, "vless", False)) if tariff else False
+    selected_device_limit = data.get("config_selected_device_limit")
+    if selected_device_limit is None:
+        selected_device_limit = data.get("selected_device_limit")
+
+    if old_key_details:
+        if selected_traffic_gb is None:
+            stored_traffic = old_key_details.get("selected_traffic_limit")
+            if stored_traffic is not None:
+                selected_traffic_gb = int(stored_traffic)
+        if selected_device_limit is None:
+            stored_devices = old_key_details.get("selected_device_limit")
+            if stored_devices is not None:
+                selected_device_limit = int(stored_devices)
+
+    price_to_charge = data.get("selected_price_rub")
+
+    effective_tariff_id = data.get("tariff_id") or tariff_id
+    tariff: dict[str, Any] | None = None
+    if effective_tariff_id:
+        tariff_id = int(effective_tariff_id)
+        tariff = await get_tariff_by_id(session, tariff_id)
+
+    device_limit, traffic_limit_bytes = await get_effective_limits_for_key(
+        session=session,
+        tariff_id=tariff_id,
+        selected_device_limit=selected_device_limit,
+        selected_traffic_gb=selected_traffic_gb,
+    )
+
+    if selected_traffic_gb is not None:
+        traffic_limit_gb = int(selected_traffic_gb)
+    else:
+        traffic_limit_gb = int(traffic_limit_bytes / GB) if traffic_limit_bytes else 0
+
+    if price_to_charge is None and tariff and not old_key_name:
+        price_to_charge = tariff.get("price_rub")
+
+    need_vless_key = bool(tariff.get("vless")) if tariff else False
 
     public_link = None
     remnawave_link = None
@@ -413,7 +573,7 @@ async def finalize_key_creation(
         cluster_name = cluster_info["cluster_name"]
         is_full_remnawave = await is_full_remnawave_cluster(cluster_name, session)
 
-        if old_key_name:
+        if old_key_name and old_key_details:
             old_server_id = old_key_details["server_id"]
             if old_server_id:
                 result = await session.execute(select(Server).where(Server.server_name == old_server_id))
@@ -446,7 +606,7 @@ async def finalize_key_creation(
                 raise ValueError(f"❌ Не удалось авторизоваться в Remnawave ({server_info.server_name})")
 
             expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
-            user_data = {
+            user_data: dict[str, Any] = {
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",
                 "expireAt": expire_at,
@@ -484,15 +644,12 @@ async def finalize_key_creation(
                     if need_vless_key and not remnawave_link:
                         links = sub.get("links") or []
                         remnawave_link = next(
-                            (l for l in links if isinstance(l, str) and l.lower().startswith("vless://")), None
+                            (l for l in links if isinstance(l, str) and l.lower().startswith("vless://")),
+                            None,
                         )
 
                     if not remnawave_link:
-                        if HAPP_CRYPTOLINK:
-                            happ = sub.get("happ") or {}
-                            remnawave_link = happ.get("cryptoLink") or happ.get("link")
-                        if not remnawave_link:
-                            remnawave_link = sub.get("subscriptionUrl")
+                        remnawave_link = sub.get("subscriptionUrl")
 
             if old_key_name:
                 await session.execute(
@@ -516,9 +673,11 @@ async def finalize_key_creation(
                 session=session,
                 plan=tariff_id,
                 is_trial=is_trial,
+                total_gb_value=traffic_limit_gb,
+                device_limit_value=device_limit,
             )
 
-        subgroup_code = tariff.subgroup_title if tariff and tariff.subgroup_title else None
+        subgroup_code = tariff.get("subgroup_title") if tariff and tariff.get("subgroup_title") else None
         cluster_all = [
             {
                 "server_name": server_info.server_name,
@@ -545,7 +704,11 @@ async def finalize_key_creation(
         public_link = link_to_show
 
         if old_key_name:
-            update_data = {"server_id": selected_country, "key": None, "remnawave_link": None}
+            update_data: dict[str, Any] = {
+                "server_id": selected_country,
+                "key": None,
+                "remnawave_link": None,
+            }
             if public_link and public_link.startswith("vless://"):
                 update_data["key"] = public_link
             elif public_link and public_link.startswith("http"):
@@ -564,17 +727,17 @@ async def finalize_key_creation(
                 remnawave_link=remnawave_link,
                 server_id=selected_country,
                 tariff_id=tariff_id,
+                selected_device_limit=int(selected_device_limit) if selected_device_limit is not None else None,
+                selected_traffic_limit=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
+                selected_price_rub=int(price_to_charge) if price_to_charge is not None else None,
             )
             session.add(new_key)
             if is_trial:
                 trial_status = await get_trial(session, tg_id)
                 if trial_status in [0, -1]:
                     await update_trial(session, tg_id, 1)
-            if tariff_id:
-                result = await session.execute(select(Tariff.price_rub).where(Tariff.id == tariff_id))
-                row = result.scalar_one_or_none()
-                if row:
-                    await update_balance(session, tg_id, -row)
+            if not is_trial and price_to_charge:
+                await update_balance(session, tg_id, -int(price_to_charge))
 
         await session.commit()
 
@@ -593,21 +756,30 @@ async def finalize_key_creation(
         else None
     )
 
+    use_webapp = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_ENABLED", REMNAWAVE_WEBAPP))
+    open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
+    if use_webapp and webapp_url:
+        use_webapp = await process_remnawave_webapp_override(
+            remnawave_webapp=use_webapp,
+            final_link=final_link,
+            session=session,
+        )
+
+    tv_button_enabled = bool(BUTTONS_CONFIG.get("ANDROID_TV_BUTTON_ENABLE"))
+
     if panel_type == "remnawave" or is_full_remnawave:
         if is_vless:
             builder.row(InlineKeyboardButton(text=ROUTER_BUTTON, callback_data=f"connect_router|{key_name}"))
         else:
-            if REMNAWAVE_WEBAPP and webapp_url:
-                builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
+            if use_webapp and webapp_url:
+                if open_in_browser:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=webapp_url))
+                else:
+                    builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=webapp_url)))
+                if tv_button_enabled:
+                    builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
             else:
                 builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
-            builder.row(InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"))
-    elif CONNECT_PHONE_BUTTON:
-        builder.row(InlineKeyboardButton(text=CONNECT_PHONE, callback_data=f"connect_phone|{key_name}"))
-        builder.row(
-            InlineKeyboardButton(text=PC_BUTTON, callback_data=f"connect_pc|{email}"),
-            InlineKeyboardButton(text=TV_BUTTON, callback_data=f"connect_tv|{email}"),
-        )
     else:
         builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, callback_data=f"connect_device|{key_name}"))
 
@@ -615,40 +787,36 @@ async def finalize_key_creation(
     builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
-    try:
-        intercept_results = await run_hooks(
-            "intercept_key_creation_message", chat_id=tg_id, session=session, target_message=callback_query
-        )
-        if intercept_results and intercept_results[0]:
-            return
-    except Exception as e:
-        logger.warning(f"[INTERCEPT_KEY_CREATION] Ошибка при применении хуков: {e}")
+    if await process_intercept_key_creation_message(
+        chat_id=tg_id,
+        session=session,
+        target_message=callback_query,
+    ):
+        return
 
-    try:
-        hook_commands = await run_hooks(
-            "key_creation_complete", chat_id=tg_id, admin=False, session=session, email=email, key_name=key_name
-        )
-        if hook_commands:
-            builder = insert_hook_buttons(builder, hook_commands)
-    except Exception as e:
-        logger.warning(f"[KEY_CREATION_COMPLETE] Ошибка при применении хуков: {e}")
+    hook_commands = await process_key_creation_complete(
+        chat_id=tg_id,
+        admin=False,
+        session=session,
+        email=email,
+        key_name=key_name,
+    )
+    if hook_commands:
+        builder = insert_hook_buttons(builder, hook_commands)
 
-    t = tariff.name if tariff else "—"
-    subgroup_title = tariff.subgroup_title if tariff and tariff.subgroup_title else ""
-    traffic = tariff.traffic_limit if tariff and tariff.traffic_limit else 0
-    devices = tariff.device_limit if tariff and tariff.device_limit else 0
-
-    key_message_text = key_message_success(
-        public_link or remnawave_link or "Ссылка не найдена",
-        tariff_name=t,
-        traffic_limit=traffic,
-        device_limit=devices,
-        subgroup_title=subgroup_title,
+    key_record = await get_key_details(session, key_name)
+    final_link_for_message = final_link or (key_record.get("link") if key_record else None) or "Ссылка не найдена"
+    message_text = await build_key_created_message(
+        session=session,
+        key_record=key_record,
+        final_link=final_link_for_message,
+        selected_device_limit=selected_device_limit,
+        selected_traffic_gb=selected_traffic_gb,
     )
 
     await edit_or_send_message(
         target_message=callback_query.message,
-        text=key_message_text,
+        text=message_text,
         reply_markup=builder.as_markup(),
         media_path="img/pic.jpg",
     )
@@ -687,16 +855,15 @@ async def check_server_availability(server_info: dict, session: AsyncSession) ->
             logger.info(f"[Ping] Remnawave сервер {server_name} доступен.")
             return True
 
-        else:
-            xui = AsyncApi(
-                server_info["api_url"],
-                username=ADMIN_USERNAME,
-                password=ADMIN_PASSWORD,
-                logger=logger,
-            )
-            await asyncio.wait_for(xui.login(), timeout=5.0)
-            logger.info(f"[Ping] 3x-ui сервер {server_name} доступен.")
-            return True
+        xui = AsyncApi(
+            server_info["api_url"],
+            username=ADMIN_USERNAME,
+            password=ADMIN_PASSWORD,
+            logger=logger,
+        )
+        await asyncio.wait_for(xui.login(), timeout=5.0)
+        logger.info(f"[Ping] 3x-ui сервер {server_name} доступен.")
+        return True
 
     except TimeoutError:
         logger.warning(f"[Ping] Сервер {server_name} не ответил вовремя.")

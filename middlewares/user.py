@@ -1,18 +1,22 @@
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from time import monotonic
 from typing import Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject, User
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import upsert_user
+from database.models import User as DbUser
 from logger import logger
 
 
 class UserMiddleware(BaseMiddleware):
     def __init__(self, debounce_sec: float = 60.0) -> None:
         self._debounce = float(debounce_sec)
-        self._cache: dict[int, tuple[str, float, dict | None]] = {}
+        self._cache: dict[int, tuple[str, float, float, dict | None]] = {}
 
     async def __call__(
         self,
@@ -24,25 +28,32 @@ class UserMiddleware(BaseMiddleware):
             user: User | None = data.get("event_from_user")
             if user and not user.is_bot:
                 session = data.get("session")
-                db_user = await self._process_user(user, session)
-                if db_user:
-                    data["user"] = db_user
+                if isinstance(session, AsyncSession):
+                    db_user = await self._process_user(user, session)
+                    if db_user:
+                        data["user"] = db_user
         except Exception as e:
             logger.error(f"Ошибка при обработке пользователя: {e}")
         return await handler(event, data)
 
-    async def _process_user(self, user: User, session: Any = None) -> dict | None:
+    async def _process_user(self, user: User, session: AsyncSession) -> dict | None:
         uid = user.id
-        fp = self._fingerprint(user)
+        fingerprint = self._fingerprint(user)
         now = monotonic()
 
         cached = self._cache.get(uid)
         if cached:
-            cached_fp, ts, cached_db_user = cached
-            if fp == cached_fp and now - ts < self._debounce:
-                return cached_db_user
+            cached_fingerprint, profile_ts, touch_ts, cached_db_user = cached
 
-        logger.debug(f"Обработка пользователя: {uid}")
+            if fingerprint == cached_fingerprint:
+                if now - touch_ts >= self._debounce:
+                    db_user = await self._touch_user(uid, session)
+                    self._cache[uid] = (cached_fingerprint, profile_ts, now, db_user or cached_db_user)
+                    return db_user or cached_db_user
+
+                if now - profile_ts < self._debounce:
+                    return cached_db_user
+
         db_user = await upsert_user(
             tg_id=uid,
             username=user.username,
@@ -53,10 +64,21 @@ class UserMiddleware(BaseMiddleware):
             session=session,
             only_if_exists=True,
         )
-        self._cache[uid] = (fp, now, db_user)
-        if db_user:
-            logger.debug(f"Получены данные пользователя из БД: {uid}")
+        self._cache[uid] = (fingerprint, now, now, db_user)
         return db_user
+
+    async def _touch_user(self, tg_id: int, session: AsyncSession) -> dict | None:
+        now = datetime.utcnow()
+        res = await session.execute(
+            update(DbUser).where(DbUser.tg_id == tg_id).values(updated_at=now).returning(DbUser)
+        )
+        obj = res.scalar_one_or_none()
+        if obj is None:
+            return None
+        await session.commit()
+        d = obj.__dict__.copy()
+        d.pop("_sa_instance_state", None)
+        return d
 
     def _fingerprint(self, user: User) -> str:
         return "|".join([

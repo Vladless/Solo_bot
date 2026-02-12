@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
 from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, REFERRAL_QR, TOP_REFERRAL_BUTTON, USERNAME_BOT
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_referral,
     add_user,
-    check_user_exists,
     get_referral_by_referred_id,
     get_referral_stats,
 )
@@ -69,40 +69,42 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
         if isinstance(value, float):
             bonuses_lines.append(f"{level} уровень: 🌟 {int(value * 100)}% бонуса")
         else:
-            value_txt = await format_for_user(session, chat_id, value, language_code)
-            bonuses_lines.append(f"{level} уровень: 💸 {value_txt} бонуса")
+            value_text = await format_for_user(session, chat_id, value, language_code)
+            bonuses_lines.append(f"{level} уровень: 💸 {value_text} бонуса")
     bonuses_block = "\n".join(bonuses_lines)
 
     details_lines = []
     for level, stats in referral_stats["referrals_by_level"].items():
         bonus_value = REFERRAL_BONUS_PERCENTAGES.get(level)
         if isinstance(bonus_value, float):
-            bonus_str = f"{int(bonus_value * 100)}%"
+            bonus_text = f"{int(bonus_value * 100)}%"
         else:
-            bonus_str = await format_for_user(session, chat_id, bonus_value, language_code)
-        details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_str}")
+            bonus_text = await format_for_user(session, chat_id, bonus_value, language_code)
+        details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_text}")
     details_block = "\n".join(details_lines)
 
-    total_bonus_txt = await format_for_user(session, chat_id, referral_stats["total_referral_bonus"], language_code)
+    total_bonus_text = await format_for_user(session, chat_id, referral_stats["total_referral_bonus"], language_code)
 
     invite_message = INVITE_MESSAGE_TEMPLATE.format(
         referral_link=referral_link,
         bonuses_block=bonuses_block,
         total_referrals=referral_stats["total_referrals"],
         details_block=details_block,
-        total_referral_bonus=total_bonus_txt,
+        total_referral_bonus=total_bonus_text,
     )
     image_path = os.path.join("img", "pic_invite.jpg")
 
+    inline_mode_enabled = bool(MODES_CONFIG.get("INLINE_MODE_ENABLED", INLINE_MODE))
+
     builder = InlineKeyboardBuilder()
-    if INLINE_MODE:
+    if inline_mode_enabled:
         builder.button(text=INVITE, switch_inline_query="invite")
     else:
         invite_text = INVITE_TEXT_NON_INLINE.format(referral_link=referral_link)
         builder.button(text=INVITE, switch_inline_query=invite_text)
-    if REFERRAL_QR:
+    if BUTTONS_CONFIG.get("REFERRAL_QR_BUTTON_ENABLE", REFERRAL_QR):
         builder.button(text=QR, callback_data=f"show_referral_qr|{chat_id}")
-    if TOP_REFERRAL_BUTTON:
+    if BUTTONS_CONFIG.get("TOP_REFERRAL_BUTTON_ENABLE", TOP_REFERRAL_BUTTON):
         builder.button(text=TOP_FIVE, callback_data="top_referrals")
     builder.button(text=MAIN_MENU, callback_data="profile")
     builder.adjust(1)
@@ -143,7 +145,10 @@ async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSessi
                 id=str(index),
                 title=title,
                 description=description,
-                input_message_content=InputTextMessageContent(message_text=message_text, parse_mode=ParseMode.HTML),
+                input_message_content=InputTextMessageContent(
+                    message_text=message_text,
+                    parse_mode=ParseMode.HTML,
+                ),
                 reply_markup=builder.as_markup(),
             )
         )
@@ -161,14 +166,14 @@ async def show_referral_qr(callback_query: CallbackQuery):
         qr.add_data(referral_link)
         qr.make(fit=True)
 
-        img = qr.make_image(fill_color="black", back_color="white")
+        image = qr.make_image(fill_color="black", back_color="white")
         buffer = BytesIO()
-        img.save(buffer, format="PNG")
+        image.save(buffer, format="PNG")
         buffer.seek(0)
 
         qr_path = f"/tmp/qrcode_referral_{chat_id}.png"
-        with open(qr_path, "wb") as f:
-            f.write(buffer.read())
+        with open(qr_path, "wb") as file:
+            file.write(buffer.read())
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))
@@ -183,8 +188,8 @@ async def show_referral_qr(callback_query: CallbackQuery):
 
         os.remove(qr_path)
 
-    except Exception as e:
-        logger.error(f"Ошибка при генерации QR-кода для реферальной ссылки: {e}", exc_info=True)
+    except Exception as error:
+        logger.error(f"Ошибка при генерации QR-кода для реферальной ссылки: {error}", exc_info=True)
         await callback_query.message.answer("❌ Произошла ошибка при создании QR-кода.")
 
 
@@ -223,11 +228,11 @@ async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSes
 
     is_admin = user_id in ADMIN_ID
     rows = ""
-    for i, row in enumerate(top_referrals, 1):
-        tg_id = str(row.referrer_tg_id)
+    for index, row in enumerate(top_referrals, 1):
+        referrer_id = str(row.referrer_tg_id)
         count = row.referral_count
-        display_id = tg_id if is_admin else f"{tg_id[:5]}*****"
-        rows += f"{i}. {display_id} - {count} чел.\n"
+        display_id = referrer_id if is_admin else f"{referrer_id[:5]}*****"
+        rows += f"{index}. {display_id} - {count} чел.\n"
 
     text = TOP_REFERRALS_TEXT.format(personal_block=personal_block, rows=rows)
 
@@ -265,23 +270,22 @@ async def handle_referral_link(
             await message.answer("❌ Вы уже использовали реферальную ссылку.")
             return
 
-        user_exists = await check_user_exists(session, user_id)
-        if user_exists:
+        if isinstance(user, dict):
+            inserted = await add_user(session=session, **user)
+        else:
+            inserted = await add_user(
+                session=session,
+                tg_id=user.id,
+                username=getattr(user, "username", None),
+                first_name=getattr(user, "first_name", None),
+                last_name=getattr(user, "last_name", None),
+                language_code=getattr(user, "language_code", None),
+                is_bot=getattr(user, "is_bot", False),
+            )
+
+        if not inserted:
             await message.answer("❌ Вы уже зарегистрированы и не можете стать рефералом.")
             return
-        if not user_exists:
-            if isinstance(user, dict):
-                await add_user(session=session, **user)
-            else:
-                await add_user(
-                    session=session,
-                    tg_id=user.id,
-                    username=getattr(user, "username", None),
-                    first_name=getattr(user, "first_name", None),
-                    last_name=getattr(user, "last_name", None),
-                    language_code=getattr(user, "language_code", None),
-                    is_bot=getattr(user, "is_bot", False),
-                )
 
         await add_referral(session, user_id, referrer_tg_id)
 
@@ -290,11 +294,11 @@ async def handle_referral_link(
                 referrer_tg_id,
                 NEW_REFERRAL_NOTIFICATION.format(referred_id=user_id),
             )
-        except Exception as e:
-            logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {e}")
+        except Exception as error:
+            logger.error(f"Не удалось отправить уведомление пригласившему ({referrer_tg_id}): {error}")
 
         await message.answer(REFERRAL_SUCCESS_MSG.format(referrer_tg_id=referrer_tg_id))
 
-    except Exception as e:
-        logger.error(f"Ошибка при обработке реферальной ссылки {referral_code}: {e}")
+    except Exception as error:
+        logger.error(f"Ошибка при обработке реферальной ссылки {referral_code}: {error}")
         await message.answer("❌ Произошла ошибка при обработке реферальной ссылки.")

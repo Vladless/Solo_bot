@@ -13,11 +13,19 @@ from .modules_manager import manager
 modules_hub = Router(name="modules_hub")
 
 
+def _is_safe_module_name(name: str) -> bool:
+    return bool(name and name.isidentifier() and "." not in name and "/" not in name and "\\" not in name)
+
+
 def load_modules_from_folder(folder: str = "modules") -> list[Router]:
     routers = []
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
+        if not _is_safe_module_name(name):
+            logger.warning(f"[Modules] Пропуск недопустимого имени модуля: {name!r}")
+            continue
         if not manager.should_autostart(name):
             logger.info(f"[Modules] Пропуск автозапуска модуля '{name}' (отключён).")
             continue
@@ -43,6 +51,9 @@ def load_module_webhooks(folder: str = "modules") -> list[dict]:
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
+        if not _is_safe_module_name(name):
+            continue
         if not manager.should_autostart(name):
             logger.info(f"[Modules] Пропуск вебхуков модуля '{name}' (отключён).")
             continue
@@ -65,6 +76,9 @@ def load_module_fast_flow_handlers(folder: str = "modules") -> dict:
     base_path = Path(folder)
 
     for _finder, name, _ispkg in pkgutil.iter_modules([str(base_path)]):
+        name = (name or "").strip()
+        if not _is_safe_module_name(name):
+            continue
         if not manager.should_autostart(name):
             logger.info(f"[Modules] Пропуск fast-flow модуля '{name}' (отключён).")
             continue

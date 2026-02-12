@@ -5,27 +5,30 @@ from cachetools import TTLCache
 
 class ThrottlingMiddleware(BaseMiddleware):
     def __init__(self) -> None:
-        self.cache = TTLCache(maxsize=10_000, ttl=1.0)
-        self.throttle_notice_cache = TTLCache(maxsize=10_000, ttl=1.0)
+        self.cache = TTLCache(maxsize=50_000, ttl=1.0)
+        self.throttle_notice_cache = TTLCache(maxsize=50_000, ttl=1.0)
 
     async def __call__(self, handler, event, data):
+        if not isinstance(event, CallbackQuery):
+            return await handler(event, data)
+
         user_id = event.from_user.id if event.from_user else None
         if user_id is None:
             return await handler(event, data)
 
-        current_count = self.cache.get(user_id, 0)
+        key = (user_id, event.data or "")
+        current_count = self.cache.get(key, 0)
 
-        if current_count >= 3:
-            if isinstance(event, CallbackQuery) and user_id not in self.throttle_notice_cache:
-                self.throttle_notice_cache[user_id] = None
+        if current_count >= 2:
+            if key not in self.throttle_notice_cache:
+                self.throttle_notice_cache[key] = None
                 bot: Bot = data["bot"]
                 await bot.answer_callback_query(
                     callback_query_id=event.id,
-                    text="Слишком много запросов! Пожалуйста, подождите...",
+                    text="Слишком много нажатий, подождите...",
                     show_alert=False,
                 )
-            return None
-        else:
-            self.cache[user_id] = current_count + 1
+            return
 
+        self.cache[key] = current_count + 1
         return await handler(event, data)

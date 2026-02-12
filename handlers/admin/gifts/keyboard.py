@@ -3,7 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.models import Gift, Tariff
 from handlers.buttons import BACK
-from handlers.utils import format_days, format_months
+from handlers.utils import format_days
 
 from ..panel.keyboard import AdminPanelCallback
 
@@ -27,7 +27,7 @@ def build_gift_tariffs_kb(tariffs: list[Tariff]) -> InlineKeyboardMarkup:
             text=f"{tariff.name} — {tariff.duration_days // 30} мес.",
             callback_data=f"admin_gift_confirm|{tariff.id}",
         )
-    builder.button(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack())
+    builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
     builder.adjust(1)
     return builder.as_markup()
 
@@ -37,11 +37,8 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
     row = []
 
     for i, gift in enumerate(gifts):
-        if gift.selected_months > 0:
-            duration_text = format_months(gift.selected_months)
-        else:
-            days = (gift.expiry_time.date() - gift.created_at.date()).days
-            duration_text = format_days(days)
+        days = (gift.expiry_time.date() - gift.created_at.date()).days
+        duration_text = format_days(days)
 
         button_text = f"{gift.gift_id[:6]}... — {duration_text}"
 
@@ -64,6 +61,6 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
     if nav:
         builder.row(*nav)
 
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data=AdminPanelCallback(action="gifts").pack()))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack()))
 
     return builder.as_markup()

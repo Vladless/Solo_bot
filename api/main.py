@@ -1,14 +1,13 @@
 from fastapi import FastAPI
-from api.routes import users, keys, coupons, servers, tariffs, gifts, referrals, misc
+from api.routes import users, keys, coupons, servers, tariffs, gifts, referrals, misc, partners
 
 app = FastAPI(
-    title="SoloBot API (preAlpha)",
-    version="0.2.0",
-    docs_url="/api/docs",           
-    redoc_url="/api/redoc",         
-    openapi_url="/api/openapi.json" 
+    title="SoloBot API (Alpha)",
+    version="0.5.1",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
-
 
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(keys.router, prefix="/api/keys", tags=["Keys"])
@@ -17,6 +16,7 @@ app.include_router(servers.router, prefix="/api/servers", tags=["Servers"])
 app.include_router(tariffs.router, prefix="/api/tariffs", tags=["Tariffs"])
 app.include_router(gifts.router, prefix="/api/gifts", tags=["Gifts"])
 app.include_router(referrals.router, prefix="/api/referrals", tags=["Referrals"])
+app.include_router(partners.router, prefix="/api/partners", tags=["Partners"])
 app.include_router(misc.router, prefix="/api")
 
 

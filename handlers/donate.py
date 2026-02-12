@@ -11,7 +11,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import RUB_TO_XTR, STARS_BOT_URL
-from handlers.buttons import BACK, MAIN_MENU
+from handlers.buttons import BACK, MAIN_MENU, STARS_BOT
 from logger import logger
 
 from .utils import edit_or_send_message
@@ -31,7 +31,7 @@ async def process_donate(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🤖 Бот для покупки звезд", url=STARS_BOT_URL))
+    builder.row(InlineKeyboardButton(text=STARS_BOT, url=STARS_BOT_URL))
     builder.row(
         InlineKeyboardButton(
             text="💰 Ввести сумму доната",

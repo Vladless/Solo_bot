@@ -5,10 +5,11 @@ from datetime import datetime
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import HAPP_CRYPTOLINK, PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
-from database import get_servers, get_tariff_by_id, store_key
+from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
+from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
 from database.models import User
 from handlers.utils import ALLOWED_GROUP_CODES, check_server_key_limit
+from hooks.processors import process_extract_cryptolink_from_result
 from logger import (
     CLOGGER as logger,
     PANEL_REMNA,
@@ -32,6 +33,11 @@ async def create_key_on_cluster(
     hwid_limit: int = None,
     traffic_limit_bytes: int = None,
     is_trial: bool = False,
+    selected_device_limit: int = None,
+    selected_traffic_limit_gb: int = None,
+    current_device_limit: int = None,
+    current_traffic_limit_gb: int = None,
+    selected_price_rub: int = None,
 ):
     try:
         servers = await get_servers(session)
@@ -58,25 +64,54 @@ async def create_key_on_cluster(
         tariff = None
         subgroup_title = None
         need_vless_key = False
+
+        traffic_limit_bytes_value = 0
+        device_limit_value = 0
+        external_squad_uuid = None
+
         if plan is not None:
             tariff = await get_tariff_by_id(session, plan)
             if not tariff:
                 raise ValueError(f"Тариф с id={plan} не найден.")
+
             if traffic_limit_bytes is None:
-                traffic_limit_bytes = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else None
+                raw_traffic_limit = tariff.get("traffic_limit")
+                if raw_traffic_limit:
+                    traffic_limit_bytes_value = int(raw_traffic_limit) * 1024 * 1024 * 1024
+                else:
+                    traffic_limit_bytes_value = 0
+            else:
+                traffic_limit_bytes_value = int(traffic_limit_bytes)
+
             if hwid_limit is None:
-                hwid_limit = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else 0
+                raw_device_limit = tariff.get("device_limit")
+                device_limit_value = int(raw_device_limit) if raw_device_limit is not None else 0
+            else:
+                device_limit_value = int(hwid_limit)
+
             subgroup_title = tariff.get("subgroup_title")
             need_vless_key = bool(tariff.get("vless"))
+            external_squad_uuid = tariff.get("external_squad") or None
+        else:
+            traffic_limit_bytes_value = int(traffic_limit_bytes or 0)
+            device_limit_value = int(hwid_limit or 0)
 
-        if subgroup_title:
-            subgroup_servers = [s for s in enabled_servers if subgroup_title in s.get("tariff_subgroups", [])]
-            if subgroup_servers:
-                enabled_servers = subgroup_servers
-            else:
-                logger.warning(
-                    f"[Key Creation] В кластере {cluster_id} не найдено серверов для подгруппы '{subgroup_title}'. Использую весь кластер."
+        if plan is not None:
+            filtered = await filter_cluster_by_tariff(session, enabled_servers, plan, cluster_id)
+            if filtered is not enabled_servers:
+                enabled_servers = filtered
+            elif subgroup_title:
+                enabled_servers = await filter_cluster_by_subgroup(
+                    session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
                 )
+        elif subgroup_title:
+            enabled_servers = await filter_cluster_by_subgroup(
+                session, enabled_servers, subgroup_title, cluster_id, tariff_id=plan
+            )
+
+        if not enabled_servers:
+            logger.warning(f"[Key Creation] Нет серверов после фильтрации по привязкам в кластере {cluster_id}")
+            return
 
         special = None
         if is_trial:
@@ -85,13 +120,15 @@ async def create_key_on_cluster(
             gc = (tariff.get("group_code") or "").lower()
             if gc in ALLOWED_GROUP_CODES:
                 special = gc
+
         if special:
             bound_servers = [s for s in enabled_servers if special in (s.get("special_groups") or [])]
             if bound_servers:
                 enabled_servers = bound_servers
             else:
                 logger.info(
-                    f"[Key Creation] В кластере {cluster_id} нет серверов со спецгруппой '{special}'. Использую весь кластер."
+                    f"[Key Creation] В кластере {cluster_id} нет серверов со спецгруппой '{special}'. "
+                    f"Использую весь кластер."
                 )
 
         remnawave_servers = [
@@ -113,6 +150,7 @@ async def create_key_on_cluster(
         remnawave_created = False
         remnawave_key = None
         remnawave_client_id = None
+        remnawave_link_value = None
 
         if remnawave_servers:
             remna = RemnawaveAPI(remnawave_servers[0]["api_url"])
@@ -126,6 +164,7 @@ async def create_key_on_cluster(
                     short_uuid = None
                     if remnawave_link and "/" in remnawave_link:
                         short_uuid = remnawave_link.rstrip("/").split("/")[-1]
+
                     user_data = {
                         "username": email,
                         "trafficLimitStrategy": "NO_RESET",
@@ -134,25 +173,44 @@ async def create_key_on_cluster(
                         "activeInternalSquads": inbound_ids,
                         "uuid": client_id,
                     }
-                    if traffic_limit_bytes and traffic_limit_bytes > 0:
-                        user_data["trafficLimitBytes"] = traffic_limit_bytes * 1024 * 1024 * 1024
+
+                    if traffic_limit_bytes_value and traffic_limit_bytes_value > 0:
+                        user_data["trafficLimitBytes"] = traffic_limit_bytes_value
+
                     if short_uuid:
                         user_data["shortUuid"] = short_uuid
-                    user_data["hwidDeviceLimit"] = hwid_limit
+
+                    user_data["hwidDeviceLimit"] = device_limit_value
+
+                    if external_squad_uuid:
+                        user_data["externalSquadUuid"] = external_squad_uuid
+
                     logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
                     result = await remna.create_user(user_data)
                     if result:
                         remnawave_created = True
                         remnawave_client_id = result.get("uuid")
-                        link_vless = None
+                        remnawave_link_value = result.get("subscriptionUrl")
+
+                        remnawave_key = None
                         if need_vless_key:
                             try:
-                                link_vless = await get_vless_link_for_remnawave_by_username(remna, email, email)
+                                remnawave_key = await get_vless_link_for_remnawave_by_username(remna, email, email)
                             except Exception as e:
                                 logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
-                        remnawave_key = link_vless or (
-                            result["happ"]["cryptoLink"] if HAPP_CRYPTOLINK else result.get("subscriptionUrl")
-                        )
+                        else:
+                            crypto_link = await process_extract_cryptolink_from_result(
+                                result=result,
+                                cluster_id=server_id_to_store,
+                                plan=plan,
+                                session=session,
+                                email=email,
+                                tg_id=tg_id,
+                                need_vless_key=need_vless_key,
+                            )
+                            if crypto_link:
+                                remnawave_key = crypto_link
+
                         logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
                 else:
                     logger.warning(f"{PANEL_REMNA} Нет inbound_id у серверов")
@@ -174,25 +232,27 @@ async def create_key_on_cluster(
                         plan=plan,
                         session=session,
                         is_trial=is_trial,
+                        total_traffic_limit_bytes=traffic_limit_bytes_value,
+                        device_limit_value=device_limit_value,
                     )
             else:
-                await asyncio.gather(
-                    *[
-                        create_client_on_server(
-                            server,
-                            tg_id,
-                            final_client_id,
-                            email,
-                            expiry_timestamp,
-                            semaphore,
-                            plan=plan,
-                            session=session,
-                            is_trial=is_trial,
-                        )
-                        for server in xui_servers
-                    ],
-                    return_exceptions=True,
-                )
+                tasks = [
+                    create_client_on_server(
+                        server,
+                        tg_id,
+                        final_client_id,
+                        email,
+                        expiry_timestamp,
+                        semaphore,
+                        plan=plan,
+                        session=session,
+                        is_trial=is_trial,
+                        total_traffic_limit_bytes=traffic_limit_bytes_value,
+                        device_limit_value=device_limit_value,
+                    )
+                    for server in xui_servers
+                ]
+                await asyncio.gather(*tasks, return_exceptions=True)
 
         cluster_all = enabled_servers
         subgroup_code = subgroup_title if subgroup_title else None
@@ -221,8 +281,13 @@ async def create_key_on_cluster(
                 expiry_time=expiry_timestamp,
                 key=public_link,
                 server_id=server_id_to_store,
-                remnawave_link=remnawave_key,
+                remnawave_link=remnawave_link_value if remnawave_created else None,
                 tariff_id=plan,
+                selected_device_limit=selected_device_limit,
+                selected_traffic_limit=selected_traffic_limit_gb,
+                current_device_limit=current_device_limit,
+                current_traffic_limit=current_traffic_limit_gb,
+                selected_price_rub=selected_price_rub,
             )
             await session.execute(update(User).where(User.tg_id == tg_id, User.trial.in_([0, -1])).values(trial=1))
             await session.commit()
@@ -239,12 +304,15 @@ async def create_client_on_server(
     email: str,
     expiry_timestamp: int,
     semaphore: asyncio.Semaphore,
-    plan: int = None,
-    session=None,
+    plan: int | None = None,
+    session: AsyncSession | None = None,
     is_trial: bool = False,
+    total_traffic_limit_bytes: int = 0,
+    device_limit_value: int = 0,
 ):
     logger.debug(
-        f"{PANEL_XUI} [Client] Вход в create_client_on_server: сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
+        f"{PANEL_XUI} [Client] Вход в create_client_on_server: "
+        f"сервер={server_info.get('server_name')}, план={plan}, is_trial={is_trial}"
     )
 
     async with semaphore:
@@ -263,23 +331,27 @@ async def create_client_on_server(
             unique_email = email
             sub_id = unique_email
 
-        total_gb_value = 0
-        device_limit_value = 0
-
-        if plan is not None:
+        if plan is not None and (total_traffic_limit_bytes == 0 or device_limit_value == 0):
             tariff = await get_tariff_by_id(session, plan)
             logger.debug(f"{PANEL_XUI} [Tariff Debug] Получен тариф: {tariff}")
             if not tariff:
                 raise ValueError(f"{PANEL_XUI} Тариф с id={plan} не найден.")
 
-            total_gb_value = int(tariff["traffic_limit"]) if tariff["traffic_limit"] else 0
-            device_limit_value = int(tariff["device_limit"]) if tariff.get("device_limit") is not None else 0
+            if total_traffic_limit_bytes == 0:
+                raw_limit = tariff.get("traffic_limit")
+                base_gb = int(raw_limit) if raw_limit else 0
+                total_traffic_limit_bytes = base_gb * 1024 * 1024 * 1024
+
+            if device_limit_value == 0:
+                raw_device_limit = tariff.get("device_limit")
+                device_limit_value = int(raw_device_limit) if raw_device_limit is not None else 0
 
         try:
             logger.debug(
-                f"{PANEL_XUI} [Client] Вызов add_client: email={email}, client_id={client_id}, GB={total_gb_value}, Devices={device_limit_value}"
+                f"{PANEL_XUI} [Client] Вызов add_client: email={email}, client_id={client_id}, "
+                f"bytes={total_traffic_limit_bytes}, Devices={device_limit_value}"
             )
-            traffic_limit_bytes = total_gb_value * 1024 * 1024 * 1024
+            traffic_limit_bytes = total_traffic_limit_bytes
             await add_client(
                 xui,
                 ClientConfig(

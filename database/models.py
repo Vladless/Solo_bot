@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
@@ -77,6 +78,13 @@ class Key(DictLikeMixin, Base):
     notified = Column(Boolean, default=False)
     notified_24h = Column(Boolean, default=False)
 
+    selected_device_limit = Column(Integer, nullable=True)
+    selected_traffic_limit = Column(BigInteger, nullable=True)
+    selected_price_rub = Column(Integer, nullable=True)
+
+    current_device_limit = Column(Integer, nullable=True)
+    current_traffic_limit = Column(BigInteger, nullable=True)
+
 
 class Tariff(DictLikeMixin, Base):
     __tablename__ = "tariffs"
@@ -94,6 +102,18 @@ class Tariff(DictLikeMixin, Base):
     subgroup_title = Column(String, nullable=True)
     sort_order = Column(Integer, nullable=True)
     vless = Column(Boolean, default=False)
+    external_squad: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    configurable = Column(Boolean, nullable=False, server_default="false")
+
+    device_options = Column(JSONB, nullable=True)
+    traffic_options_gb = Column(JSONB, nullable=True)
+
+    device_step_rub = Column(Integer, nullable=True)
+    device_overrides = Column(JSONB, nullable=True)
+
+    traffic_step_rub = Column(Integer, nullable=True)
+    traffic_overrides = Column(JSONB, nullable=True)
 
 
 class Server(DictLikeMixin, Base):
@@ -164,6 +184,11 @@ class Coupon(DictLikeMixin, Base):
     usage_count = Column(Integer, default=0)
     is_used = Column(Boolean, default=False)
     days = Column(Integer, nullable=True)
+    new_users_only = Column(Boolean, nullable=False, server_default=text("false"))
+
+    percent = Column(Integer, nullable=True)
+    max_discount_amount = Column(Integer, nullable=True)
+    min_order_amount = Column(Integer, nullable=True)
 
 
 class CouponUsage(DictLikeMixin, Base):
@@ -204,6 +229,10 @@ class Gift(DictLikeMixin, Base):
     is_unlimited = Column(Boolean, default=False)
     max_usages = Column(Integer, nullable=True)
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
+
+    selected_device_limit = Column(Integer, nullable=True)
+    selected_traffic_gb = Column(Integer, nullable=True)
+    selected_price_rub = Column(Integer, nullable=True)
 
 
 class GiftUsage(DictLikeMixin, Base):
@@ -262,3 +291,13 @@ class Admin(Base):
     @staticmethod
     def generate_token() -> str:
         return secrets.token_urlsafe(32)
+
+
+class Setting(DictLikeMixin, Base):
+    __tablename__ = "settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(JSONB, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

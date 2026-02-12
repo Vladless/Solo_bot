@@ -67,18 +67,30 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
 
 
 def format_coupons_list(coupons: list, username_bot: str) -> str:
-    coupon_list = "📜 Список всех купонов:\n\n"
-    for coupon in coupons:
-        value_text = (
-            f"💰 <b>Сумма:</b> {coupon['amount']} рублей"
-            if coupon["amount"] > 0
-            else f"⏳ <b>{format_days(coupon['days'])}</b>"
+    text = "📜 <b>Список купонов</b>\n\n"
+
+    for i, coupon in enumerate(coupons, start=1):
+        percent_value = coupon.get("percent")
+        days_value = coupon.get("days")
+        amount_value = coupon.get("amount") or 0
+
+        if percent_value is not None and int(percent_value) > 0:
+            value_line = f"📉 <b>Скидка:</b> {int(percent_value)}%"
+        elif days_value is not None and int(days_value) > 0:
+            value_line = f"⏳ <b>Продление:</b> {format_days(int(days_value))}"
+        elif int(amount_value) > 0:
+            value_line = f"💰 <b>Баланс:</b> {int(amount_value)} ₽"
+        else:
+            value_line = "—"
+
+        text += (
+            f"<blockquote>"
+            f"<b>{i}. {coupon['code']}</b>\n"
+            f"{value_line}\n"
+            f"🔢 <b>Лимит:</b> {coupon['usage_limit']} | "
+            f"✅ <b>Использовано:</b> {coupon['usage_count']}\n"
+            f"<code>https://t.me/{username_bot}?start=coupons_{coupon['code']}</code>"
+            f"</blockquote>\n\n"
         )
-        coupon_list += (
-            f"🏷️ <b>Код:</b> {coupon['code']}\n"
-            f"{value_text}\n"
-            f"🔢 <b>Лимит использования:</b> {coupon['usage_limit']} раз\n"
-            f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n"
-            f"🔗 <b>Ссылка:</b> <code>https://t.me/{username_bot}?start=coupons_{coupon['code']}</code>\n\n"
-        )
-    return coupon_list
+
+    return text

@@ -18,7 +18,6 @@ from database import (
     add_payment,
     add_user,
     check_coupon_usage,
-    check_user_exists,
     create_coupon_usage,
     get_coupon_by_code,
     get_keys,
@@ -108,20 +107,27 @@ async def activate_coupon(
         await state.clear()
         return
 
-    user_exists = await check_user_exists(session, user_id)
-    if not user_exists:
-        if isinstance(user, dict):
-            await add_user(session=session, **user)
-        else:
-            await add_user(
-                session=session,
-                tg_id=user.id,
-                username=getattr(user, "username", None),
-                first_name=getattr(user, "first_name", None),
-                last_name=getattr(user, "last_name", None),
-                language_code=getattr(user, "language_code", None),
-                is_bot=getattr(user, "is_bot", False),
-            )
+    from database.models import User
+
+    if getattr(coupon, "new_users_only", False):
+        exists = await session.scalar(select(User.tg_id).where(User.tg_id == user_id))
+        if exists is not None:
+            await message.answer("❌ Этот купон доступен только для новых пользователей.")
+            await state.clear()
+            return
+
+    if isinstance(user, dict):
+        await add_user(session=session, **user)
+    else:
+        await add_user(
+            session=session,
+            tg_id=user.id,
+            username=getattr(user, "username", None),
+            first_name=getattr(user, "first_name", None),
+            last_name=getattr(user, "last_name", None),
+            language_code=getattr(user, "language_code", None),
+            is_bot=getattr(user, "is_bot", False),
+        )
 
     if coupon.amount > 0:
         try:
@@ -187,7 +193,7 @@ async def handle_key_extension(
     session: AsyncSession,
     admin: bool = False,
 ):
-    from database.models import Coupon, Key
+    from database.models import Coupon, Key, User
 
     parts = callback_query.data.split("|")
     client_id = parts[1]
@@ -208,6 +214,13 @@ async def handle_key_extension(
             await state.clear()
             return
 
+        if getattr(coupon, "new_users_only", False):
+            exists = await session.scalar(select(User.tg_id).where(User.tg_id == tg_id))
+            if exists is not None:
+                await callback_query.message.edit_text("❌ Этот купон доступен только для новых пользователей.")
+                await state.clear()
+                return
+
         result = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         key = result.scalar_one_or_none()
         if not key or key.is_frozen:
@@ -222,8 +235,15 @@ async def handle_key_extension(
         tariff = None
         if key.tariff_id:
             tariff = await get_tariff_by_id(session, key.tariff_id)
-        total_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
-        device_limit = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
+        tariff_gb = int(tariff["traffic_limit"]) if tariff and tariff.get("traffic_limit") else 0
+        tariff_devices = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
+
+        total_gb = (
+            int(key.current_traffic_limit) if getattr(key, "current_traffic_limit", None) is not None else tariff_gb
+        )
+        device_limit = (
+            int(key.current_device_limit) if getattr(key, "current_device_limit", None) is not None else tariff_devices
+        )
 
         key_subgroup = None
         if tariff:
@@ -240,6 +260,7 @@ async def handle_key_extension(
             reset_traffic=False,
             target_subgroup=key_subgroup,
             old_subgroup=key_subgroup,
+            plan=key.tariff_id,
         )
         await update_key_expiry(session, client_id, new_expiry)
         await update_coupon_usage_count(session, coupon.id)

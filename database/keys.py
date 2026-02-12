@@ -17,29 +17,49 @@ async def store_key(
     key: str,
     server_id: str,
     remnawave_link: str = None,
-    tariff_id: int = None,
-    alias: str = None,
+    tariff_id: int | None = None,
+    alias: str | None = None,
+    selected_device_limit: int | None = None,
+    selected_traffic_limit: int | None = None,
+    selected_price_rub: int | None = None,
+    current_device_limit: int | None = None,
+    current_traffic_limit: int | None = None,
 ):
+    """Сохраняет или обновляет ключ подписки."""
     try:
         exists = await session.execute(select(Key).where(Key.tg_id == tg_id, Key.client_id == client_id))
         existing_key = exists.scalar_one_or_none()
-        
+
         if existing_key:
-            await session.execute(
-                update(Key)
-                .where(Key.tg_id == tg_id, Key.client_id == client_id)
-                .values(
-                    email=email,
-                    expiry_time=expiry_time,
-                    key=key,
-                    server_id=server_id,
-                    remnawave_link=remnawave_link,
-                    tariff_id=tariff_id,
-                    alias=alias,
-                )
-            )
+            values: dict = {
+                "email": email,
+                "expiry_time": expiry_time,
+                "key": key,
+                "server_id": server_id,
+                "remnawave_link": remnawave_link,
+                "tariff_id": tariff_id,
+                "alias": alias,
+            }
+
+            if selected_device_limit is not None:
+                values["selected_device_limit"] = selected_device_limit
+            if selected_traffic_limit is not None:
+                values["selected_traffic_limit"] = selected_traffic_limit
+            if selected_price_rub is not None:
+                values["selected_price_rub"] = selected_price_rub
+            if current_device_limit is not None:
+                values["current_device_limit"] = current_device_limit
+            if current_traffic_limit is not None:
+                values["current_traffic_limit"] = current_traffic_limit
+
+            await session.execute(update(Key).where(Key.tg_id == tg_id, Key.client_id == client_id).values(**values))
             logger.info(f"[Store Key] Ключ обновлён: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
         else:
+            if current_device_limit is None:
+                current_device_limit = selected_device_limit
+            if current_traffic_limit is None:
+                current_traffic_limit = selected_traffic_limit
+
             new_key = Key(
                 tg_id=tg_id,
                 client_id=client_id,
@@ -51,15 +71,21 @@ async def store_key(
                 remnawave_link=remnawave_link,
                 tariff_id=tariff_id,
                 alias=alias,
+                selected_device_limit=selected_device_limit,
+                selected_traffic_limit=selected_traffic_limit,
+                selected_price_rub=selected_price_rub,
+                current_device_limit=current_device_limit,
+                current_traffic_limit=current_traffic_limit,
             )
             session.add(new_key)
             logger.info(f"[Store Key] Ключ создан: tg_id={tg_id}, client_id={client_id}, server_id={server_id}")
-        
+
         await session.commit()
 
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении ключа: {e}")
         await session.rollback()
+        raise
 
 
 async def get_keys(session: AsyncSession, tg_id: int):
@@ -79,6 +105,7 @@ async def get_key_by_server(session: AsyncSession, tg_id: int, client_id: str):
 
 
 async def get_key_details(session: AsyncSession, email: str) -> dict | None:
+    """Возвращает подробную информацию о ключе по email."""
     stmt = select(Key, User).join(User, Key.tg_id == User.tg_id).where(Key.email == email)
     result = await session.execute(stmt)
     row = result.first()
@@ -116,6 +143,11 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
         "cluster_name": key.server_id,
         "location_name": key.server_id,
         "tariff_id": key.tariff_id,
+        "selected_device_limit": key.selected_device_limit,
+        "selected_traffic_limit": key.selected_traffic_limit,
+        "selected_price_rub": key.selected_price_rub,
+        "current_device_limit": key.current_device_limit,
+        "current_traffic_limit": key.current_traffic_limit,
     }
 
 
@@ -124,10 +156,11 @@ async def get_key_count(session: AsyncSession, tg_id: int) -> int:
     return result.scalar() or 0
 
 
-async def delete_key(session: AsyncSession, identifier: int | str):
+async def delete_key(session: AsyncSession, identifier: int | str, commit: bool = True):
     stmt = delete(Key).where(Key.tg_id == identifier if str(identifier).isdigit() else Key.client_id == identifier)
     await session.execute(stmt)
-    await session.commit()
+    if commit:
+        await session.commit()
     logger.info(f"Ключ с идентификатором {identifier} удалён")
 
 
@@ -156,13 +189,18 @@ async def mark_key_as_frozen(session: AsyncSession, tg_id: int, client_id: str, 
                 is_frozen = TRUE
             WHERE tg_id = :tg_id
               AND client_id = :client_id
-        """
+            """
         ),
         {"expiry": time_left, "tg_id": tg_id, "client_id": client_id},
     )
 
 
-async def mark_key_as_unfrozen(session: AsyncSession, tg_id: int, client_id: str, new_expiry_time: int):
+async def mark_key_as_unfrozen(
+    session: AsyncSession,
+    tg_id: int,
+    client_id: str,
+    new_expiry_time: int,
+):
     await session.execute(
         text(
             """
@@ -171,7 +209,7 @@ async def mark_key_as_unfrozen(session: AsyncSession, tg_id: int, client_id: str
                 is_frozen = FALSE
             WHERE tg_id = :tg_id
               AND client_id = :client_id
-        """
+            """
         ),
         {"expiry": new_expiry_time, "tg_id": tg_id, "client_id": client_id},
     )
@@ -199,3 +237,53 @@ async def update_key_link(session: AsyncSession, email: str, link: str) -> bool:
     res = await session.execute(q)
     await session.commit()
     return res.scalar_one_or_none() is not None
+
+
+async def save_key_config_with_mode(
+    session: AsyncSession,
+    email: str,
+    selected_devices: int | None,
+    selected_traffic_gb: int | None,
+    total_price: int,
+    has_device_choice: bool,
+    has_traffic_choice: bool,
+    config_mode: str,
+) -> None:
+    values: dict = {}
+
+    if config_mode == "pack":
+        if has_device_choice and selected_devices is not None:
+            values["current_device_limit"] = int(selected_devices)
+        if has_traffic_choice and selected_traffic_gb is not None:
+            values["current_traffic_limit"] = int(selected_traffic_gb)
+    else:
+        device_val = int(selected_devices) if selected_devices is not None and has_device_choice else None
+        traffic_val = int(selected_traffic_gb) if selected_traffic_gb is not None and has_traffic_choice else None
+
+        values["selected_device_limit"] = device_val
+        values["selected_traffic_limit"] = traffic_val
+        values["selected_price_rub"] = int(total_price)
+        values["current_device_limit"] = device_val
+        values["current_traffic_limit"] = traffic_val
+
+    if not values:
+        return
+
+    await session.execute(update(Key).where(Key.email == email).values(**values))
+
+
+async def reset_key_current_limits_to_selected(session: AsyncSession, client_id: str):
+    """Сбрасывает текущие лимиты к выбранным для ключа."""
+    await session.execute(
+        text(
+            """
+            UPDATE keys
+            SET current_device_limit = selected_device_limit,
+                current_traffic_limit = selected_traffic_limit
+            WHERE client_id = :client_id
+            """
+        ),
+        {"client_id": client_id},
+    )
+    await session.commit()
+    logger.info(f"Текущие лимиты ключа {client_id} сброшены к выбранным")

@@ -8,21 +8,50 @@ from database.models import Coupon, CouponUsage
 from logger import logger
 
 
-async def create_coupon(session: AsyncSession, code: str, amount: int, usage_limit: int, days: int = None) -> bool:
+async def create_coupon(
+    session: AsyncSession,
+    code: str,
+    amount: int | None,
+    usage_limit: int,
+    days: int | None = None,
+    new_users_only: bool = False,
+    percent: int | None = None,
+    max_discount_amount: int | None = None,
+    min_order_amount: int | None = None,
+) -> bool:
     try:
         exists = await session.scalar(select(Coupon.id).where(Coupon.code == code))
         if exists:
             logger.warning(f"[Coupon] ⚠️ Купон с кодом {code} уже существует.")
             return False
 
+        if percent is not None:
+            try:
+                percent_value = int(percent)
+            except (TypeError, ValueError):
+                logger.warning(f"[Coupon] ⚠️ Некорректный процент для купона {code}.")
+                return False
+
+            if percent_value <= 0 or percent_value > 100:
+                logger.warning(f"[Coupon] ⚠️ процент должен быть в диапазоне 1..100 для купона {code}.")
+                return False
+
+            if (amount or 0) > 0 or (days or 0) > 0:
+                logger.warning(f"[Coupon] ⚠️ Купон {code} не может одновременно иметь percent и amount/days.")
+                return False
+
         await session.execute(
             insert(Coupon).values(
                 code=code,
-                amount=amount,
+                amount=int(amount) if amount is not None else 0,
                 usage_limit=usage_limit,
                 usage_count=0,
                 is_used=False,
                 days=days,
+                new_users_only=new_users_only,
+                percent=percent,
+                max_discount_amount=max_discount_amount,
+                min_order_amount=min_order_amount,
             )
         )
         await session.commit()
@@ -84,6 +113,7 @@ async def create_coupon_usage(session: AsyncSession, coupon_id: int, user_id: in
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при сохранении использования купона: {e}")
         await session.rollback()
+        raise
 
 
 async def check_coupon_usage(session: AsyncSession, coupon_id: int, user_id: int) -> bool:
@@ -107,3 +137,24 @@ async def update_coupon_usage_count(session: AsyncSession, coupon_id: int):
     except SQLAlchemyError as e:
         logger.error(f"❌ Ошибка при обновлении купона {coupon_id}: {e}")
         await session.rollback()
+        raise
+
+
+def apply_percent_coupon(price_rub: int, coupon: Coupon) -> tuple[int, int]:
+    percent = coupon.percent
+    if percent is None:
+        return price_rub, 0
+
+    if coupon.min_order_amount is not None and price_rub < int(coupon.min_order_amount):
+        return price_rub, 0
+
+    discount = (price_rub * int(percent)) // 100
+
+    if coupon.max_discount_amount is not None:
+        discount = min(discount, int(coupon.max_discount_amount))
+
+    final_price = price_rub - discount
+    if final_price < 0:
+        final_price = 0
+
+    return final_price, discount
