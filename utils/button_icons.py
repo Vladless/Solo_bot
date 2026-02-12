@@ -26,8 +26,13 @@ def apply_button_icons_patch(config: dict[str, dict[str, str]] | None = None) ->
     class _PatchedInlineKeyboardButton(_OriginalInlineKeyboardButton):
         def __init__(self, **kwargs: object):
             key = kwargs.get("callback_data") or kwargs.get("url")
-            if key is not None and isinstance(key, str) and key in _button_icon_config:
-                kwargs = {**kwargs, **_button_icon_config[key]}
+            if key is not None and isinstance(key, str):
+                config = _button_icon_config.get(key)
+                if config is None and "|" in key:
+                    prefix = key.split("|", 1)[0]
+                    config = _button_icon_config.get(prefix)
+                if config is not None:
+                    kwargs = {**kwargs, **config}
             super().__init__(**kwargs)
 
     aiogram.types.InlineKeyboardButton = _PatchedInlineKeyboardButton

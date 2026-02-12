@@ -6,7 +6,6 @@ from io import StringIO
 from aiogram.types import BufferedInputFile
 from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-import json
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Key, Payment, Referral, Tariff, User
