@@ -2,7 +2,6 @@ from collections.abc import Iterable
 
 from aiogram import BaseMiddleware, Dispatcher
 
-from config import CHANNEL_REQUIRED, DISABLE_DIRECT_START
 from middlewares.ban_checker import BanCheckerMiddleware
 from middlewares.subscription import SubscriptionMiddleware
 
@@ -38,11 +37,9 @@ def register_middleware(
         dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
         dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
 
-    if DISABLE_DIRECT_START:
-        dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
+    dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
 
-    if CHANNEL_REQUIRED:
-        dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
+    dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
 
     dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(), "ban_checker"))
 
