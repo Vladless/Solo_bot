@@ -43,7 +43,6 @@ async def add_payment(
         )
         result = await session.execute(stmt)
         internal_id = result.scalar_one()
-        await session.commit()
         logger.info(
             f"Добавлен платёж id={internal_id}: tg_id={tg_id}, amount={amount}, system={payment_system}, status={status}"
         )
