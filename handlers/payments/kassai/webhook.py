@@ -77,7 +77,9 @@ async def kassai_webhook(request: web.Request):
                 if payment.get("status") == "success":
                     logger.info(f"KassaAI: платёж {order_id} уже обработан")
                     return web.Response(text=KASSAI_WEBHOOK_RESPONSE)
-                ok = await update_payment_status(session=session, internal_id=int(payment["id"]), new_status="success")
+                ok = await update_payment_status(
+                    session=session, internal_id=int(payment["id"]), new_status="success"
+                )
                 if not ok:
                     logger.error(f"KassaAI: не удалось обновить статус платежа {order_id}")
                     return web.Response(status=500)

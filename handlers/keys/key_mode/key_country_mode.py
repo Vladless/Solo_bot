@@ -673,7 +673,7 @@ async def finalize_key_creation(
                 session=session,
                 plan=tariff_id,
                 is_trial=is_trial,
-                total_gb_value=traffic_limit_gb,
+                total_traffic_limit_bytes=traffic_limit_bytes,
                 device_limit_value=device_limit,
             )
 
