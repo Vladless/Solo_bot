@@ -80,7 +80,7 @@ class BanCheckerMiddleware(BaseMiddleware):
         until = ban_info["until"]
 
         admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
-        if reason == "shadow" and tg_id in admin_ids:
+        if tg_id in admin_ids:
             return await handler(event, data)
 
         if reason == "shadow":

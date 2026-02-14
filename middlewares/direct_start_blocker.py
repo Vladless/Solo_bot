@@ -7,7 +7,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DISABLE_DIRECT_START
+from config import ADMIN_ID, DISABLE_DIRECT_START
 from core.bootstrap import MODES_CONFIG
 from database import check_user_exists
 from logger import logger
@@ -30,6 +30,14 @@ class DirectStartBlockerMiddleware(BaseMiddleware):
         direct_start_disabled = bool(MODES_CONFIG.get("DIRECT_START_DISABLED", DISABLE_DIRECT_START))
         if not direct_start_disabled:
             return await handler(event, data)
+
+        user = getattr(event, "message", None) and getattr(event.message, "from_user", None)
+        if not user and getattr(event, "callback_query", None):
+            user = getattr(event.callback_query, "from_user", None)
+        if user:
+            admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+            if user.id in admin_ids:
+                return await handler(event, data)
 
         message: Message | None = getattr(event, "message", None)
         if not message or not message.text:
