@@ -8,7 +8,7 @@ from pytz import timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import SUPPORT_CHAT_URL
+from config import ADMIN_ID, SUPPORT_CHAT_URL
 from database.models import ManualBan
 from logger import logger
 
@@ -78,6 +78,10 @@ class BanCheckerMiddleware(BaseMiddleware):
 
         reason = ban_info["reason"]
         until = ban_info["until"]
+
+        admin_ids = set(ADMIN_ID) if isinstance(ADMIN_ID, (list, tuple)) else {ADMIN_ID}
+        if reason == "shadow" and tg_id in admin_ids:
+            return await handler(event, data)
 
         if reason == "shadow":
             logger.info(f"[BanChecker] Теневой бан: пользователь {tg_id} — действия игнорируются.")
