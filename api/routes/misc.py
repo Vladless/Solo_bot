@@ -9,7 +9,6 @@ from api.schemas import (
     ManualBanResponse,
     NotificationResponse,
     PaymentResponse,
-    ReferralResponse,
     TemporaryDataResponse,
     TrackingSourceResponse,
 )
@@ -20,7 +19,6 @@ from database.models import (
     ManualBan,
     Notification,
     Payment,
-    Referral,
     TemporaryData,
     TrackingSource,
 )
@@ -55,20 +53,6 @@ async def get_payments_by_tg_id(
         raise HTTPException(status_code=404, detail="Payments not found")
     return payments
 
-
-router.include_router(
-    generate_crud_router(
-        model=Referral,
-        schema_response=ReferralResponse,
-        schema_create=None,
-        schema_update=None,
-        identifier_field="referred_tg_id",
-        enabled_methods=["get_all", "get_one", "delete"],
-    ),
-    prefix="/referrals",
-    tags=["Referrals"],
-    dependencies=[Depends(verify_admin_token)],
-)
 
 router.include_router(
     generate_crud_router(
