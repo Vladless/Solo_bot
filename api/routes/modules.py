@@ -22,13 +22,6 @@ class ModuleAction(BaseModel):
 
 def _available_module_names() -> list[str]:
     candidates: set[str] = set()
-
-    for name in manager.registry.keys():
-        if name:
-            candidates.add(name)
-
-    candidates.update(manager.disabled)
-
     if MODULES_DIR.is_dir():
         for _finder, name, _ispkg in pkgutil.iter_modules([str(MODULES_DIR)]):
             name = (name or "").strip()
@@ -36,6 +29,27 @@ def _available_module_names() -> list[str]:
                 candidates.add(name)
 
     return sorted(n for n in candidates if _is_safe_module_name(n))
+
+
+def _prune_missing_state(installed: set[str]) -> None:
+    changed = False
+
+    stale_disabled = {name for name in manager.disabled if name not in installed}
+    if stale_disabled:
+        for name in stale_disabled:
+            manager.disabled.discard(name)
+        changed = True
+
+    stale_registry = [name for name in list(manager.registry.keys()) if name not in installed]
+    if stale_registry:
+        for name in stale_registry:
+            manager.registry.pop(name, None)
+        changed = True
+
+    if changed:
+        save_state = getattr(manager, "_save_state", None)
+        if callable(save_state):
+            save_state()
 
 
 def _module_state(name: str) -> dict:
@@ -76,6 +90,7 @@ async def list_modules(admin=Depends(verify_admin_token)):
         if callable(legacy_refresh):
             legacy_refresh()
     module_names = _available_module_names()
+    _prune_missing_state(set(module_names))
     modules = [_module_state(name) for name in module_names]
 
     for item in modules:

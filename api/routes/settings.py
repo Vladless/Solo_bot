@@ -149,3 +149,5 @@ async def delete_setting(
     await session.delete(obj)
     await session.commit()
     return {"detail": "Setting deleted"}
+
+
