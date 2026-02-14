@@ -497,10 +497,7 @@ async def render_key_info(message: Message, session: AsyncSession, key_name: str
 async def handle_reset_hwid(callback_query: CallbackQuery, session: AsyncSession):
     key_name = callback_query.data.split("|")[1]
 
-    record_task = asyncio.create_task(get_key_details(session, key_name))
-    servers_task = asyncio.create_task(get_servers(session=session))
-
-    record = await record_task
+    record = await get_key_details(session, key_name)
     if not record:
         await callback_query.answer("❌ Ключ не найден.", show_alert=True)
         return
@@ -510,7 +507,7 @@ async def handle_reset_hwid(callback_query: CallbackQuery, session: AsyncSession
         await callback_query.answer("❌ У ключа отсутствует client_id.", show_alert=True)
         return
 
-    servers = await servers_task
+    servers = await get_servers(session=session)
     remna_server = next((srv for cl in servers.values() for srv in cl if srv.get("panel_type") == "remnawave"), None)
     if not remna_server:
         await callback_query.answer("❌ Remnawave-сервер не найден.", show_alert=True)
