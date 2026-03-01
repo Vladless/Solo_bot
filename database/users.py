@@ -63,6 +63,12 @@ async def add_user(
 
 async def update_balance(session: AsyncSession, tg_id: int, amount: float) -> None:
     try:
+        if amount < 0:
+            current = await get_balance(session, tg_id)
+            if current + amount < 0:
+                logger.warning(f"[DB] Недостаточно средств: tg_id={tg_id} balance={current} списание={amount}")
+                await session.rollback()
+                raise ValueError(f"Недостаточно средств: баланс {current}, списание {amount}")
         res = await session.execute(
             update(User)
             .where(User.tg_id == tg_id)

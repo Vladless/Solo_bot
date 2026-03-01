@@ -14,15 +14,17 @@ class CallbackAnswerMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        if isinstance(event, CallbackQuery):
+        if isinstance(event, CallbackQuery) and isinstance(event.message, InaccessibleMessage):
             try:
-                await event.answer()
+                new_message = await bot.send_message(event.message.chat.id, "⏳")
+                object.__setattr__(event, "message", new_message)
             except Exception:
                 pass
-            if isinstance(event.message, InaccessibleMessage):
+        try:
+            return await handler(event, data)
+        finally:
+            if isinstance(event, CallbackQuery) and not data.get("callback_answered_early"):
                 try:
-                    new_message = await bot.send_message(event.message.chat.id, "⏳")
-                    object.__setattr__(event, "message", new_message)
+                    await event.answer()
                 except Exception:
                     pass
-        return await handler(event, data)

@@ -195,13 +195,6 @@ async def key_country_mode(
         bound_servers = [s for s in servers if special in (s.get("special_groups") or [])]
         if bound_servers:
             servers = bound_servers
-        else:
-            text = f"❌ Нет доступных серверов для тарифа с группой '{special}'."
-            if safe_to_edit:
-                await edit_or_send_message(target_message=target_message, text=text, reply_markup=None)
-            else:
-                await bot.send_message(chat_id=tg_id, text=text)
-            return
 
     available_servers: list[str] = []
     tasks = [asyncio.create_task(check_server_availability(dict(server), session)) for server in servers]
@@ -368,15 +361,6 @@ async def change_location_callback(callback_query: CallbackQuery, session: Any):
                 bound_servers = [s for s in available_servers_dict if special in (s.get("special_groups") or [])]
                 if bound_servers:
                     available_servers = [s["server_name"] for s in bound_servers]
-                else:
-                    builder = InlineKeyboardBuilder()
-                    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"view_key|{old_key_name}"))
-                    await edit_or_send_message(
-                        target_message=callback_query.message,
-                        text="❌ Нет доступных стран для смены локации.",
-                        reply_markup=builder.as_markup(),
-                    )
-                    return
 
         if not available_servers:
             builder = InlineKeyboardBuilder()
@@ -425,7 +409,10 @@ async def handle_country_selection(callback_query: CallbackQuery, session: Any, 
         return
 
     old_key_name = data[3] if len(data) > 3 and data[3] else None
-    tariff_id = int(data[4]) if len(data) > 4 and data[4] else None
+    try:
+        tariff_id = int(data[4]) if len(data) > 4 and data[4] else None
+    except (ValueError, IndexError):
+        tariff_id = None
 
     tg_id = callback_query.from_user.id
 

@@ -1,6 +1,9 @@
+import asyncio
 import html
 import re
+import time
 import traceback
+from collections import deque
 
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -17,9 +20,39 @@ _OBFUSCATED_MIN_SEQ = 15
 _PLACEHOLDER = "<obfuscated>"
 
 
+_ERROR_NOTIFY_MAX_PER_MINUTE = 2
+_ERROR_DEDUPE_SEC = 120
+_ERROR_MSG_PREFIX_LEN = 200
+_error_send_times: deque[float] = deque(maxlen=500)
+_error_dedup: dict[tuple[str, str], float] = {}
+_error_lock = asyncio.Lock()
+
+
 def _sanitize_traceback(text: str) -> str:
     """Убирает из текста длинные последовательности \\xNN (обфусцированный код)."""
     return re.sub(r"(\\x[0-9a-fA-F]{2}){" + str(_OBFUSCATED_MIN_SEQ) + r",}", _PLACEHOLDER, text)
+
+
+async def _should_send_error_to_admins(exc_type: type[BaseException], exc_message: str) -> bool:
+    """
+    Разрешает отправку уведомления админу только если не превышен лимит в минуту
+    и такая же ошибка не отправлялась недавно (дедуп). Сбрасывает старые записи.
+    """
+    now = time.monotonic()
+    key = (exc_type.__name__, (exc_message or "")[:_ERROR_MSG_PREFIX_LEN])
+    async with _error_lock:
+        while _error_send_times and _error_send_times[0] < now - 60:
+            _error_send_times.popleft()
+        for k, t in list(_error_dedup.items()):
+            if t < now - _ERROR_DEDUPE_SEC:
+                del _error_dedup[k]
+        if len(_error_send_times) >= _ERROR_NOTIFY_MAX_PER_MINUTE:
+            return False
+        if key in _error_dedup:
+            return False
+        _error_dedup[key] = now
+        _error_send_times.append(now)
+        return True
 
 
 def setup_error_handlers(dp: Dispatcher) -> None:
@@ -50,7 +83,7 @@ def setup_error_handlers(dp: Dispatcher) -> None:
                     logger.warning(f"Показываем стартовое меню из-за TelegramBadRequest: {error_message}")
                     logger.error(f"Traceback:\n{tb}")
 
-                    if ADMIN_ID:
+                    if ADMIN_ID and await _should_send_error_to_admins(type(event.exception), error_message):
                         if "query is too old and response timeout expired or query ID is invalid" in error_message:
                             caption = (
                                 f"{hbold('TelegramBadRequest: устаревший callback-запрос')}\n\n"
@@ -68,15 +101,14 @@ def setup_error_handlers(dp: Dispatcher) -> None:
                         else:
                             caption = f"{hbold(type(event.exception).__name__)}: {error_message[:1021]}..."
 
-                        for admin_id in ADMIN_ID:
-                            await bot.send_document(
-                                chat_id=admin_id,
-                                document=BufferedInputFile(
-                                    tb.encode(),
-                                    filename=f"error_{event.update.update_id}.txt",
-                                ),
-                                caption=caption[:1024],
-                            )
+                        await bot.send_document(
+                            chat_id=ADMIN_ID[0],
+                            document=BufferedInputFile(
+                                tb.encode(),
+                                filename=f"error_{event.update.update_id}.txt",
+                            ),
+                            caption=caption[:1024],
+                        )
                 except Exception as e:
                     logger.error(f"Сбой при логировании/отправке ошибки админу: {e}", exc_info=True)
 
@@ -122,11 +154,11 @@ def setup_error_handlers(dp: Dispatcher) -> None:
             return True
 
         try:
-            tb_text = _sanitize_traceback(traceback.format_exc())
-            for admin_id in ADMIN_ID:
+            if await _should_send_error_to_admins(type(event.exception), str(event.exception)):
+                tb_text = _sanitize_traceback(traceback.format_exc())
                 exc_text = html.escape(str(event.exception)[:1021])
                 await bot.send_document(
-                    chat_id=admin_id,
+                    chat_id=ADMIN_ID[0],
                     document=BufferedInputFile(
                         tb_text.encode(),
                         filename=f"error_{event.update.update_id}.txt",

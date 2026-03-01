@@ -1,6 +1,5 @@
 import hashlib
 
-from datetime import datetime, timedelta
 from typing import Any
 
 from aiogram import F, Router, types
