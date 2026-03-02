@@ -92,4 +92,4 @@ def get_git_commit_number() -> str:
 
 
 def get_version() -> str:
-    return f"a28022608 {get_git_commit_number()}"
+    return f"a02032612 {get_git_commit_number()}"
