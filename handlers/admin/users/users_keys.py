@@ -1459,6 +1459,22 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     base_traffic = data.get("cfg_base_traffic")
     extra_traffic = data.get("cfg_extra_traffic") or 0
 
+    traffic_to_show = base_traffic
+    if traffic_to_show is None and email:
+        result = await session.execute(select(Key).where(Key.email == email))
+        key_obj = result.scalar_one_or_none()
+        if key_obj:
+            traffic_to_show = key_obj.selected_traffic_limit or key_obj.current_traffic_limit
+    if traffic_to_show is None and tariff:
+        raw = tariff.get("traffic_limit")
+        if raw is not None:
+            try:
+                val = int(raw)
+                if val > 0:
+                    traffic_to_show = val
+            except (TypeError, ValueError):
+                pass
+
     text = (
         f"<b>⚙️ Конфигурация ключа</b>\n\n"
         f"🔑 <b>Ключ:</b> <code>{email}</code>\n"
@@ -1468,9 +1484,9 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     extra_dev_str = f" + {extra_devices} (докуплено)" if extra_devices > 0 else ""
     text += f"📱 <b>Устройства:</b> {base_devices}{extra_dev_str}\n"
 
-    if base_traffic:
+    if traffic_to_show:
         extra_traf_str = f" + {extra_traffic} ГБ (докуплено)" if extra_traffic > 0 else ""
-        text += f"📊 <b>Трафик:</b> {base_traffic} ГБ{extra_traf_str}\n"
+        text += f"📊 <b>Трафик:</b> {traffic_to_show} ГБ{extra_traf_str}\n"
     else:
         text += "📊 <b>Трафик:</b> безлимит\n"
 
