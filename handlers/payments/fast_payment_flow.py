@@ -250,6 +250,38 @@ async def try_fast_payment_flow(
     return True
 
 
+@router.callback_query(F.data == "fastflow_back")
+async def fastflow_back(callback_query: CallbackQuery, state: FSMContext, session: Any):
+    """Возврат из экрана выбора суммы в потоке /buy к выбору способа оплаты (без перехода на экран баланса)."""
+    amount_not_found_text = "Сумма не найдена"
+    data = await state.get_data()
+    temp_key = data.get("temp_key")
+    temp_payload = data.get("temp_payload")
+    required_amount = data.get("required_amount")
+
+    if not temp_key or not isinstance(temp_payload, dict) or required_amount is None:
+        await edit_or_send_message(
+            target_message=callback_query.message,
+            text=amount_not_found_text,
+            reply_markup=InlineKeyboardBuilder()
+            .row(InlineKeyboardButton(text=btn.MAIN_MENU, callback_data="profile"))
+            .as_markup(),
+        )
+        await callback_query.answer()
+        return
+
+    await try_fast_payment_flow(
+        callback_query,
+        session,
+        state,
+        tg_id=callback_query.from_user.id,
+        temp_key=str(temp_key),
+        temp_payload=dict(temp_payload),
+        required_amount=int(required_amount),
+    )
+    await callback_query.answer()
+
+
 @router.callback_query(F.data == "fastflow_coupon_back")
 async def fastflow_coupon_back(callback_query: CallbackQuery, state: FSMContext, session: Any):
     amount_not_found_text = "Сумма не найдена"
@@ -390,10 +422,10 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
 
     required_amount_new = int(max(0, ceil(float(new_price) - float(balance_now))))
 
-    percent_value = int(getattr(coupon, "percent", 0) or 0)
-
     await create_coupon_usage(session, coupon.id, message.from_user.id)
     await update_coupon_usage_count(session, coupon.id)
+
+    percent_value = int(getattr(coupon, "percent", 0) or 0)
 
     temp_payload_updated = dict(temp_payload)
     temp_payload_updated["required_amount"] = int(required_amount_new)
