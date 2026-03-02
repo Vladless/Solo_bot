@@ -3,7 +3,7 @@ from datetime import datetime
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_balance, set_user_balance, update_balance
@@ -30,13 +30,65 @@ def format_admin_operation(amount: float, created_at: datetime) -> str:
     return f"\n<blockquote>Админ {sign}{abs_amount}Р\n⏳ Дата: {date_str}</blockquote>"
 
 
-def format_user_payment(amount: float, created_at: datetime, payment_system: str, status: str) -> str:
+def format_user_payment(
+    amount: float, created_at: datetime, payment_system: str, status: str, payment_id: str | None = None,
+) -> str:
     date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
     abs_amount = abs(amount)
     system_name = payment_system or "Неизвестно"
+    pid = f"<code>{payment_id}</code>" if payment_id else "—"
     return (
-        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}\n📌 Статус: {status}\n⏳ Дата: {date_str}</blockquote>"
+        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}\n"
+        f"📌 Статус: {status}\n"
+        f"🆔 ID: {pid}\n"
+        f"⏳ Дата: {date_str}</blockquote>"
     )
+
+
+async def _render_balance_page(
+    callback_query: CallbackQuery,
+    session: AsyncSession,
+    tg_id: int,
+    page: int = 0,
+):
+    balance = await get_balance(session, tg_id)
+    balance = int(balance or 0)
+
+    total_count_result = await session.execute(
+        select(func.count()).where(Payment.tg_id == tg_id)
+    )
+    total = total_count_result.scalar() or 0
+
+    total_pages = max(1, (total + 4) // 5)
+    page = max(0, min(page, total_pages - 1))
+
+    stmt = (
+        select(
+            Payment.amount,
+            Payment.created_at,
+            Payment.payment_system,
+            Payment.status,
+            Payment.payment_id,
+        )
+        .where(Payment.tg_id == tg_id)
+        .order_by(Payment.created_at.desc())
+        .offset(page * 5)
+        .limit(5)
+    )
+    result = await session.execute(stmt)
+    records = result.all()
+
+    text = f"<b>💵 Изменение баланса</b>\n\n🆔 ID: <b>{tg_id}</b>\n💰 Баланс: <b>{balance}Р</b>"
+    text += f"\n\n<b>📊 Все операции ({total}), стр. {page + 1}/{total_pages}:</b>"
+
+    if records:
+        for amount, created_at, payment_system, status, payment_id in records:
+            text += format_user_payment(amount, created_at, payment_system, status, payment_id)
+    else:
+        text += "\n<i>🚫 Операции отсутствуют</i>"
+
+    kb = await build_users_balance_kb(session, tg_id, page=page, total_pages=total_pages)
+    await callback_query.message.edit_text(text=text, reply_markup=kb)
 
 
 @router.callback_query(
@@ -48,49 +100,21 @@ async def handle_balance_change(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    page = int(callback_data.data) if callback_data.data is not None else 0
+    await _render_balance_page(callback_query, session, callback_data.tg_id, page)
 
-    balance = await get_balance(session, tg_id)
-    balance = int(balance or 0)
 
-    stmt_admin = (
-        select(Payment.amount, Payment.created_at)
-        .where(Payment.tg_id == tg_id, Payment.payment_system == "admin")
-        .order_by(Payment.created_at.desc())
-        .limit(5)
-    )
-    result_admin = await session.execute(stmt_admin)
-    admin_records = result_admin.all()
-
-    stmt_user = (
-        select(Payment.amount, Payment.created_at, Payment.payment_system, Payment.status)
-        .where(Payment.tg_id == tg_id, Payment.payment_system != "admin")
-        .order_by(Payment.created_at.desc())
-        .limit(5)
-    )
-    result_user = await session.execute(stmt_user)
-    user_records = result_user.all()
-
-    text = f"<b>💵 Изменение баланса</b>\n\n🆔 ID: <b>{tg_id}</b>\n💰 Баланс: <b>{balance}Р</b>"
-
-    text += "\n\n<b>📊 Операции админа (5):</b>"
-    if admin_records:
-        for amount, created_at in admin_records:
-            text += format_admin_operation(amount, created_at)
-    else:
-        text += "\n<i>🚫 Операции отсутствуют</i>"
-
-    text += "\n\n<b>📊 Последние операции (5):</b>"
-    if user_records:
-        for amount, created_at, payment_system, status in user_records:
-            text += format_user_payment(amount, created_at, payment_system, status)
-    else:
-        text += "\n<i>🚫 Операции отсутствуют</i>"
-
-    await callback_query.message.edit_text(
-        text=text,
-        reply_markup=await build_users_balance_kb(session, tg_id),
-    )
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_balance_page"),
+    IsAdminFilter(),
+)
+async def handle_balance_page(
+    callback_query: CallbackQuery,
+    callback_data: AdminUserEditorCallback,
+    session: AsyncSession,
+):
+    page = int(callback_data.data) if callback_data.data is not None else 0
+    await _render_balance_page(callback_query, session, callback_data.tg_id, page)
 
 
 @router.callback_query(

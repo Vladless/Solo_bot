@@ -115,8 +115,28 @@ def build_users_balance_change_kb(tg_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-async def build_users_balance_kb(session: AsyncSession, tg_id: int) -> InlineKeyboardMarkup:
+async def build_users_balance_kb(
+    session: AsyncSession, tg_id: int, page: int = 0, total_pages: int = 1,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton(
+                text="◀️",
+                callback_data=AdminUserEditorCallback(action="users_balance_page", tg_id=tg_id, data=page - 1).pack(),
+            ))
+        nav_buttons.append(InlineKeyboardButton(
+            text=f"{page + 1}/{total_pages}",
+            callback_data="noop",
+        ))
+        if page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton(
+                text="▶️",
+                callback_data=AdminUserEditorCallback(action="users_balance_page", tg_id=tg_id, data=page + 1).pack(),
+            ))
+        builder.row(*nav_buttons)
 
     for amount in [100, 250, 500, 1000]:
         builder.row(
