@@ -13,6 +13,7 @@ from logger import logger
 
 
 _NOTIFICATION_TIME_BATCH_SIZE = 300
+_BULK_ADD_NOTIFICATIONS_BATCH_SIZE = 1000
 
 async def add_notification(session: AsyncSession, tg_id: int, notification_type: str):
     try:
@@ -51,23 +52,27 @@ async def delete_notification(session: AsyncSession, tg_id: int, notification_ty
 async def bulk_add_notifications(
     session: AsyncSession, items: list[tuple[int, str]], *, commit: bool = False
 ) -> None:
-    """Один запрос: вставка/обновление многих (tg_id, notification_type). Без commit, если commit=False."""
+    """Вставка/обновление многих (tg_id, notification_type) батчами (лимит параметров PostgreSQL). Без commit, если commit=False."""
     if not items:
         return
     now = datetime.utcnow()
-    stmt = insert(Notification).values(
-        [
-            {"tg_id": tg_id, "notification_type": ntype, "last_notification_time": now}
-            for tg_id, ntype in items
-        ]
-    ).on_conflict_do_update(
-        index_elements=[Notification.tg_id, Notification.notification_type],
-        set_={"last_notification_time": now},
-    )
-    await session.execute(stmt)
+    total = 0
+    for i in range(0, len(items), _BULK_ADD_NOTIFICATIONS_BATCH_SIZE):
+        batch = items[i : i + _BULK_ADD_NOTIFICATIONS_BATCH_SIZE]
+        stmt = insert(Notification).values(
+            [
+                {"tg_id": tg_id, "notification_type": ntype, "last_notification_time": now}
+                for tg_id, ntype in batch
+            ]
+        ).on_conflict_do_update(
+            index_elements=[Notification.tg_id, Notification.notification_type],
+            set_={"last_notification_time": now},
+        )
+        await session.execute(stmt)
+        total += len(batch)
     if commit:
         await session.commit()
-    logger.info(f"✅ Bulk: добавлено/обновлено {len(items)} уведомлений")
+    logger.info(f"✅ Bulk: добавлено/обновлено {total} уведомлений")
 
 
 INACTIVE_TRIAL_REGISTERED_TYPE = "inactive_trial_registered"
@@ -76,16 +81,20 @@ INACTIVE_TRIAL_REGISTERED_TYPE = "inactive_trial_registered"
 async def bulk_delete_notifications(
     session: AsyncSession, items: list[tuple[int, str]], *, commit: bool = False
 ) -> None:
-    """Один запрос: удаление многих (tg_id, notification_type). Без commit, если commit=False."""
+    """Удаление многих (tg_id, notification_type) батчами (лимит параметров PostgreSQL). Без commit, если commit=False."""
     if not items:
         return
-    stmt = delete(Notification).where(
-        tuple_(Notification.tg_id, Notification.notification_type).in_(items)
-    )
-    await session.execute(stmt)
+    total = 0
+    for i in range(0, len(items), _BULK_ADD_NOTIFICATIONS_BATCH_SIZE):
+        batch = items[i : i + _BULK_ADD_NOTIFICATIONS_BATCH_SIZE]
+        stmt = delete(Notification).where(
+            tuple_(Notification.tg_id, Notification.notification_type).in_(batch)
+        )
+        await session.execute(stmt)
+        total += len(batch)
     if commit:
         await session.commit()
-    logger.debug(f"🗑 Bulk: удалено {len(items)} уведомлений")
+    logger.debug(f"🗑 Bulk: удалено {total} уведомлений")
 
 
 async def check_notification_time(session: AsyncSession, tg_id: int, notification_type: str, hours: int = 12) -> bool:
@@ -286,20 +295,23 @@ async def check_notifications_bulk(
             result_inactive = await session.execute(stmt_inactive)
             inactive_tg_ids = [r[0] for r in result_inactive.all()]
             if inactive_tg_ids:
-                existing = await session.execute(
-                    select(Notification.tg_id).where(
-                        Notification.notification_type == INACTIVE_TRIAL_REGISTERED_TYPE,
-                        Notification.tg_id.in_(inactive_tg_ids),
+                already = set()
+                for chunk in _batched_list(inactive_tg_ids, _NOTIFICATION_TIME_BATCH_SIZE):
+                    result_existing = await session.execute(
+                        select(Notification.tg_id).where(
+                            Notification.notification_type == INACTIVE_TRIAL_REGISTERED_TYPE,
+                            Notification.tg_id.in_(chunk),
+                        )
                     )
-                )
-                already = {r[0] for r in existing.all()}
+                    already.update(r[0] for r in result_existing.all())
                 to_register = [tid for tid in inactive_tg_ids if tid not in already]
                 if to_register:
-                    await bulk_add_notifications(
-                        session,
-                        [(tid, INACTIVE_TRIAL_REGISTERED_TYPE) for tid in to_register],
-                        commit=True,
-                    )
+                    for batch in _batched_list(to_register, _BULK_ADD_NOTIFICATIONS_BATCH_SIZE):
+                        await bulk_add_notifications(
+                            session,
+                            [(tid, INACTIVE_TRIAL_REGISTERED_TYPE) for tid in batch],
+                            commit=True,
+                        )
                     logger.info(f"Зарегистрировано как неактивные (шаг 1): {len(to_register)} пользователей.")
 
             subq_registered = (
