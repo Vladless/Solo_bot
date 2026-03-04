@@ -456,3 +456,24 @@ async def process_connect_device_menu(
         **kwargs,
     )
     return results if results else []
+
+
+async def process_addon_purchase_complete(
+    chat_id: int,
+    session: Any,
+    email: str,
+    message: Any,
+    admin: bool = False,
+    **kwargs,
+) -> bool:
+    """Обрабатывает хук addon_purchase_complete. True = caller пропускает render_key_info."""
+    results = await run_hooks(
+        "addon_purchase_complete",
+        chat_id=chat_id,
+        admin=admin,
+        session=session,
+        email=email,
+        message=message,
+        **kwargs,
+    )
+    return bool(results and results[0])

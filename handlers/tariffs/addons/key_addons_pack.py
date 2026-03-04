@@ -33,7 +33,7 @@ from handlers.texts import (
 )
 from handlers.utils import edit_or_send_message
 from hooks.hook_buttons import insert_hook_buttons
-from hooks.processors import process_addons_menu
+from hooks.processors import process_addon_purchase_complete, process_addons_menu
 from logger import logger
 
 from ..buy.key_tariffs import calculate_config_price
@@ -879,7 +879,16 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
             )
 
             await state.clear()
-            await render_key_info(callback.message, session, email, "img/pic_view.jpg")
+
+            intercepted = await process_addon_purchase_complete(
+                chat_id=callback.from_user.id,
+                session=session,
+                email=email,
+                message=callback.message,
+            )
+            if not intercepted:
+                await render_key_info(callback.message, session, email, "img/pic_view.jpg")
+
             await callback.answer(ADDONS_PACK_SUCCESS_TEXT, show_alert=True)
 
         except Exception as error:
