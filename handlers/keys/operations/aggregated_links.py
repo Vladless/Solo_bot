@@ -168,15 +168,25 @@ async def make_aggregated_link(
         if legacy_links_enabled:
             logger.info("[agg_link] LEGACY non-vless -> base link")
             return f"{base}/{email}/{tg_id}"
+
+        happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
+
+        if remna_link_override and (
+            remna_link_override.lower().startswith("vless://") or remna_link_override.startswith(("http", "happ://"))
+        ):
+            if not happ_cryptolink_enabled:
+                logger.info("[agg_link] choose override Remnawave (non-vless)")
+                return remna_link_override
+
         best_vless, sub_url, happ_link = await _try_build_remna_vless(remna, email)
+        if happ_link:
+            logger.info("[agg_link] choose Remnawave cryptoLink (non-vless)")
+            return happ_link
         if remna_link_override and (
             remna_link_override.lower().startswith("vless://") or remna_link_override.startswith(("http", "happ://"))
         ):
             logger.info("[agg_link] choose override Remnawave (non-vless)")
             return remna_link_override
-        if happ_link:
-            logger.info("[agg_link] choose Remnawave cryptoLink (non-vless)")
-            return happ_link
         kd = await get_key_details(session, email)
         stored = kd.get("remnawave_link") if kd else None
         if stored:

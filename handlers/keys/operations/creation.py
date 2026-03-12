@@ -265,7 +265,7 @@ async def create_key_on_cluster(
             client_id=final_client_id,
             tg_id=tg_id,
             subgroup_code=subgroup_code,
-            remna_link_override=remnawave_key,
+            remna_link_override=remnawave_key or remnawave_link_value,
             plan=plan,
         )
 
