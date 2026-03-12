@@ -240,10 +240,18 @@ async def handle_key_extension(
         tariff_devices = int(tariff["device_limit"]) if tariff and tariff.get("device_limit") else 0
 
         total_gb = (
-            int(key.current_traffic_limit) if getattr(key, "current_traffic_limit", None) is not None else tariff_gb
+            int(key.current_traffic_limit)
+            if getattr(key, "current_traffic_limit", None) is not None
+            else int(key.selected_traffic_limit)
+            if getattr(key, "selected_traffic_limit", None) is not None
+            else tariff_gb
         )
         device_limit = (
-            int(key.current_device_limit) if getattr(key, "current_device_limit", None) is not None else tariff_devices
+            int(key.current_device_limit)
+            if getattr(key, "current_device_limit", None) is not None
+            else int(key.selected_device_limit)
+            if getattr(key, "selected_device_limit", None) is not None
+            else tariff_devices
         )
 
         key_subgroup = None
