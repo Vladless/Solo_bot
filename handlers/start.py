@@ -23,7 +23,7 @@ from config import (
 )
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
-    add_user,
+    upsert_user,
     get_coupon_by_code,
     get_user_snapshot,
     upsert_source_if_empty,
@@ -172,7 +172,7 @@ async def process_start_logic(
     if gift_detected:
         return
 
-    await add_user(session=session, **user_data)
+    await upsert_user(session=session, **user_data)
 
     tl = (text or "").strip().lower()
     if tl == "trial":
