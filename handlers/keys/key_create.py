@@ -451,6 +451,7 @@ async def create_key(
     selected_device_limit: int | None = None,
     selected_traffic_gb: int | None = None,
     selected_price_rub: int | None = None,
+    skip_balance_charge: bool | None = None,
 ):
     from_user = message_or_query.from_user if isinstance(message_or_query, CallbackQuery | Message) else None
     if from_user:
@@ -466,9 +467,12 @@ async def create_key(
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 
-    if state and any(
-        value is not None
-        for value in (selected_duration_days, selected_device_limit, selected_traffic_gb, selected_price_rub)
+    if state and (
+        skip_balance_charge is not None
+        or any(
+            value is not None
+            for value in (selected_duration_days, selected_device_limit, selected_traffic_gb, selected_price_rub)
+        )
     ):
         state_data = await state.get_data()
         if selected_duration_days is not None:
@@ -479,6 +483,8 @@ async def create_key(
             state_data["config_selected_traffic_gb"] = selected_traffic_gb
         if selected_price_rub is not None:
             state_data["config_selected_price_rub"] = selected_price_rub
+        if skip_balance_charge is not None:
+            state_data["skip_balance_charge"] = skip_balance_charge
         await state.set_data(state_data)
 
     if use_country_selection:
@@ -493,6 +499,7 @@ async def create_key(
             selected_device_limit=selected_device_limit,
             selected_traffic_gb=selected_traffic_gb,
             selected_price_rub=selected_price_rub,
+            skip_balance_charge=skip_balance_charge,
         )
     else:
         await key_cluster_mode(
@@ -505,4 +512,5 @@ async def create_key(
             selected_device_limit=selected_device_limit,
             selected_traffic_gb=selected_traffic_gb,
             selected_price_rub=selected_price_rub,
+            skip_balance_charge=skip_balance_charge,
         )

@@ -69,6 +69,7 @@ async def key_cluster_mode(
     selected_device_limit: int | None = None,
     selected_traffic_gb: int | None = None,
     selected_price_rub: int | None = None,
+    skip_balance_charge: bool | None = None,
 ):
     target_message = None
     safe_to_edit = False
@@ -93,6 +94,7 @@ async def key_cluster_mode(
     try:
         data = await state.get_data() if state else {}
         is_trial = data.get("is_trial", False)
+        skip_balance_charge = bool(skip_balance_charge)
 
         if selected_device_limit is None:
             selected_device_limit = data.get("config_selected_device_limit") or data.get("selected_device_limit")
@@ -182,7 +184,7 @@ async def key_cluster_mode(
             if trial_status in [0, -1]:
                 await update_trial(session, tg_id, 1)
 
-        if price_to_charge:
+        if price_to_charge and not skip_balance_charge:
             await update_balance(session, tg_id, -int(price_to_charge))
 
     except Exception as e:

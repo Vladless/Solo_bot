@@ -89,6 +89,7 @@ async def key_country_mode(
     selected_device_limit: int | None = None,
     selected_traffic_gb: int | None = None,
     selected_price_rub: int | None = None,
+    skip_balance_charge: bool | None = None,
 ):
     target_message = None
     safe_to_edit = False
@@ -96,7 +97,10 @@ async def key_country_mode(
     if state and plan:
         await state.update_data(tariff_id=plan)
 
-    if state and any(value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub)):
+    if state and (
+        skip_balance_charge is not None
+        or any(value is not None for value in (selected_device_limit, selected_traffic_gb, selected_price_rub))
+    ):
         data = await state.get_data()
         if selected_device_limit is not None:
             data["config_selected_device_limit"] = selected_device_limit
@@ -104,6 +108,8 @@ async def key_country_mode(
             data["config_selected_traffic_gb"] = selected_traffic_gb
         if selected_price_rub is not None:
             data["config_selected_price_rub"] = selected_price_rub
+        if skip_balance_charge is not None:
+            data["skip_balance_charge"] = skip_balance_charge
         await state.set_data(data)
 
     if isinstance(message_or_query, CallbackQuery) and message_or_query.message:
@@ -499,6 +505,7 @@ async def finalize_key_creation(
 
     data = await state.get_data() if state else {}
     is_trial = data.get("is_trial", False)
+    skip_balance_charge = bool(data.get("skip_balance_charge", False))
 
     selected_traffic_gb = data.get("config_selected_traffic_gb")
     if selected_traffic_gb is None:
@@ -723,8 +730,11 @@ async def finalize_key_creation(
                 trial_status = await get_trial(session, tg_id)
                 if trial_status in [0, -1]:
                     await update_trial(session, tg_id, 1)
-            if not is_trial and price_to_charge:
+            if not is_trial and price_to_charge and not skip_balance_charge:
                 await update_balance(session, tg_id, -int(price_to_charge))
+
+            if state:
+                await state.update_data(skip_balance_charge=False)
 
         await session.commit()
 

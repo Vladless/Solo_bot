@@ -67,6 +67,18 @@ def is_ascii_only(value: str) -> bool:
     return all(ord(ch) < 128 for ch in value)
 
 
+def _parse_tag_version(tag_name: str) -> tuple[int, ...]:
+    """Извлекает кортеж (major, minor, patch, ...) из тега для сортировки. v.5.1 -> (5, 1), v4 -> (4, 0)."""
+    s = tag_name.strip().lstrip("v.")
+    parts = []
+    for part in re.split(r"[.\s]+", s):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            break
+    return tuple(parts) if parts else (0,)
+
+
 def warn_english_only():
     """Предупреждение о необходимости английской раскладки."""
     console.print("[red]Обнаружен ввод с неанглийской раскладкой.[/red]")
@@ -508,8 +520,50 @@ def update_from_beta():
     console.print("[green]Обновление с ветки dev завершено.[/green]")
 
 
+def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool) -> None:
+    """Общая логика обновления до указанного тега (релиз или произвольный тег)."""
+    subprocess.run(["rm", "-rf", TEMP_DIR])
+    subprocess.run(
+        ["git", "clone", "--branch", tag_name, "--depth", "1", GITHUB_REPO, TEMP_DIR],
+        check=True,
+    )
+
+    console.print("[red]Начинается перезапись файлов бота![/red]")
+    subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
+    clean_project_dir_safe(update_buttons=update_buttons, update_img=update_img)
+
+    exclude_options = ""
+    if not update_img:
+        exclude_options += "--exclude=img "
+    if not update_buttons:
+        exclude_options += "--exclude=handlers/buttons.py "
+    exclude_options += "--exclude=modules "
+
+    rsync_cmd = ["rsync", "-a"] + exclude_options.split() + [f"{TEMP_DIR}/", f"{PROJECT_DIR}/"]
+    subprocess.run(rsync_cmd)
+
+    modules_path = os.path.join(PROJECT_DIR, "modules")
+    if not os.path.exists(modules_path):
+        console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+        try:
+            os.makedirs(modules_path, exist_ok=True)
+            console.print("[green]Папка modules успешно создана.[/green]")
+        except Exception as e:
+            console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
+
+    if os.path.exists(os.path.join(TEMP_DIR, ".git")):
+        subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
+
+    subprocess.run(["rm", "-rf", TEMP_DIR])
+
+    install_dependencies()
+    fix_permissions()
+    restart_service()
+    console.print(f"[green]Обновление до {tag_name} завершено.[/green]")
+
+
 def update_from_release():
-    if not safe_confirm("[yellow]Подтвердите обновление Solobot до одного из последних релизов[/yellow]"):
+    if not safe_confirm("[yellow]Подтвердите обновление Solobot до релиза или патча[/yellow]"):
         return
 
     console.print("[red]ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
@@ -525,65 +579,46 @@ def update_from_release():
     install_rsync_if_needed()
 
     try:
-        response = requests.get("https://api.github.com/repos/Vladless/Solo_bot/releases", timeout=10)
-        releases = response.json()[:3]
-        tag_choices = [r["tag_name"] for r in releases]
-
-        if not tag_choices:
-            raise ValueError("Не удалось получить список релизов")
-
-        console.print("\n[bold green]Доступные релизы:[/bold green]")
-        for idx, tag in enumerate(tag_choices, 1):
-            console.print(f"[cyan]{idx}.[/cyan] {tag}")
-
-        selected = safe_prompt(
-            "[bold blue]Выберите номер релиза[/bold blue]",
-            choices=[str(i) for i in range(1, len(tag_choices) + 1)],
+        rel_resp = requests.get(
+            "https://api.github.com/repos/Vladless/Solo_bot/releases",
+            timeout=10,
         )
-        tag_name = tag_choices[int(selected) - 1]
+        releases = rel_resp.json() if rel_resp.status_code == 200 else []
+        release_tag_names = {r["tag_name"] for r in releases}
 
-        if not safe_confirm(f"[yellow]Подтвердите установку релиза {tag_name}[/yellow]"):
+        tags_resp = requests.get(
+            "https://api.github.com/repos/Vladless/Solo_bot/tags",
+            params={"per_page": 50},
+            timeout=10,
+        )
+        if tags_resp.status_code != 200:
+            raise ValueError("Не удалось получить список тегов")
+        tags_data = tags_resp.json()
+        all_tag_names = [t["name"] for t in tags_data]
+
+        tag_names = [name for name in all_tag_names if _parse_tag_version(name)[0] >= 4]
+        tag_names.sort(key=_parse_tag_version)
+
+        if not tag_names:
+            raise ValueError("Нет доступных тегов (ожидаются версии начиная с 4)")
+
+        console.print("\n[bold green]Релизы и патчи:[/bold green]")
+        for idx, name in enumerate(tag_names, 1):
+            label = " [dim](релиз)[/dim]" if name in release_tag_names else " [dim](патч)[/dim]"
+            console.print(f"[cyan]{idx}.[/cyan] {name}{label}")
+
+        choices = [str(i) for i in range(1, len(tag_names) + 1)]
+        selected = safe_prompt(
+            "[bold blue]Выберите номер версии[/bold blue]",
+            choices=choices,
+        )
+        tag_name = tag_names[int(selected) - 1]
+
+        if not safe_confirm(f"[yellow]Установить {tag_name}?[/yellow]"):
             return
 
-        console.print(f"[cyan]Клонируем релиз {tag_name} во временную папку...[/cyan]")
-        subprocess.run(["rm", "-rf", TEMP_DIR])
-        subprocess.run(
-            ["git", "clone", "--branch", tag_name, GITHUB_REPO, TEMP_DIR],
-            check=True,
-        )
-
-        console.print("[red]Начинается перезапись файлов бота![/red]")
-        subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
-        clean_project_dir_safe(update_buttons=update_buttons, update_img=update_img)
-
-        exclude_options = ""
-        if not update_img:
-            exclude_options += "--exclude=img "
-        if not update_buttons:
-            exclude_options += "--exclude=handlers/buttons.py "
-        exclude_options += "--exclude=modules "
-
-        rsync_cmd = ["rsync", "-a"] + exclude_options.split() + [f"{TEMP_DIR}/", f"{PROJECT_DIR}/"]
-        subprocess.run(rsync_cmd)
-
-        modules_path = os.path.join(PROJECT_DIR, "modules")
-        if not os.path.exists(modules_path):
-            console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
-            try:
-                os.makedirs(modules_path, exist_ok=True)
-                console.print("[green]Папка modules успешно создана.[/green]")
-            except Exception as e:
-                console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
-
-        if os.path.exists(os.path.join(TEMP_DIR, ".git")):
-            subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
-
-        subprocess.run(["rm", "-rf", TEMP_DIR])
-
-        install_dependencies()
-        fix_permissions()
-        restart_service()
-        console.print(f"[green]Обновление до релиза {tag_name} завершено.[/green]")
+        console.print(f"[cyan]Клонируем {tag_name} во временную папку...[/cyan]")
+        _do_update_to_tag(tag_name, update_buttons, update_img)
 
     except Exception as e:
         console.print(f"[red]❌ Ошибка при обновлении: {e}[/red]")
@@ -599,7 +634,7 @@ def show_update_menu():
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Источник", style="white")
     table.add_row("1", "Обновить до BETA")
-    table.add_row("2", "Обновить/откатить до релиза")
+    table.add_row("2", "Обновить до релиза (релизы и патчи)")
     table.add_row("3", "Назад в меню")
 
     console.print(table)
@@ -612,7 +647,7 @@ def show_update_menu():
 
 
 def show_menu():
-    table = Table(title="Solobot CLI v0.3.9", title_style="bold magenta", header_style="bold blue")
+    table = Table(title="Solobot CLI v0.4.0", title_style="bold magenta", header_style="bold blue")
     table.add_column("№", justify="center", style="cyan", no_wrap=True)
     table.add_column("Операция", style="white")
     table.add_row("1", "Запустить бота (systemd)")
