@@ -49,7 +49,24 @@ async def user_key_renew(
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     if bool(getattr(db_key, "is_frozen", False)):
         raise HTTPException(status_code=400, detail="Продление для замороженной подписки недоступно")
-    tariff_id = getattr(db_key, "tariff_id", None)
+    db_tariff_id = getattr(db_key, "tariff_id", None)
+    # Клиент может явно указать тариф (например, чтобы продлить с другим
+    # сроком). Тогда валидируем, что он активен и относится к той же
+    # group_code/subgroup_title, что и текущий тариф ключа — ровно так же,
+    # как процессит выбор тарифа Telegram-handler `process_callback_renew_plan`.
+    if body.tariff_id is not None and int(body.tariff_id) != int(db_tariff_id or 0):
+        requested = await get_tariff_by_id(session, int(body.tariff_id))
+        if not requested or not requested.get("is_active", True):
+            raise HTTPException(status_code=404, detail="Тариф не найден")
+        current = await get_tariff_by_id(session, int(db_tariff_id or 0)) if db_tariff_id else None
+        if current and (
+            (requested.get("group_code") or "") != (current.get("group_code") or "")
+            or (requested.get("subgroup_title") or "") != (current.get("subgroup_title") or "")
+        ):
+            raise HTTPException(status_code=400, detail="Тариф недоступен для этой подписки")
+        tariff_id = int(body.tariff_id)
+    else:
+        tariff_id = db_tariff_id
     if not tariff_id:
         raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")

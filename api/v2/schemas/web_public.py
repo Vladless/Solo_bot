@@ -86,6 +86,7 @@ class AccountKeyRenewRequest(BaseModel):
     success_url: str | None = None
     failure_url: str | None = None
     coupon_code: str | None = None
+    tariff_id: int | None = None
 
 
 class AccountKeyRenewResponse(AccountKeyActionResponse):
