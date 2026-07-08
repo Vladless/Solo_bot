@@ -38,7 +38,7 @@ class RenewalResult(NamedTuple):
     new_expiry_time: int | None = None
 
 
-FORBIDDEN_GROUPS = ["discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts", "trial"]
+FORBIDDEN_GROUPS = ["trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"]
 
 
 async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:

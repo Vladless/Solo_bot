@@ -94,6 +94,8 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
     raw = (raw or "").strip()
     if not raw:
         return []
+    if raw.startswith("@") and len(raw) > 1:
+        raw = raw[1:].strip()
     like = f"%{raw}%"
     lowered = raw.lower()
     is_digit = raw.isdigit()
@@ -645,7 +647,10 @@ async def process_user_search(
         f"🎁 Триал: {trial_status}\n",
     )
 
-    body += Text("🌐 Кабинет: ", Code(f"https://t.me/{USERNAME_BOT}?start=tab_keys"), "\n")
+    from core.settings.web_config import get_site_url, is_web_enabled
+
+    if is_web_enabled() and get_site_url():
+        body += Text("🌐 Кабинет: ", Code(f"https://t.me/{USERNAME_BOT}?start=tab_keys"), "\n")
 
     if referrer_text:
         body += Text(referrer_text, "\n")

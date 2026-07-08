@@ -66,7 +66,7 @@ async def user_key_renew(
     key_email = str(getattr(db_key, "email", "") or "")
     key_server_id = str(getattr(db_key, "server_id", "") or "")
 
-    forbidden_renewal_groups = {"trial", "gifts", "discounts", "discounts_max"}
+    forbidden_renewal_groups = {"trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"}
     server_tariff_group_row = await session.execute(
         select(Server.tariff_group)
         .where((Server.server_name == key_server_id) | (Server.cluster_name == key_server_id))

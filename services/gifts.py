@@ -284,7 +284,17 @@ async def redeem_gift(
             is_fresh_user = False
         trial_value = int(getattr(wu, "trial", 0) or 0)
         if is_fresh_user and trial_value == 0:
-            await add_referral(session, wu.id, gift_info.sender_user_id)
+            from hooks.hooks import run_hooks
+
+            results = await run_hooks(
+                "referral_register",
+                referrer=gift_info.sender_user_id,
+                referred=wu.id,
+                context="gift_web",
+                session=session,
+            )
+            if not (results and "HANDLED" in results):
+                await add_referral(session, wu.id, gift_info.sender_user_id)
 
     await update_trial(session, wu.id, 1)
 

@@ -285,6 +285,16 @@ async def handle_gift(part, message, state, session, user_data):
 async def handle_referral_link_safe(part, message, state, session, user_data):
     try:
         referrer_id = int(part.split("referral")[1].strip("_"))
+        results = await run_hooks(
+            "referral_link",
+            referrer_id=referrer_id,
+            message=message,
+            state=state,
+            session=session,
+            user_data=user_data,
+        )
+        if results and "HANDLED" in results:
+            return
         await handle_referral_link(referrer_id, message, state, session, user_data)
     except Exception as e:
         logger.warning("[Referral] Ошибка обработки реферальной ссылки '{}': {}", part, e)
