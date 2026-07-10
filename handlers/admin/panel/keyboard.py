@@ -9,11 +9,11 @@ from filters.permissions import (
     PERM_ADMINS,
     PERM_ADS,
     PERM_BROADCASTING,
+    PERM_BULK,
     PERM_CLUSTERS,
     PERM_COUPONS,
     PERM_EMOJI,
     PERM_GIFTS,
-    PERM_KEYS,
     PERM_MANAGEMENT,
     PERM_MODULES,
     PERM_SETTINGS,
@@ -36,6 +36,28 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
         super().__init__(**data)
 
 
+_ADMIN_MENU: tuple[tuple[tuple[str, str, tuple[str, ...]], ...], ...] = (
+    (("🔍 Поиск", "search_user", (PERM_USERS,)),),
+    (("📦 Массовые действия", "bulk", (PERM_BULK,)),),
+    (("🖥️ Управление серверами", "clusters", (PERM_CLUSTERS,)),),
+    (("💸Управление тарифами", "tariffs", (PERM_TARIFFS,)),),
+    (("🤖 Управление ботом", "management", (PERM_MANAGEMENT, PERM_ADMINS)),),
+    (
+        ("📢 Рассылка", "sender", (PERM_BROADCASTING,)),
+        ("🎟️ Купоны", "coupons", (PERM_COUPONS,)),
+    ),
+    (
+        ("🎁 Подарки", "gifts", (PERM_GIFTS,)),
+        ("🧩 Мои модули", "modules", (PERM_MODULES,)),
+    ),
+    (
+        ("📊 Статистика", "stats", (PERM_STATS,)),
+        ("📈 Аналитика", "ads", (PERM_ADS,)),
+    ),
+    (("😀 Эмоджи", "emoji", (PERM_EMOJI,)),),
+)
+
+
 async def build_panel_kb(
     admin_role: str,
     permissions: Iterable[str] | None = None,
@@ -47,105 +69,14 @@ async def build_panel_kb(
     def can(perm: str) -> bool:
         return is_super or perm in perm_set
 
-    if can(PERM_USERS) or can(PERM_KEYS):
-        builder.row(
-            InlineKeyboardButton(
-                text="🔍 Поиск",
-                callback_data=AdminPanelCallback(action="search_user").pack(),
-            )
-        )
-
-    if can(PERM_KEYS):
-        builder.row(
-            InlineKeyboardButton(
-                text="📦 Массовые действия",
-                callback_data=AdminPanelCallback(action="bulk").pack(),
-            )
-        )
-
-    if can(PERM_CLUSTERS):
-        builder.row(
-            InlineKeyboardButton(
-                text="🖥️ Управление серверами",
-                callback_data=AdminPanelCallback(action="clusters").pack(),
-            )
-        )
-    if can(PERM_TARIFFS):
-        builder.row(
-            InlineKeyboardButton(
-                text="💸Управление тарифами",
-                callback_data=AdminPanelCallback(action="tariffs").pack(),
-            )
-        )
-    if can(PERM_MANAGEMENT) or can(PERM_ADMINS):
-        builder.row(
-            InlineKeyboardButton(
-                text="🤖 Управление ботом",
-                callback_data=AdminPanelCallback(action="management").pack(),
-            )
-        )
-
-    row = []
-    if can(PERM_BROADCASTING):
-        row.append(
-            InlineKeyboardButton(
-                text="📢 Рассылка",
-                callback_data=AdminPanelCallback(action="sender").pack(),
-            )
-        )
-    if can(PERM_COUPONS):
-        row.append(
-            InlineKeyboardButton(
-                text="🎟️ Купоны",
-                callback_data=AdminPanelCallback(action="coupons").pack(),
-            )
-        )
-    if row:
-        builder.row(*row)
-
-    row = []
-    if can(PERM_GIFTS):
-        row.append(
-            InlineKeyboardButton(
-                text="🎁 Подарки",
-                callback_data=AdminPanelCallback(action="gifts").pack(),
-            )
-        )
-    if can(PERM_MODULES):
-        row.append(
-            InlineKeyboardButton(
-                text="🧩 Мои модули",
-                callback_data=AdminPanelCallback(action="modules").pack(),
-            )
-        )
-    if row:
-        builder.row(*row)
-
-    row = []
-    if can(PERM_STATS):
-        row.append(
-            InlineKeyboardButton(
-                text="📊 Статистика",
-                callback_data=AdminPanelCallback(action="stats").pack(),
-            )
-        )
-    if can(PERM_ADS):
-        row.append(
-            InlineKeyboardButton(
-                text="📈 Аналитика",
-                callback_data=AdminPanelCallback(action="ads").pack(),
-            )
-        )
-    if row:
-        builder.row(*row)
-
-    if can(PERM_EMOJI):
-        builder.row(
-            InlineKeyboardButton(
-                text="😀 Эмоджи",
-                callback_data=AdminPanelCallback(action="emoji").pack(),
-            )
-        )
+    for row_spec in _ADMIN_MENU:
+        row = [
+            InlineKeyboardButton(text=text, callback_data=AdminPanelCallback(action=action).pack())
+            for text, action, perms in row_spec
+            if any(can(p) for p in perms)
+        ]
+        if row:
+            builder.row(*row)
 
     module_buttons = await run_hooks("admin_panel", admin_role=admin_role)
     builder = insert_hook_buttons(builder, module_buttons)

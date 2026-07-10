@@ -1,12 +1,12 @@
 from aiogram import Router
 
 from filters.admin import HasPermission
-from filters.permissions import PERM_KEYS, PERM_USERS
+from filters.permissions import PERM_USERS
 
 
 router = Router()
-router.callback_query.filter(HasPermission(PERM_USERS, PERM_KEYS))
-router.message.filter(HasPermission(PERM_USERS, PERM_KEYS))
+router.callback_query.filter(HasPermission(PERM_USERS))
+router.message.filter(HasPermission(PERM_USERS))
 
 from . import (
     users_audit,

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 PERM_USERS = "users"
 PERM_KEYS = "keys"
+PERM_BULK = "bulk"
 PERM_TARIFFS = "tariffs"
 PERM_CLUSTERS = "clusters"
 PERM_BROADCASTING = "broadcasting"
@@ -18,8 +19,8 @@ PERM_EMOJI = "emoji"
 
 
 PERMISSION_LABELS: dict[str, str] = {
-    PERM_USERS: "👤 Пользователи",
-    PERM_KEYS: "🔑 Подписки",
+    PERM_USERS: "👤 Поиск",
+    PERM_BULK: "📦 Массовые действия",
     PERM_TARIFFS: "💸 Тарифы",
     PERM_CLUSTERS: "🖥️ Серверы",
     PERM_BROADCASTING: "📢 Рассылки",
@@ -37,6 +38,11 @@ PERMISSION_LABELS: dict[str, str] = {
 ALL_PERMISSIONS: tuple[str, ...] = tuple(PERMISSION_LABELS.keys())
 
 
+_LEGACY_PERMISSION_ALIASES: dict[str, str] = {
+    PERM_KEYS: PERM_USERS,
+}
+
+
 def normalize_permissions(raw) -> list[str]:
     if not raw:
         return []
@@ -47,6 +53,7 @@ def normalize_permissions(raw) -> list[str]:
     for item in raw:
         if not isinstance(item, str):
             continue
+        item = _LEGACY_PERMISSION_ALIASES.get(item, item)
         if item in PERMISSION_LABELS and item not in seen:
             seen.add(item)
             result.append(item)

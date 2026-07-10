@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_clusters, get_tariff_group_codes, get_tariffs
 from filters.admin import HasPermission
-from filters.permissions import PERM_KEYS
+from filters.permissions import PERM_BULK
 
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
@@ -122,31 +122,31 @@ async def _show_preview(target: Message, edit: bool, state: FSMContext, session:
     await _respond(target, text, build_confirm_kb(), edit)
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "bulk"), HasPermission(PERM_KEYS))
+@router.callback_query(AdminPanelCallback.filter(F.action == "bulk"), HasPermission(PERM_BULK))
 async def bulk_entry(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await _respond(callback.message, "📦 <b>Массовые действия</b>\n\nВыберите действие:", build_actions_kb(), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "back_actions"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "back_actions"), HasPermission(PERM_BULK))
 async def back_actions(callback: CallbackQuery, state: FSMContext):
     await state.set_state(None)
     await _respond(callback.message, "📦 <b>Массовые действия</b>\n\nВыберите действие:", build_actions_kb(), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "action"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "action"), HasPermission(PERM_BULK))
 async def choose_action(callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext):
     await state.update_data(action=callback_data.value)
     await _respond(callback.message, "Выберите признак подписок:", build_filters_kb(), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "back_filters"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "back_filters"), HasPermission(PERM_BULK))
 async def back_filters(callback: CallbackQuery, state: FSMContext):
     await state.set_state(None)
     await _respond(callback.message, "Выберите признак подписок:", build_filters_kb(), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "filter"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "filter"), HasPermission(PERM_BULK))
 async def choose_filter(callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext, session: AsyncSession):
     ftype = callback_data.value
     await state.update_data(filter_type=ftype)
@@ -162,13 +162,13 @@ async def choose_filter(callback: CallbackQuery, callback_data: BulkCallback, st
         await _respond(callback.message, "Какие подписки по сроку истечения?", build_expiry_kind_kb(), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "back_tgroups"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "back_tgroups"), HasPermission(PERM_BULK))
 async def back_tgroups(callback: CallbackQuery, session: AsyncSession):
     groups = await get_tariff_group_codes(session)
     await _respond(callback.message, "Выберите группу тарифов:", build_tariff_groups_kb(groups), True)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "tgroup"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "tgroup"), HasPermission(PERM_BULK))
 async def choose_tariff_group(callback: CallbackQuery, callback_data: BulkCallback, session: AsyncSession):
     tariffs = await get_tariffs(session, group_code=callback_data.value)
     if not tariffs:
@@ -184,13 +184,13 @@ async def choose_tariff_group(callback: CallbackQuery, callback_data: BulkCallba
     )
 
 
-@router.callback_query(BulkCallback.filter(F.step == "tariff"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "tariff"), HasPermission(PERM_BULK))
 async def choose_tariff(callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext, session: AsyncSession):
     await state.update_data(tariff_id=callback_data.value)
     await _after_filter_set(callback.message, True, state, session)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "cluster"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "cluster"), HasPermission(PERM_BULK))
 async def choose_cluster(
     callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext, session: AsyncSession
 ):
@@ -198,14 +198,14 @@ async def choose_cluster(
     await _after_filter_set(callback.message, True, state, session)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "created"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "created"), HasPermission(PERM_BULK))
 async def choose_created(callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext):
     await state.update_data(created_dir=callback_data.value)
     await state.set_state(BulkStates.created_days)
     await _respond(callback.message, "Введите число дней:", None, True)
 
 
-@router.message(BulkStates.created_days, HasPermission(PERM_KEYS))
+@router.message(BulkStates.created_days, HasPermission(PERM_BULK))
 async def input_created_days(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text or not message.text.strip().isdigit():
         await message.answer("❌ Введите число.")
@@ -215,7 +215,7 @@ async def input_created_days(message: Message, state: FSMContext, session: Async
     await _after_filter_set(message, False, state, session)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "expiry"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "expiry"), HasPermission(PERM_BULK))
 async def choose_expiry(callback: CallbackQuery, callback_data: BulkCallback, state: FSMContext, session: AsyncSession):
     kind = callback_data.value
     await state.update_data(expiry_kind=kind)
@@ -226,7 +226,7 @@ async def choose_expiry(callback: CallbackQuery, callback_data: BulkCallback, st
         await _after_filter_set(callback.message, True, state, session)
 
 
-@router.message(BulkStates.expiry_days, HasPermission(PERM_KEYS))
+@router.message(BulkStates.expiry_days, HasPermission(PERM_BULK))
 async def input_expiry_days(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text or not message.text.strip().isdigit():
         await message.answer("❌ Введите число.")
@@ -236,7 +236,7 @@ async def input_expiry_days(message: Message, state: FSMContext, session: AsyncS
     await _after_filter_set(message, False, state, session)
 
 
-@router.message(BulkStates.action_days, HasPermission(PERM_KEYS))
+@router.message(BulkStates.action_days, HasPermission(PERM_BULK))
 async def input_action_days(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text or not message.text.strip().isdigit() or int(message.text.strip()) <= 0:
         await message.answer("❌ Введите положительное число дней.")
@@ -246,7 +246,7 @@ async def input_action_days(message: Message, state: FSMContext, session: AsyncS
     await _show_preview(message, False, state, session)
 
 
-@router.message(BulkStates.action_gb, HasPermission(PERM_KEYS))
+@router.message(BulkStates.action_gb, HasPermission(PERM_BULK))
 async def input_action_gb(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text or not message.text.strip().isdigit() or int(message.text.strip()) <= 0:
         await message.answer("❌ Введите положительное число ГБ.")
@@ -256,7 +256,7 @@ async def input_action_gb(message: Message, state: FSMContext, session: AsyncSes
     await _show_preview(message, False, state, session)
 
 
-@router.callback_query(BulkCallback.filter(F.step == "confirm"), HasPermission(PERM_KEYS))
+@router.callback_query(BulkCallback.filter(F.step == "confirm"), HasPermission(PERM_BULK))
 async def do_confirm(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     action = data.get("action")
