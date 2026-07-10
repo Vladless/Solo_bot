@@ -326,15 +326,16 @@ async def get_hot_lead_notification_flags(session: AsyncSession, legacy_user_ref
     if not id_map:
         return {}
     uids = list(set(id_map.values()))
-    stmt = select(Notification.user_id, Notification.notification_type).where(
-        Notification.user_id.in_(uids),
-        Notification.notification_type.in_(_HOT_LEAD_NOTIFICATION_TYPES),
-    )
-    result = await session.execute(stmt)
     uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
     out = defaultdict(set)
-    for uid, ntype in result.all():
-        out[uid_to_ref.get(uid, uid)].add(ntype)
+    for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
+        stmt = select(Notification.user_id, Notification.notification_type).where(
+            Notification.user_id.in_(chunk),
+            Notification.notification_type.in_(_HOT_LEAD_NOTIFICATION_TYPES),
+        )
+        result = await session.execute(stmt)
+        for uid, ntype in result.all():
+            out[uid_to_ref.get(uid, uid)].add(ntype)
     return dict(out)
 
 
@@ -345,15 +346,16 @@ async def get_cold_lead_notification_flags(session: AsyncSession, legacy_user_re
     if not id_map:
         return {}
     uids = list(set(id_map.values()))
-    stmt = select(Notification.user_id, Notification.notification_type).where(
-        Notification.user_id.in_(uids),
-        Notification.notification_type.in_(_COLD_LEAD_NOTIFICATION_TYPES),
-    )
-    result = await session.execute(stmt)
     uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
     out = defaultdict(set)
-    for uid, ntype in result.all():
-        out[uid_to_ref.get(uid, uid)].add(ntype)
+    for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
+        stmt = select(Notification.user_id, Notification.notification_type).where(
+            Notification.user_id.in_(chunk),
+            Notification.notification_type.in_(_COLD_LEAD_NOTIFICATION_TYPES),
+        )
+        result = await session.execute(stmt)
+        for uid, ntype in result.all():
+            out[uid_to_ref.get(uid, uid)].add(ntype)
     return dict(out)
 
 

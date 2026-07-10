@@ -28,11 +28,20 @@ def apply_button_icons_patch(config: dict[str, dict[str, str]] | None = None) ->
     class _PatchedInlineKeyboardButton(_OriginalInlineKeyboardButton):
         def __init__(self, **kwargs: object) -> None:
             key = kwargs.get("callback_data") or kwargs.get("url")
+            if key is None:
+                web_app = kwargs.get("web_app")
+                key = getattr(web_app, "url", None)
+                if key is None and isinstance(web_app, dict):
+                    key = web_app.get("url")
             if key is not None and isinstance(key, str):
                 config = _button_icon_config.get(key)
                 if config is None and "|" in key:
-                    prefix = key.split("|", 1)[0]
-                    config = _button_icon_config.get(prefix)
+                    config = _button_icon_config.get(key.split("|", 1)[0])
+                if config is None:
+                    for cfg_key, cfg_val in _button_icon_config.items():
+                        if cfg_key.startswith(("https://")) and key.startswith(cfg_key):
+                            config = cfg_val
+                            break
                 if config is not None:
                     kwargs = {**kwargs, **config}
             super().__init__(**kwargs)
