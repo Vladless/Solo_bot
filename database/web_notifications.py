@@ -4,6 +4,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.access.resolution import resolve_user_optional
 from database.models import User, WebNotification, WebPushSubscription
 from logger import logger
 
@@ -219,15 +220,17 @@ async def notify_web(
     data: dict | None = None,
     template_vars: dict | None = None,
 ) -> WebNotification | None:
-    """Создаёт web-уведомление по tg_id.
+    """Создаёт web-уведомление по legacy-ref (tg_id или User.id).
 
     title/message — если None, берутся из WEB_CONFIG шаблонов по type.
     template_vars — подстановки в шаблон ({email}, {amount}, {name}, {duration}).
     """
     try:
-        identity_id = await resolve_identity_id_by_tg_id(session, tg_id)
-        if not identity_id:
+        user = await resolve_user_optional(session, tg_id)
+        if user is None or user.identity_id is None:
             return None
+        identity_id = user.identity_id
+        notif_user_id = int(user.id)
 
         vars_ = template_vars or {}
 
@@ -251,7 +254,7 @@ async def notify_web(
 
         notif = await create_notification(
             session,
-            user_id=tg_id,
+            user_id=notif_user_id,
             identity_id=identity_id,
             type=type,
             title=resolved_title,
