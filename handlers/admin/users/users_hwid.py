@@ -168,6 +168,7 @@ async def handle_hwid_page(
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_hwid_unbind"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_hwid_unbind(
     callback_query: CallbackQuery,

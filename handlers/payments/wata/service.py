@@ -86,7 +86,7 @@ async def get_user_language(session: AsyncSession, tg_id: int) -> str | None:
     return result.scalar_one_or_none()
 
 
-@router.callback_query(F.data == "pay_wata")
+@router.callback_query(F.data == "pay_wata", flags={"popup": True})
 async def process_callback_pay_wata(
     callback_query: types.CallbackQuery,
     state: FSMContext,

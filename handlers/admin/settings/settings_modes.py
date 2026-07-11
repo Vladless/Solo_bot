@@ -26,7 +26,7 @@ async def open_settings_modes_menu(callback: CallbackQuery, session: AsyncSessio
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_modes_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_modes_toggle"), flags={"popup": True})
 async def toggle_mode_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,

@@ -229,7 +229,7 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
     return builder.as_markup(), response_message
 
 
-@router.callback_query(F.data.startswith("rename_key|"))
+@router.callback_query(F.data.startswith("rename_key|"), flags={"popup": True})
 async def handle_rename_key(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     client_id = callback.data.split("|")[1]
     key_row = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
@@ -288,7 +288,7 @@ async def handle_new_alias_input(message: Message, state: FSMContext, session: A
     await process_callback_or_message_view_keys(message, session)
 
 
-@router.callback_query(F.data.startswith("view_key|"))
+@router.callback_query(F.data.startswith("view_key|"), flags={"popup": True})
 async def process_callback_view_key(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -759,7 +759,7 @@ async def _render_my_devices(
     )
 
 
-@router.callback_query(F.data.startswith("my_devices|"))
+@router.callback_query(F.data.startswith("my_devices|"), flags={"popup": True})
 async def handle_my_devices(callback_query: CallbackQuery, session: AsyncSession):
     parts = callback_query.data.split("|")
     if len(parts) < 3:
@@ -773,7 +773,7 @@ async def handle_my_devices(callback_query: CallbackQuery, session: AsyncSession
     await _render_my_devices(callback_query, session, key_ref, page)
 
 
-@router.callback_query(F.data.startswith("unbind_dev|"))
+@router.callback_query(F.data.startswith("unbind_dev|"), flags={"popup": True})
 async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSession):
     parts = callback_query.data.split("|")
     if len(parts) < 4:

@@ -63,7 +63,7 @@ def generate_key_qr_file(qr_data: str, email: str) -> str:
     return qr_path
 
 
-@router.callback_query(F.data.startswith("connect_device|"))
+@router.callback_query(F.data.startswith("connect_device|"), flags={"popup": True})
 async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSession):
     try:
         key_ref = callback_query.data.split("|", 1)[1]
@@ -108,7 +108,7 @@ async def handle_connect_device(callback_query: CallbackQuery, session: AsyncSes
         logger.error(f"Ошибка в handle_connect_device: {e}")
 
 
-@router.callback_query(F.data.startswith("connect_phone|"))
+@router.callback_query(F.data.startswith("connect_phone|"), flags={"popup": True})
 async def process_callback_connect_phone(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -162,7 +162,7 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
     )
 
 
-@router.callback_query(F.data.startswith("connect_ios|"))
+@router.callback_query(F.data.startswith("connect_ios|"), flags={"popup": True})
 async def process_callback_connect_ios(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -212,7 +212,7 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
     )
 
 
-@router.callback_query(F.data.startswith("connect_android|"))
+@router.callback_query(F.data.startswith("connect_android|"), flags={"popup": True})
 async def process_callback_connect_android(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -262,7 +262,7 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
     )
 
 
-@router.callback_query(F.data.startswith("show_qr|"))
+@router.callback_query(F.data.startswith("show_qr|"), flags={"popup": True})
 async def show_qr_code(callback_query: types.CallbackQuery, session: AsyncSession):
     try:
         key_ref = callback_query.data.split("|", 1)[1]

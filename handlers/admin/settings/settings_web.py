@@ -104,7 +104,7 @@ async def open_web_settings(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_toggle"), flags={"popup": True})
 async def toggle_web_enabled(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("WEB_ENABLED", False))
     new_config = dict(WEB_CONFIG)
@@ -121,7 +121,7 @@ async def toggle_web_enabled(callback: CallbackQuery) -> None:
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_open_mode_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_open_mode_toggle"), flags={"popup": True})
 async def toggle_web_open_mode(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("WEB_OPEN_IN_BROWSER", False))
     new_config = dict(WEB_CONFIG)
@@ -138,7 +138,7 @@ async def toggle_web_open_mode(callback: CallbackQuery) -> None:
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_email_binding_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_email_binding_toggle"), flags={"popup": True})
 async def toggle_email_binding(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
     new_config = dict(WEB_CONFIG)

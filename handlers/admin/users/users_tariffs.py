@@ -360,7 +360,7 @@ async def handle_user_renew_confirm(
     )
 
 
-@router.callback_query(F.data.startswith("cfg_renew_devices|"), IsAdminFilter())
+@router.callback_query(F.data.startswith("cfg_renew_devices|"), IsAdminFilter(), flags={"popup": True})
 async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     _, tariff_id_str, value_str = callback_query.data.split("|", 2)
     tariff_id = int(tariff_id_str)
@@ -477,7 +477,7 @@ async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMCont
     await callback_query.answer()
 
 
-@router.callback_query(F.data.startswith("cfg_renew_traffic|"), IsAdminFilter())
+@router.callback_query(F.data.startswith("cfg_renew_traffic|"), IsAdminFilter(), flags={"popup": True})
 async def handle_cfg_renew_traffic(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     _, tariff_id_str, value_str = callback_query.data.split("|", 2)
     tariff_id = int(tariff_id_str)

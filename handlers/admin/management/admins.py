@@ -166,7 +166,7 @@ async def edit_admin_permissions(callback: CallbackQuery, callback_data: AdminPa
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("toggle_perm|")), HasPermission(PERM_ADMINS))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("toggle_perm|")), HasPermission(PERM_ADMINS), flags={"popup": True})
 async def toggle_admin_permission(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     try:
         _, tg_id_str, perm_id = callback_data.action.split("|", 2)

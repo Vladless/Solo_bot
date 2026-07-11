@@ -105,6 +105,7 @@ async def toggle_tariff_subgroup_selection(callback: CallbackQuery, state: FSMCo
     F.data == "subgroup_continue",
     TariffSubgroupState.selecting_tariffs,
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def ask_subgroup_title(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()

@@ -119,7 +119,7 @@ def _append_key_audit_steps(lines: list[str], by_path: list[dict]) -> None:
         lines.append(f"  • {label}: {total} (ок: {success}, ошибок: {fail})")
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "stats"), IsAdminFilter())
+@router.callback_query(AdminPanelCallback.filter(F.action == "stats"), IsAdminFilter(), flags={"popup": True})
 async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
     try:
         moscow_tz = pytz.timezone("Europe/Moscow")
@@ -571,7 +571,7 @@ async def handle_audit_reset_ask(callback_query: CallbackQuery):
 
 @router.callback_query(
     AdminPanelCallback.filter(F.action.in_(["audit_reset_do_redis", "audit_reset_do_db"])), IsAdminFilter()
-)
+, flags={"popup": True})
 async def handle_audit_reset_do(callback_query: CallbackQuery, session: AsyncSession):
     source = "redis" if callback_query.data and "redis" in callback_query.data else "db"
     try:

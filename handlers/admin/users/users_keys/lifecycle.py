@@ -504,6 +504,7 @@ async def handle_delete_key(
     AdminUserEditorCallback.filter(F.action == "users_delete_key_confirm"),
     UserEditorState.confirm_delete_key,
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_delete_key_confirm(
     callback_query: types.CallbackQuery,

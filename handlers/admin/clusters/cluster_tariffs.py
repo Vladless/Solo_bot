@@ -103,7 +103,7 @@ async def show_servers_for_tariffs(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_subgroup"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_subgroup"), IsAdminFilter(), flags={"popup": True})
 async def toggle_server_for_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -154,7 +154,7 @@ async def reset_tariff_selection(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "choose_subgroup"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "choose_subgroup"), IsAdminFilter(), flags={"popup": True})
 async def choose_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -241,7 +241,7 @@ async def toggle_tariff_selection(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariffs"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_tariffs"), IsAdminFilter(), flags={"popup": True})
 async def apply_tariffs(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -328,7 +328,7 @@ async def apply_tariffs(
         await callback.message.edit_text("❌ Произошла ошибка при назначении тарифов.")
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_subgroups"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_subgroups"), IsAdminFilter(), flags={"popup": True})
 async def reset_cluster_subgroups(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession):
     try:
         cluster_name = callback_data.data
@@ -480,7 +480,7 @@ async def show_servers_for_group(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_group"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "toggle_server_group"), IsAdminFilter(), flags={"popup": True})
 async def toggle_server_for_group(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -528,7 +528,7 @@ async def reset_group_selection(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "choose_group"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "choose_group"), IsAdminFilter(), flags={"popup": True})
 async def choose_group(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -546,7 +546,7 @@ async def choose_group(
     )
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "apply_group_to_servers"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "apply_group_to_servers"), IsAdminFilter(), flags={"popup": True})
 async def apply_group_to_servers(
     callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession, state: FSMContext
 ):
@@ -601,7 +601,7 @@ async def apply_group_to_servers(
         await callback.message.edit_text("❌ Произошла ошибка при назначении группы.")
 
 
-@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_groups"), IsAdminFilter())
+@router.callback_query(AdminClusterCallback.filter(F.action == "reset_cluster_groups"), IsAdminFilter(), flags={"popup": True})
 async def reset_cluster_groups(callback: CallbackQuery, callback_data: AdminClusterCallback, session: AsyncSession):
     try:
         cluster_name = callback_data.data

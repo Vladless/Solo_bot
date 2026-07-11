@@ -121,7 +121,7 @@ async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: 
     await state.set_state(AdminCouponsState.waiting_for_percent_data)
 
 
-@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter())
+@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter(), flags={"popup": True})
 async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     coupon_type = data.get("coupon_type")

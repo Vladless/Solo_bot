@@ -37,7 +37,7 @@ async def open_settings_cashboxes_menu(callback: CallbackQuery, session: AsyncSe
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_cashbox_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_cashbox_toggle"), flags={"popup": True})
 async def toggle_cashbox_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -84,7 +84,7 @@ async def open_providers_order_menu(callback: CallbackQuery, session: AsyncSessi
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_up"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_up"), flags={"popup": True})
 async def move_provider_up(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -112,7 +112,7 @@ async def move_provider_up(
     await callback.answer("✅ Перемещено выше")
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_down"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_down"), flags={"popup": True})
 async def move_provider_down(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,

@@ -350,7 +350,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     await message.answer(text=text, reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data == "cfg_save", UserEditorState.config_menu, IsAdminFilter())
+@router.callback_query(F.data == "cfg_save", UserEditorState.config_menu, IsAdminFilter(), flags={"popup": True})
 async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     email = data.get("email")

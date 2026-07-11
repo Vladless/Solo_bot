@@ -371,7 +371,7 @@ async def fastflow_coupon_back(callback_query: CallbackQuery, state: FSMContext,
     await callback_query.answer()
 
 
-@router.callback_query(F.data == "fastflow_coupon")
+@router.callback_query(F.data == "fastflow_coupon", flags={"popup": True})
 async def fastflow_coupon(callback_query: CallbackQuery, state: FSMContext):
     input_text = "Введите купон:"
     amount_not_found_text = "Сумма не найдена"

@@ -196,6 +196,7 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_ban_shadow"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEditorCallback, session: AsyncSession):
     u = await resolve_user_optional(session, callback_data.tg_id)
@@ -237,6 +238,7 @@ async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEdi
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_unban"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_user_unban(
     callback: CallbackQuery,

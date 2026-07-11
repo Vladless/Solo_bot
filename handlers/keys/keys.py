@@ -17,7 +17,7 @@ from services.operations import delete_key_from_cluster, update_subscription
 router = Router()
 
 
-@router.callback_query(F.data.startswith("update_subscription|"))
+@router.callback_query(F.data.startswith("update_subscription|"), flags={"popup": True})
 async def process_callback_update_subscription(callback_query: CallbackQuery, session: AsyncSession):
     tg_id = callback_query.message.chat.id
     key_ref = callback_query.data.split("|", 1)[1]
@@ -42,7 +42,7 @@ async def process_callback_update_subscription(callback_query: CallbackQuery, se
         await handle_error(tg_id, callback_query, f"Ошибка при обновлении подписки: {e}")
 
 
-@router.callback_query(F.data.startswith("delete_key|"))
+@router.callback_query(F.data.startswith("delete_key|"), flags={"popup": True})
 async def process_callback_delete_key(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     try:
@@ -75,7 +75,7 @@ async def process_callback_delete_key(callback_query: CallbackQuery, session: As
         logger.error(f"Ошибка при подготовке удаления ключа {key_identifier}: {e}")
 
 
-@router.callback_query(F.data.startswith("confirm_delete|"))
+@router.callback_query(F.data.startswith("confirm_delete|"), flags={"popup": True})
 async def process_callback_confirm_delete(callback_query: CallbackQuery, session: AsyncSession):
     key_ref = callback_query.data.split("|", 1)[1]
     try:

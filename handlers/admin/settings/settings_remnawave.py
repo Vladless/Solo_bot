@@ -243,7 +243,7 @@ async def open_node_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_node_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_node_toggle"), flags={"popup": True})
 async def toggle_node_health(callback: CallbackQuery) -> None:
     new_cfg = dict(REMNAWAVE_CONFIG)
     new_cfg["NODE_HEALTH_ENABLED"] = not _node_health_enabled()
@@ -298,7 +298,7 @@ async def set_node_interval(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_autodisable_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_autodisable_toggle"), flags={"popup": True})
 async def toggle_auto_disable(callback: CallbackQuery) -> None:
     new_cfg = dict(REMNAWAVE_CONFIG)
     new_cfg["HOST_AUTO_DISABLE_ON_NODE_DOWN"] = not _auto_disable_enabled()
@@ -362,7 +362,7 @@ async def open_rotation_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_rot_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_rot_toggle"), flags={"popup": True})
 async def toggle_rotation(callback: CallbackQuery) -> None:
     new_cfg = dict(REMNAWAVE_CONFIG)
     new_cfg["HOST_ROTATION_ENABLED"] = not _host_rotation_enabled()
@@ -455,7 +455,7 @@ async def open_rotation_hosts(callback: CallbackQuery, callback_data: AdminPanel
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_rot_toggle_host"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_rot_toggle_host"), flags={"popup": True})
 async def toggle_host(callback: CallbackQuery, callback_data: AdminPanelCallback) -> None:
     idx = int(callback_data.page or 0)
     hosts = await _fetch_all_hosts()
@@ -538,7 +538,7 @@ async def open_health_nodes(callback: CallbackQuery, callback_data: AdminPanelCa
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "rw_node_sel_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "rw_node_sel_toggle"), flags={"popup": True})
 async def toggle_health_node(callback: CallbackQuery, callback_data: AdminPanelCallback) -> None:
     idx = int(callback_data.page or 0)
     nodes = await _fetch_all_nodes()

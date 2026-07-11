@@ -82,7 +82,7 @@ KASSAI_METHODS = {
 }
 
 
-@router.callback_query(F.data == "pay_kassai")
+@router.callback_query(F.data == "pay_kassai", flags={"popup": True})
 async def process_callback_pay_kassai(
     callback_query: types.CallbackQuery,
     state: FSMContext,

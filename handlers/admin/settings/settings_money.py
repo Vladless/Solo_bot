@@ -39,7 +39,7 @@ async def open_settings_money(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_money_edit"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_money_edit"), flags={"popup": True})
 async def edit_money_field_start(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -194,7 +194,7 @@ async def open_currency_mode_menu(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_money_currency_set"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_money_currency_set"), flags={"popup": True})
 async def set_currency_mode(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,

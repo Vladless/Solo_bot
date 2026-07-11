@@ -22,7 +22,7 @@ class EmailBindingState(StatesGroup):
     waiting_for_email = State()
 
 
-@router.callback_query(F.data == "bind_email")
+@router.callback_query(F.data == "bind_email", flags={"popup": True})
 async def prompt_email(callback: CallbackQuery, state: FSMContext, session) -> None:
     if not is_email_binding_enabled():
         await callback.answer("Привязка почты отключена", show_alert=True)

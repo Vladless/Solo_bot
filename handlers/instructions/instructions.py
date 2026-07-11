@@ -73,7 +73,7 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     )
 
 
-@router.callback_query(F.data.startswith("connect_pc|"))
+@router.callback_query(F.data.startswith("connect_pc|"), flags={"popup": True})
 async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -119,7 +119,7 @@ async def process_connect_pc(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("windows_menu|"))
+@router.callback_query(F.data.startswith("windows_menu|"), flags={"popup": True})
 async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -162,7 +162,7 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("macos_menu|"))
+@router.callback_query(F.data.startswith("macos_menu|"), flags={"popup": True})
 async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -205,7 +205,7 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("connect_tv|"))
+@router.callback_query(F.data.startswith("connect_tv|"), flags={"popup": True})
 async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -270,7 +270,7 @@ async def process_connect_tv(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("continue_tv|"))
+@router.callback_query(F.data.startswith("continue_tv|"), flags={"popup": True})
 async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
@@ -298,7 +298,7 @@ async def process_continue_tv(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data.startswith("connect_router|"))
+@router.callback_query(F.data.startswith("connect_router|"), flags={"popup": True})
 async def process_connect_router(callback_query: CallbackQuery, session: Any):
     key_ref = callback_query.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)

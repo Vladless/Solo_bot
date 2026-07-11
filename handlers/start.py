@@ -117,7 +117,7 @@ async def start_entry(
     await process_start_logic(message, state, session, admin, text, user_data, user_snapshot=user_snapshot)
 
 
-@router.callback_query(F.data == "check_subscription")
+@router.callback_query(F.data == "check_subscription", flags={"popup": True})
 async def check_subscription_callback(callback: CallbackQuery, state: FSMContext, session: Any, admin: bool):
     user_id = callback.from_user.id
     try:

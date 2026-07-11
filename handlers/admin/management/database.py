@@ -429,7 +429,7 @@ async def prompt_restore_db_local(callback: CallbackQuery):
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("restore_local|")), HasPermission(PERM_MANAGEMENT))
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("restore_local|")), HasPermission(PERM_MANAGEMENT), flags={"popup": True})
 async def restore_db_local(callback: CallbackQuery):
     try:
         idx = int(callback.data.split("|", 1)[1].split(":")[-1])

@@ -36,6 +36,7 @@ async def handle_management(callback_query: CallbackQuery, session: AsyncSession
 @router.callback_query(
     AdminPanelCallback.filter(F.action == "toggle_maintenance"),
     HasPermission(PERM_MANAGEMENT),
+    flags={"popup": True},
 )
 async def toggle_maintenance_mode(callback: CallbackQuery, session: AsyncSession):
     tg_id = callback.from_user.id

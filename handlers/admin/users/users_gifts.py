@@ -134,6 +134,7 @@ async def handle_gifts_page(
 @router.callback_query(
     F.data.startswith("user_gift_del|"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_gift_delete(
     callback: types.CallbackQuery,
@@ -168,6 +169,7 @@ async def handle_gift_delete(
 @router.callback_query(
     F.data.startswith("user_gift_del_c|"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_gift_delete_confirm(
     callback: types.CallbackQuery,

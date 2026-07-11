@@ -393,7 +393,7 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("key_addons|"))
+@router.callback_query(F.data.startswith("key_addons|"), flags={"popup": True})
 async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     key_ref = callback.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback.from_user.id, key_ref)
@@ -569,7 +569,7 @@ async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: 
     await render_addons_screen(callback, state, session)
 
 
-@router.callback_query(F.data.startswith("key_addons_devices|"), KeyAddonConfigState.configuring)
+@router.callback_query(F.data.startswith("key_addons_devices|"), KeyAddonConfigState.configuring, flags={"popup": True})
 async def handle_addons_devices_choice(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     parts = callback.data.split("|", 2)
     if len(parts) < 3:
@@ -595,7 +595,7 @@ async def handle_addons_devices_choice(callback: CallbackQuery, state: FSMContex
     await render_addons_screen(callback, state, session)
 
 
-@router.callback_query(F.data.startswith("key_addons_traffic|"), KeyAddonConfigState.configuring)
+@router.callback_query(F.data.startswith("key_addons_traffic|"), KeyAddonConfigState.configuring, flags={"popup": True})
 async def handle_addons_traffic_choice(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     parts = callback.data.split("|", 2)
     if len(parts) < 3:
@@ -621,7 +621,7 @@ async def handle_addons_traffic_choice(callback: CallbackQuery, state: FSMContex
     await render_addons_screen(callback, state, session)
 
 
-@router.callback_query(F.data == "key_addons_confirm", KeyAddonConfigState.configuring)
+@router.callback_query(F.data == "key_addons_confirm", KeyAddonConfigState.configuring, flags={"popup": True})
 async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     from services.operations import renew_key_in_cluster
 

@@ -304,6 +304,7 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
 @router.callback_query(
     AdminPanelCallback.filter(F.action == "search_page"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_search_page(
     callback_query: CallbackQuery,
@@ -733,6 +734,7 @@ async def handle_users_site(callback: CallbackQuery, callback_data: AdminUserEdi
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_site_tab"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUserEditorCallback):
     tab = str(callback_data.data or "")
@@ -760,6 +762,7 @@ async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUse
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_site_send"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUserEditorCallback):
     tab = str(callback_data.data or "")
@@ -809,6 +812,7 @@ SUB_HISTORY_LIMIT = 20
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_sub_history"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_user_sub_history(
     callback: CallbackQuery,
@@ -913,6 +917,7 @@ async def _resolve_identity_for_user(session: AsyncSession, legacy_ref: int) -> 
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_unlink_email"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_unlink_email(
     callback: CallbackQuery,
@@ -950,6 +955,7 @@ async def handle_unlink_email(
 @router.callback_query(
     AdminUserEditorCallback.filter(F.action == "users_unlink_tg"),
     IsAdminFilter(),
+    flags={"popup": True},
 )
 async def handle_unlink_tg(
     callback: CallbackQuery,

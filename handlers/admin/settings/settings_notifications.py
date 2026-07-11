@@ -47,7 +47,7 @@ async def open_settings_notifications_intervals_menu(callback: CallbackQuery, se
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_toggle"), flags={"popup": True})
 async def toggle_notification_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,
@@ -75,7 +75,7 @@ async def toggle_notification_setting(
     await callback.answer("Настройка обновлена")
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_interval_edit"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_interval_edit"), flags={"popup": True})
 async def edit_notification_interval_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,

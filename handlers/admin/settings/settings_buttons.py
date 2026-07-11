@@ -26,7 +26,7 @@ async def open_settings_buttons_menu(callback: CallbackQuery, session: AsyncSess
     await callback.answer()
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_button_toggle"))
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_button_toggle"), flags={"popup": True})
 async def toggle_button_setting(
     callback: CallbackQuery,
     callback_data: AdminPanelCallback,

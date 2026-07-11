@@ -83,7 +83,7 @@ def normalize_expiry_ms(raw_value: int | float | None) -> int:
     return value
 
 
-@router.callback_query(F.data.startswith("renew_key|"))
+@router.callback_query(F.data.startswith("renew_key|"), flags={"popup": True})
 async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Обрабатывает нажатие кнопки продления конкретного ключа."""
     tg_id = callback_query.message.chat.id

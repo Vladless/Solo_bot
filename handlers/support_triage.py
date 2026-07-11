@@ -52,7 +52,7 @@ async def triage_root(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(TriageCallback.filter(F.action == "cat"))
+@router.callback_query(TriageCallback.filter(F.action == "cat"), flags={"popup": True})
 async def triage_category(callback: CallbackQuery, callback_data: TriageCallback) -> None:
     item = next((i for i in TRIAGE_ITEMS if i["id"] == callback_data.node), None)
     if item is None:

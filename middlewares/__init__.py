@@ -88,7 +88,6 @@ def register_middleware(
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),
             "actor": ActorMiddleware(),
-            "answer": CallbackAnswerMiddleware(),
         }
         middlewares = [wrap(mw, name) for name, mw in available_middlewares.items() if middleware_enabled(name)]
     else:
@@ -102,6 +101,9 @@ def register_middleware(
     for middleware in middlewares:
         for h in handlers:
             h.outer_middleware(middleware)
+
+    if middleware_enabled("answer"):
+        dispatcher.callback_query.middleware(wrap(CallbackAnswerMiddleware(), "answer"))
 
     if middleware_enabled("delete_commands"):
         dispatcher.message.outer_middleware(wrap(DeleteCommandMiddleware(), "delete_commands"))

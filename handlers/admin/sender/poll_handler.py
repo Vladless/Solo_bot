@@ -178,7 +178,7 @@ async def poll_audience(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "aud"), AdminPoll.preview, IsAdminFilter())
+@router.callback_query(AdminPollCallback.filter(F.action == "aud"), AdminPoll.preview, IsAdminFilter(), flags={"popup": True})
 async def poll_send(
     callback: CallbackQuery, callback_data: AdminPollCallback, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -261,7 +261,7 @@ async def poll_send(
     )
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "view"), IsAdminFilter())
+@router.callback_query(AdminPollCallback.filter(F.action == "view"), IsAdminFilter(), flags={"popup": True})
 async def poll_view(callback: CallbackQuery, callback_data: AdminPollCallback, session: AsyncSession) -> None:
     poll = await get_poll(session, callback_data.poll_id)
     if poll is None:
@@ -275,7 +275,7 @@ async def poll_view(callback: CallbackQuery, callback_data: AdminPollCallback, s
     await callback.answer()
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "close"), IsAdminFilter())
+@router.callback_query(AdminPollCallback.filter(F.action == "close"), IsAdminFilter(), flags={"popup": True})
 async def poll_close(callback: CallbackQuery, callback_data: AdminPollCallback, session: AsyncSession) -> None:
     poll = await get_poll(session, callback_data.poll_id)
     if poll is None:
@@ -289,7 +289,7 @@ async def poll_close(callback: CallbackQuery, callback_data: AdminPollCallback, 
     await callback.answer("Опрос закрыт — новые голоса не учитываются")
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "del_ask"), IsAdminFilter())
+@router.callback_query(AdminPollCallback.filter(F.action == "del_ask"), IsAdminFilter(), flags={"popup": True})
 async def poll_delete_ask(callback: CallbackQuery, callback_data: AdminPollCallback, session: AsyncSession) -> None:
     poll = await get_poll(session, callback_data.poll_id)
     if poll is None:
@@ -306,7 +306,7 @@ async def poll_delete_ask(callback: CallbackQuery, callback_data: AdminPollCallb
     await callback.answer()
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "del"), IsAdminFilter())
+@router.callback_query(AdminPollCallback.filter(F.action == "del"), IsAdminFilter(), flags={"popup": True})
 async def poll_delete(callback: CallbackQuery, callback_data: AdminPollCallback, session: AsyncSession) -> None:
     poll = await get_poll(session, callback_data.poll_id)
     if poll is None:
