@@ -62,6 +62,47 @@ async def ensure_partner_available(session: AsyncSession = Depends(get_session))
 
 router = APIRouter(dependencies=[Depends(ensure_partner_available)])
 
+stats_router = APIRouter()
+
+
+@stats_router.get("/stats")
+async def partner_stats(
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Метрики партнёрской программы: партнёры, рефералы, баланс, топ-партнёр."""
+    row = (
+        await session.execute(
+            text(
+                """
+                WITH partner_refs AS (
+                    SELECT partner_tg_id, COUNT(DISTINCT joined_tg_id) AS ref_count
+                    FROM partners WHERE partner_tg_id IS NOT NULL GROUP BY partner_tg_id
+                )
+                SELECT
+                    (SELECT COUNT(*) FROM partner_refs) AS total_partners,
+                    (SELECT COUNT(DISTINCT partner_tg_id) FROM partners
+                        WHERE partner_tg_id IS NOT NULL AND DATE(created_at) = CURRENT_DATE) AS partners_today,
+                    (SELECT COUNT(DISTINCT joined_tg_id) FROM partners WHERE partner_tg_id IS NOT NULL) AS total_referred,
+                    (SELECT COALESCE(SUM(u.partner_balance), 0.0) FROM users u
+                        WHERE u.tg_id IN (SELECT partner_tg_id FROM partner_refs)) AS total_balance,
+                    (SELECT partner_tg_id FROM partner_refs ORDER BY ref_count DESC LIMIT 1) AS top_partner_tg_id,
+                    (SELECT ref_count FROM partner_refs ORDER BY ref_count DESC LIMIT 1) AS top_partner_refs
+                """
+            )
+        )
+    ).fetchone()
+    if not row:
+        return {"total_partners": 0, "partners_today": 0, "total_referred": 0, "total_balance": 0.0, "top_partner_tg_id": 0, "top_partner_refs": 0}
+    return {
+        "total_partners": int(row[0] or 0),
+        "partners_today": int(row[1] or 0),
+        "total_referred": int(row[2] or 0),
+        "total_balance": float(row[3] or 0.0),
+        "top_partner_tg_id": int(row[4] or 0),
+        "top_partner_refs": int(row[5] or 0),
+    }
+
 
 def _parse_percent(value: float) -> float | None:
     try:
@@ -733,52 +774,6 @@ async def get_all_partners(
             "referred_count": int(partner[6] or 0),
         })
     return ORJSONResponse(content={"total": total, "items": partners_list})
-
-
-@router.get("/stats/all")
-async def get_partners_stats(
-    identity=Depends(verify_identity_admin),
-    session: AsyncSession = Depends(get_session),
-):
-    """Общая статистика партнёрской программы."""
-    stats_sql = text(
-        """
-        WITH partner_refs AS (
-            SELECT partner_tg_id, COUNT(DISTINCT joined_tg_id) AS ref_count
-            FROM partners
-            WHERE partner_tg_id IS NOT NULL
-            GROUP BY partner_tg_id
-        )
-        SELECT 
-            (SELECT COUNT(*) FROM partner_refs) AS total_partners,
-            (SELECT COUNT(DISTINCT partner_tg_id) FROM partners WHERE partner_tg_id IS NOT NULL AND DATE(created_at) = CURRENT_DATE) AS partners_today,
-            (SELECT COUNT(DISTINCT joined_tg_id) FROM partners WHERE partner_tg_id IS NOT NULL) AS total_referred,
-            (SELECT COALESCE(SUM(u.partner_balance), 0.0) FROM users u WHERE u.tg_id IN (SELECT partner_tg_id FROM partner_refs)) AS total_balance,
-            (SELECT partner_tg_id FROM partner_refs ORDER BY ref_count DESC LIMIT 1) AS top_partner_tg_id,
-            (SELECT ref_count FROM partner_refs ORDER BY ref_count DESC LIMIT 1) AS top_partner_refs
-        """
-    )
-    stats_result = await session.execute(stats_sql)
-    stats_row = stats_result.fetchone()
-    if stats_row:
-        stats = {
-            "total_partners": int(stats_row[0] or 0),
-            "partners_today": int(stats_row[1] or 0),
-            "total_referred": int(stats_row[2] or 0),
-            "total_balance": float(stats_row[3] or 0.0),
-            "top_partner_tg_id": int(stats_row[4] or 0),
-            "top_partner_refs": int(stats_row[5] or 0),
-        }
-    else:
-        stats = {
-            "total_partners": 0,
-            "partners_today": 0,
-            "total_referred": 0,
-            "total_balance": 0.0,
-            "top_partner_tg_id": 0,
-            "top_partner_refs": 0,
-        }
-    return ORJSONResponse(content=stats)
 
 
 @router.patch("/{tg_id}")

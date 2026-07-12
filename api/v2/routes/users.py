@@ -1,7 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin
@@ -43,15 +43,16 @@ async def search_users(
     stmt = select(User)
     if term:
         like = f"%{term.lstrip('@')}%"
+        num = f"%{term.lstrip('@#-')}%"
+        email_uids = select(Key.user_id).where(Key.email.ilike(like))
         conds = [
             User.username.ilike(like),
             User.first_name.ilike(like),
             User.last_name.ilike(like),
+            cast(User.tg_id, Text).like(num),
+            cast(User.id, Text).like(num),
+            User.id.in_(email_uids),
         ]
-        if term.lstrip("-").isdigit():
-            conds.append(User.tg_id == int(term))
-        email_uids = select(Key.user_id).where(Key.email.ilike(like))
-        conds.append(User.id.in_(email_uids))
         stmt = stmt.where(or_(*conds))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
     rows = (

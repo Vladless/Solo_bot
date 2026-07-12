@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 import qrcode
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import (
@@ -105,6 +105,33 @@ router = generate_crud_router(
     enabled_methods=["get_all", "get_one", "get_by_email", "get_all_by_field"],
 )
 user_router = APIRouter()
+
+stats_router = APIRouter()
+
+
+@stats_router.get("/stats")
+async def key_stats(
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Метрики ключей: активные/заморожённые, доля заморозки, корзины истечения."""
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    total = int((await session.execute(select(func.count()).select_from(Key))).scalar() or 0)
+    active = int((await session.execute(select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.is_frozen.is_(False)))).scalar() or 0)
+    frozen = int((await session.execute(select(func.count()).select_from(Key).where(Key.is_frozen.is_(True)))).scalar() or 0)
+    expiring = {}
+    for d in (1, 3, 7, 14, 30):
+        cnt = (await session.execute(select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.expiry_time <= now_ms + d * 86_400_000, Key.is_frozen.is_(False)))).scalar() or 0
+        expiring[f"{d}d"] = int(cnt)
+    denom = active + frozen
+    return {
+        "total_keys": total,
+        "active": active,
+        "frozen": frozen,
+        "frozen_ratio_pct": round(100.0 * frozen / denom, 1) if denom else 0.0,
+        "expiring": expiring,
+    }
+
 
 
 def _renew_available_from_ms(expiry_time_ms: int) -> int:

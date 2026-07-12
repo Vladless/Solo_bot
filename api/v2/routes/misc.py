@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Path
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin
@@ -21,10 +21,56 @@ from database.models import (
     Payment,
     TemporaryData,
     TrackingSource,
+    User,
 )
 
 
 router = APIRouter()
+
+
+@router.get("/admin/payments", tags=["Payments"])
+async def list_payments_admin(
+    q: str = Query(""),
+    status: str = Query("all"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Постраничный список платежей с поиском (система, tg_id, сумма) и фильтром статуса."""
+    stmt = select(Payment, User.tg_id).join(User, Payment.user_id == User.id, isouter=True)
+    term = q.strip().lstrip("#@")
+    if term:
+        low = f"%{term.lower()}%"
+        like = f"%{term}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(Payment.payment_system).like(low),
+                func.lower(func.coalesce(Payment.currency, "")).like(low),
+                cast(User.tg_id, Text).like(like),
+                cast(Payment.tg_id, Text).like(like),
+                cast(Payment.amount, Text).like(like),
+            )
+        )
+    if status == "success":
+        stmt = stmt.where(Payment.status == "success")
+    elif status == "pending":
+        stmt = stmt.where(Payment.status != "success")
+    total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    rows = (await session.execute(stmt.order_by(Payment.created_at.desc()).limit(limit).offset(offset))).all()
+    items = [
+        {
+            "id": p.id,
+            "tg_id": p.tg_id if p.tg_id is not None else tg,
+            "amount": float(p.amount or 0),
+            "currency": p.currency,
+            "payment_system": p.payment_system,
+            "status": p.status,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p, tg in rows
+    ]
+    return {"total": int(total), "items": items}
 
 router.include_router(
     generate_crud_router(

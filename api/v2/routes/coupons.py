@@ -1,5 +1,7 @@
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_request_actor, get_session, verify_identity_admin, verify_identity_token
@@ -7,7 +9,7 @@ from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import CouponBase, CouponResponse, CouponUpdate
 from api.v2.schemas.web_public import CouponApplyRequest, CouponApplyResponse
 from database import identities as idb
-from database.models import Coupon
+from database.models import Coupon, CouponUsage
 from services.coupons import apply_fixed_coupon
 from services.errors import LimitExceededError, NotFoundError, ServiceError, ValidationError
 
@@ -19,14 +21,18 @@ admin_list_router = APIRouter()
 async def list_coupons_admin(
     identity=Depends(verify_identity_admin),
     session: AsyncSession = Depends(get_session),
-    limit: int = Query(100, ge=1, le=500),
+    q: str = Query(""),
+    limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    """Список купонов для админки без строгой валидации (показывает и битые купоны)."""
-    rows = (
-        await session.execute(select(Coupon).order_by(Coupon.id.desc()).limit(limit).offset(offset))
-    ).scalars().all()
-    return [
+    """Постраничный список купонов с поиском по коду (показывает и битые купоны)."""
+    stmt = select(Coupon)
+    term = q.strip()
+    if term:
+        stmt = stmt.where(func.lower(Coupon.code).like(f"%{term.lower()}%"))
+    total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    rows = (await session.execute(stmt.order_by(Coupon.id.desc()).limit(limit).offset(offset))).scalars().all()
+    items = [
         {
             "id": c.id,
             "code": c.code,
@@ -40,6 +46,25 @@ async def list_coupons_admin(
         }
         for c in rows
     ]
+    return {"total": int(total), "items": items}
+
+
+@admin_list_router.get("/stats")
+async def coupon_stats(
+    days: int = Query(30, ge=1, le=365),
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Метрики купонов: использования за период и всего."""
+    since = datetime.utcnow() - timedelta(days=days)
+    used_period = (await session.execute(select(func.count()).select_from(CouponUsage).where(CouponUsage.used_at >= since))).scalar() or 0
+    total_coupons = (await session.execute(select(func.count()).select_from(Coupon))).scalar() or 0
+    total_redemptions = (await session.execute(select(func.coalesce(func.sum(Coupon.usage_count), 0)))).scalar() or 0
+    return {
+        "used_in_period": int(used_period),
+        "total_coupons": int(total_coupons),
+        "total_redemptions": int(total_redemptions),
+    }
 
 
 router = generate_crud_router(

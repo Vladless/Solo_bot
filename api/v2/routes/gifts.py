@@ -1,11 +1,12 @@
 from base64 import b64encode
+from datetime import datetime, timedelta
 from io import BytesIO
 from math import ceil
 
 import qrcode
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import (
@@ -36,7 +37,7 @@ from database import (
     identities as idb,
 )
 from database.access.resolution import resolve_user_optional
-from database.models import Gift, GiftUsage, Tariff
+from database.models import Gift, GiftUsage, Tariff, User
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
 from services.errors import NotFoundError, ValidationError
@@ -50,6 +51,77 @@ from services.tariffs import calculate_config_price
 
 
 router = APIRouter()
+
+
+@router.get("/admin-list", tags=["Gifts"])
+async def list_gifts_admin(
+    q: str = Query(""),
+    state: str = Query("all"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Постраничный список подарков с поиском (код подарка, tg отправителя/получателя)."""
+    stmt = select(Gift)
+    term = q.strip().lstrip("#@")
+    if term:
+        like = f"%{term}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(Gift.gift_id).like(f"%{term.lower()}%"),
+                cast(Gift.sender_tg_id, Text).like(like),
+                cast(Gift.recipient_tg_id, Text).like(like),
+                cast(Gift.selected_price_rub, Text).like(like),
+                cast(Gift.selected_months, Text).like(like),
+            )
+        )
+    if state == "used":
+        stmt = stmt.where(Gift.is_used.is_(True))
+    elif state == "active":
+        stmt = stmt.where(Gift.is_used.is_(False))
+    total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
+    rows = (await session.execute(stmt.order_by(Gift.created_at.desc()).limit(limit).offset(offset))).scalars().all()
+    items = [
+        {
+            "gift_id": g.gift_id,
+            "sender_tg_id": g.sender_tg_id,
+            "recipient_tg_id": g.recipient_tg_id,
+            "selected_months": g.selected_months,
+            "selected_price_rub": g.selected_price_rub,
+            "is_used": bool(g.is_used),
+            "is_unlimited": bool(g.is_unlimited),
+            "max_usages": g.max_usages,
+            "created_at": g.created_at.isoformat() if g.created_at else None,
+            "expiry_time": g.expiry_time.isoformat() if g.expiry_time else None,
+        }
+        for g in rows
+    ]
+    return {"total": int(total), "items": items}
+
+
+stats_router = APIRouter()
+
+
+@stats_router.get("/stats")
+async def gift_stats(
+    days: int = Query(30, ge=1, le=365),
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Метрики подарков: создано / погашено / конверсия / выручка / активаций за период."""
+    since = datetime.utcnow() - timedelta(days=days)
+    total = int((await session.execute(select(func.count()).select_from(Gift))).scalar() or 0)
+    redeemed = int((await session.execute(select(func.count()).select_from(Gift).where(Gift.is_used.is_(True)))).scalar() or 0)
+    activated_period = int((await session.execute(select(func.count()).select_from(GiftUsage).where(GiftUsage.used_at >= since))).scalar() or 0)
+    revenue = float((await session.execute(select(func.coalesce(func.sum(Gift.selected_price_rub), 0)).where(Gift.is_used.is_(True)))).scalar() or 0)
+    return {
+        "total": total,
+        "redeemed": redeemed,
+        "redemption_rate_pct": round(100.0 * redeemed / total, 1) if total else 0.0,
+        "activated_in_period": activated_period,
+        "revenue_rub": revenue,
+    }
 
 
 def _check_gifts_enabled():

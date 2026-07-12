@@ -2,12 +2,14 @@ from datetime import datetime, timedelta
 from math import ceil
 from urllib.parse import urlsplit
 
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pytz import timezone as tz_moscow
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import get_session, validate_redirect_url, verify_identity_token
+from api.depends import get_session, validate_redirect_url, verify_identity_admin, verify_identity_token
 from api.v2.base_crud import generate_crud_router
 from api.v2.routes.coupon_pricing import resolve_percent_coupon_pricing
 from api.v2.schemas import TariffBase, TariffResponse, TariffUpdate
@@ -25,7 +27,7 @@ from database import (
     identities as idb,
 )
 from database.coupons import mark_coupon_used
-from database.models import Server, Tariff
+from database.models import Key, Server, Tariff
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
 from handlers.texts import TARIFF_COOLDOWN_MESSAGE
@@ -498,12 +500,45 @@ async def activate_trial(
     )
 
 
+stats_router = APIRouter()
+
+
+@stats_router.get("/stats")
+async def tariff_stats(
+    identity=Depends(verify_identity_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Метрики тарифов: активных клиентов на каждый тариф и топ по популярности."""
+    now_ms = int(time.time() * 1000)
+    client_rows = (
+        await session.execute(
+            select(Key.tariff_id, func.count())
+            .where(Key.tariff_id.is_not(None), Key.expiry_time > now_ms)
+            .group_by(Key.tariff_id)
+        )
+    ).all()
+    top_rows = (
+        await session.execute(
+            select(Tariff.name, func.count(Key.client_id))
+            .join(Key, Key.tariff_id == Tariff.id)
+            .where(Key.expiry_time > now_ms, Key.is_frozen.is_(False))
+            .group_by(Tariff.id, Tariff.name)
+            .order_by(func.count(Key.client_id).desc())
+            .limit(10)
+        )
+    ).all()
+    return {
+        "tariff_clients": {str(tid): int(c) for tid, c in client_rows if tid is not None},
+        "top": [{"name": (n or "—"), "clients": int(c or 0)} for n, c in top_rows],
+    }
+
+
 router = generate_crud_router(
     model=Tariff,
     schema_response=TariffResponse,
     schema_create=TariffBase,
     schema_update=TariffUpdate,
-    identifier_field="name",
-    parameter_name="name",
+    identifier_field="id",
+    parameter_name="id",
     enabled_methods=["get_all", "get_one", "create", "update", "delete"],
 )

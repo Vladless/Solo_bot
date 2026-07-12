@@ -51,8 +51,10 @@ async def user_key_renew(
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     if bool(getattr(db_key, "is_frozen", False)):
         raise HTTPException(status_code=400, detail="Продление для замороженной подписки недоступно")
+    tariff_id = getattr(db_key, "tariff_id", None)
+    is_tariff_switch = body.tariff_id is not None and int(body.tariff_id or 0) != int(tariff_id or 0)
     key_expiry_ms = _svc_normalize_expiry(getattr(db_key, "expiry_time", None))
-    if key_expiry_ms and not _is_renew_available(int(key_expiry_ms)):
+    if key_expiry_ms and not is_tariff_switch and not _is_renew_available(int(key_expiry_ms)):
         available_msk = datetime.fromtimestamp(
             _renew_available_from_ms(int(key_expiry_ms)) / 1000, tz=timezone(timedelta(hours=3))
         )
@@ -60,7 +62,6 @@ async def user_key_renew(
             status_code=403,
             detail=f"Продление доступно с {available_msk.strftime('%d.%m.%Y %H:%M')}",
         )
-    tariff_id = getattr(db_key, "tariff_id", None)
     if not tariff_id:
         raise HTTPException(status_code=400, detail="Для подписки не назначен тариф")
     key_email = str(getattr(db_key, "email", "") or "")

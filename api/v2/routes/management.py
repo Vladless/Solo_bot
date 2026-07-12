@@ -21,9 +21,8 @@ from api.depends import get_session, verify_identity_admin, verify_identity_admi
 from api.v2.schemas.audit import (
     AuditEventListResponse,
     AuditEventResponse,
-    AuditStatsResponse,
 )
-from audit import drain_audit_redis_to_db, get_audit_funnel, get_audit_stats, list_audit_events
+from audit import drain_audit_redis_to_db, list_audit_events
 from config import API_TOKEN, BOT_SERVICE
 from core.bootstrap import MANAGEMENT_CONFIG
 from core.executor import run_io
@@ -233,131 +232,6 @@ async def bulk_apply(
     return {"matched": len(keys), "ok": int(ok), "failed": int(failed)}
 
 
-@router.get("/dashboard")
-async def get_dashboard(
-    days: int = Query(30, ge=1, le=365),
-    identity=Depends(verify_identity_admin),
-    session: AsyncSession = Depends(get_session),
-):
-    """Сводка для дашборда: юзеры, ключи, активные подписки, выручка, новые за период."""
-    from database.models import Coupon, Gift, Payment
-
-    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    since = datetime.utcnow() - timedelta(days=days)
-    since_ms = int(since.timestamp() * 1000)
-    soon_ms = now_ms + 7 * 86_400_000
-
-    total_users = (await session.execute(select(func.count()).select_from(User))).scalar() or 0
-    total_keys = (await session.execute(select(func.count()).select_from(Key))).scalar() or 0
-    active_keys = (
-        await session.execute(
-            select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.is_frozen.is_(False))
-        )
-    ).scalar() or 0
-    new_users = (
-        await session.execute(select(func.count()).select_from(User).where(User.created_at >= since))
-    ).scalar() or 0
-    revenue = (
-        await session.execute(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(
-                Payment.status == "success", Payment.created_at >= since
-            )
-        )
-    ).scalar() or 0
-    revenue_total = (
-        await session.execute(
-            select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == "success")
-        )
-    ).scalar() or 0
-
-    daily_rows = (
-        await session.execute(
-            select(func.date(Payment.created_at).label("d"), func.coalesce(func.sum(Payment.amount), 0))
-            .where(Payment.status == "success", Payment.created_at >= since)
-            .group_by(func.date(Payment.created_at))
-            .order_by(func.date(Payment.created_at))
-        )
-    ).all()
-    revenue_series = [{"date": str(d), "amount": float(a or 0)} for d, a in daily_rows]
-
-    frozen_keys = (
-        await session.execute(select(func.count()).select_from(Key).where(Key.is_frozen.is_(True)))
-    ).scalar() or 0
-    trial_users = (
-        await session.execute(select(func.count()).select_from(User).where(User.trial > 0))
-    ).scalar() or 0
-    new_keys = (
-        await session.execute(select(func.count()).select_from(Key).where(Key.created_at >= since_ms))
-    ).scalar() or 0
-    expiring_soon = (
-        await session.execute(
-            select(func.count())
-            .select_from(Key)
-            .where(Key.expiry_time > now_ms, Key.expiry_time <= soon_ms, Key.is_frozen.is_(False))
-        )
-    ).scalar() or 0
-    payments_count = (
-        await session.execute(
-            select(func.count()).select_from(Payment).where(Payment.status == "success", Payment.created_at >= since)
-        )
-    ).scalar() or 0
-    gifts_total = (await session.execute(select(func.count()).select_from(Gift))).scalar() or 0
-    coupons_total = (await session.execute(select(func.count()).select_from(Coupon))).scalar() or 0
-    try:
-        from database.models import WebErrorReport
-
-        errors_open = (
-            await session.execute(
-                select(func.count()).select_from(WebErrorReport).where(WebErrorReport.resolved.is_(False))
-            )
-        ).scalar() or 0
-    except Exception:
-        errors_open = 0
-    avg_check = float(revenue) / int(payments_count) if payments_count else 0.0
-
-    sys_rows = (
-        await session.execute(
-            select(Payment.payment_system, func.coalesce(func.sum(Payment.amount), 0))
-            .where(Payment.status == "success", Payment.created_at >= since)
-            .group_by(Payment.payment_system)
-            .order_by(func.coalesce(func.sum(Payment.amount), 0).desc())
-        )
-    ).all()
-    revenue_by_system = [{"name": (s or "—"), "amount": float(a or 0)} for s, a in sys_rows]
-
-    user_rows = (
-        await session.execute(
-            select(func.date(User.created_at).label("d"), func.count())
-            .where(User.created_at >= since)
-            .group_by(func.date(User.created_at))
-            .order_by(func.date(User.created_at))
-        )
-    ).all()
-    users_series = [{"date": str(d), "count": int(c or 0)} for d, c in user_rows]
-
-    return {
-        "period_days": days,
-        "total_users": int(total_users),
-        "new_users": int(new_users),
-        "total_keys": int(total_keys),
-        "active_keys": int(active_keys),
-        "frozen_keys": int(frozen_keys),
-        "trial_users": int(trial_users),
-        "new_keys": int(new_keys),
-        "expiring_soon": int(expiring_soon),
-        "payments_count": int(payments_count),
-        "gifts_total": int(gifts_total),
-        "coupons_total": int(coupons_total),
-        "errors_open": int(errors_open),
-        "avg_check": float(avg_check),
-        "revenue_period": float(revenue),
-        "revenue_total": float(revenue_total),
-        "revenue_series": revenue_series,
-        "revenue_by_system": revenue_by_system,
-        "users_series": users_series,
-    }
-
-
 @router.get("/status")
 async def get_status(identity=Depends(verify_identity_admin)):
     """Текущий статус: maintenance и management config."""
@@ -460,59 +334,6 @@ async def get_broadcast_clusters(
     result = await session.execute(select(distinct(Server.cluster_name)).where(Server.cluster_name.is_not(None)))
     clusters = sorted([row[0] for row in result.all() if row and row[0]])
     return {"clusters": clusters}
-
-
-def _parse_date_range(
-    date: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> tuple[datetime, datetime]:
-    """Возвращает (date_from, date_to) в UTC. Либо date=YYYY-MM-DD (один день), либо date_from + date_to."""
-    tz = timezone.utc
-    if date:
-        try:
-            d = datetime.strptime(date, "%Y-%m-%d").date()
-            start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=tz)
-            end = start + timedelta(days=1)
-            return start, end
-        except ValueError:
-            raise HTTPException(status_code=400, detail="date должен быть YYYY-MM-DD")
-    if date_from and date_to:
-        try:
-            start = datetime.fromisoformat(date_from.replace("Z", "+00:00"))
-            end = datetime.fromisoformat(date_to.replace("Z", "+00:00"))
-            if start.tzinfo is None:
-                start = start.replace(tzinfo=tz)
-            if end.tzinfo is None:
-                end = end.replace(tzinfo=tz)
-            if start >= end:
-                raise HTTPException(status_code=400, detail="date_from должен быть раньше date_to")
-            return start, end
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"Неверный формат дат: {e}")
-    end = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
-    start = end - timedelta(days=1)
-    return start, end
-
-
-@router.get("/audit-stats", response_model=AuditStatsResponse)
-async def get_audit_stats_endpoint(
-    identity=Depends(verify_identity_admin),
-    session: AsyncSession = Depends(get_session),
-    date: str | None = Query(None, description="Один день: YYYY-MM-DD"),
-    date_from: str | None = Query(None, description="Начало периода (ISO)"),
-    date_to: str | None = Query(None, description="Конец периода (ISO)"),
-):
-    """Статистика аудита за период: какие пути отрабатывают хорошо/плохо, воронка старт→оплата.
-    Данные только из БД (события из Redis учитываются после drain)."""
-    start, end = _parse_date_range(date=date, date_from=date_from, date_to=date_to)
-    stats = await get_audit_stats(session, date_from=start, date_to=end)
-    funnel = await get_audit_funnel(session, date_from=start, date_to=end)
-    return AuditStatsResponse(
-        summary=stats["summary"],
-        by_path=stats["by_path"],
-        funnel=funnel,
-    )
 
 
 @router.get("/audit-events", response_model=AuditEventListResponse)
