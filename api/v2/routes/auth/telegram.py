@@ -245,6 +245,12 @@ async def link_telegram_oidc(
         )
     await bind_identity_actor(request, session, result)
     set_is_admin_cookie(response, result, request)
+    try:
+        from services.panel_identity_sync import push_identity_to_panel
+
+        await push_identity_to_panel(session, tg_id_int)
+    except Exception as e:
+        logger.debug("[Auth] panel identity sync failed: {}", e)
     logger.info(
         "[Auth] Telegram linked: identity={}, tg_id={}, ip={}, method=telegram_oidc_link",
         result.id,
@@ -276,4 +282,10 @@ async def link_telegram(
         )
     await bind_identity_actor(request, session, result)
     set_is_admin_cookie(response, result, request)
+    try:
+        from services.panel_identity_sync import push_identity_to_panel
+
+        await push_identity_to_panel(session, int(body.id))
+    except Exception as e:
+        logger.debug("[Auth] panel identity sync failed: {}", e)
     return IdentityResponse.model_validate(result)

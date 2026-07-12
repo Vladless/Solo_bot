@@ -454,11 +454,16 @@ async def handle_sync_server(
                         else:
                             hwid_limit = tariff.get("device_limit")
 
+                    from database.access.resolution import panel_identity_fields
+
+                    _ptg, _pemail = await panel_identity_fields(
+                        session, int(key.get("owner_tg_id") or 0) or key["user_id"]
+                    )
                     success = await remna.update_user(
                         uuid=key["client_id"],
                         expire_at=expire_iso,
-                        telegram_id=int(key.get("owner_tg_id") or 0),
-                        email=f"{key['email']}@fake.local",
+                        telegram_id=_ptg,
+                        email=_pemail or None,
                         active_user_inbounds=[key["inbound_id"]],
                         traffic_limit_bytes=traffic_limit_bytes,
                         hwid_device_limit=hwid_limit,
@@ -677,11 +682,16 @@ async def handle_sync_cluster(
                                 logger.warning(f"[Sync] update {key.get('email')}: server not found")
                                 return
 
+                            from database.access.resolution import panel_identity_fields
+
+                            _ptg, _pemail = await panel_identity_fields(
+                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
+                            )
                             success = await remna.update_user(
                                 uuid=key["client_id"],
                                 expire_at=expire_iso,
-                                telegram_id=int(key.get("owner_tg_id") or 0),
-                                email=f"{key['email']}@fake.local",
+                                telegram_id=_ptg,
+                                email=_pemail or None,
                                 active_user_inbounds=inbound_ids,
                                 traffic_limit_bytes=traffic_limit_bytes,
                                 hwid_device_limit=hwid_limit,
@@ -730,10 +740,16 @@ async def handle_sync_cluster(
                                 "trafficLimitStrategy": "NO_RESET",
                                 "trafficLimitBytes": traffic_limit_bytes,
                                 "hwidDeviceLimit": hwid_limit,
-                                "email": f"{key['email']}@fake.local",
                             }
-                            if key.get("owner_tg_id"):
-                                payload["telegramId"] = int(key["owner_tg_id"])
+                            from database.access.resolution import panel_identity_fields
+
+                            _ptg, _pemail = await panel_identity_fields(
+                                session, int(key.get("owner_tg_id") or 0) or key["user_id"]
+                            )
+                            if _ptg is not None:
+                                payload["telegramId"] = _ptg
+                            if _pemail:
+                                payload["email"] = _pemail
                             if inbound_ids:
                                 payload["activeInternalSquads"] = inbound_ids
 

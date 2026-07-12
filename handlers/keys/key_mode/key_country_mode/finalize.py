@@ -156,18 +156,19 @@ async def finalize_key_creation(
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",
                 "expireAt": expire_at,
-                "telegramId": tg_id,
                 "activeInternalSquads": [server_info.inbound_id],
                 "uuid": client_id,
             }
             try:
-                from database.identities import get_identity_by_tg_id
+                from database.access.resolution import panel_identity_fields
 
-                _identity = await get_identity_by_tg_id(session, tg_id)
-                if _identity and _identity.email:
-                    user_data["email"] = _identity.email
+                _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
+                if _panel_tg is not None:
+                    user_data["telegramId"] = _panel_tg
+                if _panel_email:
+                    user_data["email"] = _panel_email
             except Exception as e:
-                logger.debug(f"[Remnawave] email пользователя не резолвлен: {e}")
+                logger.debug(f"[Remnawave] поля владельца не резолвлены: {e}")
             if traffic_limit_bytes:
                 user_data["trafficLimitBytes"] = traffic_limit_bytes
             if device_limit:

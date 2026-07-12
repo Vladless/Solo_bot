@@ -36,6 +36,28 @@ async def resolve_user_optional(session: AsyncSession, legacy_id: int) -> User |
     return r2.scalar_one_or_none()
 
 
+async def panel_identity_fields(session: AsyncSession, legacy_ref: int) -> tuple[int | None, str | None]:
+    """Поля владельца ключа для внешней панели: (telegram_id, email).
+
+    Источник истины — identity. Три случая:
+    - только сайт: (None, email);
+    - только Telegram: (tg, None);
+    - связанные аккаунты: (tg, email).
+    """
+    user = await resolve_user_optional(session, legacy_ref)
+    if user is None:
+        return None, None
+    identity = None
+    if user.identity_id:
+        from database.identities import get_identity_by_id
+
+        identity = await get_identity_by_id(session, user.identity_id)
+    src_tg = identity.tg_id if identity is not None else user.tg_id
+    tg = int(src_tg) if src_tg is not None and int(src_tg) > 0 else None
+    email = identity.email if identity is not None else None
+    return tg, email
+
+
 async def notify_telegram_chat_id(session: AsyncSession, legacy_ref: int) -> int | None:
     payer = await resolve_user_optional(session, legacy_ref)
     tg = telegram_chat_id(payer)

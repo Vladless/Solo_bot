@@ -87,13 +87,15 @@ async def renew_on_remnawave(
 
     if session is not None:
         try:
-            from database.identities import get_identity_by_tg_id
+            from database.access.resolution import panel_identity_fields
 
-            identity = await get_identity_by_tg_id(session, tg_id)
-            if identity and identity.email:
-                update_kwargs["email"] = identity.email
+            _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
+            if _panel_tg is not None:
+                update_kwargs["telegram_id"] = _panel_tg
+            if _panel_email:
+                update_kwargs["email"] = _panel_email
         except Exception as e:
-            logger.debug(f"{PANEL_REMNA} email пользователя не резолвлен: {e}")
+            logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
     async def _renew(api):
         if old_device_limit is not None and hwid_device_limit < old_device_limit:

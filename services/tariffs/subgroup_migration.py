@@ -26,12 +26,23 @@ async def ensure_on_remnawave(
     reset_traffic: bool,
     attempt_update_first: bool,
     external_squad_uuid: str | None = None,
+    session=None,
 ) -> tuple[str | None, str | None]:
     from panels.remnawave import RemnawaveAPI
     from services.operations.utils import bytes_from_gb
 
     if not servers:
         return None, None
+
+    panel_tg = None
+    panel_email = None
+    if session is not None:
+        try:
+            from database.access.resolution import panel_identity_fields
+
+            panel_tg, panel_email = await panel_identity_fields(session, tg_id)
+        except Exception as e:
+            logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
     if total_gb is None:
         total_gb = 0
@@ -107,10 +118,13 @@ async def ensure_on_remnawave(
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",
                 "expireAt": expire_iso,
-                "telegramId": tg_id,
                 "activeInternalSquads": inbounds,
                 "uuid": client_id,
             }
+            if panel_tg is not None:
+                payload["telegramId"] = panel_tg
+            if panel_email:
+                payload["email"] = panel_email
             if traffic_bytes > 0:
                 payload["trafficLimitBytes"] = traffic_bytes
             payload["hwidDeviceLimit"] = hwid_device_limit
@@ -303,6 +317,7 @@ async def migrate_between_subgroups(
             reset_traffic=reset_traffic,
             attempt_update_first=was_on_remna_before,
             external_squad_uuid=external_squad_uuid,
+            session=session,
         )
         if remna_old_non:
             await delete_on_remnawave(remna_old_non, client_id)
@@ -326,6 +341,7 @@ async def migrate_between_subgroups(
         reset_traffic=reset_traffic,
         attempt_update_first=was_on_remna_before,
         external_squad_uuid=external_squad_uuid,
+        session=session,
     )
 
     if remna_old_non:

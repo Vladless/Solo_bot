@@ -121,4 +121,13 @@ async def link_email_confirm(
         )
     await bind_identity_actor(request, session, result)
     set_is_admin_cookie(response, result, request)
+    if getattr(result, "tg_id", None):
+        try:
+            from services.panel_identity_sync import push_identity_to_panel
+
+            await push_identity_to_panel(session, int(result.tg_id))
+        except Exception as e:
+            from logger import logger
+
+            logger.debug("[Auth] panel identity sync failed: {}", e)
     return IdentityResponse.model_validate(result)

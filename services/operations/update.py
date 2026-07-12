@@ -106,10 +106,20 @@ async def update_key_on_cluster(
                 "username": email,
                 "trafficLimitStrategy": "NO_RESET",
                 "expireAt": expire_iso,
-                "telegramId": tg_id,
                 "activeInternalSquads": inbound_ids,
                 "uuid": client_id,
             }
+
+            try:
+                from database.access.resolution import panel_identity_fields
+
+                _panel_tg, _panel_email = await panel_identity_fields(session, tg_id)
+                if _panel_tg is not None:
+                    user_data["telegramId"] = _panel_tg
+                if _panel_email:
+                    user_data["email"] = _panel_email
+            except Exception as e:
+                logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
             if external_squad_uuid:
                 user_data["activeExternalSquads"] = [external_squad_uuid]

@@ -138,10 +138,12 @@ async def user_key_change_location(
             "username": email,
             "trafficLimitStrategy": "NO_RESET",
             "expireAt": expire_at,
-            "telegramId": int(key_details.get("tg_id") or 0),
             "activeInternalSquads": [getattr(target_server_info, "inbound_id", None)],
             "uuid": key_client_id,
         }
+        _identity_tg = getattr(identity, "tg_id", None)
+        if _identity_tg and int(_identity_tg) > 0:
+            user_data["telegramId"] = int(_identity_tg)
         _real_email = getattr(identity, "email", None)
         if _real_email:
             user_data["email"] = _real_email

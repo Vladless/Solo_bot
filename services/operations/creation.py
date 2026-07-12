@@ -169,22 +169,21 @@ async def create_key_on_cluster(
                         "username": email,
                         "trafficLimitStrategy": "NO_RESET",
                         "expireAt": expire_at,
-                        "telegramId": tg_id,
                         "activeInternalSquads": inbound_ids,
                         "uuid": client_id,
                     }
 
-                    real_email = None
                     if session is not None:
                         try:
-                            from database.identities import get_identity_by_tg_id
+                            from database.access.resolution import panel_identity_fields
 
-                            identity = await get_identity_by_tg_id(session, tg_id)
-                            real_email = identity.email if identity else None
+                            panel_tg, panel_email = await panel_identity_fields(session, tg_id)
+                            if panel_tg is not None:
+                                user_data["telegramId"] = panel_tg
+                            if panel_email:
+                                user_data["email"] = panel_email
                         except Exception as e:
-                            logger.debug(f"{PANEL_REMNA} email пользователя не резолвлен: {e}")
-                    if real_email:
-                        user_data["email"] = real_email
+                            logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
                     if traffic_limit_bytes_value and traffic_limit_bytes_value > 0:
                         user_data["trafficLimitBytes"] = traffic_limit_bytes_value
