@@ -85,6 +85,16 @@ async def renew_on_remnawave(
         "external_squad_uuid": external_squad_uuid,
     }
 
+    if session is not None:
+        try:
+            from database.identities import get_identity_by_tg_id
+
+            identity = await get_identity_by_tg_id(session, tg_id)
+            if identity and identity.email:
+                update_kwargs["email"] = identity.email
+        except Exception as e:
+            logger.debug(f"{PANEL_REMNA} email пользователя не резолвлен: {e}")
+
     async def _renew(api):
         if old_device_limit is not None and hwid_device_limit < old_device_limit:
             try:

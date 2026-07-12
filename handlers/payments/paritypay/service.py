@@ -14,10 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
+    PARITYPAY_API_SECRET_KEY,
     PARITYPAY_API_URL,
     PARITYPAY_CALLBACK_URL,
     PARITYPAY_FAIL_URL,
-    PARITYPAY_SECRET_KEY,
     PARITYPAY_SHOP_ID,
     PARITYPAY_SUCCESS_URL,
     PROVIDERS_ENABLED,
@@ -84,7 +84,7 @@ def _build_signature_string(payload: dict) -> str:
 def _sign_request(payload: dict) -> str:
     sign_string = _build_signature_string(payload)
     return hmac.new(
-        PARITYPAY_SECRET_KEY.encode("utf-8"),
+        PARITYPAY_API_SECRET_KEY.encode("utf-8"),
         sign_string.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()

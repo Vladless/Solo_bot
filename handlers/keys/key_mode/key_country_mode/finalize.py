@@ -160,6 +160,14 @@ async def finalize_key_creation(
                 "activeInternalSquads": [server_info.inbound_id],
                 "uuid": client_id,
             }
+            try:
+                from database.identities import get_identity_by_tg_id
+
+                _identity = await get_identity_by_tg_id(session, tg_id)
+                if _identity and _identity.email:
+                    user_data["email"] = _identity.email
+            except Exception as e:
+                logger.debug(f"[Remnawave] email пользователя не резолвлен: {e}")
             if traffic_limit_bytes:
                 user_data["trafficLimitBytes"] = traffic_limit_bytes
             if device_limit:

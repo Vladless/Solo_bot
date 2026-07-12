@@ -24,6 +24,10 @@ _PROVIDER = "heleket"
 def verify_heleket_signature(data: dict) -> bool:
     """Проверяет MD5-подпись webhook от Heleket."""
     try:
+        if not HELEKET_API_KEY:
+            logger.error("Heleket webhook: HELEKET_API_KEY не настроен, webhook отклонён")
+            return False
+
         received_signature = data.get("sign")
         if not received_signature:
             logger.error("Heleket webhook: отсутствует подпись")

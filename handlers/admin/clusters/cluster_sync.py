@@ -477,7 +477,7 @@ async def handle_sync_server(
                                         cluster_id=cluster_name,
                                         email=key["email"],
                                         client_id=key["client_id"],
-                                        tg_id=key["user_id"],
+                                        tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
                                         remna_link_override=None,
                                         plan=tariff,
                                     )
@@ -498,7 +498,7 @@ async def handle_sync_server(
 
                         await create_key_on_cluster(
                             cluster_id=server_name,
-                            tg_id=key["user_id"],
+                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
                             client_id=key["client_id"],
                             email=key["email"],
                             expiry_timestamp=key["expiry_time"],
@@ -816,7 +816,7 @@ async def handle_sync_cluster(
                             cluster_id=cluster_name,
                             email=key["email"],
                             client_id=key["client_id"],
-                            tg_id=key["user_id"],
+                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
                             remna_link_override=None,
                             plan=item["tariff"],
                         )
@@ -900,7 +900,7 @@ async def handle_sync_cluster(
                     cluster_id_for_recreate = key["server_id"] if use_country_selection else cluster_name
                     await create_key_on_cluster(
                         cluster_id_for_recreate,
-                        key["user_id"],
+                        int(key.get("owner_tg_id") or 0) or key["user_id"],
                         key["client_id"],
                         key["email"],
                         key["expiry_time"],

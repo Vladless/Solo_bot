@@ -18,6 +18,10 @@ _PROVIDER = "kassai"
 def verify_kassai_signature(data: dict, signature: str) -> bool:
     """Проверяет MD5-подпись webhook от KassaAI."""
     try:
+        if not KASSAI_SECRET_KEY or not KASSAI_SHOP_ID:
+            logger.error("KassaAI webhook: KASSAI_SECRET_KEY/KASSAI_SHOP_ID не настроены, webhook отклонён")
+            return False
+
         sign_string = (
             f"{KASSAI_SHOP_ID}:{data.get('AMOUNT', '')}:{KASSAI_SECRET_KEY}:{data.get('MERCHANT_ORDER_ID', '')}"
         )

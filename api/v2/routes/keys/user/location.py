@@ -142,6 +142,9 @@ async def user_key_change_location(
             "activeInternalSquads": [getattr(target_server_info, "inbound_id", None)],
             "uuid": key_client_id,
         }
+        _real_email = getattr(identity, "email", None)
+        if _real_email:
+            user_data["email"] = _real_email
         if traffic_limit_bytes > 0:
             user_data["trafficLimitBytes"] = traffic_limit_bytes
         if device_limit > 0:

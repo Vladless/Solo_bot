@@ -4,7 +4,7 @@ import json
 
 from aiohttp import web
 
-from config import PARITYPAY_SECRET_KEY
+from config import PARITYPAY_CALLBACK_SECRET_KEY
 from core.webhook_abuse import (
     get_webhook_client_ip,
     is_webhook_ip_blocked,
@@ -36,9 +36,13 @@ def _build_signature_string(payload: dict) -> str:
 
 def verify_paritypay_signature(payload: dict, signature: str) -> bool:
     try:
+        if not PARITYPAY_CALLBACK_SECRET_KEY:
+            logger.error("[ParityPay] PARITYPAY_CALLBACK_SECRET_KEY не настроен, webhook отклонён")
+            return False
+
         sign_string = _build_signature_string(payload)
         expected = hmac.new(
-            PARITYPAY_SECRET_KEY.encode("utf-8"),
+            PARITYPAY_CALLBACK_SECRET_KEY.encode("utf-8"),
             sign_string.encode("utf-8"),
             hashlib.sha256,
         ).hexdigest()

@@ -174,6 +174,18 @@ async def create_key_on_cluster(
                         "uuid": client_id,
                     }
 
+                    real_email = None
+                    if session is not None:
+                        try:
+                            from database.identities import get_identity_by_tg_id
+
+                            identity = await get_identity_by_tg_id(session, tg_id)
+                            real_email = identity.email if identity else None
+                        except Exception as e:
+                            logger.debug(f"{PANEL_REMNA} email пользователя не резолвлен: {e}")
+                    if real_email:
+                        user_data["email"] = real_email
+
                     if traffic_limit_bytes_value and traffic_limit_bytes_value > 0:
                         user_data["trafficLimitBytes"] = traffic_limit_bytes_value
 
