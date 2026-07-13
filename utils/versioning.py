@@ -92,7 +92,7 @@ def get_git_commit_number() -> str:
 
 
 def get_version(include_git_info: bool = True) -> str:
-    base = "v.6-b1307260219"
+    base = "v.6-b1307262216"
     if not include_git_info:
         return base
     return f"{base} {get_git_commit_number()}"

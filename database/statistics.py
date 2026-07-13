@@ -146,6 +146,22 @@ async def sum_payments_between(session: AsyncSession, start: date, end: date) ->
     return round(float(result), 2)
 
 
+async def count_payments_between(session: AsyncSession, start: date, end: date) -> int:
+    result = await session.scalar(
+        select(func.count())
+        .select_from(Payment)
+        .where(
+            and_(
+                Payment.created_at >= start,
+                Payment.created_at < end,
+                Payment.status == "success",
+                Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
+            )
+        )
+    )
+    return int(result or 0)
+
+
 async def sum_total_payments(session: AsyncSession) -> float:
     result = await session.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(

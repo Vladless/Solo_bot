@@ -645,13 +645,17 @@ def _moscow_day_window(report_date: date, moscow_tz) -> tuple[datetime, datetime
     return start, end
 
 
-def _format_trend(current: float, previous: float, suffix: str = "") -> str:
+def _fmt_num(value: float) -> str:
+    return f"{round(float(value)):,}".replace(",", " ")
+
+
+def _format_trend(current: float, previous: float, suffix: str = "", label: str = " к пред. дню") -> str:
     diff = round(current - previous, 2)
     if diff == 0:
-        return " <i>→ без изменений</i>"
+        return " <i>→ без изм.</i>"
     arrow = "📈" if diff > 0 else "📉"
     sign = "+" if diff > 0 else "−"
-    return f" <i>{arrow} {sign}{abs(diff):g}{suffix} к пред. дню</i>"
+    return f" <i>{arrow} {sign}{_fmt_num(abs(diff))}{suffix}{label}</i>"
 
 
 async def _day_users_revenue(session, moscow_tz, day: date) -> tuple[int, float]:
@@ -710,8 +714,27 @@ async def send_daily_stats_report(session: AsyncSession):
         report_date = now_moscow.date() - timedelta(days=1)
         prev_date = report_date - timedelta(days=1)
 
+        from database.statistics import count_payments_between
+        from database.subscription_events import get_subscription_dynamics
+
         new_users, revenue = await _day_users_revenue(session, moscow_tz, report_date)
         new_users_prev, revenue_prev = await _day_users_revenue(session, moscow_tz, prev_date)
+
+        day_start, day_end = _moscow_day_window(report_date, moscow_tz)
+        pay_count = await count_payments_between(session, day_start.replace(tzinfo=None), day_end.replace(tzinfo=None))
+        avg_check = revenue / pay_count if pay_count else 0
+
+        dyn = await get_subscription_dynamics(session, 15)
+        day_key = report_date.strftime("%Y-%m-%d")
+        day_ev = next((e for e in dyn.get("dailyEvents", []) if e.get("date") == day_key), {})
+        created = int(day_ev.get("created", 0))
+        renewed = int(day_ev.get("renewed", 0))
+        expired = int(day_ev.get("expired", 0))
+        net = created - expired
+        net_str = f"{'+' if net >= 0 else '−'}{abs(net)}"
+
+        active_total = await count_active_keys(session)
+        total_users = await count_total_users(session)
 
         labels, users_series, revenue_series = await _collect_daily_series(session, moscow_tz, report_date, 14)
         chart = render_stats_chart(
@@ -726,16 +749,40 @@ async def send_daily_stats_report(session: AsyncSession):
             ],
         )
 
+        n = len(revenue_series) or 1
+        avg_users = round(sum(users_series) / n, 1)
+        avg_revenue = sum(revenue_series) / n
+        best_idx = max(range(len(revenue_series)), key=lambda i: revenue_series[i]) if revenue_series else 0
+        best_label = labels[best_idx] if labels else "—"
+        best_revenue = revenue_series[best_idx] if revenue_series else 0
+        week_users = int(sum(users_series[-7:]))
+        week_revenue = sum(revenue_series[-7:])
+
         text = (
             f"🌙 <b>Ежедневная сводка</b>\n"
             f"📅 <i>{report_date.strftime('%d.%m.%Y')} · 00:00–23:59 МСК</i>\n\n"
-            f"👤 Новых пользователей: <b>{new_users}</b>{_format_trend(new_users, new_users_prev)}\n"
-            f"💰 Доход за день: <b>{revenue} ₽</b>{_format_trend(revenue, revenue_prev, ' ₽')}\n\n"
-            f"📊 <i>График — динамика за 14 дней</i>\n"
+            f"💰 <b>За день</b>\n"
+            f"<blockquote>"
+            f"Доход: <b>{_fmt_num(revenue)} ₽</b>{_format_trend(revenue, revenue_prev, ' ₽', '')}\n"
+            f"Платежей: <b>{pay_count}</b> · ср. чек <b>{_fmt_num(avg_check)} ₽</b>\n"
+            f"Новых польз.: <b>{new_users}</b>{_format_trend(new_users, new_users_prev, '', '')}"
+            f"</blockquote>\n"
+            f"📦 <b>Подписки</b>\n"
+            f"<blockquote>"
+            f"Новые: <b>{created}</b> · продления: <b>{renewed}</b>\n"
+            f"Отток: <b>{expired}</b> · прирост: <b>{net_str}</b>\n"
+            f"Активных сейчас: <b>{_fmt_num(active_total)}</b> · база: <b>{_fmt_num(total_users)}</b>"
+            f"</blockquote>\n"
+            f"📊 <b>Динамика за 14 дней</b>\n"
+            f"<blockquote>"
+            f"Среднее/день: <b>{avg_users}</b> польз. · <b>{_fmt_num(avg_revenue)} ₽</b>\n"
+            f"Лучший день: <b>{best_label}</b> — <b>{_fmt_num(best_revenue)} ₽</b>\n"
+            f"Последние 7 дней: <b>{_fmt_num(week_users)}</b> польз. · <b>{_fmt_num(week_revenue)} ₽</b>"
+            f"</blockquote>\n"
             f"🔮 <b>Прогноз по темпу дня</b>\n"
             f"<blockquote>"
-            f"├ 📆 За неделю: <b>~{round(new_users * 7)}</b> польз. · <b>~{round(revenue * 7)} ₽</b>\n"
-            f"└ 🗓️ За месяц: <b>~{round(new_users * 30)}</b> польз. · <b>~{round(revenue * 30)} ₽</b>\n"
+            f"Неделя: <b>~{_fmt_num(new_users * 7)}</b> польз. · <b>~{_fmt_num(revenue * 7)} ₽</b>\n"
+            f"Месяц: <b>~{_fmt_num(new_users * 30)}</b> польз. · <b>~{_fmt_num(revenue * 30)} ₽</b>"
             f"</blockquote>\n"
             f"⏱️ <i>Сформировано: {update_time} МСК</i>"
         )
@@ -820,16 +867,20 @@ async def send_monthly_stats_report(session: AsyncSession):
         avg_revenue = round(revenue_total / days_in_month, 1) if days_in_month else 0
 
         month_title = f"{_MONTH_NAMES_RU.get(last_day.month, '')} {last_day.year}"
+        prev_label = " к пред. месяцу"
         text = (
             f"📊 <b>Ежемесячный отчёт</b>\n"
             f"🗓️ <i>{month_title}</i>\n\n"
-            f"👤 Новых пользователей: <b>{users_total}</b>{_format_trend(users_total, users_prev)}\n"
-            f"💰 Доход за месяц: <b>{revenue_total} ₽</b>{_format_trend(revenue_total, revenue_prev, ' ₽')}\n\n"
-            f"📈 <b>Итоги месяца</b>\n"
+            f"👥 <b>Итоги месяца</b>\n"
             f"<blockquote>"
-            f"├ 📅 В среднем за день: <b>~{avg_users}</b> польз. · <b>~{avg_revenue} ₽</b>\n"
-            f"├ 🏆 Лучший день: <b>{best_day_label}</b> · <b>{best_day_value} ₽</b>\n"
-            f"└ 🔢 Дней в месяце: <b>{days_in_month}</b>\n"
+            f"Новых польз.: <b>{_fmt_num(users_total)}</b>{_format_trend(users_total, users_prev, '', prev_label)}\n"
+            f"Доход: <b>{_fmt_num(revenue_total)} ₽</b>{_format_trend(revenue_total, revenue_prev, ' ₽', prev_label)}"
+            f"</blockquote>\n"
+            f"📈 <b>Среднее и рекорды</b>\n"
+            f"<blockquote>"
+            f"Среднее/день: <b>{avg_users}</b> польз. · <b>{_fmt_num(avg_revenue)} ₽</b>\n"
+            f"Лучший день: <b>{best_day_label}</b> — <b>{_fmt_num(best_day_value)} ₽</b>\n"
+            f"Дней в месяце: <b>{days_in_month}</b>"
             f"</blockquote>\n"
             f"⏱️ <i>Сформировано: {update_time} МСК</i>"
         )
