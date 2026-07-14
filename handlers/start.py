@@ -412,7 +412,12 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     if BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE):
         kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
-    kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    if MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED"):
+        from handlers.support_triage import TriageCallback
+
+        kb.row(InlineKeyboardButton(text=SUPPORT, callback_data=TriageCallback(action="root").pack()))
+    elif SUPPORT_CHAT_URL:
+        kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
 

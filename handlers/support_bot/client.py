@@ -26,6 +26,7 @@ _CATEGORIES = {i["id"]: i["label"] for i in TRIAGE_ITEMS}
 
 class IntakeSG(StatesGroup):
     describing = State()
+    categorizing = State()
 
 
 def _category_label(cat: str | None) -> str | None:
@@ -57,6 +58,19 @@ def _menu_kb(has_tickets: bool) -> InlineKeyboardBuilder:
     return kb
 
 
+def _cat_kb(has_tickets: bool = False) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for i in TRIAGE_ITEMS:
+        kb.row(InlineKeyboardButton(text=i["label"], callback_data=f"sc:cat:{i['id']}"))
+    kb.row(InlineKeyboardButton(text="✏️ Другое / не из списка", callback_data="sc:cat:_other"))
+    if has_tickets:
+        kb.row(InlineKeyboardButton(text="📋 Мои обращения", callback_data="sc:list"))
+    return kb
+
+
+_CATEGORY_PROMPT = "Выберите, что случилось — так мы поможем быстрее:"
+
+
 @router.message(CommandStart(deep_link=True))
 async def start_deeplink(message: Message, command: CommandObject, state: FSMContext) -> None:
     payload = (command.args or "").strip()
@@ -81,24 +95,44 @@ async def start_plain(message: Message, state: FSMContext) -> None:
         identity = await get_or_create_identity_for_tg(session, message.from_user.id)
         tickets = await svc.list_for_identity(session, identity.id)
         await session.commit()
+    await state.set_state(IntakeSG.categorizing)
+    await state.update_data(pending_body=None, pending_attachments=None)
     await message.answer(
         "<b>Служба поддержки</b>\n"
         "━━━━━━━━━━━━━━━\n\n"
-        "Задайте вопрос — оператор ответит вам в этом чате.\n\n"
-        "Выберите действие ниже 👇",
-        reply_markup=_menu_kb(bool(tickets)).as_markup(),
+        f"{_CATEGORY_PROMPT}",
+        reply_markup=_cat_kb(bool(tickets)).as_markup(),
     )
 
 
 @router.callback_query(F.data == "sc:new")
 async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(IntakeSG.categorizing)
+    await state.update_data(pending_body=None, pending_attachments=None)
+    await callback.message.answer(_CATEGORY_PROMPT, reply_markup=_cat_kb().as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("sc:cat:"))
+async def cb_cat(callback: CallbackQuery, state: FSMContext) -> None:
+    raw = callback.data.split(":", 2)[2]
+    category = raw if raw in _CATEGORIES else None
+    data = await state.get_data()
+    pending_body = data.get("pending_body")
+    pending_att = data.get("pending_attachments")
+    await callback.answer()
+    if pending_body or pending_att:
+        await state.clear()
+        await _create_from_intake(callback.message, callback.from_user.id, category, pending_body or "", pending_att)
+        return
     await state.set_state(IntakeSG.describing)
-    await state.update_data(category=None)
+    await state.update_data(category=category)
+    label = _category_label(category)
+    topic = f"📌 Тема: <b>{label}</b>\n\n" if label else ""
     await callback.message.answer(
-        "✉️ Опишите проблему <b>одним сообщением</b> — оператор ответит здесь.\n\n"
+        f"{topic}Опишите проблему <b>одним сообщением</b> — оператор ответит здесь.\n\n"
         "💡 Можно приложить скриншот или файл."
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("sc:rate:"))
@@ -209,6 +243,36 @@ async def _append_client_message(message: Message, ticket_id: str) -> None:
             pass
 
 
+async def _create_from_intake(target: Message, user_id: int, category, body: str, attachments) -> None:
+    async with async_session_maker() as session:
+        identity = await get_or_create_identity_for_tg(session, user_id)
+        try:
+            ticket = await svc.create_ticket(
+                session,
+                identity_id=identity.id,
+                body=(body or "")[:4000],
+                category=category,
+                subject=_category_label(category),
+                source="bot",
+                attachments=attachments,
+            )
+        except svc.TicketRateLimited as e:
+            await session.rollback()
+            if e.reason == "too_many_open":
+                await target.answer("У вас уже есть открытые обращения — дождитесь ответа по ним.")
+            else:
+                await target.answer("Вы только что создали обращение — подождите немного перед новым.")
+            return
+        await session.commit()
+        ticket_id = ticket.id
+        await svc.notify_agents_new_ticket(session, ticket=ticket)
+        await session.commit()
+    await target.answer(
+        f"✅ Обращение принято (<code>{ticket_id.split('-')[0][:8]}</code>).\n"
+        "Оператор ответит здесь. Можете дополнять сообщение — всё придёт в поддержку."
+    )
+
+
 @router.message(IntakeSG.describing, F.text | F.caption | F.photo | F.document)
 async def on_intake(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
@@ -218,33 +282,7 @@ async def on_intake(message: Message, state: FSMContext) -> None:
     if not body and not attachments:
         await message.answer("Пустое сообщение. Опишите проблему текстом или пришлите скриншот.")
         return
-    async with async_session_maker() as session:
-        identity = await get_or_create_identity_for_tg(session, message.from_user.id)
-        try:
-            ticket = await svc.create_ticket(
-                session,
-                identity_id=identity.id,
-                body=body[:4000],
-                category=category,
-                subject=_category_label(category),
-                source="bot",
-                attachments=attachments,
-            )
-        except svc.TicketRateLimited as e:
-            await session.rollback()
-            if e.reason == "too_many_open":
-                await message.answer("У вас уже есть открытые обращения — дождитесь ответа по ним.")
-            else:
-                await message.answer("Вы только что создали обращение — подождите немного перед новым.")
-            return
-        await session.commit()
-        ticket_id = ticket.id
-        await svc.notify_agents_new_ticket(session, ticket=ticket)
-        await session.commit()
-    await message.answer(
-        f"✅ Обращение принято (<code>{ticket_id.split('-')[0][:8]}</code>).\n"
-        "Оператор ответит здесь. Можете дополнять сообщение — всё придёт в поддержку."
-    )
+    await _create_from_intake(message, message.from_user.id, category, body, attachments)
 
 
 @router.message(F.text | F.caption | F.photo | F.document)
@@ -260,6 +298,13 @@ async def on_free_text(message: Message, state: FSMContext) -> None:
         await _append_client_message(message, active_id)
         await message.answer("✅ Передал в поддержку.")
         return
-    await state.set_state(IntakeSG.describing)
-    await state.update_data(category=None)
-    await on_intake(message, state)
+    body, attachments = await collect_attachment(message)
+    if not body and not attachments:
+        await message.answer("Опишите проблему текстом или пришлите скриншот.")
+        return
+    await state.set_state(IntakeSG.categorizing)
+    await state.update_data(pending_body=body, pending_attachments=attachments)
+    await message.answer(
+        f"Спасибо, приняли ваше сообщение. {_CATEGORY_PROMPT}",
+        reply_markup=_cat_kb().as_markup(),
+    )
