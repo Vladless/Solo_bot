@@ -136,7 +136,7 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
 
 @router.inline_query(F.query.in_(["referral", "ref", "invite"]))
 async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSession):
-    referral_link = f"https://t.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
+    referral_link = f"https://telegram.me/{USERNAME_BOT}?start=referral_{inline_query.from_user.id}"
 
     trial_tariffs = await get_tariffs(session, group_code="trial")
     if not trial_tariffs:

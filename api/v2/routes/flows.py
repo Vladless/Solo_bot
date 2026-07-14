@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import get_session, verify_identity_admin
+from api.depends import get_session, verify_identity_designer
 from api.v2.schemas.flows import FlowCreate, FlowResponse, FlowUpdate
 from database.models import WebFlow
 from database.site_revision import bump_site_revision
@@ -37,7 +37,7 @@ async def get_flow_public(flow_id: str, session: AsyncSession = Depends(get_sess
 @router.get("/admin/flows", response_model=list[FlowResponse], response_model_by_alias=True)
 async def list_flows(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     result = await session.execute(select(WebFlow))
     return [_flow_to_response(f) for f in result.scalars().all()]
@@ -47,7 +47,7 @@ async def list_flows(
 async def get_flow_admin(
     flow_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     flow = await session.get(WebFlow, flow_id)
     if not flow:
@@ -59,7 +59,7 @@ async def get_flow_admin(
 async def create_flow(
     body: FlowCreate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     existing = await session.get(WebFlow, body.id)
     if existing:
@@ -85,7 +85,7 @@ async def update_flow(
     flow_id: str,
     body: FlowUpdate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     flow = await session.get(WebFlow, flow_id)
     if not flow:
@@ -108,7 +108,7 @@ async def update_flow(
 async def delete_flow(
     flow_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     flow = await session.get(WebFlow, flow_id)
     if not flow:

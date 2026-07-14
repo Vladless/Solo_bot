@@ -33,7 +33,7 @@ async def _notify_assignee(message: Message, ticket, target: int) -> None:
     fid = forum_chat_id()
     link = ""
     if fid and ticket.topic_id:
-        link = f"\nhttps://t.me/c/{str(fid).replace('-100', '', 1)}/{ticket.topic_id}"
+        link = f"\nhttps://telegram.me/c/{str(fid).replace('-100', '', 1)}/{ticket.topic_id}"
     try:
         await message.bot.send_message(
             target, f"🎫 Вам назначено обращение <code>{ticket.id.split('-')[0][:8]}</code>.{link}"

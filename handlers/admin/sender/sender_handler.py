@@ -82,8 +82,8 @@ def _compose_message_text() -> str:
         "<code>BUTTONS:</code>\n"
         '<code>{"text": "👤 Личный кабинет", "callback": "profile"}</code>\n'
         '<code>{"text": "➕ Купить подписку", "callback": "buy"}</code>\n'
-        '<code>{"text": "🎁 Забрать купон", "url": "https://t.me/cupons"}</code>\n'
-        '<code>{"text": "📢 Канал", "url": "https://t.me/channel"}</code>'
+        '<code>{"text": "🎁 Забрать купон", "url": "https://telegram.me/cupons"}</code>\n'
+        '<code>{"text": "📢 Канал", "url": "https://telegram.me/channel"}</code>'
     )
 
 

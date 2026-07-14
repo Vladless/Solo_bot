@@ -192,7 +192,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
             await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
             return
 
-        coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+        coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
         audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
 
         text = (
@@ -259,7 +259,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
             await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
             return
 
-        coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+        coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
 
         text = (
             f"✅ Купон <b>{coupon_code}</b> создан!\n"
@@ -456,7 +456,7 @@ async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
         )
         return
 
-    coupon_link = f"https://t.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
+    coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
     title = f"Купон {coupon['code']}"
 
     days_value = coupon.get("days")

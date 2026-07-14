@@ -27,7 +27,7 @@ def format_duration_days(days: int) -> str:
 
 
 def get_telegram_gift_link(gift_id: str) -> str:
-    return f"https://t.me/{USERNAME_BOT}?start=gift_{gift_id}"
+    return f"https://telegram.me/{USERNAME_BOT}?start=gift_{gift_id}"
 
 
 def get_gift_link(user_id: int, gift_id: str) -> str:

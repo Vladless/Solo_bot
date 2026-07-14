@@ -24,6 +24,7 @@ from .keyboard import (
     build_admin_back_kb_to_admins,
     build_admin_permissions_kb,
     build_admins_kb,
+    build_new_admin_role_kb,
     build_role_selection_kb,
     build_single_admin_menu,
     build_token_result_kb,
@@ -57,15 +58,40 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
         await message.answer("❌ Неверный формат. Введите числовой <code>tg_id</code>.")
         return
 
+    await state.clear()
+
     result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     if result.scalar_one_or_none():
-        await message.answer("⚠️ Такой админ уже существует.")
-    else:
-        session.add(Admin(tg_id=tg_id, role="moderator", description="Добавлен вручную", permissions=[]))
-        invalidate_admin_cache(tg_id)
-        await message.answer(f"✅ Админ <code>{tg_id}</code> добавлен.", reply_markup=build_admin_back_kb_to_admins())
+        await message.answer("⚠️ Такой админ уже существует.", reply_markup=build_admin_back_kb_to_admins())
+        return
 
-    await state.clear()
+    await message.answer(
+        f"Выберите роль для <code>{tg_id}</code>:", reply_markup=build_new_admin_role_kb(tg_id)
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action.startswith("add_role|")), HasPermission(PERM_ADMINS))
+async def create_admin_with_role(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
+    try:
+        _, tg_id_str, role = callback_data.action.split("|")
+        tg_id = int(tg_id_str)
+        if role not in ("moderator", "designer"):
+            raise ValueError
+    except Exception:
+        await callback.message.edit_text("❌ Неверный формат.", reply_markup=build_admin_back_kb_to_admins())
+        return
+
+    existing = (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none()
+    if existing:
+        await callback.message.edit_text("⚠️ Такой админ уже существует.", reply_markup=build_admin_back_kb_to_admins())
+        return
+
+    session.add(Admin(tg_id=tg_id, role=role, description="Добавлен вручную", permissions=[]))
+    invalidate_admin_cache(tg_id)
+    await callback.message.edit_text(
+        f"✅ Админ <code>{tg_id}</code> добавлен с ролью <b>{role}</b>.",
+        reply_markup=build_admin_back_kb_to_admins(),
+    )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action.startswith("admin_menu|")), HasPermission(PERM_ADMINS))
@@ -122,7 +148,7 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
     try:
         _, tg_id_str, role = callback_data.action.split("|")
         tg_id = int(tg_id_str)
-        if role not in ("superadmin", "moderator"):
+        if role not in ("superadmin", "moderator", "designer"):
             raise ValueError
     except Exception:
         await callback.message.edit_text("❌ Неверный формат.")

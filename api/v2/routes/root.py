@@ -57,14 +57,14 @@ def _telegram_web_app_return_base() -> str | None:
     if direct:
         if direct.lower().startswith("http://"):
             direct = "https://" + direct[7:]
-        if direct.lower().startswith("https://t.me/"):
+        if direct.lower().startswith(("https://t.me/", "https://telegram.me/")):
             return direct
     bot = USERNAME_BOT.replace("@", "").strip()
     sn = str(TELEGRAM_WEBAPP_SHORT_NAME or "").strip()
     if bot and sn:
-        return f"https://t.me/{bot}/{sn}"
+        return f"https://telegram.me/{bot}/{sn}"
     if bot:
-        return f"https://t.me/{bot}"
+        return f"https://telegram.me/{bot}"
     return None
 
 

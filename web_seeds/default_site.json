@@ -6,11 +6,11 @@
       "links": [
         {
           "label": "Бот",
-          "href": "https://t.me/"
+          "href": "https://telegram.me/"
         },
         {
           "label": "Поддержка",
-          "href": "https://t.me/"
+          "href": "https://telegram.me/"
         }
       ],
       "hidden": false,

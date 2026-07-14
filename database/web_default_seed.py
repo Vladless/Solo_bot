@@ -67,7 +67,7 @@ def _apply_runtime_links(theme_tokens: dict) -> dict:
     footer = theme_tokens.get("footer")
     if not isinstance(footer, dict):
         return theme_tokens
-    bot_url = f"https://t.me/{USERNAME_BOT}" if USERNAME_BOT else ""
+    bot_url = f"https://telegram.me/{USERNAME_BOT}" if USERNAME_BOT else ""
     support_url = SUPPORT_CHAT_URL or bot_url
     links = footer.get("links")
     if isinstance(links, list):
@@ -87,7 +87,7 @@ def _apply_support_links_to_pages(pages: dict) -> None:
         from config import SUPPORT_CHAT_URL, USERNAME_BOT
     except Exception:
         return
-    bot_url = f"https://t.me/{USERNAME_BOT}" if USERNAME_BOT else ""
+    bot_url = f"https://telegram.me/{USERNAME_BOT}" if USERNAME_BOT else ""
     support_url = SUPPORT_CHAT_URL or bot_url
     if not support_url:
         return
@@ -98,7 +98,7 @@ def _apply_support_links_to_pages(pages: dict) -> None:
                 obj["telegramUsername"] = None
                 obj["linkType"] = "url"
                 obj["href"] = support_url
-            if obj.get("href") == "https://t.me/solonet_sup":
+            if obj.get("href") == "https://telegram.me/solonet_sup":
                 obj["href"] = support_url
             for value in obj.values():
                 walk(value)

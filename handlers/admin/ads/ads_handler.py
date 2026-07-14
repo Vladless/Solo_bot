@@ -188,7 +188,7 @@ def format_ads_stats(stats: dict, username_bot: str) -> str:
     return (
         f"<b>📊 <u>Статистика по рекламной ссылке</u></b>\n\n"
         f"📌 <b>Название:</b> {stats['name']}\n"
-        f"🔗 <b>Ссылка:</b> <code>https://t.me/{username_bot}?start={stats['code']}</code>\n"
+        f"🔗 <b>Ссылка:</b> <code>https://telegram.me/{username_bot}?start={stats['code']}</code>\n"
         f"🕓 <b>Создана:</b> {stats['created_at'].strftime('%d.%m.%Y %H:%M')}\n\n"
         f"💡 <b>Активность:</b>\n"
         f"└ 🆕 <b>Регистраций:</b> <b>{stats.get('registrations', 0)}</b>\n"

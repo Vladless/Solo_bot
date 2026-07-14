@@ -198,7 +198,9 @@ async def resolve_identity_role(session: AsyncSession, identity: Identity) -> st
             row = None
         if row is not None:
             role = (getattr(row, "role", None) or "admin").strip().lower()
-            return "moderator" if role == "moderator" else "admin"
+            if role in ("moderator", "designer"):
+                return role
+            return "admin"
     if getattr(identity, "is_admin", False):
         return "admin"
     return "user"
@@ -216,7 +218,26 @@ async def verify_identity_admin(
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not identity.is_admin:
         raise HTTPException(status_code=403, detail="Forbidden")
-    if await resolve_identity_role(session, identity) == "moderator":
+    if await resolve_identity_role(session, identity) in ("moderator", "designer"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await bind_identity_actor(request, session, identity)
+    await mark_site_initialized(session)
+    return identity
+
+
+async def verify_identity_designer(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Пускает админа и дизайнера (для визуального редактора сайта)."""
+    from database.site_state import mark_site_initialized
+
+    identity = await _identity_from_cookie(session, request)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not identity.is_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if await resolve_identity_role(session, identity) not in ("admin", "designer"):
         raise HTTPException(status_code=403, detail="Forbidden")
     await bind_identity_actor(request, session, identity)
     await mark_site_initialized(session)

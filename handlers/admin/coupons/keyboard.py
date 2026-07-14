@@ -89,7 +89,7 @@ def format_coupons_list(coupons: list, username_bot: str) -> str:
             f"{value_line}\n"
             f"🔢 <b>Лимит:</b> {coupon['usage_limit']} | "
             f"✅ <b>Использовано:</b> {coupon['usage_count']}\n"
-            f"<code>https://t.me/{username_bot}?start=coupons_{coupon['code']}</code>"
+            f"<code>https://telegram.me/{username_bot}?start=coupons_{coupon['code']}</code>"
             f"</blockquote>\n\n"
         )
 

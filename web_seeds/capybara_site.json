@@ -4,11 +4,11 @@
       "text": "© 2026 Capybara VPN. Все права защищены.",
       "links": [
         {
-          "href": "https://t.me/capybaravpnbot",
+          "href": "https://telegram.me/capybaravpnbot",
           "label": "Телеграм бот"
         },
         {
-          "href": "https://t.me/solonet_sup",
+          "href": "https://telegram.me/solonet_sup",
           "label": "Поддержка"
         }
       ],
@@ -271,11 +271,11 @@
         "text": "© 2026 Capybara VPN. Все права защищены.",
         "links": [
           {
-            "href": "https://t.me/capybaravpnbot",
+            "href": "https://telegram.me/capybaravpnbot",
             "label": "Телеграм бот"
           },
           {
-            "href": "https://t.me/solonet_sup",
+            "href": "https://telegram.me/solonet_sup",
             "label": "Поддержка"
           }
         ],
@@ -544,11 +544,11 @@
         "text": "© 2026 Capybara VPN. Все права защищены.",
         "links": [
           {
-            "href": "https://t.me/capybaravpnbot",
+            "href": "https://telegram.me/capybaravpnbot",
             "label": "Телеграм бот"
           },
           {
-            "href": "https://t.me/capybara_support",
+            "href": "https://telegram.me/capybara_support",
             "label": "Поддержка"
           }
         ],
@@ -2509,7 +2509,7 @@
             "cabinetTabId": "keys"
           },
           {
-            "href": "https://t.me/capybara_support",
+            "href": "https://telegram.me/capybara_support",
             "icon": "❓",
             "title": "Помощь",
             "subtitle": "База знаний и чат"

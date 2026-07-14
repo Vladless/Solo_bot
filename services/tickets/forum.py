@@ -45,7 +45,7 @@ def _client_bot_link(admin_ref: int | None):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="👤 Открыть клиента в боте", url=f"https://t.me/{username}?start=suser_{int(admin_ref)}")]]
+        inline_keyboard=[[InlineKeyboardButton(text="👤 Открыть клиента в боте", url=f"https://telegram.me/{username}?start=suser_{int(admin_ref)}")]]
     )
 
 

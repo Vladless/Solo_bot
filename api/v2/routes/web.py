@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import _identity_from_cookie, get_session, verify_identity_admin
+from api.depends import _identity_from_cookie, get_session, verify_identity_designer
 from api.v2.routes._data_uri_migration import migrate_json_data_uris
 from api.v2.schemas import WebBlockResponse, WebPageResponse, WebPageUpdate, WebTheme
 from api.v2.schemas.web import (
@@ -321,7 +321,7 @@ async def list_web_pages(
 async def create_web_page(
     body: WebPageCreateBody,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     slug = (body.slug or "").strip().lower()
     if not _SLUG_RE.match(slug) or len(slug) > 64:
@@ -354,7 +354,7 @@ async def create_web_page(
 async def delete_web_page(
     slug: str,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     if slug in CORE_PAGE_SLUGS:
         raise HTTPException(status_code=403, detail="core_page_protected")
@@ -581,7 +581,7 @@ async def update_web_page_theme(
     body: WebPageThemeUpdate,
     variant: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     """Обновляет только theme_tokens страницы (без трогания блоков). Используется для sync темы между страницами."""
     if not slug or len(slug) > 64 or not _SLUG_RE.match(slug):
@@ -615,7 +615,7 @@ class WebPageTitleUpdate(BaseModel):
 @router.get("/api/web/page-titles")
 async def list_web_page_titles(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Кастомные заголовки вкладки (токен pageTitle) по всем страницам — для админ-списка «Страницы»."""
     rows = (
@@ -637,7 +637,7 @@ async def update_web_page_title(
     body: WebPageTitleUpdate,
     variant: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     """Кастомный заголовок вкладки браузера для страницы (токен pageTitle). Пусто — сброс к дефолту."""
     if not slug or len(slug) > 64 or not _SLUG_RE.match(slug):
@@ -692,7 +692,7 @@ async def get_pwa_icon(session: AsyncSession = Depends(get_session)):
 async def set_pwa_icon(
     body: PwaIconUpdate,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     url = _valid_pwa_icon_url(body.url)
     current, _ = await _resolve_variant(session, "landing", None)
@@ -717,7 +717,7 @@ async def update_web_page(
     variant: str | None = Query(default=None),
     minimal: bool = Query(default=False),
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     current, _ = await _resolve_variant(session, slug, variant)
     await session.execute(delete(WebPageVariantBlock).where(WebPageVariantBlock.variant_id == current.id))
@@ -795,7 +795,7 @@ async def create_web_page_variant(
     slug: str,
     body: WebPageVariantCreate,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     source_variant, variants = await _resolve_variant(session, slug, body.from_variant_key)
     existing_keys = {variant.variant_key for variant in variants}
@@ -845,7 +845,7 @@ async def update_web_page_variant(
     variant_key: str,
     body: WebPageVariantUpdate,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     current, variants = await _resolve_variant(session, slug, variant_key)
     if body.name is not None:
@@ -880,7 +880,7 @@ async def delete_web_page_variant(
     slug: str,
     variant_key: str,
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     current, variants = await _resolve_variant(session, slug, variant_key)
     if len(variants) <= 1:
@@ -920,7 +920,7 @@ async def delete_web_page_variant(
 @router.post("/api/web/upload", response_model=WebUploadResponse)
 async def upload_media(
     file: UploadFile = File(...),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     """Upload image or video for landing blocks and return same-origin URL."""
     if not file.filename or "." not in file.filename:
@@ -1023,7 +1023,7 @@ def _build_to_dict(b: WebCustomElementBuild) -> dict:
 @router.get("/custom-element-builds")
 async def list_custom_element_builds(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     result = await session.execute(select(WebCustomElementBuild).order_by(WebCustomElementBuild.created_at.desc()))
     builds = result.scalars().all()
@@ -1035,7 +1035,7 @@ async def list_custom_element_builds(
 async def create_custom_element_build(
     body: CustomElementBuildCreate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     build = WebCustomElementBuild(
         id=str(uuid.uuid4()),
@@ -1060,7 +1060,7 @@ async def create_custom_element_build(
 async def get_custom_element_build(
     build_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
@@ -1074,7 +1074,7 @@ async def update_custom_element_build(
     build_id: str,
     body: CustomElementBuildUpdate,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
@@ -1099,7 +1099,7 @@ async def update_custom_element_build(
 async def delete_custom_element_build(
     build_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     build = await session.get(WebCustomElementBuild, build_id)
     if not build:
@@ -1202,7 +1202,7 @@ async def get_flow_funnel(
     flow_id: str,
     days: int = Query(default=30, ge=1, le=365),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     since = datetime.now(timezone.utc) - timedelta(days=days)
     rows = (
@@ -1319,7 +1319,7 @@ async def ingest_page_views(
 @router.delete("/analytics/page-views")
 async def reset_analytics_page_views(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Очищает накопленные просмотры страниц (тестовые/девелоперские данные).
 
@@ -1342,7 +1342,7 @@ async def reset_analytics_page_views(
 async def get_analytics_overview(
     days: int = Query(default=30, ge=1, le=365),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     from database.models import (
         CouponUsage,
@@ -1999,7 +1999,7 @@ async def ingest_error_report(
 @router.get("/error-reports")
 async def list_error_reports(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
     resolved: bool | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -2040,7 +2040,7 @@ async def update_error_report(
     report_id: str,
     body: ErrorReportPatch,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     report = await session.get(WebErrorReport, report_id)
     if not report:
@@ -2055,7 +2055,7 @@ async def update_error_report(
 async def delete_error_report(
     report_id: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     report = await session.get(WebErrorReport, report_id)
     if not report:
@@ -2068,7 +2068,7 @@ async def delete_error_report(
 @router.post("/error-reports/resolve-all")
 async def resolve_all_error_reports(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     from sqlalchemy import update as sa_update
 
@@ -2083,7 +2083,7 @@ async def resolve_all_error_reports(
 async def delete_error_reports_bulk(
     resolved: bool | None = Query(None),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     from sqlalchemy import delete as sa_delete
 
@@ -2097,7 +2097,7 @@ async def delete_error_reports_bulk(
 @router.post("/api/web/install-default-design")
 async def install_default_design(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     from database.web_default_seed import seed_default_site
 
@@ -2121,7 +2121,7 @@ _BUILTIN_PACK_IDS = {"core", "cyber-mono", "capybara", "default"}
 @router.get("/api/web/packs")
 async def list_packs(
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Список своих (не встроенных) сохранённых наборов + статус сохранения встроенных дизайн-паков."""
     from database.web_default_seed import has_builtin_pack_file, list_custom_pack_designs, load_pack_design
@@ -2137,7 +2137,7 @@ async def list_packs(
 async def get_pack_design_status(
     pack: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Сохранён ли дизайн набора (для состояния кнопки «Установить»)."""
     if not _PACK_ID_RE.match(pack):
@@ -2154,7 +2154,7 @@ async def get_pack_design_status(
 async def create_custom_pack(
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Создаёт новый свой набор из текущего сайта (захват) с заданным именем."""
     from uuid import uuid4
@@ -2184,7 +2184,7 @@ async def create_custom_pack(
 async def capture_pack_design(
     pack: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Снимает текущий сайт и сохраняет как дизайн существующего набора (встроенного дизайн-пака)."""
     if not _PACK_ID_RE.match(pack) or pack in {"default", "core"}:
@@ -2206,7 +2206,7 @@ async def capture_pack_design(
 async def import_blocks_pack(
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Добавляет новые блоки в конструктор из файла набора (бандл blueprints
     пользовательских элементов). Блоки сливаются в глобальную тему (страница landing)."""
@@ -2283,7 +2283,7 @@ async def _merge_blueprints_into_landing(session: AsyncSession, blueprints: list
 async def export_current_as_pack_zip(
     name: str = Query(default="Набор"),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Собирает текущий сайт в zip-набор: blocks.json (блоки) + design.json (установка дизайна) + meta.json."""
     import io
@@ -2321,7 +2321,7 @@ async def export_current_as_pack_zip(
 async def import_pack_zip(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Добавляет набор из zip-архива: blocks.json → блоки в конструктор, design.json → устанавливаемый дизайн."""
     import io
@@ -2395,7 +2395,7 @@ async def import_pack_zip(
 async def import_pack_file(
     request: Request,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Импорт расшариваемого набора из файла: добавляет блоки (blueprints) в конструктор
     и регистрирует дизайн как устанавливаемый свой набор (кнопка «Установить»)."""
@@ -2444,7 +2444,7 @@ async def import_pack_file(
 async def delete_custom_pack(
     pack: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Удаляет свой набор (встроенные удалять нельзя)."""
     if not _PACK_ID_RE.match(pack) or pack in _BUILTIN_PACK_IDS:
@@ -2463,7 +2463,7 @@ async def delete_custom_pack(
 async def install_pack_design_endpoint(
     pack: str,
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Устанавливает (восстанавливает) дизайн набора. Для «default» — встроенный seed."""
     if not _PACK_ID_RE.match(pack):
@@ -2495,7 +2495,7 @@ async def web_admin_audit(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_session),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     """Журнал действий админов над сайтом (event_type=web_admin_action)."""
     from database.models import Identity
@@ -2665,7 +2665,7 @@ async def get_logs(
     source: str = Query("bot"),
     limit: int = Query(200, ge=1, le=1000),
     level: str = Query("all"),
-    _identity=Depends(verify_identity_admin),
+    _identity=Depends(verify_identity_designer),
 ):
     note: str | None = None
     if source == "site":
@@ -2688,7 +2688,7 @@ async def get_logs(
 
 @router.get("/api/web/logs/health")
 @router.get("/logs/health")
-async def get_logs_health(_identity=Depends(verify_identity_admin)):
+async def get_logs_health(_identity=Depends(verify_identity_designer)):
     out: dict = {}
 
     def _count(entries: list[dict]) -> dict:
@@ -2740,7 +2740,7 @@ async def web_node_status(request: Request, session: AsyncSession = Depends(get_
 @router.get("/api/web/node-status/admin")
 async def web_node_status_admin(
     session: AsyncSession = Depends(get_session),
-    identity=Depends(verify_identity_admin),
+    identity=Depends(verify_identity_designer),
 ):
     """Полный список нод для редактора блока — только админ."""
     from services.remnawave_monitor import get_client_node_statuses

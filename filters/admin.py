@@ -43,12 +43,22 @@ async def _resolve_admin(user_id: int) -> tuple[bool, bool, frozenset[str]]:
         async with async_session_maker() as session:
             admin = (await session.execute(select(Admin).where(Admin.tg_id == user_id))).scalar_one_or_none()
             admin_ids = (ADMIN_ID,) if isinstance(ADMIN_ID, int) else ADMIN_ID
-            is_admin = admin is not None or user_id in admin_ids
-            if admin:
-                is_super = admin.role != "moderator"
+            admin_role = (getattr(admin, "role", None) or "").strip().lower() if admin else ""
+            if user_id in admin_ids:
+                is_admin = True
+                is_super = True
+                perms = frozenset()
+            elif admin is not None and admin_role == "designer":
+                is_admin = False
+                is_super = False
+                perms = frozenset()
+            elif admin is not None:
+                is_admin = True
+                is_super = admin_role != "moderator"
                 perms = frozenset(normalize_permissions(admin.permissions))
             else:
-                is_super = user_id in admin_ids
+                is_admin = False
+                is_super = False
                 perms = frozenset()
             _set_cached_admin(user_id, is_admin, is_super, perms)
             await session.commit()

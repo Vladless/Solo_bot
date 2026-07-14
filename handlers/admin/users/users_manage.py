@@ -651,7 +651,7 @@ async def process_user_search(
     from core.settings.web_config import get_site_url, is_web_enabled
 
     if is_web_enabled() and get_site_url():
-        body += Text("🌐 Кабинет: ", Code(f"https://t.me/{USERNAME_BOT}?start=tab_keys"), "\n")
+        body += Text("🌐 Кабинет: ", Code(f"https://telegram.me/{USERNAME_BOT}?start=tab_keys"), "\n")
 
     if referrer_text:
         body += Text(referrer_text, "\n")

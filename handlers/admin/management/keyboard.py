@@ -162,10 +162,20 @@ def build_admin_permissions_kb(tg_id: int, current: set[str]) -> InlineKeyboardM
     return builder.as_markup()
 
 
+def build_new_admin_role_kb(tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="🛡 moderator", callback_data=AdminPanelCallback(action=f"add_role|{tg_id}|moderator").pack())
+    builder.button(text="🎨 designer", callback_data=AdminPanelCallback(action=f"add_role|{tg_id}|designer").pack())
+    builder.button(text=BACK, callback_data=AdminPanelCallback(action="admins").pack())
+    builder.adjust(1)
+    return builder.as_markup()
+
+
 def build_role_selection_kb(tg_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="👑 superadmin", callback_data=AdminPanelCallback(action=f"set_role|{tg_id}|superadmin").pack())
     builder.button(text="🛡 moderator", callback_data=AdminPanelCallback(action=f"set_role|{tg_id}|moderator").pack())
+    builder.button(text="🎨 designer", callback_data=AdminPanelCallback(action=f"set_role|{tg_id}|designer").pack())
     builder.button(text=BACK, callback_data=AdminPanelCallback(action=f"admin_menu|{tg_id}").pack())
     builder.adjust(1)
     return builder.as_markup()

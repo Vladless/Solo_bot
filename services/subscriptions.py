@@ -208,7 +208,7 @@ def prepare_headers(
             "profile-title": "base64:" + base64.b64encode(encoded_project_name.encode("utf-8")).decode("utf-8"),
             "support-url": SUPPORT_CHAT_URL,
             "announce": "base64:" + base64.b64encode(announce_str.encode("utf-8")).decode("utf-8"),
-            "profile-web-page-url": f"https://t.me/{USERNAME_BOT}",
+            "profile-web-page-url": f"https://telegram.me/{USERNAME_BOT}",
             "subscription-userinfo": subscription_userinfo,
         }
     elif "Hiddify" in user_agent:

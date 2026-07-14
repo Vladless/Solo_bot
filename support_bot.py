@@ -42,7 +42,7 @@ async def support_deeplink(payload: str = "") -> str | None:
     username = await get_support_username()
     if not username:
         return None
-    return f"https://t.me/{username}?start={payload}" if payload else f"https://t.me/{username}"
+    return f"https://telegram.me/{username}?start={payload}" if payload else f"https://telegram.me/{username}"
 
 
 async def start_support_polling() -> None:
