@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from api.v2.routes import (
     analytics,
@@ -19,6 +19,7 @@ from api.v2.routes import (
     servers,
     settings,
     tariffs,
+    tickets,
     users,
     web,
 )
@@ -36,6 +37,15 @@ router.include_router(keys.subs_router, prefix="/api/admin/subscriptions", tags=
 router.include_router(keys.router, prefix="/api/admin/keys", tags=["AdminKeys"])
 router.include_router(coupons.admin_list_router, prefix="/api/coupons", tags=["Coupons"])
 router.include_router(coupons.router, prefix="/api/coupons", tags=["Coupons"])
+router.include_router(
+    tickets.router, prefix="/api", tags=["Tickets"], dependencies=[Depends(tickets.require_tickets_enabled)]
+)
+router.include_router(
+    tickets.admin_router,
+    prefix="/api/admin",
+    tags=["AdminTickets"],
+    dependencies=[Depends(tickets.require_tickets_enabled)],
+)
 router.include_router(servers.stats_router, prefix="/api/servers", tags=["Servers"])
 router.include_router(servers.router, prefix="/api/servers", tags=["Servers"])
 router.include_router(tariffs.public_router, prefix="/api/tariffs", tags=["Tariffs"])

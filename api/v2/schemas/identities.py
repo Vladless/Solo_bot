@@ -13,6 +13,7 @@ class IdentityResponse(BaseModel):
     email: str | None
     tg_id: int | None
     is_admin: bool = False
+    role: str = "user"
     email_verified: bool = False
     password_set: bool = False
     onboarding_completed: bool = False

@@ -14,6 +14,7 @@ from .referrals import Referral
 from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
 from .tariffs import Tariff, TariffSubgroupSetting
+from .tickets import Ticket, TicketMessage
 from .users import BlockedUser, ManualBan, TemporaryData, TrackingSource, User
 from .web import (
     WebBlock,
@@ -49,6 +50,8 @@ __all__ = [
     "DailySubscriptionMetric",
     "Tariff",
     "TariffSubgroupSetting",
+    "Ticket",
+    "TicketMessage",
     "Server",
     "ServerSubgroup",
     "ServerSpecialgroup",

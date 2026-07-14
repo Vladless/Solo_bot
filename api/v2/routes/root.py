@@ -211,6 +211,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
                 MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER)
             ),
             "partner_enabled": partner_enabled,
+            "support_tickets_enabled": bool(MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED", False)),
         },
         "payments": {
             "any_enabled": any_pay,

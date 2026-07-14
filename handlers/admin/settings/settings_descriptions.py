@@ -65,6 +65,7 @@ SETTING_HINTS: Final[dict[str, str]] = {
     "TRIAL_TIME_DISABLED": "Полностью отключить пробный период",
     "WEB_TRIAL_DISABLED": "Скрыть пробный период только на сайте",
     "SUPPORT_TRIAGE_ENABLED": "Опросник перед обращением в поддержку",
+    "SUPPORT_TICKETS_ENABLED": "Система тикетов: обращения на сайте и в отдельном боте поддержки",
     "PROTECT_CONTENT_ENABLED": "Запрет пересылки и копирования сообщений бота",
     "TARIFF_OPTIONS_PAGINATION": "Опции тарифа слайдером вместо списка",
     "HWID_DELETE_COOLDOWN_ENABLED": "Кулдаун удаления устройств (система доверия)",

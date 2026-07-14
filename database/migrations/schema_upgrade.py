@@ -1669,6 +1669,103 @@ async def _migration_v44_key_traffic_hourly(conn: AsyncConnection) -> None:
     )
 
 
+async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
+    logger.info("[schema_upgrade] v45: таблицы тикетов (tickets + ticket_messages)")
+    if not await _table_exists(conn, "tickets"):
+        await _exec_ignore(
+            conn,
+            """
+            CREATE TABLE tickets (
+                id VARCHAR(36) PRIMARY KEY,
+                identity_id VARCHAR(36) NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+                subject VARCHAR(255),
+                category VARCHAR(64),
+                priority VARCHAR(16) NOT NULL DEFAULT 'normal',
+                status VARCHAR(16) NOT NULL DEFAULT 'open',
+                source VARCHAR(16) NOT NULL DEFAULT 'web',
+                assigned_agent_tg_id BIGINT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_message_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        )
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_identity_id ON tickets (identity_id)")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets (status)")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_category ON tickets (category)")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_assigned_agent_tg_id ON tickets (assigned_agent_tg_id)")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_last_message_at ON tickets (last_message_at)")
+    if not await _table_exists(conn, "ticket_messages"):
+        await _exec_ignore(
+            conn,
+            """
+            CREATE TABLE ticket_messages (
+                id VARCHAR(36) PRIMARY KEY,
+                ticket_id VARCHAR(36) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+                author VARCHAR(16) NOT NULL,
+                agent_tg_id BIGINT,
+                body TEXT NOT NULL DEFAULT '',
+                attachments JSONB,
+                read_by_client BOOLEAN NOT NULL DEFAULT FALSE,
+                read_by_agent BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+        )
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_ticket_id ON ticket_messages (ticket_id)")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_created_at ON ticket_messages (created_at)")
+
+
+async def _migration_v46_ticket_extras(conn: AsyncConnection) -> None:
+    logger.info("[schema_upgrade] v46: tickets.rating/tags/ref_type/ref_id")
+    if not await _table_exists(conn, "tickets"):
+        return
+    if not await _column_exists(conn, "tickets", "rating"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN rating SMALLINT")
+    if not await _column_exists(conn, "tickets", "tags"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN tags JSONB")
+    if not await _column_exists(conn, "tickets", "ref_type"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN ref_type VARCHAR(16)")
+    if not await _column_exists(conn, "tickets", "ref_id"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN ref_id VARCHAR(64)")
+    if not await _column_exists(conn, "tickets", "topic_id"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN topic_id BIGINT")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_topic_id ON tickets (topic_id)")
+
+
+async def _migration_v47_ticket_topic_id(conn: AsyncConnection) -> None:
+    logger.info("[schema_upgrade] v47: tickets.topic_id (форум-темы)")
+    if not await _table_exists(conn, "tickets"):
+        return
+    if not await _column_exists(conn, "tickets", "topic_id"):
+        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN topic_id BIGINT")
+        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_topic_id ON tickets (topic_id)")
+
+
+async def _migration_v48_ticket_timestamptz(conn: AsyncConnection) -> None:
+    logger.info("[schema_upgrade] v48: tickets/ticket_messages timestamp → timestamptz (UTC)")
+    targets = (
+        ("tickets", ("created_at", "updated_at", "last_message_at")),
+        ("ticket_messages", ("created_at",)),
+    )
+    for table, cols in targets:
+        if not await _table_exists(conn, table):
+            continue
+        for col in cols:
+            dtype = await conn.scalar(
+                text(
+                    "SELECT data_type FROM information_schema.columns "
+                    "WHERE table_schema='public' AND table_name=:t AND column_name=:c"
+                ),
+                {"t": table, "c": col},
+            )
+            if dtype == "timestamp without time zone":
+                await _exec_ignore(
+                    conn,
+                    f'ALTER TABLE {table} ALTER COLUMN {col} TYPE TIMESTAMPTZ USING {col} AT TIME ZONE \'UTC\'',
+                )
+
+
 _MIGRATIONS = [
     (1, "Добавление users.id", _migration_v1_add_users_id),
     (2, "Добавление user_id колонок", _migration_v2_add_user_id_columns),
@@ -1714,6 +1811,10 @@ _MIGRATIONS = [
     (42, "tariffs.description (описание состава тарифа)", _migration_v42_tariff_description),
     (43, "tariff_subgroup_settings (текст подгруппы)", _migration_v43_tariff_subgroup_settings),
     (44, "key_traffic_hourly (почасовая история трафика)", _migration_v44_key_traffic_hourly),
+    (45, "Таблицы тикетов (tickets/ticket_messages)", _migration_v45_add_tickets),
+    (46, "tickets.rating/tags/ref (CSAT, теги, контекст)", _migration_v46_ticket_extras),
+    (47, "tickets.topic_id (форум-темы)", _migration_v47_ticket_topic_id),
+    (48, "tickets/ticket_messages → timestamptz (UTC)", _migration_v48_ticket_timestamptz),
 ]
 
 

@@ -153,6 +153,21 @@ async def process_start_logic(
 
     await state.update_data(original_text=text, user_data=user_data)
 
+    if admin and text:
+        _sup = text.strip().lower()
+        if _sup.startswith("suser_") and _sup[6:].isdigit():
+            from handlers.admin.users.users_manage import process_user_search
+
+            await state.clear()
+            await process_user_search(
+                message,
+                state,
+                session,
+                int(_sup[6:]),
+                actor_tg_id=(message.from_user.id if message.from_user else None),
+            )
+            return
+
     _MAX_START_PAYLOAD_LEN = 256
     _MAX_START_PARTS = 20
     if text and len(text) > _MAX_START_PAYLOAD_LEN:

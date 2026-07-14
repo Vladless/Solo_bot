@@ -38,9 +38,9 @@ def _build_category_kb(node_id: str, show_subs: bool) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def _build_support_kb() -> InlineKeyboardMarkup:
+def _build_support_kb(url: str = SUPPORT_CHAT_URL) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    builder.row(InlineKeyboardButton(text=SUPPORT, url=url))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=TriageCallback(action="root").pack()))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     return builder.as_markup()
@@ -66,6 +66,21 @@ async def triage_category(callback: CallbackQuery, callback_data: TriageCallback
 
 
 @router.callback_query(TriageCallback.filter(F.action == "fail"))
-async def triage_fail(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(TRIAGE_FAIL_TEXT, reply_markup=_build_support_kb())
-    await callback.answer()
+async def triage_fail(callback: CallbackQuery, callback_data: TriageCallback) -> None:
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+    kb = None
+    from core.settings.modes_config import MODES_CONFIG
+
+    if MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED"):
+        from support_bot import support_deeplink
+
+        try:
+            url = await support_deeplink(callback_data.node or "")
+        except Exception:
+            url = None
+        if url:
+            kb = _build_support_kb(url)
+    await callback.message.edit_text(TRIAGE_FAIL_TEXT, reply_markup=kb or _build_support_kb())

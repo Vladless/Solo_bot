@@ -13,6 +13,7 @@ from api.depends import (
     get_request_actor,
     get_session,
     hash_token,
+    resolve_identity_role,
     verify_identity_token,
 )
 from api.v2.routes.auth._common import _resolve_partner_snapshot
@@ -47,10 +48,13 @@ router = APIRouter()
 
 @router.get("/me", response_model=IdentityResponse)
 async def me(
+    session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
     """Текущая идентичность по HttpOnly cookie `auth_token`."""
-    return IdentityResponse.model_validate(identity)
+    data = IdentityResponse.model_validate(identity)
+    data.role = await resolve_identity_role(session, identity)
+    return data
 
 
 def _current_token_hash(request: Request) -> str | None:

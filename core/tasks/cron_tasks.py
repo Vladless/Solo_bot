@@ -73,6 +73,23 @@ def cleanup_expired_gifts_process_runner() -> None:
     asyncio.run(cleanup_expired_gifts_job())
 
 
+async def autoclose_stale_tickets_job() -> None:
+    from services.tickets import delete_stale
+
+    async with async_session_maker() as session:
+        try:
+            count = await delete_stale(session, answered_days=2, closed_days=1)
+            await session.commit()
+            if count:
+                logger.info("[TicketsCleanup] Удалено протухших обращений (с темами): {}", count)
+        except Exception as error:
+            logger.error("[TicketsCleanup] Ошибка очистки обращений: {}", error)
+
+
+def autoclose_stale_tickets_process_runner() -> None:
+    asyncio.run(autoclose_stale_tickets_job())
+
+
 WEB_ANALYTICS_RETENTION_DAYS = 90
 WEB_ERROR_RETENTION_DAYS = 30
 
@@ -301,6 +318,7 @@ DAILY_STATS_REPORT_TRIGGER = CronTrigger(hour=0, minute=1, timezone="Europe/Mosc
 MONTHLY_STATS_REPORT_TRIGGER = CronTrigger(day=1, hour=0, minute=10, timezone="Europe/Moscow")
 STALE_PAYMENTS_SWEEP_TRIGGER = CronTrigger(minute=0, timezone="Europe/Moscow")
 EXPIRED_GIFTS_CLEANUP_TRIGGER = CronTrigger(hour=3, minute=0, timezone="Europe/Moscow")
+AUTOCLOSE_TICKETS_TRIGGER = CronTrigger(hour=4, minute=0, timezone="Europe/Moscow")
 WEB_ANALYTICS_CLEANUP_TRIGGER = CronTrigger(hour=3, minute=30, timezone="Europe/Moscow")
 ABANDONED_CHECKOUT_TRIGGER = CronTrigger(minute=20, timezone="Europe/Moscow")
 KEY_TRAFFIC_SNAPSHOT_TRIGGER = CronTrigger(hour=0, minute=10, timezone="Europe/Moscow")

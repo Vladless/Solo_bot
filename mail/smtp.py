@@ -78,6 +78,37 @@ async def send_login_code_email(to_addr: str, code: str) -> None:
         raise
 
 
+async def send_support_reply_email(to_addr: str, ticket_ref: str, reply: str) -> None:
+    if not smtp_configured():
+        raise RuntimeError("smtp_not_configured")
+    from_addr = EMAIL_FROM or EMAIL_SMTP_USER
+    project = PROJECT_NAME
+    subject = _render(
+        _get_email_template("EMAIL_SUPPORT_REPLY_SUBJECT", "{project}: ответ поддержки"),
+        project=project,
+        ref=ticket_ref,
+    )
+    body = _render(
+        _get_email_template(
+            "EMAIL_SUPPORT_REPLY_BODY",
+            "Поддержка ответила по вашему обращению {ref}:\n\n{reply}\n\nОткройте личный кабинет, чтобы продолжить диалог.",
+        ),
+        project=project,
+        ref=ticket_ref,
+        reply=reply,
+    )
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"{project} <{from_addr}>"
+    msg["To"] = to_addr
+    msg.set_content(body)
+    try:
+        await aiosmtplib.send(msg, **_smtp_kwargs())
+    except Exception as exc:
+        logger.warning(f"[SMTP] Отправка ответа поддержки на {to_addr} не удалась: {exc}")
+        raise
+
+
 async def send_password_reset_code_email(to_addr: str, code: str) -> None:
     if not smtp_configured():
         raise RuntimeError("smtp_not_configured")

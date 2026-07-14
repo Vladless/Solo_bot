@@ -2,6 +2,7 @@ from core.tasks.cron_tasks import (
     ABANDONED_CHECKOUT_TRIGGER,
     ANOMALY_CHECK_TRIGGER,
     AUDIT_DRAIN_TRIGGER,
+    AUTOCLOSE_TICKETS_TRIGGER,
     DAILY_STATS_REPORT_TRIGGER,
     DB_POOL_STATUS_TRIGGER,
     EXPIRED_GIFTS_CLEANUP_TRIGGER,
@@ -15,6 +16,8 @@ from core.tasks.cron_tasks import (
     abandoned_checkout_reminder_process_runner,
     anomaly_check_job,
     anomaly_check_process_runner,
+    autoclose_stale_tickets_job,
+    autoclose_stale_tickets_process_runner,
     cleanup_expired_gifts_job,
     cleanup_expired_gifts_process_runner,
     cleanup_web_analytics_job,
@@ -139,6 +142,20 @@ def register_periodic_tasks() -> None:
             "cleanup_expired_gifts",
             cleanup_expired_gifts_job,
             EXPIRED_GIFTS_CLEANUP_TRIGGER,
+        )
+
+    if process_budget > 0:
+        periodic_task_manager.register_cron_task(
+            "autoclose_stale_tickets",
+            autoclose_stale_tickets_process_runner,
+            AUTOCLOSE_TICKETS_TRIGGER,
+            execution_mode="process",
+        )
+    else:
+        periodic_task_manager.register_cron_task(
+            "autoclose_stale_tickets",
+            autoclose_stale_tickets_job,
+            AUTOCLOSE_TICKETS_TRIGGER,
         )
 
     if process_budget > 0:

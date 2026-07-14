@@ -189,6 +189,21 @@ async def verify_identity_token(
     return identity
 
 
+async def resolve_identity_role(session: AsyncSession, identity: Identity) -> str:
+    tg_id = getattr(identity, "tg_id", None)
+    if tg_id:
+        try:
+            row = (await session.execute(select(Admin).where(Admin.tg_id == int(tg_id)))).scalar_one_or_none()
+        except Exception:
+            row = None
+        if row is not None:
+            role = (getattr(row, "role", None) or "admin").strip().lower()
+            return "moderator" if role == "moderator" else "admin"
+    if getattr(identity, "is_admin", False):
+        return "admin"
+    return "user"
+
+
 async def verify_identity_admin(
     request: Request,
     session: AsyncSession = Depends(get_session),
@@ -200,6 +215,25 @@ async def verify_identity_admin(
     if identity is None:
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not identity.is_admin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if await resolve_identity_role(session, identity) == "moderator":
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await bind_identity_actor(request, session, identity)
+    await mark_site_initialized(session)
+    return identity
+
+
+async def verify_identity_agent(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    """Пускает суперадмина и модератора (для раздела тикетов /support)."""
+    from database.site_state import mark_site_initialized
+
+    identity = await _identity_from_cookie(session, request)
+    if identity is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if await resolve_identity_role(session, identity) not in ("admin", "moderator"):
         raise HTTPException(status_code=403, detail="Forbidden")
     await bind_identity_actor(request, session, identity)
     await mark_site_initialized(session)
