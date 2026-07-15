@@ -53,6 +53,14 @@ def _nice_max(value: float) -> float:
     return 10 * base
 
 
+def chart_legend(panels: list[dict]) -> str:
+    names = [str(p.get("name", "")).strip() for p in panels]
+    names = [n for n in names if n]
+    if not names:
+        return ""
+    return "Сверху вниз: " + " · ".join(names)
+
+
 def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | None:
     """Рисует вертикальные бар-чарты (по панели на метрику) и возвращает PNG в BytesIO.
 
@@ -78,7 +86,6 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
         img = Image.new("RGB", (width, height), _BG)
         draw = ImageDraw.Draw(img)
         f_small = _font(15)
-        f_title = _font(17)
 
         show_values = n <= 16
         if n <= 16:
@@ -95,7 +102,6 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
         for p_idx, panel in enumerate(panels):
             values = panel.get("values") or [0] * n
             color = panel.get("color", (88, 166, 255))
-            name = str(panel.get("name", ""))
             panel_top = top_pad + p_idx * (panel_h + panel_gap)
             plot_top = panel_top + title_h
             baseline = plot_top + plot_h
@@ -106,7 +112,11 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
                 radius=10,
                 fill=_PANEL,
             )
-            draw.text((left_pad - 8, panel_top), name, font=f_title, fill=color)
+            draw.rounded_rectangle(
+                [left_pad - 8, panel_top + 6, left_pad + 26, panel_top + 15],
+                radius=4,
+                fill=color,
+            )
 
             vmax = max(values) if values else 1.0
             vmin = min(values) if values else 0.0

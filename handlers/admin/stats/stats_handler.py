@@ -338,7 +338,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
 async def _build_stats_chart(session: AsyncSession, period: int):
     from database.subscription_events import get_subscription_dynamics
-    from handlers.admin.stats.report_charts import render_stats_chart
+    from handlers.admin.stats.report_charts import chart_legend, render_stats_chart
 
     moscow_tz = pytz.timezone("Europe/Moscow")
     today = datetime.now(moscow_tz).date()
@@ -372,7 +372,7 @@ async def _build_stats_chart(session: AsyncSession, period: int):
     if any(active_series):
         panels.append({"name": "Активные подписки", "color": (244, 114, 182), "values": active_series})
 
-    return render_stats_chart(labels, panels)
+    return render_stats_chart(labels, panels), chart_legend(panels)
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_charts_close"), IsAdminFilter())
@@ -399,16 +399,13 @@ async def handle_stats_charts(callback_query: CallbackQuery, callback_data: Admi
     await callback_query.answer()
 
     try:
-        chart = await _build_stats_chart(session, period)
+        chart, legend = await _build_stats_chart(session, period)
         if chart is None:
             await callback_query.message.answer("❗ Не удалось построить график.")
             return
 
         photo = BufferedInputFile(chart.getvalue(), filename="stats.png")
-        caption = (
-            f"📊 <b>Динамика за {period} дн.</b>\n"
-            "Сверху вниз: доход, новые пользователи, новые подписки, продления, отток, прирост базы"
-        )
+        caption = f"📊 <b>Динамика за {period} дн.</b>\n{legend}"
         kb = build_stats_charts_kb(period)
         msg = callback_query.message
         if msg.photo:
@@ -705,7 +702,7 @@ async def _send_report_to_admins(session: AsyncSession, text: str, chart) -> Non
 
 async def send_daily_stats_report(session: AsyncSession):
     try:
-        from handlers.admin.stats.report_charts import render_stats_chart
+        from handlers.admin.stats.report_charts import chart_legend, render_stats_chart
 
         moscow_tz = pytz.timezone("Europe/Moscow")
         now_moscow = datetime.now(moscow_tz)
@@ -737,17 +734,15 @@ async def send_daily_stats_report(session: AsyncSession):
         total_users = await count_total_users(session)
 
         labels, users_series, revenue_series = await _collect_daily_series(session, moscow_tz, report_date, 14)
-        chart = render_stats_chart(
-            labels,
-            [
-                {"name": "Доход, руб/день", "color": (63, 185, 80), "values": revenue_series},
-                {
-                    "name": "Новые пользователи/день",
-                    "color": (88, 166, 255),
-                    "values": [float(v) for v in users_series],
-                },
-            ],
-        )
+        panels = [
+            {"name": "Доход, руб/день", "color": (63, 185, 80), "values": revenue_series},
+            {
+                "name": "Новые пользователи/день",
+                "color": (88, 166, 255),
+                "values": [float(v) for v in users_series],
+            },
+        ]
+        chart = render_stats_chart(labels, panels)
 
         n = len(revenue_series) or 1
         avg_users = round(sum(users_series) / n, 1)
@@ -784,6 +779,7 @@ async def send_daily_stats_report(session: AsyncSession):
             f"Неделя: <b>~{_fmt_num(new_users * 7)}</b> польз. · <b>~{_fmt_num(revenue * 7)} ₽</b>\n"
             f"Месяц: <b>~{_fmt_num(new_users * 30)}</b> польз. · <b>~{_fmt_num(revenue * 30)} ₽</b>"
             f"</blockquote>\n"
+            f"📉 <i>{chart_legend(panels)}</i>\n"
             f"⏱️ <i>Сформировано: {update_time} МСК</i>"
         )
 
@@ -817,7 +813,7 @@ def _month_window(year: int, month: int) -> tuple[date, date]:
 
 async def send_monthly_stats_report(session: AsyncSession):
     try:
-        from handlers.admin.stats.report_charts import render_stats_chart
+        from handlers.admin.stats.report_charts import chart_legend, render_stats_chart
 
         moscow_tz = pytz.timezone("Europe/Moscow")
         now_moscow = datetime.now(moscow_tz)
@@ -848,17 +844,15 @@ async def send_monthly_stats_report(session: AsyncSession):
 
         labels, users_series, revenue_series = await _collect_daily_series(session, moscow_tz, last_day, days_in_month)
 
-        chart = render_stats_chart(
-            labels,
-            [
-                {"name": "Доход, руб/день", "color": (63, 185, 80), "values": revenue_series},
-                {
-                    "name": "Новые пользователи/день",
-                    "color": (88, 166, 255),
-                    "values": [float(v) for v in users_series],
-                },
-            ],
-        )
+        panels = [
+            {"name": "Доход, руб/день", "color": (63, 185, 80), "values": revenue_series},
+            {
+                "name": "Новые пользователи/день",
+                "color": (88, 166, 255),
+                "values": [float(v) for v in users_series],
+            },
+        ]
+        chart = render_stats_chart(labels, panels)
 
         best_idx = max(range(len(revenue_series)), key=lambda i: revenue_series[i]) if revenue_series else 0
         best_day_label = labels[best_idx] if labels else "—"
@@ -882,6 +876,7 @@ async def send_monthly_stats_report(session: AsyncSession):
             f"Лучший день: <b>{best_day_label}</b> — <b>{_fmt_num(best_day_value)} ₽</b>\n"
             f"Дней в месяце: <b>{days_in_month}</b>"
             f"</blockquote>\n"
+            f"📉 <i>{chart_legend(panels)}</i>\n"
             f"⏱️ <i>Сформировано: {update_time} МСК</i>"
         )
 
