@@ -98,6 +98,8 @@ PLATEGA_SBP = "🏦 Platega: СБП"
 PLATEGA_CARDS = "💳 Platega: Карты РФ"
 PLATEGA_INT = "🌍 Platega: Международные карты"
 PLATEGA_CRYPTO = "₿ Platega: Криптовалюта"
+OVERPAY_CARDS = "💳 Оплата картой"
+OVERPAY_SBP = "🏦 Оплата через СБП"
 TRIBUTE = "💳 Tribute"
 HELEKET = "Heleket Crypto"
 

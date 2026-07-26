@@ -60,6 +60,8 @@ PAYMENT_PROVIDER_TITLES: Final[dict[str, str]] = {
     "PLATEGA_CARDS": "Platega карты РФ",
     "PLATEGA_INT": "Platega международные",
     "PLATEGA_CRYPTO": "Platega крипто",
+    "OVERPAY_CARDS": "Overpay карты",
+    "OVERPAY_SBP": "Overpay СБП",
     "TRIBUTE": "Tribute",
     "HELEKET": "Heleket",
     "CRYPTOBOT": "CryptoBot",

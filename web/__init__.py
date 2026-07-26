@@ -2,6 +2,7 @@ from aiohttp.web_urldispatcher import UrlDispatcher
 
 from services.payments.heleket.webhook import heleket_webhook
 from services.payments.kassai.webhook import kassai_webhook
+from services.payments.overpay.webhook import overpay_webhook
 from services.payments.paritypay.webhook import paritypay_webhook
 from services.payments.platega.webhook import platega_webhook
 from services.payments.wata.webhook import wata_webhook
@@ -13,6 +14,7 @@ HELEKET_WEBHOOK_PATH = "/heleket/webhook"
 WATA_WEBHOOK_PATH = "/wata/webhook"
 PARITYPAY_WEBHOOK_PATH = "/paritypay/webhook"
 PLATEGA_WEBHOOK_PATH = "/platega/webhook"
+OVERPAY_WEBHOOK_PATH = "/overpay/webhook"
 
 
 async def register_web_routes(router: UrlDispatcher) -> None:
@@ -21,6 +23,7 @@ async def register_web_routes(router: UrlDispatcher) -> None:
     router.add_post(WATA_WEBHOOK_PATH, wata_webhook)
     router.add_post(PARITYPAY_WEBHOOK_PATH, paritypay_webhook)
     router.add_post(PLATEGA_WEBHOOK_PATH, platega_webhook)
+    router.add_post(OVERPAY_WEBHOOK_PATH, overpay_webhook)
 
     try:
         module_webhooks = load_module_webhooks()
