@@ -62,13 +62,13 @@ async def start_support_polling() -> None:
                 allowed_updates=support_dp.resolve_used_update_types(),
                 handle_signals=False,
             )
-            return
+            logger.warning("[SupportBot] поллинг завершился штатно — рестарт через {}с", delay)
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.error("[SupportBot] поллинг упал: {} — рестарт через {}с", e, delay)
-            try:
-                await asyncio.sleep(delay)
-            except asyncio.CancelledError:
-                raise
-            delay = min(delay * 2, 60)
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            raise
+        delay = min(delay * 2, 60)

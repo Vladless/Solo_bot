@@ -112,6 +112,7 @@ class AccountKeyRenewResponse(AccountKeyActionResponse):
     refund_to_balance_rub: int = 0
     credit_days: int = 0
     credit_value_rub: int = 0
+    keeps_period: bool = False
     new_device_limit: int | None = None
     new_traffic_gb: int | None = None
 

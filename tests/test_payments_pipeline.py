@@ -29,18 +29,43 @@ def _sessionmaker_returning(session):
     return lambda: _FakeSessionContext(session)
 
 
+class _FakeLockedSession:
+    """Сессия под новый пайплайн: 1-й execute — advisory lock, 2-й — locked SELECT платежа."""
+
+    def __init__(self, payment_row) -> None:
+        self.payment_row = payment_row
+        self.commit = AsyncMock()
+        self.rollback = AsyncMock()
+        self.executed = []
+
+    async def execute(self, stmt, params=None):
+        self.executed.append(stmt)
+        row = self.payment_row if len(self.executed) >= 2 else None
+        return SimpleNamespace(
+            scalar_one_or_none=lambda: row,
+            scalar=lambda: None,
+            fetchone=lambda: None,
+        )
+
+
+def _payment_row(**overrides):
+    base = {"id": 7, "tg_id": 42, "status": "pending", "currency": None, "original_amount": None}
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
 class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
     async def test_idempotent_when_already_success(self):
-        """Повторный webhook: payment.status=='success' → сразу return already_processed."""
-        session = SimpleNamespace(commit=AsyncMock())
+        """Повторный webhook: строка в БД уже success → сразу already_processed, кэш не участвует."""
+        session = _FakeLockedSession(_payment_row(id=1, status="success"))
         parsed = ParsedPayment(payment_id="p1", tg_id=42, amount=500.0)
 
         with (
             patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
             patch(
                 "services.payments.pipeline.get_payment_by_payment_id",
-                new=AsyncMock(return_value={"id": 1, "tg_id": 42, "status": "success"}),
-            ),
+                new=AsyncMock(return_value={"id": 1, "tg_id": 42, "status": "pending"}),
+            ) as cache_read_mock,
             patch("services.payments.pipeline.update_payment_status", new=AsyncMock()) as upd_mock,
             patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add_mock,
             patch("services.payments.pipeline.update_balance", new=AsyncMock()) as balance_mock,
@@ -54,23 +79,21 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.ok)
         self.assertTrue(result.already_processed)
+        cache_read_mock.assert_not_awaited()
         upd_mock.assert_not_awaited()
         add_mock.assert_not_awaited()
         balance_mock.assert_not_awaited()
         notify_mock.assert_not_awaited()
         session.commit.assert_not_awaited()
+        self.assertGreaterEqual(len(session.executed), 2)
 
     async def test_pending_to_success(self):
         """Payment pending → update_payment_status(success) + balance + notify."""
-        session = SimpleNamespace(commit=AsyncMock())
+        session = _FakeLockedSession(_payment_row(id=7))
         parsed = ParsedPayment(payment_id="p1", tg_id=42, amount=500.0)
 
         with (
             patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
-            patch(
-                "services.payments.pipeline.get_payment_by_payment_id",
-                new=AsyncMock(return_value={"id": 7, "tg_id": 42, "status": "pending"}),
-            ),
             patch(
                 "services.payments.pipeline.update_payment_status",
                 new=AsyncMock(return_value=True),
@@ -91,6 +114,7 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.ok)
         self.assertFalse(result.already_processed)
         upd_mock.assert_awaited_once()
+        self.assertEqual(upd_mock.await_args.kwargs["internal_id"], 7)
         add_mock.assert_not_awaited()
         balance_mock.assert_awaited_once_with(session, 42, 500.0)
         notify_mock.assert_awaited_once()
@@ -98,8 +122,8 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         cache_mock.assert_awaited_once_with("p1")
 
     async def test_fresh_payment_uses_add_payment(self):
-        """Нет pending-записи → add_payment создаёт новую."""
-        session = SimpleNamespace(commit=AsyncMock())
+        """Нет строки в БД и в кэше → add_payment создаёт новую."""
+        session = _FakeLockedSession(None)
         parsed = ParsedPayment(payment_id="p2", tg_id=100, amount=750.0, currency="RUB", metadata={"k": "v"})
 
         with (
@@ -131,17 +155,37 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(add_kwargs["metadata"], {"k": "v"})
         balance_mock.assert_awaited_once_with(session, 100, 750.0)
 
-    async def test_update_status_failure_returns_error(self):
-        """update_payment_status вернул False → PipelineResult(ok=False)."""
-        session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
-        parsed = ParsedPayment(payment_id="p3", tg_id=1, amount=1.0)
+    async def test_cached_success_short_circuits(self):
+        """Нет строки в БД, но кэш говорит success → already_processed без add_payment."""
+        session = _FakeLockedSession(None)
+        parsed = ParsedPayment(payment_id="p2c", tg_id=100, amount=750.0)
 
         with (
             patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
             patch(
                 "services.payments.pipeline.get_payment_by_payment_id",
-                new=AsyncMock(return_value={"id": 5, "tg_id": 1, "status": "pending"}),
+                new=AsyncMock(return_value={"id": None, "tg_id": 100, "status": "success"}),
             ),
+            patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add_mock,
+            patch("services.payments.pipeline.update_balance", new=AsyncMock()) as balance_mock,
+            patch("services.payments.pipeline.send_payment_success_notification", new=AsyncMock()),
+            patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
+        ):
+            result = await process_success_payment("kassai", parsed)
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.already_processed)
+        add_mock.assert_not_awaited()
+        balance_mock.assert_not_awaited()
+        session.commit.assert_not_awaited()
+
+    async def test_update_status_failure_returns_error(self):
+        """update_payment_status вернул False → PipelineResult(ok=False)."""
+        session = _FakeLockedSession(_payment_row(id=5, tg_id=1))
+        parsed = ParsedPayment(payment_id="p3", tg_id=1, amount=1.0)
+
+        with (
+            patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
             patch(
                 "services.payments.pipeline.update_payment_status",
                 new=AsyncMock(return_value=False),
@@ -158,16 +202,13 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         session.commit.assert_not_awaited()
 
     async def test_credit_amount_override(self):
-        """cryptobot: parsed.amount=USDT-сумма, credit_amount_override=RUB."""
-        session = SimpleNamespace(commit=AsyncMock())
+        """cryptobot: parsed.amount=USDT-сумма, credit_amount_override=RUB, поля пишутся в залоченную строку."""
+        row = _payment_row(id=9)
+        session = _FakeLockedSession(row)
         parsed = ParsedPayment(payment_id="p4", tg_id=42, amount=10.0, currency="USDT")
 
         with (
             patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
-            patch(
-                "services.payments.pipeline.get_payment_by_payment_id",
-                new=AsyncMock(return_value={"id": 9, "tg_id": 42, "status": "pending"}),
-            ),
             patch(
                 "services.payments.pipeline.update_payment_status",
                 new=AsyncMock(return_value=True),
@@ -175,13 +216,7 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
             patch("services.payments.pipeline.update_balance", new=AsyncMock()) as balance_mock,
             patch("services.payments.pipeline.send_payment_success_notification", new=AsyncMock()) as notify_mock,
             patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
-            patch(
-                "services.payments.pipeline.select",
-                return_value=SimpleNamespace(where=lambda *a, **k: SimpleNamespace(limit=lambda n: None)),
-            ),
         ):
-            fake_payment_obj = SimpleNamespace(currency=None, original_amount=None)
-            session.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: fake_payment_obj))
             result = await process_success_payment(
                 "CRYPTOBOT",
                 parsed,
@@ -195,20 +230,16 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         balance_mock.assert_awaited_once_with(session, 42, 900.0)
         notify_mock.assert_awaited_once_with(42, 900.0, session)
 
-        self.assertEqual(fake_payment_obj.currency, "USDT")
-        self.assertEqual(fake_payment_obj.original_amount, 10.0)
+        self.assertEqual(row.currency, "USDT")
+        self.assertEqual(row.original_amount, 10.0)
 
     async def test_metadata_patch_passed_to_update(self):
         """metadata_patch пробрасывается в update_payment_status."""
-        session = SimpleNamespace(commit=AsyncMock())
+        session = _FakeLockedSession(_payment_row(id=11))
         parsed = ParsedPayment(payment_id="p5", tg_id=42, amount=500.0)
 
         with (
             patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
-            patch(
-                "services.payments.pipeline.get_payment_by_payment_id",
-                new=AsyncMock(return_value={"id": 11, "tg_id": 42, "status": "pending"}),
-            ),
             patch(
                 "services.payments.pipeline.update_payment_status",
                 new=AsyncMock(return_value=True),

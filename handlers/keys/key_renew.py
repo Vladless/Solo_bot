@@ -915,6 +915,7 @@ async def _maybe_show_switch_confirm(
         credit_value_rub=quote.credit_value_rub,
         credit_rub=quote.credit_rub,
         refund_to_balance_rub=quote.refund_to_balance_rub,
+        keeps_period=quote.keeps_period,
     )
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="✅ Подтвердить смену", callback_data="renew_sw_confirm"))

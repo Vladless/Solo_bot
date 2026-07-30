@@ -61,6 +61,9 @@ class RenewalQuote:
     (>0 списать, <0 вернуть на баланс).
     Смена тарифа, остаток → дни (RENEWAL_CREDIT_AS_DAYS): credit_rub=0,
     net_cost_rub=полная цена, бонус-дни new_expiry_ms (credit_days).
+    Смена тарифа с сохранением срока (RENEWAL_SWITCH_KEEP_PERIOD, приоритетнее
+    режима дней): expiry не меняется, net_cost_rub = цена нового за остаток
+    периода − credit_rub, keeps_period=True.
     """
 
     is_switch: bool
@@ -77,6 +80,7 @@ class RenewalQuote:
     applied_coupon_code: str | None = None
     credit_days: int = 0
     credit_value_rub: int = 0
+    keeps_period: bool = False
 
 
 @dataclass
@@ -454,6 +458,29 @@ async def compute_renewal_quote(
         )
     )
     from core.bootstrap import MODES_CONFIG
+
+    keep_period = bool(MODES_CONFIG.get("RENEWAL_SWITCH_KEEP_PERIOD", False))
+    remaining_ms = max(0, int(current_expiry_ms) - int(now_ms))
+    if keep_period and remaining_ms > 0 and duration_days > 0:
+        remaining_days = remaining_ms / _DAY_MS
+        cost_for_remaining = int(round(full_price * remaining_days / duration_days))
+        net_cost = cost_for_remaining - credit
+        return RenewalQuote(
+            is_switch=True,
+            duration_days=duration_days,
+            selected_device_limit=eff_dev,
+            selected_traffic_limit=eff_trf,
+            total_gb=pricing.total_gb,
+            new_full_price_rub=full_price,
+            credit_rub=credit,
+            net_cost_rub=net_cost,
+            refund_to_balance_rub=max(0, -net_cost),
+            new_expiry_ms=int(current_expiry_ms),
+            coupon_id=pricing.coupon_id,
+            applied_coupon_code=pricing.applied_coupon_code,
+            credit_value_rub=credit,
+            keeps_period=True,
+        )
 
     credit_as_days = bool(MODES_CONFIG.get("RENEWAL_CREDIT_AS_DAYS", False))
     if credit_as_days and credit > 0 and full_price > 0 and duration_days > 0:

@@ -360,7 +360,9 @@ async def finalize_key_creation(
         )
 
     builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=build_key_callback("view_key", client_id, key_name)))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if await process_intercept_key_creation_message(

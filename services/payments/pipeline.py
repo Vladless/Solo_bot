@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from database import (
     add_payment,
@@ -73,34 +73,41 @@ async def process_success_payment(
     """
     try:
         async with async_session_maker() as session:
-            payment = await get_payment_by_payment_id(session, parsed.payment_id)
+            await session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(parsed.payment_id, 0))))
 
-            if payment and payment.get("status") == "success":
+            row = (
+                await session.execute(
+                    select(Payment).where(Payment.payment_id == parsed.payment_id).limit(1).with_for_update()
+                )
+            ).scalar_one_or_none()
+
+            if row is not None and str(row.status or "") == "success":
                 logger.info(f"[{provider}] Повторный webhook, платёж уже обработан: payment_id={parsed.payment_id}")
                 return PipelineResult(ok=True, already_processed=True)
 
-            if payment and payment.get("id") is not None:
+            if row is not None:
                 updated = await update_payment_status(
                     session=session,
-                    internal_id=int(payment["id"]),
+                    internal_id=int(row.id),
                     new_status="success",
                     metadata_patch=metadata_patch,
                 )
                 if not updated:
-                    logger.error(f"[{provider}] Не удалось перевести платёж id={payment['id']} в success")
+                    logger.error(f"[{provider}] Не удалось перевести платёж id={row.id} в success")
                     return PipelineResult(ok=False, error="update_payment_status failed")
-                tg_id = parsed.tg_id if parsed.tg_id is not None else int(payment["tg_id"])
+                tg_id = parsed.tg_id if parsed.tg_id is not None else int(row.tg_id)
 
-                if update_currency is not None or update_original_amount is not None:
-                    row = (
-                        await session.execute(select(Payment).where(Payment.id == int(payment["id"])).limit(1))
-                    ).scalar_one_or_none()
-                    if row is not None:
-                        if update_currency is not None:
-                            row.currency = update_currency
-                        if update_original_amount is not None:
-                            row.original_amount = update_original_amount
+                if update_currency is not None:
+                    row.currency = update_currency
+                if update_original_amount is not None:
+                    row.original_amount = update_original_amount
             else:
+                cached = await get_payment_by_payment_id(session, parsed.payment_id)
+                if cached and cached.get("status") == "success":
+                    logger.info(
+                        f"[{provider}] Повторный webhook, платёж уже обработан (кэш): payment_id={parsed.payment_id}"
+                    )
+                    return PipelineResult(ok=True, already_processed=True)
                 await add_payment(
                     session=session,
                     tg_id=parsed.tg_id,
@@ -109,7 +116,7 @@ async def process_success_payment(
                     status="success",
                     currency=parsed.currency,
                     payment_id=parsed.payment_id,
-                    metadata=parsed.metadata or metadata_patch or (payment.get("metadata") if payment else None),
+                    metadata=parsed.metadata or metadata_patch or (cached.get("metadata") if cached else None),
                 )
                 tg_id = parsed.tg_id
 

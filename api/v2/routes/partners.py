@@ -41,18 +41,29 @@ except Exception:
     PARTNER_BONUS_PERCENTAGES = {1: 0.0}
 
 
-_PARTNERS_TABLE_EXISTS: bool | None = None
+_PARTNERS_SCHEMA_READY = False
 
 
 async def partners_table_exists(session: AsyncSession) -> bool:
-    global _PARTNERS_TABLE_EXISTS
-    if _PARTNERS_TABLE_EXISTS is None:
-        try:
-            row = await session.execute(text("SELECT to_regclass('public.partners')"))
-            _PARTNERS_TABLE_EXISTS = row.scalar() is not None
-        except Exception:
-            _PARTNERS_TABLE_EXISTS = False
-    return _PARTNERS_TABLE_EXISTS
+    global _PARTNERS_SCHEMA_READY
+    if _PARTNERS_SCHEMA_READY:
+        return True
+    try:
+        row = await session.execute(text("SELECT to_regclass('public.partners')"))
+        if row.scalar() is None:
+            return False
+        col = await session.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'partner_balance'"
+            )
+        )
+        ready = col.scalar() is not None
+    except Exception:
+        return False
+    if ready:
+        _PARTNERS_SCHEMA_READY = True
+    return ready
 
 
 async def ensure_partner_available(session: AsyncSession = Depends(get_session)) -> None:
@@ -249,14 +260,14 @@ async def partner_apply(
         if resolved is not None:
             referrer_user_id, referrer_tg_id = resolved
     if referrer_tg_id is None and body.partner_tg_id is not None:
-        referrer_tg_id = int(body.partner_tg_id)
         referrer_user_id_row = (
             await session.execute(
                 text("SELECT id FROM users WHERE tg_id = :tg_id LIMIT 1"),
-                {"tg_id": int(referrer_tg_id)},
+                {"tg_id": int(body.partner_tg_id)},
             )
         ).first()
         if referrer_user_id_row is not None:
+            referrer_tg_id = int(body.partner_tg_id)
             referrer_user_id = int(referrer_user_id_row[0])
     if referrer_tg_id is None:
         raise HTTPException(status_code=400, detail="Партнерский код не найден")
@@ -1162,12 +1173,17 @@ async def approve_partner_payout(
     payout_method = (user[0] if user else None) or "card"
     destination = (user[1] if user else None) or None
     destination = (destination or "").strip() or None
-    await session.execute(
+    updated = await session.execute(
         text(
-            "UPDATE payout_requests SET status = 'approved', method = :method, destination = :destination WHERE id = :id"
+            "UPDATE payout_requests SET status = 'approved', method = :method, destination = :destination "
+            "WHERE id = :id AND status = 'pending' RETURNING id"
         ),
         {"id": payout_id, "method": payout_method, "destination": destination},
     )
+    if updated.fetchone() is None:
+        return ORJSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"}, status_code=404
+        )
     return ORJSONResponse(content={"success": True, "message": "Заявка одобрена"}, status_code=200)
 
 
@@ -1188,24 +1204,28 @@ async def reject_partner_payout(
             content={"success": False, "message": "Заявка не найдена или уже обработана"}, status_code=404
         )
     user_row = await session.execute(
-        text("SELECT payout_method, card_number, partner_balance FROM users WHERE tg_id = :tg_id"), {"tg_id": req[1]}
+        text("SELECT payout_method, card_number FROM users WHERE tg_id = :tg_id"), {"tg_id": req[1]}
     )
     user = user_row.fetchone()
     payout_method = (user[0] if user else None) or "card"
     destination = (user[1] if user else None) or None
     destination = (destination or "").strip() or None
-    await session.execute(
+    updated = await session.execute(
         text(
-            "UPDATE payout_requests SET status = 'rejected', method = :method, destination = :destination WHERE id = :id"
+            "UPDATE payout_requests SET status = 'rejected', method = :method, destination = :destination "
+            "WHERE id = :id AND status = 'pending' RETURNING tg_id, amount"
         ),
         {"id": payout_id, "method": payout_method, "destination": destination},
     )
-    if user is not None:
-        current_balance = float(user[2] or 0.0)
-        await session.execute(
-            text("UPDATE users SET partner_balance = :balance WHERE tg_id = :tg_id"),
-            {"balance": current_balance + float(req[2] or 0.0), "tg_id": req[1]},
+    rejected = updated.fetchone()
+    if rejected is None:
+        return ORJSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"}, status_code=404
         )
+    await session.execute(
+        text("UPDATE users SET partner_balance = partner_balance + :amount WHERE tg_id = :tg_id"),
+        {"amount": float(rejected[1] or 0.0), "tg_id": rejected[0]},
+    )
     return ORJSONResponse(content={"success": True, "message": "Заявка отклонена"}, status_code=200)
 
 

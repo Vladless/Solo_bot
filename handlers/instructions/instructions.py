@@ -15,7 +15,6 @@ from config import (
     HAPP_CRYPTOLINK,
     REMNAWAVE_WEBAPP,
     REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
-    SUPPORT_CHAT_URL,
     WEBHOOK_HOST,
 )
 from core.bootstrap import MODES_CONFIG
@@ -43,7 +42,7 @@ from handlers.texts import (
     ROUTER_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
-from handlers.utils import edit_or_send_message, is_full_remnawave_cluster
+from handlers.utils import build_support_button, edit_or_send_message, is_full_remnawave_cluster
 from hooks.processors import process_remnawave_webapp_override
 
 
@@ -57,7 +56,9 @@ async def send_instructions(callback_query_or_message: CallbackQuery | Message):
     image_path = os.path.join("img", "instructions.jpg")
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     if isinstance(callback_query_or_message, CallbackQuery):
@@ -147,7 +148,9 @@ async def process_windows_menu(callback_query: CallbackQuery, session: Any):
         windows_url = f"{CONNECT_WINDOWS}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=CONNECT_WINDOWS_BUTTON, url=windows_url))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
     builder.row(
         InlineKeyboardButton(
             text=BACK, callback_data=build_key_callback("connect_pc", record.get("client_id"), key_name)
@@ -190,7 +193,9 @@ async def process_macos_menu(callback_query: CallbackQuery, session: Any):
         macos_url = f"{CONNECT_MACOS}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=CONNECT_MACOS_BUTTON, url=macos_url))
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    support_btn = await build_support_button()
+    if support_btn:
+        builder.row(support_btn)
     builder.row(
         InlineKeyboardButton(
             text=BACK, callback_data=build_key_callback("connect_pc", record.get("client_id"), key_name)

@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import NOTIFY_INACTIVE_TRAFFIC, REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER, SUPPORT_CHAT_URL
+from config import NOTIFY_INACTIVE_TRAFFIC, REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database.models import Key
 from database.tariffs import get_tariffs
@@ -18,7 +18,7 @@ from handlers.buttons import CONNECT_DEVICE, MAIN_MENU, SUPPORT
 from handlers.keys.utils import build_key_callback
 from handlers.notifications.sender import send_messages_with_limit
 from handlers.texts import ZERO_TRAFFIC_MSG
-from handlers.utils import is_full_remnawave_cluster
+from handlers.utils import build_support_button, is_full_remnawave_cluster
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from logger import logger
@@ -115,7 +115,9 @@ async def process_zero_traffic(
                 )
             )
 
-        builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+        support_btn = await build_support_button()
+        if support_btn:
+            builder.row(support_btn)
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         try:

@@ -52,6 +52,7 @@ from handlers.keys.utils import build_key_callback, resolve_key
 from handlers.texts import SELECT_COUNTRY_MSG
 from handlers.utils import (
     ALLOWED_GROUP_CODES,
+    build_support_button,
     edit_or_send_message,
     generate_random_email,
     get_least_loaded_cluster,

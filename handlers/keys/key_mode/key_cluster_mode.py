@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import update
 
 from bot import bot
-from config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER, SUPPORT_CHAT_URL
+from config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     get_key_details,
@@ -36,6 +36,7 @@ from handlers.buttons import (
 )
 from handlers.keys.utils import build_key_callback
 from handlers.utils import (
+    build_support_button,
     edit_or_send_message,
     generate_random_email,
     get_least_loaded_cluster,
@@ -155,7 +156,9 @@ async def send_or_edit_key_created_view(
         builder.row(
             InlineKeyboardButton(text=MY_SUB, callback_data=build_key_callback("view_key", client_id, key_name))
         )
-        builder.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+        support_btn = await build_support_button()
+        if support_btn:
+            builder.row(support_btn)
         builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
         if tg_notify is not None and await process_intercept_key_creation_message(

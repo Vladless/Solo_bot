@@ -741,16 +741,22 @@ async def approve_partner_payout(
     destination = (user[1] if user else None) or None
     destination = (destination or "").strip() or None
 
-    await session.execute(
+    updated = await session.execute(
         text(
             """
             UPDATE payout_requests
             SET status = 'approved', method = :method, destination = :destination
-            WHERE id = :id
+            WHERE id = :id AND status = 'pending'
+            RETURNING id
             """
         ),
         {"id": payout_id, "method": payout_method, "destination": destination},
     )
+    if updated.fetchone() is None:
+        return ORJSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"},
+            status_code=404,
+        )
 
     return ORJSONResponse(content={"success": True, "message": "Заявка одобрена"}, status_code=200)
 
@@ -775,7 +781,7 @@ async def reject_partner_payout(
         )
 
     user_row = await session.execute(
-        text("SELECT payout_method, card_number, partner_balance FROM users WHERE tg_id = :tg_id"),
+        text("SELECT payout_method, card_number FROM users WHERE tg_id = :tg_id"),
         {"tg_id": req[1]},
     )
     user = user_row.fetchone()
@@ -783,23 +789,28 @@ async def reject_partner_payout(
     destination = (user[1] if user else None) or None
     destination = (destination or "").strip() or None
 
-    await session.execute(
+    updated = await session.execute(
         text(
             """
             UPDATE payout_requests
             SET status = 'rejected', method = :method, destination = :destination
-            WHERE id = :id
+            WHERE id = :id AND status = 'pending'
+            RETURNING tg_id, amount
             """
         ),
         {"id": payout_id, "method": payout_method, "destination": destination},
     )
-
-    if user is not None:
-        current_balance = float(user[2] or 0.0)
-        await session.execute(
-            text("UPDATE users SET partner_balance = :balance WHERE tg_id = :tg_id"),
-            {"balance": current_balance + float(req[2] or 0.0), "tg_id": req[1]},
+    rejected = updated.fetchone()
+    if rejected is None:
+        return ORJSONResponse(
+            content={"success": False, "message": "Заявка не найдена или уже обработана"},
+            status_code=404,
         )
+
+    await session.execute(
+        text("UPDATE users SET partner_balance = partner_balance + :amount WHERE tg_id = :tg_id"),
+        {"amount": float(rejected[1] or 0.0), "tg_id": rejected[0]},
+    )
 
     return ORJSONResponse(content={"success": True, "message": "Заявка отклонена"}, status_code=200)
 

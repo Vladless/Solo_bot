@@ -485,3 +485,28 @@ def extract_user_data(user) -> dict:
         "language_code": user.language_code,
         "is_bot": user.is_bot,
     }
+
+
+async def build_support_button(text: str | None = None) -> "InlineKeyboardButton | None":
+    from aiogram.types import InlineKeyboardButton
+
+    from config import SUPPORT_CHAT_URL
+    from handlers.buttons import SUPPORT
+
+    label = text or SUPPORT
+    url = (SUPPORT_CHAT_URL or "").strip()
+    if url.startswith(("http://", "https://", "tg://")):
+        return InlineKeyboardButton(text=label, url=url)
+
+    from core.settings.modes_config import MODES_CONFIG
+
+    if MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED"):
+        try:
+            from support_bot import support_deeplink
+
+            deeplink = await support_deeplink()
+        except Exception:
+            deeplink = None
+        if deeplink:
+            return InlineKeyboardButton(text=label, url=deeplink)
+    return None

@@ -242,4 +242,4 @@ async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_
     )
 
     keyboard = build_notification_expired_kb()
-    return await send_notification(ctx.bot, key.tg_id, "notify_expired.jpg", text, keyboard)
+    return await send_notification(ctx.bot, key.tg_id, "pic_renewed.jpg", text, keyboard)

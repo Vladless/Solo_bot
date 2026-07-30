@@ -6,6 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import SUPPORT_CHAT_URL
 from handlers.buttons import BACK, MAIN_MENU, MY_SUBS, NOT_HELPED, SUPPORT
 from handlers.texts import TRIAGE_FAIL_TEXT, TRIAGE_ITEMS, TRIAGE_ROOT_TEXT
+from handlers.utils import edit_or_send_message
 
 
 router = Router(name="support_triage")
@@ -40,7 +41,9 @@ def _build_category_kb(node_id: str, show_subs: bool) -> InlineKeyboardMarkup:
 
 def _build_support_kb(url: str = SUPPORT_CHAT_URL) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=SUPPORT, url=url))
+    cleaned_url = (url or "").strip()
+    if cleaned_url.startswith(("http://", "https://", "tg://")):
+        builder.row(InlineKeyboardButton(text=SUPPORT, url=cleaned_url))
     builder.row(InlineKeyboardButton(text=BACK, callback_data=TriageCallback(action="root").pack()))
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
     return builder.as_markup()
@@ -48,7 +51,11 @@ def _build_support_kb(url: str = SUPPORT_CHAT_URL) -> InlineKeyboardMarkup:
 
 @router.callback_query(TriageCallback.filter(F.action == "root"))
 async def triage_root(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(TRIAGE_ROOT_TEXT, reply_markup=build_triage_root_kb())
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=TRIAGE_ROOT_TEXT,
+        reply_markup=build_triage_root_kb(),
+    )
     await callback.answer()
 
 
@@ -58,8 +65,9 @@ async def triage_category(callback: CallbackQuery, callback_data: TriageCallback
     if item is None:
         await callback.answer("Раздел не найден", show_alert=True)
         return
-    await callback.message.edit_text(
-        item["text"],
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=item["text"],
         reply_markup=_build_category_kb(item["id"], bool(item.get("show_subs", False))),
     )
     await callback.answer()
@@ -83,4 +91,8 @@ async def triage_fail(callback: CallbackQuery, callback_data: TriageCallback) ->
             url = None
         if url:
             kb = _build_support_kb(url)
-    await callback.message.edit_text(TRIAGE_FAIL_TEXT, reply_markup=kb or _build_support_kb())
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=TRIAGE_FAIL_TEXT,
+        reply_markup=kb or _build_support_kb(),
+    )

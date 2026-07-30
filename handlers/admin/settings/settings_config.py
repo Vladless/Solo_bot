@@ -90,6 +90,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "HWID_DELETE_COOLDOWN_ENABLED": "Кулдаун HWID",
     "SINGLE_SUBSCRIPTION_MODE": "Одна подписка",
     "RENEWAL_CREDIT_AS_DAYS": "Перерасчет дни",
+    "RENEWAL_SWITCH_KEEP_PERIOD": "Смена: сохранять срок",
     "GIFT_EXTEND_ENABLED": "Подарок продлить",
 }
 

@@ -66,27 +66,31 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
         "partner_referred_paid": 0,
         "partner_payout_method": None,
     }
+    if not partner_table_ok:
+        return payload
     try:
-        partner_row = (
-            await session.execute(
-                text(
-                    """
-                    SELECT
-                        tg_id,
-                        COALESCE(partner_balance, 0),
-                        partner_percent,
-                        COALESCE(partner_percent_custom, false),
-                        partner_code,
-                        payout_method
-                    FROM users
-                    WHERE id = :user_id
-                    LIMIT 1
-                    """
-                ),
-                {"user_id": int(billing_user_id)},
-            )
-        ).first()
-    except Exception:
+        async with session.begin_nested():
+            partner_row = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT
+                            tg_id,
+                            COALESCE(partner_balance, 0),
+                            partner_percent,
+                            COALESCE(partner_percent_custom, false),
+                            partner_code,
+                            payout_method
+                        FROM users
+                        WHERE id = :user_id
+                        LIMIT 1
+                        """
+                    ),
+                    {"user_id": int(billing_user_id)},
+                )
+            ).first()
+    except Exception as e:
+        logger.warning("[Auth] partner snapshot: не удалось прочитать partner-поля users: {}", e)
         partner_row = None
     if partner_row is None:
         return payload
@@ -100,11 +104,12 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
         generated_code = encode_partner_code(int(billing_user_id))
         code = generated_code
         try:
-            await session.execute(
-                text("UPDATE users SET partner_code = :code WHERE id = :id"),
-                {"code": generated_code, "id": int(billing_user_id)},
-            )
-            await session.flush()
+            async with session.begin_nested():
+                await session.execute(
+                    text("UPDATE users SET partner_code = :code WHERE id = :id"),
+                    {"code": generated_code, "id": int(billing_user_id)},
+                )
+                await session.flush()
         except Exception as e:
             logger.warning("[Auth] Ошибка сохранения partner_code для billing_user_id={}: {}", billing_user_id, e)
     payout_method = str(partner_row[5] or "").strip() or None
@@ -112,37 +117,41 @@ async def _resolve_partner_snapshot(session: AsyncSession, billing_user_id: int)
     referred_paid = 0
     if tg_id is not None:
         try:
-            referred_total = int(
-                (
-                    await session.execute(
-                        text("SELECT COUNT(*) FROM partners WHERE partner_tg_id = :tg_id"),
-                        {"tg_id": int(tg_id)},
-                    )
-                ).scalar()
-                or 0
-            )
-        except Exception:
+            async with session.begin_nested():
+                referred_total = int(
+                    (
+                        await session.execute(
+                            text("SELECT COUNT(*) FROM partners WHERE partner_tg_id = :tg_id"),
+                            {"tg_id": int(tg_id)},
+                        )
+                    ).scalar()
+                    or 0
+                )
+        except Exception as e:
+            logger.warning("[Auth] partner snapshot: не удалось посчитать referred_total: {}", e)
             referred_total = 0
         try:
-            referred_paid = int(
-                (
-                    await session.execute(
-                        text(
-                            "SELECT COUNT(DISTINCT pr.joined_tg_id) "
-                            "FROM partners pr "
-                            "WHERE pr.partner_tg_id = :tg_id "
-                            "AND EXISTS ("
-                            "  SELECT 1 FROM payments pay "
-                            "  WHERE pay.tg_id = pr.joined_tg_id "
-                            "  AND lower(pay.status) = 'success'"
-                            ")"
-                        ),
-                        {"tg_id": int(tg_id)},
-                    )
-                ).scalar()
-                or 0
-            )
-        except Exception:
+            async with session.begin_nested():
+                referred_paid = int(
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT COUNT(DISTINCT pr.joined_tg_id) "
+                                "FROM partners pr "
+                                "WHERE pr.partner_tg_id = :tg_id "
+                                "AND EXISTS ("
+                                "  SELECT 1 FROM payments pay "
+                                "  WHERE pay.tg_id = pr.joined_tg_id "
+                                "  AND lower(pay.status) = 'success'"
+                                ")"
+                            ),
+                            {"tg_id": int(tg_id)},
+                        )
+                    ).scalar()
+                    or 0
+                )
+        except Exception as e:
+            logger.warning("[Auth] partner snapshot: не удалось посчитать referred_paid: {}", e)
             referred_paid = 0
     payload.update({
         "partner_enabled": bool(
