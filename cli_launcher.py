@@ -3,6 +3,7 @@ import locale
 import os
 import re
 import secrets
+import select
 import shutil
 import subprocess
 import sys
@@ -1462,6 +1463,125 @@ def restart_service():
             subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
 
 
+_STARTUP_SUCCESS_MARKERS = (
+    "Run polling for bot",
+    "Start polling",
+    "Application startup complete",
+)
+
+_STARTUP_FATAL_MARKERS = (
+    "Traceback (most recent call last)",
+    "ModuleNotFoundError",
+    "ImportError:",
+    "SyntaxError:",
+    "IndentationError:",
+    "Main process exited",
+    "Failed with result",
+    "Start request repeated too quickly",
+)
+
+
+def _service_state() -> str:
+    result = subprocess.run(["systemctl", "is-active", SERVICE_NAME], capture_output=True, text=True)
+    return (result.stdout or "").strip()
+
+
+def _journal_tail(lines: int = 30) -> list[str]:
+    result = subprocess.run(
+        ["sudo", "journalctl", "-u", SERVICE_NAME, "-n", str(lines), "--no-pager", "-o", "cat"],
+        capture_output=True,
+        text=True,
+    )
+    return [line for line in (result.stdout or "").splitlines() if line.strip()]
+
+
+def wait_for_bot_startup(timeout: int = 300) -> None:
+    """Стримит логи службы после рестарта до полного запуска бота или явной ошибки."""
+    if not is_service_exists(SERVICE_NAME):
+        return
+    console.print(f"[blue]Слежу за логами запуска бота (до {timeout} сек)...[/blue]")
+
+    try:
+        proc = subprocess.Popen(
+            ["sudo", "journalctl", "-u", SERVICE_NAME, "-f", "-n", "0", "--no-pager", "-o", "cat"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+    except Exception as e:
+        console.print(f"[yellow]journalctl недоступен ({e}) — проверяю только статус службы.[/yellow]")
+        sleep(10)
+        state = _service_state()
+        if state == "active":
+            console.print("[green]✅ Успешно: служба активна.[/green]")
+        else:
+            console.print(f"[red]❌ Служба не активна ({state or 'нет статуса'}). Проверьте логи (пункт 5 меню).[/red]")
+        return
+
+    started_at = time_mod.time()
+    last_state_check = 0.0
+    error_lines: list[str] = []
+    fatal_seen_at: float | None = None
+    verdict: str | None = None
+
+    try:
+        while True:
+            now = time_mod.time()
+            if now - started_at > timeout:
+                break
+            if fatal_seen_at is not None and now - fatal_seen_at > 3:
+                verdict = "fail"
+                break
+
+            ready, _, _ = select.select([proc.stdout], [], [], 1.0)
+            if ready:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                line = line.rstrip("\n")
+                console.print(line, markup=False, highlight=False, style="dim")
+                if fatal_seen_at is not None:
+                    error_lines.append(line)
+                elif any(marker in line for marker in _STARTUP_SUCCESS_MARKERS):
+                    verdict = "ok"
+                    break
+                elif any(marker in line for marker in _STARTUP_FATAL_MARKERS):
+                    fatal_seen_at = time_mod.time()
+                    error_lines.append(line)
+            elif now - last_state_check > 5:
+                last_state_check = now
+                if _service_state() in ("failed", "inactive"):
+                    verdict = "fail"
+                    if not error_lines:
+                        error_lines = _journal_tail(30)[-15:]
+                    break
+    finally:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+    if verdict == "ok":
+        console.print("[green]✅ Успешно: бот полностью запущен.[/green]")
+    elif verdict == "fail":
+        console.print("[red]❌ Бот не запустился. Ошибка из службы:[/red]")
+        for line in error_lines[-20:]:
+            console.print(line, markup=False, highlight=False, style="err")
+    else:
+        if _service_state() == "active":
+            console.print("[green]✅ Успешно: служба активна.[/green]")
+        else:
+            console.print("[red]❌ Служба не активна. Ошибка из службы:[/red]")
+            for line in _journal_tail(30)[-15:]:
+                console.print(line, markup=False, highlight=False, style="err")
+
+    try:
+        input("Нажмите Enter, чтобы вернуться в меню CLI... ")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _extract_version_from_versioning(text: str) -> str | None:
     match = re.search(r'["\'](v\.\d+(?:[.-][\w\d]+)*)', text)
     return match.group(1) if match else None
@@ -1705,7 +1825,8 @@ def update_from_beta():
         install_dependencies()
         fix_permissions()
         restart_service()
-        console.print("[green]Обновление с ветки dev завершено.[/green]")
+        console.print("[green]Обновление с ветки dev завершено. Проверяю запуск бота...[/green]")
+        wait_for_bot_startup()
     except Exception as e:
         console.print(f"[red]❌ Обновление упало: {e}[/red]")
         if backup_path and safe_confirm("[yellow]Откатить проект из свежего бэкапа?[/yellow]", default=True):
@@ -1761,7 +1882,8 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
     install_dependencies()
     fix_permissions()
     restart_service()
-    console.print(f"[green]Обновление до {tag_name} завершено.[/green]")
+    console.print(f"[green]Обновление до {tag_name} завершено. Проверяю запуск бота...[/green]")
+    wait_for_bot_startup()
 
 
 def update_from_release():
@@ -3446,7 +3568,7 @@ def show_menu():
         return text if enabled else f"[muted]{text}  · нужен пункт 9[/muted]"
 
     table = Table(
-        title="Solobot CLI v0.6.2",
+        title="Solobot CLI v0.7.0",
         title_style="title",
         header_style="muted",
         box=box.SIMPLE,
@@ -3489,6 +3611,7 @@ def main():
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
+                    wait_for_bot_startup()
                 else:
                     console.print(f"[yellow]Служба {SERVICE_NAME} не найдена.[/yellow]")
                     if safe_confirm("[green]Установить бота и создать службу сейчас?[/green]", default=True):
@@ -3522,6 +3645,7 @@ def main():
                 if is_service_exists(SERVICE_NAME):
                     if safe_confirm("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
                         subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
+                        wait_for_bot_startup()
                 else:
                     console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
             elif choice == "4":

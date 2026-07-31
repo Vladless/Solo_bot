@@ -38,7 +38,9 @@ async def list_payments_admin(
     session: AsyncSession = Depends(get_session),
 ):
     """Постраничный список платежей с поиском (система, tg_id, сумма) и фильтром статуса."""
-    stmt = select(Payment, User.tg_id).join(User, Payment.user_id == User.id, isouter=True)
+    stmt = select(Payment, User.tg_id, User.username, User.first_name, User.last_name).join(
+        User, Payment.user_id == User.id, isouter=True
+    )
     term = q.strip().lstrip("#@")
     if term:
         low = f"%{term.lower()}%"
@@ -50,6 +52,9 @@ async def list_payments_admin(
                 cast(User.tg_id, Text).like(like),
                 cast(Payment.tg_id, Text).like(like),
                 cast(Payment.amount, Text).like(like),
+                func.lower(func.coalesce(User.username, "")).like(low),
+                func.lower(func.coalesce(User.first_name, "")).like(low),
+                func.lower(func.coalesce(User.last_name, "")).like(low),
             )
         )
     if status == "success":
@@ -67,8 +72,11 @@ async def list_payments_admin(
             "payment_system": p.payment_system,
             "status": p.status,
             "created_at": p.created_at.isoformat() if p.created_at else None,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
         }
-        for p, tg in rows
+        for p, tg, username, first_name, last_name in rows
     ]
     return {"total": int(total), "items": items}
 
