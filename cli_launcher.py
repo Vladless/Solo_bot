@@ -1497,8 +1497,13 @@ def _shorten(line: str, limit: int = 300) -> str:
     return line if len(line) <= limit else line[:limit] + "…"
 
 
+def _is_caret_line(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) <= set("^~ .…")
+
+
 def _extract_error_summary(lines: list[str]) -> list[str]:
-    non_empty = [line for line in lines if line.strip()]
+    non_empty = [line for line in lines if line.strip() and not _is_caret_line(line)]
     if not non_empty:
         return []
 
@@ -1521,10 +1526,16 @@ def _extract_error_summary(lines: list[str]) -> list[str]:
             error_line = stripped
             break
     if error_line is None:
+        for line in reversed(block):
+            if not _is_noise_line(line) and not line.strip().startswith("File "):
+                error_line = line.strip()
+                break
+    if error_line is None:
         error_line = block[-1].strip()
 
     summary = [_shorten(line) for line in file_lines[-2:]]
-    summary.append(_shorten(error_line))
+    if error_line not in summary:
+        summary.append(_shorten(error_line))
     return summary
 
 
@@ -1617,7 +1628,8 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
         console.print("[green]✅ Успешно: бот полностью запущен.[/green]")
     elif verdict == "fail":
         console.print("[red]❌ Бот не запустился. Ошибка из службы:[/red]")
-        for line in _extract_error_summary(error_lines):
+        summary = _extract_error_summary(_journal_tail(200)) or _extract_error_summary(error_lines)
+        for line in summary:
             console.print(line, markup=False, highlight=False, style="err")
     else:
         if _service_state() == "active":
