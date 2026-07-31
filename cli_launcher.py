@@ -1492,18 +1492,40 @@ def _is_noise_line(line: str) -> bool:
     return False
 
 
+def _shorten(line: str, limit: int = 300) -> str:
+    line = line.strip()
+    return line if len(line) <= limit else line[:limit] + "…"
+
+
 def _extract_error_summary(lines: list[str]) -> list[str]:
-    cleaned = [line for line in lines if line.strip() and not _is_noise_line(line)]
-    for idx in range(len(cleaned) - 1, -1, -1):
-        stripped = cleaned[idx].strip()
-        if _ERROR_LINE_RE.match(stripped) or ": " in stripped and stripped.split(":", 1)[0].endswith(("Error", "Exception")):
-            summary = []
-            prev = cleaned[idx - 1].strip() if idx > 0 else ""
-            if prev.startswith("File ") or prev.startswith('File "'):
-                summary.append(prev)
-            summary.append(stripped)
-            return summary
-    return cleaned[-5:]
+    non_empty = [line for line in lines if line.strip()]
+    if not non_empty:
+        return []
+
+    start = 0
+    for idx in range(len(non_empty) - 1, -1, -1):
+        if "Traceback (most recent call last)" in non_empty[idx]:
+            start = idx
+            break
+    block = non_empty[start:]
+
+    file_lines = [line.strip() for line in block if line.strip().startswith("File ")]
+
+    error_line = None
+    for line in reversed(block):
+        stripped = line.strip()
+        if _ERROR_LINE_RE.match(stripped) or (
+            ": " in stripped and stripped.split(":", 1)[0].replace(".", "").isidentifier()
+            and stripped.split(":", 1)[0].endswith(("Error", "Exception"))
+        ):
+            error_line = stripped
+            break
+    if error_line is None:
+        error_line = block[-1].strip()
+
+    summary = [_shorten(line) for line in file_lines[-2:]]
+    summary.append(_shorten(error_line))
+    return summary
 
 
 def _service_state() -> str:
@@ -1569,8 +1591,7 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
                     console.print(line, markup=False, highlight=False, style="dim")
                 if fatal_seen_at is not None:
                     error_lines.append(line)
-                    stripped = line.strip()
-                    if not _is_noise_line(line) and _ERROR_LINE_RE.match(stripped):
+                    if _ERROR_LINE_RE.match(line.strip()):
                         verdict = "fail"
                         break
                 elif any(marker in line for marker in _STARTUP_SUCCESS_MARKERS):
