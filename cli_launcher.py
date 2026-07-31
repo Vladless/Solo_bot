@@ -1481,6 +1481,31 @@ _STARTUP_FATAL_MARKERS = (
 )
 
 
+_ERROR_LINE_RE = re.compile(r"^(?:[\w.]+(?:Error|Exception|Warning|Exit))\b.*|^SystemExit\b.*")
+
+
+def _is_noise_line(line: str) -> bool:
+    if len(line) > 400:
+        return True
+    if line.count("\\x") >= 4:
+        return True
+    return False
+
+
+def _extract_error_summary(lines: list[str]) -> list[str]:
+    cleaned = [line for line in lines if line.strip() and not _is_noise_line(line)]
+    for idx in range(len(cleaned) - 1, -1, -1):
+        stripped = cleaned[idx].strip()
+        if _ERROR_LINE_RE.match(stripped) or ": " in stripped and stripped.split(":", 1)[0].endswith(("Error", "Exception")):
+            summary = []
+            prev = cleaned[idx - 1].strip() if idx > 0 else ""
+            if prev.startswith("File ") or prev.startswith('File "'):
+                summary.append(prev)
+            summary.append(stripped)
+            return summary
+    return cleaned[-5:]
+
+
 def _service_state() -> str:
     result = subprocess.run(["systemctl", "is-active", SERVICE_NAME], capture_output=True, text=True)
     return (result.stdout or "").strip()
@@ -1530,7 +1555,7 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
             now = time_mod.time()
             if now - started_at > timeout:
                 break
-            if fatal_seen_at is not None and now - fatal_seen_at > 3:
+            if fatal_seen_at is not None and now - fatal_seen_at > 10:
                 verdict = "fail"
                 break
 
@@ -1540,9 +1565,14 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
                 if not line:
                     break
                 line = line.rstrip("\n")
-                console.print(line, markup=False, highlight=False, style="dim")
+                if not _is_noise_line(line) and fatal_seen_at is None:
+                    console.print(line, markup=False, highlight=False, style="dim")
                 if fatal_seen_at is not None:
                     error_lines.append(line)
+                    stripped = line.strip()
+                    if not _is_noise_line(line) and _ERROR_LINE_RE.match(stripped):
+                        verdict = "fail"
+                        break
                 elif any(marker in line for marker in _STARTUP_SUCCESS_MARKERS):
                     verdict = "ok"
                     break
@@ -1554,7 +1584,7 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
                 if _service_state() in ("failed", "inactive"):
                     verdict = "fail"
                     if not error_lines:
-                        error_lines = _journal_tail(30)[-15:]
+                        error_lines = _journal_tail(80)
                     break
     finally:
         try:
@@ -1566,14 +1596,14 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
         console.print("[green]✅ Успешно: бот полностью запущен.[/green]")
     elif verdict == "fail":
         console.print("[red]❌ Бот не запустился. Ошибка из службы:[/red]")
-        for line in error_lines[-20:]:
+        for line in _extract_error_summary(error_lines):
             console.print(line, markup=False, highlight=False, style="err")
     else:
         if _service_state() == "active":
             console.print("[green]✅ Успешно: служба активна.[/green]")
         else:
             console.print("[red]❌ Служба не активна. Ошибка из службы:[/red]")
-            for line in _journal_tail(30)[-15:]:
+            for line in _extract_error_summary(_journal_tail(80)):
                 console.print(line, markup=False, highlight=False, style="err")
 
     try:
