@@ -1502,40 +1502,63 @@ def _is_caret_line(line: str) -> bool:
     return bool(stripped) and set(stripped) <= set("^~ .…")
 
 
+def _looks_like_error_line(stripped: str) -> bool:
+    if _ERROR_LINE_RE.match(stripped):
+        return True
+    if ": " in stripped:
+        head = stripped.split(":", 1)[0]
+        return head.replace(".", "").isidentifier() and head.endswith(("Error", "Exception"))
+    return False
+
+
 def _extract_error_summary(lines: list[str]) -> list[str]:
-    non_empty = [line for line in lines if line.strip() and not _is_caret_line(line)]
-    if not non_empty:
+    rows = [line for line in lines if line.strip() and not _is_caret_line(line)]
+    if not rows:
         return []
 
+    err_idx = None
+    for idx in range(len(rows) - 1, -1, -1):
+        if _looks_like_error_line(rows[idx].strip()):
+            err_idx = idx
+            break
+
+    if err_idx is None:
+        block = rows
+        for idx in range(len(rows) - 1, -1, -1):
+            if "Traceback (most recent call last)" in rows[idx]:
+                block = rows[idx:]
+                break
+        file_lines = [line.strip() for line in block if line.strip().startswith("File ")]
+        tail_line = next(
+            (line.strip() for line in reversed(block)
+             if not _is_noise_line(line) and not line.strip().startswith("File ")),
+            block[-1].strip(),
+        )
+        summary = [_shorten(line) for line in file_lines[-2:]]
+        if tail_line not in summary:
+            summary.append(_shorten(tail_line))
+        return summary
+
     start = 0
-    for idx in range(len(non_empty) - 1, -1, -1):
-        if "Traceback (most recent call last)" in non_empty[idx]:
+    for idx in range(err_idx, -1, -1):
+        if "Traceback (most recent call last)" in rows[idx]:
             start = idx
             break
-    block = non_empty[start:]
+    block = rows[start:err_idx]
 
     file_lines = [line.strip() for line in block if line.strip().startswith("File ")]
-
-    error_line = None
-    for line in reversed(block):
-        stripped = line.strip()
-        if _ERROR_LINE_RE.match(stripped) or (
-            ": " in stripped and stripped.split(":", 1)[0].replace(".", "").isidentifier()
-            and stripped.split(":", 1)[0].endswith(("Error", "Exception"))
-        ):
-            error_line = stripped
-            break
-    if error_line is None:
-        for line in reversed(block):
-            if not _is_noise_line(line) and not line.strip().startswith("File "):
-                error_line = line.strip()
-                break
-    if error_line is None:
-        error_line = block[-1].strip()
+    code_line = next(
+        (line.strip() for line in reversed(block)
+         if not line.strip().startswith("File ")
+         and not _is_noise_line(line)
+         and "Traceback" not in line),
+        None,
+    )
 
     summary = [_shorten(line) for line in file_lines[-2:]]
-    if error_line not in summary:
-        summary.append(_shorten(error_line))
+    if code_line:
+        summary.append(_shorten(code_line))
+    summary.append(_shorten(rows[err_idx].strip()))
     return summary
 
 
