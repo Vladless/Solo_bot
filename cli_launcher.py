@@ -3576,7 +3576,13 @@ def manage_website():
     if choice == "1":
         subprocess.run(["docker", "compose", "ps"], cwd=WEB_DIR)
     elif choice == "2":
-        subprocess.run(["docker", "compose", "logs", "--tail", "80", "-f"], cwd=WEB_DIR)
+        step_info("Живой поток логов. Выход — Ctrl+C.")
+        try:
+            subprocess.run(["docker", "compose", "logs", "--tail", "80", "-f"], cwd=WEB_DIR)
+        except KeyboardInterrupt:
+            pass
+        console.print()
+        step_ok("Просмотр логов завершён.")
     elif choice == "3":
         subprocess.run(["docker", "compose", "restart"], cwd=WEB_DIR)
         step_ok("Перезапущено")
@@ -3899,15 +3905,22 @@ def main():
                     step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "5":
                 if is_service_exists(SERVICE_NAME):
-                    subprocess.run([
-                        "sudo",
-                        "journalctl",
-                        "-u",
-                        SERVICE_NAME,
-                        "-n",
-                        "80",
-                        "--no-pager",
-                    ])
+                    step_info("Живой поток логов. Выход — Ctrl+C.")
+                    try:
+                        subprocess.run([
+                            "sudo",
+                            "journalctl",
+                            "-u",
+                            SERVICE_NAME,
+                            "-n",
+                            "80",
+                            "-f",
+                            "--no-pager",
+                        ])
+                    except KeyboardInterrupt:
+                        pass
+                    console.print()
+                    step_ok("Просмотр логов завершён.")
                 else:
                     step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "6":
