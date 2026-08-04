@@ -1595,6 +1595,28 @@ def install_git_if_needed():
     install_core_packages_if_needed()
 
 
+def _pip_install_streamed(cmd, progress, task_id):
+    import re as _re
+
+    proc = subprocess.Popen(
+        cmd, cwd=PROJECT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    for line in proc.stdout:
+        line = line.strip()
+        if not line:
+            continue
+        m = _re.match(r"(?:Using cached|Downloading|Collecting)\s+([A-Za-z0-9._-]+)", line)
+        if m:
+            progress.update(task_id, description=f"Зависимости: {m.group(1).split('-')[0]}")
+        elif line.startswith("Installing collected packages"):
+            progress.update(task_id, description="Зависимости: установка пакетов…")
+        elif line.startswith("Building wheel for"):
+            progress.update(task_id, description=f"Зависимости: сборка {line.split('for', 1)[1].strip().split(' ')[0]}")
+    proc.wait()
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, cmd)
+
+
 def install_dependencies():
     console.print("[title]Установка зависимостей...[/title]")
     install_core_packages_if_needed()
@@ -1619,10 +1641,10 @@ def install_dependencies():
             subprocess.run([python312_path, "-m", "venv", "venv"], check=True)
 
             progress.update(task_id, description="Установка зависимостей...")
-            subprocess.run(
+            _pip_install_streamed(
                 [os.path.join("venv", "bin", "pip"), "install", "-r", "requirements.txt"],
-                check=True,
-                cwd=PROJECT_DIR,
+                progress,
+                task_id,
             )
 
             progress.update(task_id, description="Установка завершена")
