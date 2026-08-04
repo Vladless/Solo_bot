@@ -59,13 +59,15 @@ def _bootstrap_rpc() -> None:
     try:
         import core.rpc  # noqa: F401
 
-        return
+        if hasattr(core.rpc, "adopt_beta_files"):
+            return
     except Exception:
         pass
 
     core_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "core")
     os.makedirs(core_dir, exist_ok=True)
     base_url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/core"
+    got_so = False
     for name in ("__init__.py", "rpc.cpython-312-x86_64-linux-gnu.so"):
         try:
             with urlopen(Request(f"{base_url}/{name}", headers={"Cache-Control": "no-cache"}), timeout=20) as resp:
@@ -73,8 +75,17 @@ def _bootstrap_rpc() -> None:
             if data:
                 with open(os.path.join(core_dir, name), "wb") as fh:
                     fh.write(data)
+                if name.endswith(".so"):
+                    got_so = True
         except Exception:
             continue
+
+    if got_so:
+        try:
+            os.remove(os.path.join(core_dir, "rpc.py"))
+        except OSError:
+            pass
+    sys.modules.pop("core.rpc", None)
 
     try:
         import core.rpc  # noqa: F401

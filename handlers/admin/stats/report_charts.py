@@ -65,7 +65,7 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
     """Рисует вертикальные бар-чарты (по панели на метрику) и возвращает PNG в BytesIO.
 
     panels: [{"name": str, "color": (r,g,b), "values": [float, ...]}]
-    Текст на картинке только ASCII (числа/дни) — кириллица идёт в подписи Telegram.
+    Названия панелей рисуются на картинке системным шрифтом (DejaVu/Liberation/Arial).
     """
     try:
         from PIL import Image, ImageDraw
@@ -86,6 +86,7 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
         img = Image.new("RGB", (width, height), _BG)
         draw = ImageDraw.Draw(img)
         f_small = _font(15)
+        f_title = _font(17)
 
         show_values = n <= 16
         if n <= 16:
@@ -102,6 +103,7 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
         for p_idx, panel in enumerate(panels):
             values = panel.get("values") or [0] * n
             color = panel.get("color", (88, 166, 255))
+            name = str(panel.get("name", ""))
             panel_top = top_pad + p_idx * (panel_h + panel_gap)
             plot_top = panel_top + title_h
             baseline = plot_top + plot_h
@@ -112,11 +114,7 @@ def render_stats_chart(x_labels: list[str], panels: list[dict]) -> io.BytesIO | 
                 radius=10,
                 fill=_PANEL,
             )
-            draw.rounded_rectangle(
-                [left_pad - 8, panel_top + 6, left_pad + 26, panel_top + 15],
-                radius=4,
-                fill=color,
-            )
+            draw.text((left_pad - 8, panel_top), name, font=f_title, fill=color)
 
             vmax = max(values) if values else 1.0
             vmin = min(values) if values else 0.0
