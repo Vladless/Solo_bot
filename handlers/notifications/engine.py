@@ -9,20 +9,6 @@ import pytz
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from config import (
-    NOTIFICATION_TIME,
-    NOTIFY_10H_ENABLED,
-    NOTIFY_10H_HOURS,
-    NOTIFY_24H_ENABLED,
-    NOTIFY_24H_HOURS,
-    NOTIFY_DELETE_DELAY,
-    NOTIFY_DELETE_KEY,
-    NOTIFY_HOT_LEADS,
-    NOTIFY_INACTIVE_TRAFFIC,
-    NOTIFY_RENEW,
-    NOTIFY_RENEW_EXPIRED,
-    TRIAL_TIME_DISABLE,
-)
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from handlers.notifications.bulk import create_bulk_updates, execute_bulk_updates
 from handlers.notifications.context import NotificationContext
@@ -37,6 +23,20 @@ from handlers.notifications.processors.zero_traffic import process_zero_traffic
 from hooks.hooks import run_hooks
 from logger import logger
 from middlewares.session import wrap_session
+from settings.config import (
+    NOTIFICATION_TIME,
+    NOTIFY_10H_ENABLED,
+    NOTIFY_10H_HOURS,
+    NOTIFY_24H_ENABLED,
+    NOTIFY_24H_HOURS,
+    NOTIFY_DELETE_DELAY,
+    NOTIFY_DELETE_KEY,
+    NOTIFY_HOT_LEADS,
+    NOTIFY_INACTIVE_TRAFFIC,
+    NOTIFY_RENEW,
+    NOTIFY_RENEW_EXPIRED,
+    TRIAL_TIME_DISABLE,
+)
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")

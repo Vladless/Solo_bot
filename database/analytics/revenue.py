@@ -30,7 +30,12 @@ async def _payment_success_rate(ctx: StatsCtx) -> list[dict]:
     out = []
     for name, total, ok in rows:
         total, ok = int(total or 0), int(ok or 0)
-        out.append({"system": (name or "—"), "total": total, "success": ok, "rate_pct": round(100.0 * ok / total, 1) if total else 0.0})
+        out.append({
+            "system": (name or "—"),
+            "total": total,
+            "success": ok,
+            "rate_pct": round(100.0 * ok / total, 1) if total else 0.0,
+        })
     return out
 
 

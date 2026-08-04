@@ -12,6 +12,10 @@ FORBIDDEN_FILES=(
   '^\.env\.production$'
   '^\.env\.prod$'
   '^handlers/texts\.py$'
+  '^settings/config\.py$'
+  '^settings/texts\.py$'
+  '(^|/)config_beta\.py$'
+  '(^|/)texts_beta\.py$'
   '^alembic\.ini$'
   '^\.license_state$'
 )

@@ -28,6 +28,12 @@ from api.v2.routes import (
 router = APIRouter()
 
 router.include_router(root_router)
+try:
+    from core.rpc import build_pack_entitlements_router
+
+    router.include_router(build_pack_entitlements_router())
+except Exception:
+    pass
 router.include_router(auth.router, prefix="/api")
 router.include_router(users.router, prefix="/api/users", tags=["Users"])
 router.include_router(users.crud_router, prefix="/api/users", tags=["Users"])

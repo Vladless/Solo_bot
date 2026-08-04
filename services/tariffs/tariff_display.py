@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from database import get_tariff_by_id
 from database.models import Key
-from handlers.texts import key_message_success
 from logger import logger
+from settings.texts import key_message_success
 
 
 GB = 1024 * 1024 * 1024

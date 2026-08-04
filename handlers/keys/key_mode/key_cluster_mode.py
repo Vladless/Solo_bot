@@ -15,7 +15,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import update
 
 from bot import bot
-from config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     get_key_details,
@@ -26,14 +25,6 @@ from database import (
 )
 from database.access.resolution import notify_telegram_chat_id, resolve_user_optional
 from database.models import Key
-from handlers.buttons import (
-    CONNECT_DEVICE,
-    MAIN_MENU,
-    MY_SUB,
-    ROUTER_BUTTON,
-    SUPPORT,
-    TV_BUTTON,
-)
 from handlers.keys.utils import build_key_callback
 from handlers.utils import (
     build_support_button,
@@ -57,6 +48,15 @@ from services.tariffs.tariff_display import (
     get_effective_limits_for_key,
     resolve_price_to_charge,
 )
+from settings.buttons import (
+    CONNECT_DEVICE,
+    MAIN_MENU,
+    MY_SUB,
+    ROUTER_BUTTON,
+    SUPPORT,
+    TV_BUTTON,
+)
+from settings.config import REMNAWAVE_WEBAPP, REMNAWAVE_WEBAPP_OPEN_IN_BROWSER
 
 
 router = Router()

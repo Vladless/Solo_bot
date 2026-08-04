@@ -8,12 +8,12 @@ from aiogram import BaseMiddleware, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
-from core.cache_config import (
+from core.redis_cache import cache_key, cache_setnx
+from settings.cache_config import (
     CONCURRENCY_LIMIT,
     CONCURRENCY_MAX_WAIT_SEC,
     CONCURRENCY_REJECT_NOTICE_TTL_SEC,
 )
-from core.redis_cache import cache_key, cache_setnx
 
 
 class ConcurrencyLimiterMiddleware(BaseMiddleware):

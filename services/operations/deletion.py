@@ -2,7 +2,6 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 from database import get_servers
 from logger import (
     CLOGGER as logger,
@@ -11,6 +10,7 @@ from logger import (
 )
 from panels._3xui import delete_client, get_xui_instance
 from panels.remnawave import RemnawaveAPI
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 from .utils import unique_by_api_url
 

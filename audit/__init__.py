@@ -39,7 +39,7 @@ from .rules import (
 
 
 try:
-    from core.cache_config import (
+    from settings.cache_config import (
         AUDIT_REDIS_BUFFER_ENABLED,
         AUDIT_REDIS_DRAIN_BATCH,
         AUDIT_REDIS_FLUSH_KEY,

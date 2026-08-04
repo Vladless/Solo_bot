@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.access.resolution import resolve_user_optional
 from database.models import ManualBan
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
 from middlewares.ban_checker import invalidate_ban_cache
+from settings.buttons import BACK
 
 from .keyboard import AdminUserEditorCallback, build_editor_btn, build_editor_kb, build_user_ban_type_kb
 from .users_states import BanUserStates

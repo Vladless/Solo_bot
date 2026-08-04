@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import re
 
-from config import API_TOKEN, WEBHOOK_SECRET_TOKEN
+from settings.config import API_TOKEN, WEBHOOK_SECRET_TOKEN
 
 
 def _secret_bytes() -> bytes:

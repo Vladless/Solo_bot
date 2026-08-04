@@ -61,7 +61,9 @@ async def on_topic_reopened(message: Message) -> None:
             await session.commit()
 
 
-@router.message(Command("close", "open", "pending", "priority", "note", "assign", "unassign", "tag", "untag"), F.message_thread_id)
+@router.message(
+    Command("close", "open", "pending", "priority", "note", "assign", "unassign", "tag", "untag"), F.message_thread_id
+)
 async def on_command(message: Message, command: CommandObject) -> None:
     ticket = await _ticket_for(message)
     if ticket is None:
@@ -73,7 +75,9 @@ async def on_command(message: Message, command: CommandObject) -> None:
             if not arg:
                 await message.reply("Формат: /note текст заметки")
                 return
-            await svc.add_message(session, ticket_id=ticket.id, author="note", body=arg[:4000], agent_tg_id=message.from_user.id)
+            await svc.add_message(
+                session, ticket_id=ticket.id, author="note", body=arg[:4000], agent_tg_id=message.from_user.id
+            )
             await session.commit()
             await message.reply("🔒 Заметка сохранена (клиент не увидит).")
             return

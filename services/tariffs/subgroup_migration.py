@@ -4,7 +4,6 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import HAPP_CRYPTOLINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from core.bootstrap import MODES_CONFIG
 from database import filter_cluster_by_subgroup, update_key_client_id
 from logger import (
@@ -13,6 +12,7 @@ from logger import (
     PANEL_XUI,
 )
 from panels._3xui import ClientConfig, add_client, extend_client_key, get_xui_instance
+from settings.config import HAPP_CRYPTOLINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 
 
 async def ensure_on_remnawave(

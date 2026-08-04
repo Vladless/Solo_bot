@@ -16,7 +16,7 @@ async def scheduled_broadcasts_loop_task(bot, _sessionmaker) -> None:
 
 
 async def backup_loop(bot, _sessionmaker) -> None:
-    from config import BACKUP_TIME
+    from settings.config import BACKUP_TIME
     from utils.backup import backup_database
 
     if BACKUP_TIME <= 0:
@@ -34,8 +34,8 @@ def backup_thread_loop(stop_event, _bot, _sessionmaker) -> None:
     from aiogram.client.default import DefaultBotProperties
     from aiogram.enums import ParseMode
 
-    from config import API_TOKEN, BACKUP_TIME
     from core.settings.modes_config import resolve_protect_content
+    from settings.config import API_TOKEN, BACKUP_TIME
     from utils.backup import backup_database
 
     if BACKUP_TIME <= 0:
@@ -67,9 +67,9 @@ def backup_thread_loop(stop_event, _bot, _sessionmaker) -> None:
 
 
 async def blocked_drain_loop(_bot, sessionmaker) -> None:
-    from core.cache_config import BLOCKED_DRAIN_BATCH, BLOCKED_DRAIN_INTERVAL_SEC, BLOCKED_EVENTS_REDIS_KEY
     from core.redis_cache import cache_lpop_batch
     from database.bans import remove_blocked_user_ids, save_blocked_user_ids
+    from settings.cache_config import BLOCKED_DRAIN_BATCH, BLOCKED_DRAIN_INTERVAL_SEC, BLOCKED_EVENTS_REDIS_KEY
 
     while True:
         try:
@@ -99,8 +99,8 @@ async def blocked_drain_loop(_bot, sessionmaker) -> None:
 
 
 async def server_checks_loop(_bot, sessionmaker) -> None:
-    from config import PING_TIME
     from servers import check_servers
+    from settings.config import PING_TIME
 
     if PING_TIME <= 0:
         await asyncio.Event().wait()

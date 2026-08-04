@@ -4,11 +4,11 @@ from pytz import timezone
 from sqlalchemy import Float, and_, cast, func, insert, literal, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache_config import PAYMENT_PENDING_CACHE_TTL_SEC
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
 from database.models import Gift, Payment
 from logger import logger
+from settings.cache_config import PAYMENT_PENDING_CACHE_TTL_SEC
 
 
 MOSCOW_TZ = timezone("Europe/Moscow")

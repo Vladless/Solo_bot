@@ -4,9 +4,9 @@ from typing import Any, List
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import TRIBUTE_LINK
-from handlers.buttons import MAIN_MENU, RUB_CURRENCY, STARS, USD_CURRENCY
-from handlers.texts import FAST_PAY_NOT_ENOUGH
+from settings.config import TRIBUTE_LINK
+from settings.buttons import MAIN_MENU, RUB_CURRENCY, STARS, USD_CURRENCY
+from settings.texts import FAST_PAY_NOT_ENOUGH
 from services.payments.currency_rates import format_for_user
 
 

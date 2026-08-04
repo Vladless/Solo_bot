@@ -4,9 +4,9 @@ from aiogram.filters import BaseFilter
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from config import ADMIN_ID
 from database.db import async_session_maker
 from database.models import Admin
+from settings.config import ADMIN_ID
 
 from .permissions import normalize_permissions
 

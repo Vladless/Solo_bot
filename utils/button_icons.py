@@ -39,7 +39,7 @@ def apply_button_icons_patch(config: dict[str, dict[str, str]] | None = None) ->
                     config = _button_icon_config.get(key.split("|", 1)[0])
                 if config is None:
                     for cfg_key, cfg_val in _button_icon_config.items():
-                        if cfg_key.startswith(("https://")) and key.startswith(cfg_key):
+                        if cfg_key.startswith("https://") and key.startswith(cfg_key):
                             config = cfg_val
                             break
                 if config is not None:

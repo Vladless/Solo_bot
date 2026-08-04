@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache_config import TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC, TARIFF_BY_ID_CACHE_TTL_SEC
 from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_key, cache_set
 from database.models import Server, Tariff, TariffSubgroupSetting
 from logger import logger
+from settings.cache_config import TARIFFS_FOR_CLUSTER_CACHE_TTL_SEC, TARIFF_BY_ID_CACHE_TTL_SEC
 
 
 def _row_to_cache_dict(row_dict: dict) -> dict:

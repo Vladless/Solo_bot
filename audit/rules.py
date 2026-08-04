@@ -6,7 +6,7 @@ from collections.abc import Iterable
 def _get_bot_webhook_path() -> str:
     """Путь вебхука бота из конфига (для исключения из шага «успешная оплата»)."""
     try:
-        from config import WEBHOOK_PATH
+        from settings.config import WEBHOOK_PATH
 
         return ((WEBHOOK_PATH or "").strip().lower()) or ""
     except ImportError:

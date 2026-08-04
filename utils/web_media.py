@@ -8,9 +8,20 @@ from logger import logger
 
 WEB_UPLOAD_DIR = Path("static/web_uploads")
 _ALLOWED_IMAGE_EXT = frozenset({".jpg", ".jpeg", ".png", ".webp"})
-_ALLOWED_DOC_EXT = frozenset(
-    {".pdf", ".txt", ".log", ".json", ".csv", ".zip", ".doc", ".docx", ".xlsx", ".conf", ".yml", ".yaml"}
-)
+_ALLOWED_DOC_EXT = frozenset({
+    ".pdf",
+    ".txt",
+    ".log",
+    ".json",
+    ".csv",
+    ".zip",
+    ".doc",
+    ".docx",
+    ".xlsx",
+    ".conf",
+    ".yml",
+    ".yaml",
+})
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 

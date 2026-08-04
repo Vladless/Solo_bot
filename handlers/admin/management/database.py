@@ -16,11 +16,11 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_IN_DOCKER, PG_PORT
 from core.executor import run_io
 from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
+from settings.config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_IN_DOCKER, PG_PORT
 from utils.backup import _find_docker_postgres_container
 
 
@@ -429,7 +429,11 @@ async def prompt_restore_db_local(callback: CallbackQuery):
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("restore_local|")), HasPermission(PERM_MANAGEMENT), flags={"popup": True})
+@router.callback_query(
+    AdminPanelCallback.filter(F.action.startswith("restore_local|")),
+    HasPermission(PERM_MANAGEMENT),
+    flags={"popup": True},
+)
 async def restore_db_local(callback: CallbackQuery):
     try:
         idx = int(callback.data.split("|", 1)[1].split(":")[-1])

@@ -356,9 +356,9 @@ async def handle_recreate_key_confirm(
             await update_key_subscription_links(session, old_email, new_link)
 
         elif threexui_servers:
-            from config import PUBLIC_LINK, SUPERNODE
             from database.keys import update_key_email_and_link
             from panels._3xui import change_client_email, get_xui_instance
+            from settings.config import PUBLIC_LINK, SUPERNODE
 
             new_email = await generate_random_email(session=session)
             changed_any = False

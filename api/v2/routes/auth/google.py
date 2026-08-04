@@ -28,23 +28,23 @@ from logger import logger
 
 
 try:
-    from config import GOOGLE_CLIENT_ID as _GOOGLE_CLIENT_ID
+    from settings.config import GOOGLE_CLIENT_ID as _GOOGLE_CLIENT_ID
 except ImportError:
     _GOOGLE_CLIENT_ID = ""
 try:
-    from config import GOOGLE_CLIENT_SECRET as _GOOGLE_CLIENT_SECRET
+    from settings.config import GOOGLE_CLIENT_SECRET as _GOOGLE_CLIENT_SECRET
 except ImportError:
     _GOOGLE_CLIENT_SECRET = ""
 try:
-    from config import GOOGLE_REDIRECT_URI as _GOOGLE_REDIRECT_URI
+    from settings.config import GOOGLE_REDIRECT_URI as _GOOGLE_REDIRECT_URI
 except ImportError:
     _GOOGLE_REDIRECT_URI = ""
 try:
-    from config import OAUTH_SUCCESS_URI as _OAUTH_SUCCESS_URI
+    from settings.config import OAUTH_SUCCESS_URI as _OAUTH_SUCCESS_URI
 except ImportError:
     _OAUTH_SUCCESS_URI = "/dashboard"
 try:
-    from config import API_TOKEN as _API_TOKEN_RAW
+    from settings.config import API_TOKEN as _API_TOKEN_RAW
 except ImportError:
     _API_TOKEN_RAW = ""
 _GOOGLE_STATE_KEY = str(_API_TOKEN_RAW or "").strip() or secrets.token_hex(32)

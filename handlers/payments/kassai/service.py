@@ -12,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from settings.config import (
     KASSAI_API_KEY,
     KASSAI_DOMAIN,
     KASSAI_FAILURE_URL,
@@ -23,7 +23,7 @@ from config import (
 )
 from database import async_session_maker, register_pending_payment
 from database.models import User
-from handlers.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
+from settings.buttons import BACK, KASSAI_CARDS, KASSAI_SBP, PAY_2
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -31,7 +31,7 @@ from handlers.payments.keyboards import (
     pay_keyboard,
     payment_options_for_user,
 )
-from handlers.texts import (
+from settings.texts import (
     ENTER_SUM,
     KASSAI_CARDS_DESCRIPTION,
     KASSAI_PAYMENT_MESSAGE,

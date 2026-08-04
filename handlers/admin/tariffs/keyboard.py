@@ -5,7 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.tariffs import create_subgroup_hash
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
 

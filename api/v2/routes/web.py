@@ -2599,7 +2599,7 @@ def _site_log_token() -> str:
     except Exception:
         pass
     try:
-        from config import PLUGIN_BUILDER_TOKEN
+        from settings.config import PLUGIN_BUILDER_TOKEN
 
         return str(PLUGIN_BUILDER_TOKEN or "").strip()
     except Exception:
@@ -2652,7 +2652,7 @@ async def _fetch_site_log_lines(max_lines: int) -> tuple[list[str], bool, str | 
 
 def _api_logging_enabled() -> bool:
     try:
-        from config import API_LOGGING
+        from settings.config import API_LOGGING
 
         return bool(API_LOGGING)
     except Exception:

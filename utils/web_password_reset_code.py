@@ -1,6 +1,5 @@
 import hmac
 
-from config import LOGIN_CODE_TTL_SEC
 from core.redis_cache import (
     cache_delete,
     cache_get,
@@ -10,6 +9,7 @@ from core.redis_cache import (
     cache_setnx,
     redis_connection_ok,
 )
+from settings.config import LOGIN_CODE_TTL_SEC
 
 
 _RESEND_COOLDOWN_SEC = 60.0

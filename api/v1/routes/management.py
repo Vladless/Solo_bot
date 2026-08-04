@@ -18,7 +18,6 @@ from sqlalchemy import distinct, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token, verify_admin_token_short
-from config import API_TOKEN, BOT_SERVICE
 from core.bootstrap import MANAGEMENT_CONFIG
 from core.executor import run_io
 from core.settings.management_config import update_management_config
@@ -43,6 +42,7 @@ from handlers.admin.sender.scheduled_service import (
     scheduled_broadcast_to_dict,
 )
 from logger import logger
+from settings.config import API_TOKEN, BOT_SERVICE
 from utils.backup import backup_database
 
 

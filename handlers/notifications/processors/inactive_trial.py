@@ -5,17 +5,17 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import check_notifications_bulk
 from database.models import User
 from database.notifications import bulk_add_notifications
 from database.tariffs import get_tariffs
-from handlers.buttons import MAIN_MENU, TRIAL_BONUS
 from handlers.notifications.sender import send_messages_with_limit
-from handlers.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG
 from handlers.utils import format_days
 from logger import logger
+from settings.buttons import MAIN_MENU, TRIAL_BONUS
+from settings.config import NOTIFY_EXTRA_DAYS, NOTIFY_INACTIVE
+from settings.texts import TRIAL_INACTIVE_BONUS_MSG, TRIAL_INACTIVE_FIRST_MSG
 
 
 _INACTIVE_TRIAL_UPDATE_BATCH_SIZE = 1000

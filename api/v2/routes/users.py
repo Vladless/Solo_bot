@@ -55,9 +55,7 @@ async def search_users(
         ]
         stmt = stmt.where(or_(*conds))
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar() or 0
-    rows = (
-        await session.execute(stmt.order_by(User.created_at.desc()).limit(limit).offset(offset))
-    ).scalars().all()
+    rows = (await session.execute(stmt.order_by(User.created_at.desc()).limit(limit).offset(offset))).scalars().all()
     return {"total": int(total), "items": [_user_brief(u) for u in rows]}
 
 
@@ -71,9 +69,7 @@ async def ban_user(
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
-    existing = (
-        await session.execute(select(ManualBan).where(ManualBan.user_id == u.id))
-    ).scalar_one_or_none()
+    existing = (await session.execute(select(ManualBan).where(ManualBan.user_id == u.id))).scalar_one_or_none()
     if existing is None:
         session.add(ManualBan(user_id=u.id, tg_id=u.tg_id, reason="manual", banned_by=None))
     return {"banned": True}
@@ -127,13 +123,14 @@ async def user_card(
     ]
 
     payments = (
-        await session.execute(
-            select(Payment)
-            .where(Payment.tg_id == u.tg_id)
-            .order_by(Payment.created_at.desc())
-            .limit(20)
+        (
+            await session.execute(
+                select(Payment).where(Payment.tg_id == u.tg_id).order_by(Payment.created_at.desc()).limit(20)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     payment_list = [
         {
             "id": int(p.id),
@@ -150,9 +147,7 @@ async def user_card(
         await session.execute(select(func.count()).select_from(Gift).where(Gift.sender_tg_id == u.tg_id))
     ).scalar() or 0
 
-    ban = (
-        await session.execute(select(ManualBan).where(ManualBan.tg_id == u.tg_id).limit(1))
-    ).scalar_one_or_none()
+    ban = (await session.execute(select(ManualBan).where(ManualBan.tg_id == u.tg_id).limit(1))).scalar_one_or_none()
 
     invited_count = (
         await session.execute(select(func.count()).select_from(Referral).where(Referral.referrer_user_id == u.id))

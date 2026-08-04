@@ -3,10 +3,10 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from config import ADMIN_ID, DATABASE_URL
 from database import db
 from database.migrations.schema_upgrade import apply_all_migrations
 from database.models import Admin, Base, User
+from settings.config import ADMIN_ID, DATABASE_URL
 
 
 async def run_schema_setup(*, create_all: bool = True) -> None:

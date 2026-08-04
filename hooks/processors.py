@@ -117,8 +117,8 @@ async def process_extract_cryptolink_from_result(
         return None
 
     try:
-        from config import HAPP_CRYPTOLINK
         from core.bootstrap import MODES_CONFIG
+        from settings.config import HAPP_CRYPTOLINK
 
         base_use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
         use_crypto_link = await process_happ_cryptolink_override(
@@ -160,10 +160,10 @@ async def process_get_cryptolink_after_renewal(
         return None
 
     try:
-        from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
         from database import get_tariff_by_id
         from panels.remnawave import RemnawaveAPI
         from services.operations.utils import is_plan_vless
+        from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
         remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
         if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):

@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 from database import get_servers, get_tariff_by_id, update_key_expiry
 from database.keys import delete_key, mark_key_as_frozen, mark_key_as_unfrozen, update_key_subscription_links
 from database.models import Key
@@ -15,6 +14,7 @@ from services.operations import (
     toggle_client_on_cluster,
     update_subscription,
 )
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 
 DAY_MS = 86400 * 1000

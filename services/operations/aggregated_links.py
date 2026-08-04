@@ -2,12 +2,12 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, SUPERNODE
 from core.bootstrap import MODES_CONFIG
 from database import filter_cluster_by_subgroup, get_key_details, get_tariff_by_id
 from logger import logger
 from panels._3xui import get_vless_link_for_client, get_xui_instance
 from panels.remnawave_runtime import with_remnawave_api
+from settings.config import HAPP_CRYPTOLINK, LEGACY_LINKS, PUBLIC_LINK, SUPERNODE
 
 from .utils import is_plan_vless, split_by_panel
 

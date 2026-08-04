@@ -8,14 +8,20 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import USE_NEW_PAYMENT_FLOW
 from core.bootstrap import MODES_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import get_balance, get_tariff_by_id
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
-from handlers.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU, PAYMENT
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
-from handlers.texts import (
+from handlers.utils import edit_or_send_message, get_plural_form, safe_answer_callback
+from hooks.processors import process_check_discount_validity
+from logger import logger
+from services.payments.currency_rates import format_for_user
+from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
+from services.tariffs.tariff_display import GB
+from settings.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU, PAYMENT
+from settings.config import USE_NEW_PAYMENT_FLOW
+from settings.texts import (
     ADDON_RESET_CONFIG_WARNING,
     CONFIG_SCREEN_TEMPLATE,
     CREATING_CONNECTION_MSG,
@@ -25,12 +31,6 @@ from handlers.texts import (
     UNLIMITED_DEVICES_LABEL,
     UNLIMITED_TRAFFIC_LABEL,
 )
-from handlers.utils import edit_or_send_message, get_plural_form, safe_answer_callback
-from hooks.processors import process_check_discount_validity
-from logger import logger
-from services.payments.currency_rates import format_for_user
-from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
-from services.tariffs.tariff_display import GB
 
 
 router = Router()

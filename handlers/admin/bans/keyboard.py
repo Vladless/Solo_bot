@@ -1,6 +1,6 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
 

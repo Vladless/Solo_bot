@@ -3,8 +3,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.v2.schemas.identities import IdentityResponse, LoginResponse
-from config import API_TOKEN_TTL_DAYS
 from logger import logger
+from settings.config import API_TOKEN_TTL_DAYS
 from utils.referral_codes import encode_partner_code
 
 

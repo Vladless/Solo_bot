@@ -70,7 +70,7 @@ def get_site_url() -> str:
     url = str(WEB_CONFIG.get("SITE_URL") or "").strip()
     if url:
         return url.rstrip("/")
-    from config import SITE_URL
+    from settings.config import SITE_URL
 
     return SITE_URL.rstrip("/") if SITE_URL else ""
 

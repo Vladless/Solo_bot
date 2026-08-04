@@ -13,10 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from audit import list_audit_events
-from core.cache_config import AUDIT_HISTORY_CACHE_TTL_SEC
 from core.redis_cache import cache_get, cache_key, cache_set
 from database.models import User
 from filters.admin import IsAdminFilter
+from settings.cache_config import AUDIT_HISTORY_CACHE_TTL_SEC
 
 from .keyboard import AdminUserEditorCallback, build_user_audit_kb
 

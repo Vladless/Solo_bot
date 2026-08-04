@@ -51,8 +51,8 @@ async def bootstrap() -> None:
         logger.warning("[bootstrap] data: URI migration failed: {}", exc)
 
     try:
-        from config import API_TOKEN_TTL_DAYS
         from database.identity_sessions import cleanup_expired_sessions
+        from settings.config import API_TOKEN_TTL_DAYS
 
         async with async_session_maker() as session:
             if API_TOKEN_TTL_DAYS is None:

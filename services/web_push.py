@@ -11,7 +11,7 @@ except ImportError:
     _WEBPUSH_AVAILABLE = False
 
 try:
-    from config import VAPID_CLAIMS_EMAIL, VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY
+    from settings.config import VAPID_CLAIMS_EMAIL, VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY
 except ImportError:
     VAPID_PRIVATE_KEY = ""
     VAPID_PUBLIC_KEY = ""

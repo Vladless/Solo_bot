@@ -28,6 +28,10 @@ env/
 
 # Sensitive configuration files
 /config.py
+/settings/config.py
+/settings/texts.py
+config_beta.py
+texts_beta.py
 /config.ini
 /alembic.ini
 /.env

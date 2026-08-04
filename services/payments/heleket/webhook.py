@@ -4,7 +4,6 @@ import json
 
 from aiohttp import web
 
-from config import HELEKET_API_KEY
 from core.webhook_abuse import (
     get_webhook_client_ip,
     is_webhook_ip_blocked,
@@ -16,6 +15,7 @@ from services.payments.pipeline import (
     process_cancelled_payment,
     process_success_payment,
 )
+from settings.config import HELEKET_API_KEY
 
 
 _PROVIDER = "heleket"

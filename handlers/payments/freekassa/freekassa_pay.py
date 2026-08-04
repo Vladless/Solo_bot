@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from settings.config import (
     FREEKASSA_SECRET1,
     FREEKASSA_SECRET2,
     FREEKASSA_SHOP_ID,
@@ -34,9 +34,9 @@ from database import (
     register_pending_payment,
     update_balance,
 )
-from handlers.buttons import BACK, PAY_2
+from settings.buttons import BACK, PAY_2
 from handlers.payments.utils import send_payment_success_notification
-from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
+from settings.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM, PAYMENT_OPTIONS
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.payment_links import register_payment_creator

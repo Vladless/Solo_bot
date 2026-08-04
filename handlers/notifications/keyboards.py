@@ -1,7 +1,8 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.buttons import (
+from handlers.keys.utils import build_key_callback
+from settings.buttons import (
     ADD_SUB,
     CHANGE_TARIFF,
     DISCOUNT_TARIFF,
@@ -9,7 +10,6 @@ from handlers.buttons import (
     MAX_DISCOUNT_TARIFF,
     RENEW_KEY_NOTIFICATION,
 )
-from handlers.keys.utils import build_key_callback
 
 
 def build_notification_kb(email: str, client_id: str | None = None) -> InlineKeyboardMarkup:

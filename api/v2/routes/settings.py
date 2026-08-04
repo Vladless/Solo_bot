@@ -147,14 +147,12 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
             if options:
                 field["options"] = options
             fields.append(field)
-        sections.append(
-            {
-                "scope": scope,
-                "title": title,
-                "description": SECTION_DESCRIPTIONS.get(scope, ""),
-                "fields": fields,
-            }
-        )
+        sections.append({
+            "scope": scope,
+            "title": title,
+            "description": SECTION_DESCRIPTIONS.get(scope, ""),
+            "fields": fields,
+        })
     return {"sections": sections}
 
 

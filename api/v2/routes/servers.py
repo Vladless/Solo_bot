@@ -9,6 +9,7 @@ from api.v2.base_crud import generate_crud_router
 from api.v2.schemas import ServerBase, ServerResponse, ServerUpdate
 from database.models import Key, Server
 
+
 stats_router = APIRouter()
 
 

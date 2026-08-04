@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_servers
 from database.models import Key, Server
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import AdminServerCallback, build_manage_server_kb

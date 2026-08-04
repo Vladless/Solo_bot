@@ -6,16 +6,16 @@ from types import SimpleNamespace
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache_config import (
-    KEYS_LIST_CACHE_TTL_SEC,
-    KEY_COUNT_CACHE_TTL_SEC,
-    KEY_DETAILS_CACHE_TTL_SEC,
-)
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
 from database.models import Key, Tariff, User
 from database.users import invalidate_profile_cache, invalidate_user_snapshot
 from logger import logger
+from settings.cache_config import (
+    KEYS_LIST_CACHE_TTL_SEC,
+    KEY_COUNT_CACHE_TTL_SEC,
+    KEY_DETAILS_CACHE_TTL_SEC,
+)
 
 
 async def invalidate_key_details(email: str) -> None:

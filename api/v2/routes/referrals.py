@@ -19,13 +19,6 @@ from api.v2.schemas.web_public import (
     ReferralTopEntryResponse,
     ReferralTopResponse,
 )
-from config import (
-    CHECK_REFERRAL_REWARD_ISSUED,
-    REFERRAL_BONUS_PERCENTAGES,
-    REFERRAL_BUTTON,
-    REFERRAL_QR,
-    TOP_REFERRAL_BUTTON,
-)
 from core.bootstrap import BUTTONS_CONFIG
 from database import (
     add_referral,
@@ -36,6 +29,13 @@ from database import (
 from database.access.resolution import resolve_user_optional
 from database.models import Referral
 from database.referrals import get_referral_position, get_top_referrals
+from settings.config import (
+    CHECK_REFERRAL_REWARD_ISSUED,
+    REFERRAL_BONUS_PERCENTAGES,
+    REFERRAL_BUTTON,
+    REFERRAL_QR,
+    TOP_REFERRAL_BUTTON,
+)
 from utils.referral_codes import decode_referral_code, encode_referral_code
 
 

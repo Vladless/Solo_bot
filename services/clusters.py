@@ -6,7 +6,6 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.keys import count_keys_by_server_id, get_all_key_server_ids
 from database.servers import (
     filter_cluster_by_subgroup,
@@ -17,6 +16,7 @@ from database.servers import (
 )
 from hooks.processors import process_cluster_balancer, process_cluster_override
 from logger import logger
+from settings.config import ADMIN_PASSWORD, ADMIN_USERNAME, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 from .errors import NotFoundError, ValidationError
 

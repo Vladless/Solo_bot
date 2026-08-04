@@ -65,9 +65,7 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
         await message.answer("⚠️ Такой админ уже существует.", reply_markup=build_admin_back_kb_to_admins())
         return
 
-    await message.answer(
-        f"Выберите роль для <code>{tg_id}</code>:", reply_markup=build_new_admin_role_kb(tg_id)
-    )
+    await message.answer(f"Выберите роль для <code>{tg_id}</code>:", reply_markup=build_new_admin_role_kb(tg_id))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action.startswith("add_role|")), HasPermission(PERM_ADMINS))
@@ -192,7 +190,9 @@ async def edit_admin_permissions(callback: CallbackQuery, callback_data: AdminPa
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action.startswith("toggle_perm|")), HasPermission(PERM_ADMINS), flags={"popup": True})
+@router.callback_query(
+    AdminPanelCallback.filter(F.action.startswith("toggle_perm|")), HasPermission(PERM_ADMINS), flags={"popup": True}
+)
 async def toggle_admin_permission(callback: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     try:
         _, tg_id_str, perm_id = callback_data.action.split("|", 2)

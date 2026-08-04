@@ -6,12 +6,12 @@ from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import MODES_CONFIG
-from handlers.buttons import HAVE_PROBLEM, MAIN_MENU, SUPPORT
 from handlers.support_triage import TriageCallback
 from handlers.utils import build_support_button
-from handlers.texts import FALLBACK_MESSAGE
 from hooks.hooks import run_hooks
 from logger import logger
+from settings.buttons import HAVE_PROBLEM, MAIN_MENU, SUPPORT
+from settings.texts import FALLBACK_MESSAGE
 
 
 fallback_router = Router()

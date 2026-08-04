@@ -11,18 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import (
-    CAPTCHA_ENABLE,
-    CHANNEL_EXISTS,
-    CHANNEL_ID,
-    CHANNEL_URL,
-    DONATIONS_ENABLE,
-    SHOW_START_MENU_ONCE,
-    SUPPORT_CHAT_URL,
-    TRIAL_TIME_DISABLE,
-)
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
-from core.cache_config import START_UTM_EXISTS_TTL_SEC
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
     add_user,
@@ -30,7 +19,19 @@ from database import (
     upsert_source_if_empty,
 )
 from database.models import TrackingSource
-from handlers.buttons import (
+from handlers.captcha import generate_captcha
+from handlers.coupons import activate_coupon
+from handlers.instructions.instructions import send_instructions
+from handlers.keys.key_create import confirm_create_new_key
+from handlers.keys.key_view import process_callback_or_message_view_keys
+from handlers.payments.gift import handle_gift_link
+from handlers.profile import process_callback_view_profile
+from handlers.refferal import invite_handler
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
+from logger import logger
+from middlewares.session import release_session_early
+from settings.buttons import (
     ABOUT_VPN,
     ADMIN_BTN,
     BACK,
@@ -42,15 +43,18 @@ from handlers.buttons import (
     SUPPORT,
     TRIAL_SUB,
 )
-from handlers.captcha import generate_captcha
-from handlers.coupons import activate_coupon
-from handlers.instructions.instructions import send_instructions
-from handlers.keys.key_create import confirm_create_new_key
-from handlers.keys.key_view import process_callback_or_message_view_keys
-from handlers.payments.gift import handle_gift_link
-from handlers.profile import process_callback_view_profile
-from handlers.refferal import invite_handler
-from handlers.texts import (
+from settings.cache_config import START_UTM_EXISTS_TTL_SEC
+from settings.config import (
+    CAPTCHA_ENABLE,
+    CHANNEL_EXISTS,
+    CHANNEL_ID,
+    CHANNEL_URL,
+    DONATIONS_ENABLE,
+    SHOW_START_MENU_ONCE,
+    SUPPORT_CHAT_URL,
+    TRIAL_TIME_DISABLE,
+)
+from settings.texts import (
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
     SUBSCRIPTION_CONFIRMED_MSG,
@@ -58,10 +62,6 @@ from handlers.texts import (
     WELCOME_TEXT,
     get_about_vpn,
 )
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
-from logger import logger
-from middlewares.session import release_session_early
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link

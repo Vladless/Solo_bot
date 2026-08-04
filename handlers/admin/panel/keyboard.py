@@ -21,9 +21,9 @@ from filters.permissions import (
     PERM_TARIFFS,
     PERM_USERS,
 )
-from handlers.buttons import BACK, MAIN_MENU
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
+from settings.buttons import BACK, MAIN_MENU
 
 
 class AdminPanelCallback(CallbackData, prefix="admin_panel"):

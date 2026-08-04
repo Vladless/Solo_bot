@@ -8,7 +8,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 
-from config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
+from settings.config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
 from core.bootstrap import PAYMENTS_CONFIG
 from core.settings.buttons_config import BUTTONS_CONFIG
 from core.settings.money_config import get_currency_mode
@@ -20,13 +20,13 @@ from database import (
 )
 from database.coupons import apply_percent_coupon
 from database.temporary_data import create_temporary_data, get_temporary_data
-from handlers import buttons as btn
+from settings import buttons as btn
 from handlers.payments.currency_flow import (
     build_currency_choice_kb,
     currency_label,
     shortfall_lead_text,
 )
-from handlers.texts import (
+from settings.texts import (
     FASTFLOW_COUPON_APPLIED_TEMPLATE,
     FAST_PAY_CHOOSE_CURRENCY,
     FAST_PAY_CHOOSE_PROVIDER,

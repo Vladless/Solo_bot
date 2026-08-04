@@ -9,8 +9,8 @@ import py3xui
 
 from py3xui import AsyncApi, Client, Inbound
 
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
 from logger import logger
+from settings.config import ADMIN_PASSWORD, ADMIN_USERNAME, SUPERNODE, USE_XUI_TOKEN, XUI_TOKEN
 
 
 @dataclass

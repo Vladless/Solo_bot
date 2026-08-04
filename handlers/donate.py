@@ -10,9 +10,9 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RUB_TO_XTR, STARS_BOT_URL
-from handlers.buttons import BACK, MAIN_MENU, STARS_BOT
 from logger import logger
+from settings.buttons import BACK, MAIN_MENU, STARS_BOT
+from settings.config import RUB_TO_XTR, STARS_BOT_URL
 
 from .utils import edit_or_send_message
 

@@ -6,8 +6,8 @@ import time
 from importlib import import_module
 from typing import Any
 
-from config import REDIS_URL
 from logger import logger
+from settings.config import REDIS_URL
 
 
 _REDIS_CLIENTS: dict[tuple[int, int], Any] = {}

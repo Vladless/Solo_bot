@@ -20,7 +20,6 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID, INLINE_MODE, REFERRAL_BONUS_PERCENTAGES, REFERRAL_QR, TOP_REFERRAL_BUTTON, USERNAME_BOT
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import (
     add_referral,
@@ -31,8 +30,18 @@ from database import (
 from database.access.resolution import resolve_user_optional
 from database.models import Referral
 from database.tariffs import get_tariffs
-from handlers.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
-from handlers.texts import (
+from logger import logger
+from services.payments.currency_rates import format_for_user
+from settings.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
+from settings.config import (
+    ADMIN_ID,
+    INLINE_MODE,
+    REFERRAL_BONUS_PERCENTAGES,
+    REFERRAL_QR,
+    TOP_REFERRAL_BUTTON,
+    USERNAME_BOT,
+)
+from settings.texts import (
     INVITE_MESSAGE_TEMPLATE,
     INVITE_TEXT_NON_INLINE,
     NEW_REFERRAL_NOTIFICATION,
@@ -40,8 +49,6 @@ from handlers.texts import (
     REFERRAL_SUCCESS_MSG,
     TOP_REFERRALS_TEXT,
 )
-from logger import logger
-from services.payments.currency_rates import format_for_user
 
 from .texts import get_referral_link
 from .utils import edit_or_send_message, format_days, safe_answer_inline_query

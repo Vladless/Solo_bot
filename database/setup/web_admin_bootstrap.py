@@ -12,7 +12,7 @@ async def ensure_web_admin(session: AsyncSession) -> None:
     Вызов на старте API: если креды заданы в config.py — upsert Identity с bcrypt-хешем.
     Если пусто или переменных нет в config.py — no-op с предупреждением, сайт останется без админа.
     """
-    import config
+    from settings import config
 
     login = (getattr(config, "WEB_ADMIN_LOGIN", None) or "").strip()
     password = getattr(config, "WEB_ADMIN_PASSWORD", None) or ""

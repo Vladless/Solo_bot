@@ -21,7 +21,7 @@ from database.tariffs import (
     set_subgroup_description,
 )
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from . import router
 from .keyboard import AdminTariffCallback, build_tariff_menu_kb

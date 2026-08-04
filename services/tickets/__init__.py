@@ -14,6 +14,7 @@ from .forum import (
 from .service import (
     ANSWERED,
     CLOSED,
+    DEFAULT_CANNED_REPLIES,
     OPEN,
     PENDING,
     STATUSES,
@@ -21,22 +22,22 @@ from .service import (
     add_message,
     assign_ticket,
     build_client_context,
+    create_ticket,
     delete_stale,
     delete_ticket,
-    create_ticket,
-    resolve_billing_user_ref,
     get_thread,
     get_ticket,
     get_ticket_by_topic,
     list_for_agent,
     list_for_identity,
     mark_read,
-    DEFAULT_CANNED_REPLIES,
+    resolve_billing_user_ref,
     set_rating,
     set_status,
     set_tags,
     support_metrics,
 )
+
 
 __all__ = [
     "OPEN",

@@ -73,11 +73,11 @@ def _run_process_loop_task(task_id: str, runner: LoopRunner) -> None:
 
 
 async def _run_process_loop_task_async(task_id: str, runner: LoopRunner) -> None:
-    from config import API_TOKEN
     from core.bootstrap import bootstrap
     from core.settings.modes_config import resolve_protect_content
     from database import async_session_maker
     from database.db import reset_async_db_engine
+    from settings.config import API_TOKEN
 
     bot = Bot(
         token=API_TOKEN,
@@ -125,7 +125,7 @@ class PeriodicTaskManager:
 
         parts: list[str] = []
         try:
-            from config import API_TOKEN
+            from settings.config import API_TOKEN
 
             parts.append(str(API_TOKEN or ""))
         except Exception:
@@ -216,7 +216,7 @@ class PeriodicTaskManager:
         self._process_lock_file = None
 
     def _build_scheduler(self) -> AsyncIOScheduler:
-        from config import EXECUTOR_POOL_SIZE, PROCESS_POOL_SIZE
+        from settings.config import EXECUTOR_POOL_SIZE, PROCESS_POOL_SIZE
 
         thread_workers = max(1, int(EXECUTOR_POOL_SIZE))
         configured_process_workers = self._scheduler_process_workers

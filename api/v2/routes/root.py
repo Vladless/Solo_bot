@@ -9,7 +9,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session
-from config import (
+from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_CONFIG
+from core.settings.money_config import get_currency_mode
+from core.settings.web_config import WEB_CONFIG
+from services.payments.providers import (
+    TELEGRAM_ONLY_PROVIDER_IDS,
+    get_providers_with_hooks,
+    get_web_link_provider_ids,
+)
+from settings.config import (
     BALANCE_BUTTON,
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -38,14 +46,6 @@ from config import (
     TRIAL_TIME_DISABLE,
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
-)
-from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_CONFIG
-from core.settings.money_config import get_currency_mode
-from core.settings.web_config import WEB_CONFIG
-from services.payments.providers import (
-    TELEGRAM_ONLY_PROVIDER_IDS,
-    get_providers_with_hooks,
-    get_web_link_provider_ids,
 )
 
 
@@ -104,7 +104,7 @@ async def telegram_widget_bot():
     project_name = (PROJECT_NAME or "Solo").strip() if isinstance(PROJECT_NAME, str) else "Solo"
     telegram_client_id = ""
     try:
-        from config import TELEGRAM_CLIENT_ID
+        from settings.config import TELEGRAM_CLIENT_ID
 
         telegram_client_id = str(TELEGRAM_CLIENT_ID).strip()
     except ImportError:

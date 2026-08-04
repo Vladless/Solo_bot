@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, SUPERNODE
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
 from database.access.resolution import resolve_user_optional
 from database.keys import delete_key_by_user_and_email, get_key_by_user_and_email
@@ -19,6 +18,7 @@ from panels._3xui import ClientConfig, add_client, get_xui_instance
 from panels.remnawave_runtime import invalidate_remnawave_profile, with_remnawave_api
 from services.clusters import ALLOWED_GROUP_CODES, select_cluster
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from settings.config import PUBLIC_LINK, SUPERNODE
 
 from .aggregated_links import make_aggregated_link
 from .deletion import delete_key_from_cluster

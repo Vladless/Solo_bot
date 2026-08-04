@@ -5,17 +5,17 @@ from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DISCOUNT_ACTIVE_HOURS, HOT_LEAD_INTERVAL_HOURS
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import add_notification, check_notification_time_bulk, get_hot_lead_notification_flags, get_hot_leads
 from database.access.resolution import notify_telegram_chat_id
 from database.tariffs import get_tariffs
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
-from handlers.buttons import MAIN_MENU
 from handlers.notifications.keyboards import build_hot_lead_kb
 from handlers.notifications.sender import send_notification
-from handlers.texts import HOT_LEAD_FINAL_MESSAGE, HOT_LEAD_LOST_OPPORTUNITY, HOT_LEAD_MESSAGE
 from logger import logger
+from settings.buttons import MAIN_MENU
+from settings.config import DISCOUNT_ACTIVE_HOURS, HOT_LEAD_INTERVAL_HOURS
+from settings.texts import HOT_LEAD_FINAL_MESSAGE, HOT_LEAD_LOST_OPPORTUNITY, HOT_LEAD_MESSAGE
 
 
 async def process_hot_leads(bot: Bot, session: AsyncSession):

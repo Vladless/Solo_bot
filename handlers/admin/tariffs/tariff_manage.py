@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import create_tariff
 from database.models import Gift, Key, Server, Tariff
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
 from . import router

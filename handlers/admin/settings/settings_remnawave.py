@@ -5,7 +5,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 from core.settings.remnawave_config import (
     REMNAWAVE_CONFIG,
     get_host_rotation_allowed,
@@ -16,6 +15,7 @@ from core.settings.remnawave_config import (
 from database import async_session_maker, get_servers
 from logger import logger
 from panels.remnawave import RemnawaveAPI
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (

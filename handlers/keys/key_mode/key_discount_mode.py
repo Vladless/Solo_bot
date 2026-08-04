@@ -7,16 +7,18 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DISCOUNT_ACTIVE_HOURS
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database import get_keys, get_tariffs, get_tariffs_for_cluster
 from database.access.resolution import resolve_user_optional
 from database.models import Notification
-from handlers.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
 from handlers.keys.utils import build_key_callback
 from handlers.notifications.keyboards import build_tariffs_keyboard
 from handlers.tariffs.buy.key_tariffs import select_tariff_plan
-from handlers.texts import (
+from handlers.utils import format_discount_time_left, get_least_loaded_cluster
+from logger import logger
+from settings.buttons import MAIN_MENU, RENEW_KEY_NOTIFICATION
+from settings.config import DISCOUNT_ACTIVE_HOURS
+from settings.texts import (
     COLD_DISCOUNT_EXPIRED,
     COLD_DISCOUNT_FINAL_EXPIRED,
     COLD_DISCOUNT_TARIFF,
@@ -35,8 +37,6 @@ from handlers.texts import (
     get_discount_offer_final_message,
     get_discount_offer_message,
 )
-from handlers.utils import format_discount_time_left, get_least_loaded_cluster
-from logger import logger
 
 
 router = Router()

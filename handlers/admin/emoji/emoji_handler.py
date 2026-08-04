@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_EMOJI
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 

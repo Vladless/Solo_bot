@@ -1,8 +1,8 @@
+import time
+
 from datetime import datetime, timedelta
 from math import ceil
 from urllib.parse import urlsplit
-
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pytz import timezone as tz_moscow
@@ -19,7 +19,6 @@ from api.v2.schemas.web_public import (
     TariffPurchaseRequest,
     TariffPurchaseResponse,
 )
-from config import TRIAL_TIME_DISABLE
 from core.bootstrap import MODES_CONFIG, PAYMENTS_CONFIG
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
@@ -30,7 +29,6 @@ from database.coupons import mark_coupon_used
 from database.models import Key, Server, Tariff
 from database.tariffs import get_tariff_by_id
 from database.temporary_data import create_temporary_data
-from handlers.texts import TARIFF_COOLDOWN_MESSAGE
 from logger import logger
 from services.errors import InsufficientFundsError
 from services.keys import create_vpn_key_headless
@@ -39,6 +37,8 @@ from services.payments.providers import get_web_link_provider_ids
 from services.tariffs import calculate_config_price, filter_config_options
 from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
 from services.tariffs.visibility import is_tariff_visible_for
+from settings.config import TRIAL_TIME_DISABLE
+from settings.texts import TARIFF_COOLDOWN_MESSAGE
 
 
 def _full_config_options(raw: object) -> list[int] | None:

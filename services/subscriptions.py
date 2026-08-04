@@ -10,7 +10,17 @@ import aiohttp
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from core.bootstrap import MODES_CONFIG
+from core.redis_cache import cache_get, cache_key, cache_set
+from database import get_key_details, get_servers
+from database.servers import get_enabled_server_subscription_url
+from handlers.utils import convert_to_bytes
+from logger import logger
+from settings.cache_config import (
+    SUBSCRIPTION_HANDLER_CONCURRENCY,
+    SUBSCRIPTION_RESPONSE_CACHE_TTL_SEC,
+)
+from settings.config import (
     PROJECT_NAME,
     RANDOM_SUBSCRIPTIONS,
     SUPERNODE,
@@ -18,17 +28,7 @@ from config import (
     USERNAME_BOT,
     USE_COUNTRY_SELECTION,
 )
-from core.bootstrap import MODES_CONFIG
-from core.cache_config import (
-    SUBSCRIPTION_HANDLER_CONCURRENCY,
-    SUBSCRIPTION_RESPONSE_CACHE_TTL_SEC,
-)
-from core.redis_cache import cache_get, cache_key, cache_set
-from database import get_key_details, get_servers
-from database.servers import get_enabled_server_subscription_url
-from handlers.texts import HAPP_ANNOUNCE, HIDDIFY_PROFILE_TITLE, SUBSCRIPTION_INFO_TEXT, V2RAYTUN_ANNOUNCE
-from handlers.utils import convert_to_bytes
-from logger import logger
+from settings.texts import HAPP_ANNOUNCE, HIDDIFY_PROFILE_TITLE, SUBSCRIPTION_INFO_TEXT, V2RAYTUN_ANNOUNCE
 
 
 _subscription_semaphore = asyncio.Semaphore(SUBSCRIPTION_HANDLER_CONCURRENCY)

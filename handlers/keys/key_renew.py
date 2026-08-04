@@ -13,7 +13,6 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
@@ -31,19 +30,7 @@ from database.access.resolution import notify_telegram_chat_id
 from database.models import Key, Server
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_subgroup_description, get_tariffs
-from handlers.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
-from handlers.texts import (
-    ADDON_RESET_PLAN_WARNING,
-    DISCOUNT_OFFER_MESSAGE,
-    DISCOUNT_OFFER_STEP2,
-    DISCOUNT_OFFER_STEP3,
-    INSUFFICIENT_FUNDS_RENEWAL_MSG,
-    KEY_NOT_FOUND_MSG,
-    PLAN_SELECTION_MSG,
-    get_renewal_message,
-    renewal_switch_text,
-)
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_russian_month
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import (
@@ -57,6 +44,19 @@ from logger import logger
 from services.operations import renew_key_in_cluster
 from services.payments.currency_rates import format_for_user
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from settings.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
+from settings.config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
+from settings.texts import (
+    ADDON_RESET_PLAN_WARNING,
+    DISCOUNT_OFFER_MESSAGE,
+    DISCOUNT_OFFER_STEP2,
+    DISCOUNT_OFFER_STEP3,
+    INSUFFICIENT_FUNDS_RENEWAL_MSG,
+    KEY_NOT_FOUND_MSG,
+    PLAN_SELECTION_MSG,
+    get_renewal_message,
+    renewal_switch_text,
+)
 
 from .utils import (
     add_tariff_button_generic,

@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.money_config import get_currency_mode
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 

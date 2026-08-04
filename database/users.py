@@ -4,11 +4,6 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache_config import (
-    BALANCE_CACHE_TTL_SEC,
-    USER_EXISTS_CACHE_TTL_SEC,
-    USER_SNAPSHOT_CACHE_TTL_SEC,
-)
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
 from database.models import (
@@ -28,6 +23,11 @@ from database.models import (
     WebPushSubscription,
 )
 from logger import logger
+from settings.cache_config import (
+    BALANCE_CACHE_TTL_SEC,
+    USER_EXISTS_CACHE_TTL_SEC,
+    USER_SNAPSHOT_CACHE_TTL_SEC,
+)
 
 
 def invalidate_user_snapshot(tg_id: int) -> None:

@@ -11,8 +11,8 @@ from database.returning import RETURNING_NOTIFICATION_TYPE, get_returning_target
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.keyboards import build_cold_lead_kb
 from handlers.notifications.sender import send_messages_with_limit
-from handlers.texts import RETURNING_MESSAGE
 from logger import logger
+from settings.texts import RETURNING_MESSAGE
 
 
 _DEFAULT_MIN_DAYS = 60

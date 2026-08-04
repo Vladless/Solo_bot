@@ -2,7 +2,8 @@ from email.message import EmailMessage
 
 import aiosmtplib
 
-from config import (
+from logger import logger
+from settings.config import (
     EMAIL_FROM,
     EMAIL_SMTP_HOST,
     EMAIL_SMTP_PASSWORD,
@@ -10,7 +11,6 @@ from config import (
     EMAIL_SMTP_USER,
     PROJECT_NAME,
 )
-from logger import logger
 
 
 _SMTP_TIMEOUT_SEC = 30.0

@@ -13,13 +13,13 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import INLINE_MODE, USERNAME_BOT
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_COUPONS
-from handlers.buttons import BACK
 from handlers.utils import format_days, safe_answer_inline_query
 from logger import logger
+from settings.buttons import BACK
+from settings.config import INLINE_MODE, USERNAME_BOT
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
@@ -121,7 +121,9 @@ async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: 
     await state.set_state(AdminCouponsState.waiting_for_percent_data)
 
 
-@router.callback_query(F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    F.data.in_(("coupon_audience_all", "coupon_audience_new")), IsAdminFilter(), flags={"popup": True}
+)
 async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     coupon_type = data.get("coupon_type")

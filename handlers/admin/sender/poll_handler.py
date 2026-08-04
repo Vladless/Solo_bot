@@ -178,7 +178,9 @@ async def poll_audience(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
-@router.callback_query(AdminPollCallback.filter(F.action == "aud"), AdminPoll.preview, IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    AdminPollCallback.filter(F.action == "aud"), AdminPoll.preview, IsAdminFilter(), flags={"popup": True}
+)
 async def poll_send(
     callback: CallbackQuery, callback_data: AdminPollCallback, state: FSMContext, session: AsyncSession
 ) -> None:

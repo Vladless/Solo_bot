@@ -13,7 +13,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID
 from database import (
     add_payment,
     add_user,
@@ -26,20 +25,21 @@ from database import (
     update_coupon_usage_count,
     update_key_expiry,
 )
-from handlers.buttons import MAIN_MENU
 from handlers.profile import process_callback_view_profile
-from handlers.texts import (
+from handlers.utils import edit_or_send_message, format_days
+from logger import logger
+from middlewares.session import release_session_early
+from services.operations import renew_key_in_cluster
+from services.payments.currency_rates import format_for_user
+from settings.buttons import MAIN_MENU
+from settings.config import ADMIN_ID
+from settings.texts import (
     COUPONS_DAYS_MESSAGE,
     COUPON_ALREADY_USED_MSG,
     COUPON_DAYS_ACTIVATED_MSG,
     COUPON_INPUT_PROMPT,
     COUPON_NOT_FOUND_MSG,
 )
-from handlers.utils import edit_or_send_message, format_days
-from logger import logger
-from middlewares.session import release_session_early
-from services.operations import renew_key_in_cluster
-from services.payments.currency_rates import format_for_user
 
 
 class CouponActivationState(StatesGroup):

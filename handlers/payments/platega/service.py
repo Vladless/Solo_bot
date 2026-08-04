@@ -12,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from settings.config import (
     PLATEGA_API_SECRET,
     PLATEGA_FAIL_URL,
     PLATEGA_MERCHANT_ID,
@@ -21,7 +21,7 @@ from config import (
 from core.bootstrap import PAYMENTS_CONFIG
 from database import add_payment, async_session_maker
 from database.models import User
-from handlers.buttons import (
+from settings.buttons import (
     BACK,
     PAY_2,
     PLATEGA_CARDS,
@@ -36,7 +36,7 @@ from handlers.payments.keyboards import (
     pay_keyboard,
     payment_options_for_user,
 )
-from handlers.texts import (
+from settings.texts import (
     PLATEGA_CARDS_DESCRIPTION,
     PLATEGA_CRYPTO_DESCRIPTION,
     PLATEGA_INT_DESCRIPTION,

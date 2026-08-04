@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Gift, GiftUsage, Tariff
 from filters.admin import IsAdminFilter
-from handlers.texts import get_site_gift_link
 from services.gifts import format_gift_limits_display, format_gift_recipient_display
+from settings.texts import get_site_gift_link
 
 from .keyboard import (
     AdminUserEditorCallback,

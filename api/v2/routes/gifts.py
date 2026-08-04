@@ -30,7 +30,6 @@ from api.v2.schemas.web_public import (
     MyGiftItem,
     MyGiftsResponse,
 )
-from config import GIFT_BUTTON
 from core.bootstrap import BUTTONS_CONFIG
 from database import (
     get_balance,
@@ -48,6 +47,7 @@ from services.gifts import (
 )
 from services.payments.payment_links import PaymentLinkRequest, create_payment_link
 from services.tariffs import calculate_config_price
+from settings.config import GIFT_BUTTON
 
 
 router = APIRouter()
@@ -112,9 +112,21 @@ async def gift_stats(
     """Метрики подарков: создано / погашено / конверсия / выручка / активаций за период."""
     since = datetime.utcnow() - timedelta(days=days)
     total = int((await session.execute(select(func.count()).select_from(Gift))).scalar() or 0)
-    redeemed = int((await session.execute(select(func.count()).select_from(Gift).where(Gift.is_used.is_(True)))).scalar() or 0)
-    activated_period = int((await session.execute(select(func.count()).select_from(GiftUsage).where(GiftUsage.used_at >= since))).scalar() or 0)
-    revenue = float((await session.execute(select(func.coalesce(func.sum(Gift.selected_price_rub), 0)).where(Gift.is_used.is_(True)))).scalar() or 0)
+    redeemed = int(
+        (await session.execute(select(func.count()).select_from(Gift).where(Gift.is_used.is_(True)))).scalar() or 0
+    )
+    activated_period = int(
+        (await session.execute(select(func.count()).select_from(GiftUsage).where(GiftUsage.used_at >= since))).scalar()
+        or 0
+    )
+    revenue = float(
+        (
+            await session.execute(
+                select(func.coalesce(func.sum(Gift.selected_price_rub), 0)).where(Gift.is_used.is_(True))
+            )
+        ).scalar()
+        or 0
+    )
     return {
         "total": total,
         "redeemed": redeemed,

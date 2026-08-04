@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import add_user, check_user_exists, get_key_count, get_temporary_data
-from handlers.buttons import CUSTOM_AMOUNT, MAIN_MENU, PAY_2
+from settings.buttons import CUSTOM_AMOUNT, MAIN_MENU, PAY_2
 from handlers.payments.keyboards import (
     back_keyboard,
     build_amounts_keyboard,
@@ -15,7 +15,7 @@ from handlers.payments.keyboards import (
     pay_keyboard as build_pay_keyboard,
     payment_options_for_user,
 )
-from handlers.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM
+from settings.texts import DEFAULT_PAYMENT_MESSAGE, ENTER_SUM
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user

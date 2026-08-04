@@ -9,7 +9,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup
 
-from config import API_TOKEN
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
 from database.models import ScheduledBroadcast
@@ -26,6 +25,7 @@ from database.scheduled_broadcasts import (
 from handlers.admin.sender.sender_service import BroadcastService
 from handlers.admin.sender.sender_utils import get_recipients, parse_message_buttons
 from logger import logger
+from settings.config import API_TOKEN
 
 
 MOSCOW_TZ = pytz.timezone("Europe/Moscow")

@@ -12,6 +12,7 @@ from database.models import Key, Tariff, User
 from database.tariffs import get_tariff_by_id
 from logger import logger
 
+
 subs_router = APIRouter()
 
 
@@ -84,7 +85,15 @@ async def subscription_detail(
     key = await _resolve(session, client_id)
     owner = (await session.execute(select(User).where(User.id == key.user_id))).scalar_one_or_none()
     tariff = await get_tariff_by_id(session, key.tariff_id) if key.tariff_id else None
-    tariffs = (await session.execute(select(Tariff).where(Tariff.is_active.is_(True)).order_by(Tariff.group_code, Tariff.sort_order))).scalars().all()
+    tariffs = (
+        (
+            await session.execute(
+                select(Tariff).where(Tariff.is_active.is_(True)).order_by(Tariff.group_code, Tariff.sort_order)
+            )
+        )
+        .scalars()
+        .all()
+    )
     from database.servers import get_servers
 
     servers_map = await get_servers(session)
@@ -101,20 +110,33 @@ async def subscription_detail(
         "created_at": int(key.created_at or 0),
         "is_frozen": bool(key.is_frozen),
         "active": (not key.is_frozen) and int(key.expiry_time or 0) > now_ms,
-        "device_limit": key.current_device_limit if key.current_device_limit is not None else (int(tariff.get("device_limit")) if tariff and tariff.get("device_limit") else None),
-        "traffic_limit": key.current_traffic_limit if key.current_traffic_limit is not None else (int(tariff.get("traffic_limit")) if tariff and tariff.get("traffic_limit") else None),
+        "device_limit": key.current_device_limit
+        if key.current_device_limit is not None
+        else (int(tariff.get("device_limit")) if tariff and tariff.get("device_limit") else None),
+        "traffic_limit": key.current_traffic_limit
+        if key.current_traffic_limit is not None
+        else (int(tariff.get("traffic_limit")) if tariff and tariff.get("traffic_limit") else None),
         "remnawave_link": key.remnawave_link,
         "owner_tg_id": owner.tg_id if owner else None,
         "owner_title": _owner_title(owner),
         "clusters": clusters,
         "tariffs": [
-            {"id": t.id, "name": t.name, "group_code": t.group_code, "duration_days": t.duration_days, "price_rub": t.price_rub, "configurable": bool(t.configurable)}
+            {
+                "id": t.id,
+                "name": t.name,
+                "group_code": t.group_code,
+                "duration_days": t.duration_days,
+                "price_rub": t.price_rub,
+                "configurable": bool(t.configurable),
+            }
             for t in tariffs
         ],
     }
 
 
-async def _renew_apply(session: AsyncSession, key: Key, *, new_expiry: int, total_gb, hwid, reset_traffic: bool) -> None:
+async def _renew_apply(
+    session: AsyncSession, key: Key, *, new_expiry: int, total_gb, hwid, reset_traffic: bool
+) -> None:
     from services.operations import renew_key_in_cluster
 
     await renew_key_in_cluster(
@@ -131,8 +153,16 @@ async def _renew_apply(session: AsyncSession, key: Key, *, new_expiry: int, tota
 
 
 def _limits_for(key: Key, tariff) -> tuple[Any, Any]:
-    total_gb = key.current_traffic_limit if key.current_traffic_limit is not None else (int(tariff.get("traffic_limit") or 0) if tariff else 0)
-    hwid = key.current_device_limit if key.current_device_limit is not None else (int(tariff.get("device_limit") or 0) if tariff else 0)
+    total_gb = (
+        key.current_traffic_limit
+        if key.current_traffic_limit is not None
+        else (int(tariff.get("traffic_limit") or 0) if tariff else 0)
+    )
+    hwid = (
+        key.current_device_limit
+        if key.current_device_limit is not None
+        else (int(tariff.get("device_limit") or 0) if tariff else 0)
+    )
     return total_gb, hwid
 
 
@@ -211,7 +241,9 @@ async def sub_change_tariff(
         total_gb = int(tariff.get("traffic_limit") or 0)
         hwid = int(tariff.get("device_limit") or 0)
     key.tariff_id = tariff_id
-    await _renew_apply(session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False)
+    await _renew_apply(
+        session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False
+    )
     logger.info(f"[API] Тариф подписки {client_id} → {tariff_id}")
     return {"message": "Тариф изменён", "tariff_id": tariff_id}
 
@@ -233,7 +265,9 @@ async def sub_set_limits(
         key.current_traffic_limit = int(traffic_limit)
     tariff = await get_tariff_by_id(session, key.tariff_id) if key.tariff_id else None
     total_gb, hwid = _limits_for(key, tariff)
-    await _renew_apply(session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False)
+    await _renew_apply(
+        session, key, new_expiry=int(key.expiry_time or 0), total_gb=total_gb, hwid=hwid, reset_traffic=False
+    )
     logger.info(f"[API] Лимиты подписки {client_id}: dev={device_limit} gb={traffic_limit}")
     return {"device_limit": key.current_device_limit, "traffic_limit": key.current_traffic_limit}
 
@@ -267,7 +301,9 @@ async def sub_freeze(
     from services.operations.toggles import toggle_client_on_cluster
 
     rec = await get_key_details(session, key.email)
-    result = await toggle_client_on_cluster(rec["server_id"], key.email, rec["client_id"], enable=False, session=session)
+    result = await toggle_client_on_cluster(
+        rec["server_id"], key.email, rec["client_id"], enable=False, session=session
+    )
     if result.get("status") != "success":
         raise HTTPException(status_code=502, detail="Не удалось отключить клиента на панели")
     time_left = max(0, int(rec["expiry_time"]) - int(time.time() * 1000))
@@ -363,12 +399,14 @@ async def sub_hwid_devices(
 ):
     """Список HWID-устройств подписки (Remnawave)."""
     key = await _resolve(session, client_id)
-    from panels.remnawave import RemnawaveAPI
-    from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
     from database.servers import get_servers
+    from panels.remnawave import RemnawaveAPI
+    from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
     servers_map = await get_servers(session)
-    cluster = servers_map.get(key.server_id) or [s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id]
+    cluster = servers_map.get(key.server_id) or [
+        s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id
+    ]
     remna_node = next((s for s in (cluster or []) if str(s.get("panel_type", "")).lower() == "remnawave"), None)
     if not remna_node:
         return {"devices": [], "supported": False}
@@ -397,12 +435,14 @@ async def sub_hwid_unbind(
     hwid = str(payload.get("hwid") or "").strip()
     if not hwid:
         raise HTTPException(status_code=400, detail="Не указан hwid")
-    from panels.remnawave import RemnawaveAPI
-    from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
     from database.servers import get_servers
+    from panels.remnawave import RemnawaveAPI
+    from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
     servers_map = await get_servers(session)
-    cluster = servers_map.get(key.server_id) or [s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id]
+    cluster = servers_map.get(key.server_id) or [
+        s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id
+    ]
     remna_node = next((s for s in (cluster or []) if str(s.get("panel_type", "")).lower() == "remnawave"), None)
     if not remna_node:
         raise HTTPException(status_code=400, detail="Не Remnawave-подписка")
@@ -421,12 +461,14 @@ async def sub_hwid_reset(
 ):
     """Сбросить все HWID-устройства подписки."""
     key = await _resolve(session, client_id)
-    from panels.remnawave import RemnawaveAPI
-    from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
     from database.servers import get_servers
+    from panels.remnawave import RemnawaveAPI
+    from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
     servers_map = await get_servers(session)
-    cluster = servers_map.get(key.server_id) or [s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id]
+    cluster = servers_map.get(key.server_id) or [
+        s for lst in servers_map.values() for s in lst if s.get("server_name") == key.server_id
+    ]
     remna_node = next((s for s in (cluster or []) if str(s.get("panel_type", "")).lower() == "remnawave"), None)
     if not remna_node:
         raise HTTPException(status_code=400, detail="Не Remnawave-подписка")

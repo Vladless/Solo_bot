@@ -12,7 +12,7 @@ from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
 
 from audit import ensure_api_context, log_api_access, record_api_access_event_background
-from config import API_LOGGING, API_VERSION, API_CORS_ORIGINS, LOGGING_LEVEL
+from settings.config import API_LOGGING, API_VERSION, API_CORS_ORIGINS, LOGGING_LEVEL
 from database import async_session_maker
 from logger import logger
 
@@ -51,7 +51,7 @@ _WEAK_PASSWORDS = frozenset({"111", "1111", "admin", "password", "12345678", "qw
 
 
 def _log_security_checklist() -> None:
-    import config
+    from settings import config
 
     api_token_ttl_days = getattr(config, "API_TOKEN_TTL_DAYS", None)
     logging_level = getattr(config, "LOGGING_LEVEL", "INFO")

@@ -31,7 +31,7 @@ def get_thread_pool() -> ThreadPoolExecutor:
     """Возвращает общий пул потоков (создаёт при первом вызове)."""
     global _thread_pool
     if _thread_pool is None:
-        from config import EXECUTOR_POOL_SIZE
+        from settings.config import EXECUTOR_POOL_SIZE
 
         size = max(1, int(EXECUTOR_POOL_SIZE))
         _thread_pool = ThreadPoolExecutor(max_workers=size, thread_name_prefix="bot-thread")
@@ -55,7 +55,7 @@ def get_process_pool() -> ProcessPoolExecutor:
     """
     global _process_pool
     if _process_pool is None:
-        from config import PROCESS_POOL_SIZE
+        from settings.config import PROCESS_POOL_SIZE
 
         size = max(1, min(int(PROCESS_POOL_SIZE), multiprocessing.cpu_count() or 4))
         ctx = multiprocessing.get_context("spawn")
@@ -88,7 +88,7 @@ def should_run_heavy_tasks_separately() -> bool:
     можно выносить в отдельный поток/ядро.
     """
     try:
-        from config import EXECUTOR_POOL_SIZE
+        from settings.config import EXECUTOR_POOL_SIZE
 
         pool_size = max(1, int(EXECUTOR_POOL_SIZE))
     except Exception:

@@ -3,7 +3,6 @@ import asyncio
 from html import escape as html_escape
 from typing import Any
 
-from config import ADMIN_ID, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 from core.settings.remnawave_config import (
     REMNAWAVE_CONFIG,
     get_host_auto_disabled,
@@ -18,6 +17,7 @@ from core.settings.web_config import get_web_node_status_interval_min, is_web_en
 from database import async_session_maker, get_servers
 from logger import logger
 from panels.remnawave import RemnawaveAPI
+from settings.config import ADMIN_ID, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 
 NODE_HEALTH_DEFAULT_INTERVAL_MIN = 5

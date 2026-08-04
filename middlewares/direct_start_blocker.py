@@ -4,12 +4,12 @@ from typing import Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message, Update
 
-from config import ADMIN_ID, DISABLE_DIRECT_START
 from core.bootstrap import MODES_CONFIG
-from core.cache_config import DIRECT_START_USER_EXISTS_CACHE_TTL_SEC
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import check_user_exists
 from logger import logger
+from settings.cache_config import DIRECT_START_USER_EXISTS_CACHE_TTL_SEC
+from settings.config import ADMIN_ID, DISABLE_DIRECT_START
 
 
 _TTL = DIRECT_START_USER_EXISTS_CACHE_TTL_SEC

@@ -18,7 +18,7 @@ from audit import (
 
 
 try:
-    from core.cache_config import AUDIT_REDIS_BUFFER_ENABLED
+    from settings.cache_config import AUDIT_REDIS_BUFFER_ENABLED
 except ImportError:
     AUDIT_REDIS_BUFFER_ENABLED = False
 

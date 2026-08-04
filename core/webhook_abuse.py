@@ -1,12 +1,12 @@
 from aiohttp import web
 
-from core.cache_config import (
+from core.redis_cache import cache_delete, cache_get, cache_incr, cache_key, cache_set
+from logger import logger
+from settings.cache_config import (
     WEBHOOK_ABUSE_BLOCK_TTL_SEC,
     WEBHOOK_ABUSE_FAIL_THRESHOLD,
     WEBHOOK_ABUSE_FAIL_WINDOW_SEC,
 )
-from core.redis_cache import cache_delete, cache_get, cache_incr, cache_key, cache_set
-from logger import logger
 
 
 def get_webhook_client_ip(request: web.Request) -> str:

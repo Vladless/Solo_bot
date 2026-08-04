@@ -156,7 +156,7 @@ def _load_extra() -> None:
         return
     _loaded_extra = True
     try:
-        from config import DISPOSABLE_EMAIL_BLOCKLIST_EXTRA
+        from settings.config import DISPOSABLE_EMAIL_BLOCKLIST_EXTRA
 
         if isinstance(DISPOSABLE_EMAIL_BLOCKLIST_EXTRA, list | set | tuple):
             _extra_domains = {d.strip().lower() for d in DISPOSABLE_EMAIL_BLOCKLIST_EXTRA if isinstance(d, str)}

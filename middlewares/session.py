@@ -25,7 +25,7 @@ def _is_bot_blocked_error(exc: BaseException) -> bool:
 
 
 try:
-    from config import LOG_SESSION_DURATION
+    from settings.config import LOG_SESSION_DURATION
 except ImportError:
     LOG_SESSION_DURATION = False
 

@@ -3,8 +3,8 @@ from typing import Any
 from aiogram.types import InlineKeyboardButton
 
 from core.bootstrap import MODES_CONFIG
-from handlers.buttons import MAIN_MENU
 from logger import logger
+from settings.buttons import MAIN_MENU
 
 
 def is_single_sub_enabled() -> bool:

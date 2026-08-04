@@ -1,11 +1,10 @@
 from pathlib import Path
 
-import config
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Identity, Ticket
 from logger import logger
+from settings import config
 
 
 _UPLOAD_PREFIX = "/api/web/uploads/"
@@ -45,7 +44,13 @@ def _client_bot_link(admin_ref: int | None):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="👤 Открыть клиента в боте", url=f"https://telegram.me/{username}?start=suser_{int(admin_ref)}")]]
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="👤 Открыть клиента в боте", url=f"https://telegram.me/{username}?start=suser_{int(admin_ref)}"
+                )
+            ]
+        ]
     )
 
 
@@ -153,7 +158,9 @@ async def ensure_topic(
         admin_ref = await resolve_billing_user_ref(session, client)
     await _post(ticket.topic_id, text=header, reply_markup=_client_bot_link(admin_ref))
     if first_body or first_attachments:
-        await _post(ticket.topic_id, text=f"👤 <b>Клиент:</b>\n{(first_body or '').strip()}", attachments=first_attachments)
+        await _post(
+            ticket.topic_id, text=f"👤 <b>Клиент:</b>\n{(first_body or '').strip()}", attachments=first_attachments
+        )
     return ticket.topic_id
 
 

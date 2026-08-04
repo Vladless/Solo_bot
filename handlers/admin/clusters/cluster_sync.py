@@ -9,13 +9,6 @@ from py3xui import AsyncApi
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    ADMIN_PASSWORD,
-    ADMIN_USERNAME,
-    REMNAWAVE_LOGIN,
-    REMNAWAVE_PASSWORD,
-    USE_COUNTRY_SELECTION,
-)
 from core.bootstrap import MODES_CONFIG
 from database import get_servers
 from database.models import Key, Server, Tariff, User
@@ -29,6 +22,13 @@ from services.operations import (
     delete_key_from_cluster,
 )
 from services.operations.aggregated_links import make_aggregated_link
+from settings.config import (
+    ADMIN_PASSWORD,
+    ADMIN_USERNAME,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    USE_COUNTRY_SELECTION,
+)
 from utils.backup import create_backup_and_send_to_admins
 
 from ..panel.keyboard import build_admin_back_kb

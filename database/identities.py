@@ -8,12 +8,12 @@ import bcrypt
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import API_TOKEN_TTL_DAYS
 from core.executor import run_cpu, run_io
 from database import identity_sessions as _idsess
 from database.access.tg_mirror import refresh_tg_mirrors_for_user
 from database.models import Admin, Identity, User
 from logger import logger
+from settings.config import API_TOKEN_TTL_DAYS
 
 
 def _request_meta(request) -> tuple[str | None, str | None]:

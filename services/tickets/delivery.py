@@ -1,12 +1,11 @@
 from pathlib import Path
 
-import config
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Admin, Identity, Ticket, TicketMessage
 from database.web_notifications import create_notification
+from settings import config
 
 from .events import publish_client_ticket_changed
 
@@ -58,7 +57,9 @@ async def notify_agents_new_ticket(session: AsyncSession, *, ticket: Ticket) -> 
             first_body=(first.body if first is not None else None),
             first_attachments=(first.attachments if first is not None else None),
         )
-        await _webpush_agents(session, [t for t in rows if t > 0], f"Новое обращение {short}", f"Категория{cat or ': —'}")
+        await _webpush_agents(
+            session, [t for t in rows if t > 0], f"Новое обращение {short}", f"Категория{cat or ': —'}"
+        )
         return
 
     bot = _support_bot()
@@ -89,7 +90,9 @@ async def notify_client_ticket_closed(session: AsyncSession, *, ticket: Ticket) 
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=f"{n}⭐", callback_data=f"sc:rate:{ticket.id}:{n}") for n in range(1, 6)]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text=f"{n}⭐", callback_data=f"sc:rate:{ticket.id}:{n}") for n in range(1, 6)]
+        ]
     )
     try:
         await bot.send_message(
@@ -111,9 +114,7 @@ async def _webpush_agents(session: AsyncSession, agent_tgs: list[int], title: st
             return
         from database.web_notifications import get_push_subscriptions_by_identity
 
-        ident_ids = (
-            await session.execute(select(Identity.id).where(Identity.tg_id.in_(agent_tgs)))
-        ).scalars().all()
+        ident_ids = (await session.execute(select(Identity.id).where(Identity.tg_id.in_(agent_tgs)))).scalars().all()
         sub_infos = []
         for iid in ident_ids:
             for s in await get_push_subscriptions_by_identity(session, iid):

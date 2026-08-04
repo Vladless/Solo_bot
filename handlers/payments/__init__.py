@@ -8,7 +8,7 @@ __all__ = (
 
 from aiogram import Router
 
-from config import PROVIDERS_ENABLED
+from settings.config import PROVIDERS_ENABLED
 from services.payments.payment_links import (
     PaymentLinkRequest,
     PaymentLinkResult,

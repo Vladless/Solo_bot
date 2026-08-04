@@ -8,11 +8,11 @@ from typing import Optional, Tuple
 import aiohttp
 import sqlalchemy as sa
 
-from config import (
+from core.bootstrap import MONEY_CONFIG
+from settings.config import (
     FX_MARKUP as DEFAULT_FX_MARKUP,
     RUB_TO_USD as DEFAULT_RUB_TO_USD,
 )
-from core.bootstrap import MONEY_CONFIG
 
 
 CBR_URL = "https://www.cbr-xml-daily.ru/daily_json.js"

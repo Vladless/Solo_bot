@@ -56,7 +56,7 @@ def register_periodic_tasks() -> None:
     global _TASKS_REGISTERED
     if _TASKS_REGISTERED:
         return
-    from config import PROCESS_POOL_SIZE
+    from settings.config import PROCESS_POOL_SIZE
 
     process_budget = max(0, int(PROCESS_POOL_SIZE) if int(PROCESS_POOL_SIZE) > 1 else 0)
 

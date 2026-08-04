@@ -17,7 +17,9 @@ async def overview(ctx: StatsCtx) -> dict:
     )
     new_users = await ctx.scalar(select(func.count()).select_from(User).where(User.created_at >= since))
     revenue = await ctx.scalar(
-        select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == "success", Payment.created_at >= since)
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.status == "success", Payment.created_at >= since
+        )
     )
     revenue_total = await ctx.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == "success")

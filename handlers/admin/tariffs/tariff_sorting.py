@@ -95,7 +95,9 @@ async def show_tariffs_arrangement(callback: CallbackQuery, callback_data: Admin
     )
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("move_up|")), IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("move_up|")), IsAdminFilter(), flags={"popup": True}
+)
 async def move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     tariff_id = int(callback_data.action.split("|")[1])
 
@@ -117,7 +119,9 @@ async def move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCall
     await callback.answer("✅ Тариф перемещен выше (-1)")
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("move_down|")), IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("move_down|")), IsAdminFilter(), flags={"popup": True}
+)
 async def move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     tariff_id = int(callback_data.action.split("|")[1])
 
@@ -139,7 +143,9 @@ async def move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCa
     await callback.answer("✅ Тариф перемещен ниже (+1)")
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("quick_move_up|")), IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("quick_move_up|")), IsAdminFilter(), flags={"popup": True}
+)
 async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     parts = callback_data.action.split("|")
     tariff_id = int(parts[1])
@@ -156,7 +162,9 @@ async def quick_move_tariff_up(callback: CallbackQuery, callback_data: AdminTari
     await show_tariffs_arrangement(callback, new_callback_data, session)
 
 
-@router.callback_query(AdminTariffCallback.filter(F.action.startswith("quick_move_down|")), IsAdminFilter(), flags={"popup": True})
+@router.callback_query(
+    AdminTariffCallback.filter(F.action.startswith("quick_move_down|")), IsAdminFilter(), flags={"popup": True}
+)
 async def quick_move_tariff_down(callback: CallbackQuery, callback_data: AdminTariffCallback, session: AsyncSession):
     parts = callback_data.action.split("|")
     tariff_id = int(parts[1])

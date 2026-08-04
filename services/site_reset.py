@@ -1,7 +1,6 @@
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from config import DATABASE_URL, USE_PGBOUNCER
 from database.models import Identity
 from database.models.web import (
     WebBlock,
@@ -18,6 +17,7 @@ from database.models.web import (
 )
 from database.site_state import reset_site_initialized
 from logger import logger
+from settings.config import DATABASE_URL, USE_PGBOUNCER
 
 
 async def reset_site(_session: AsyncSession) -> None:

@@ -1,9 +1,9 @@
 from aiogram import Router
 from aiogram.types import ChatMemberUpdated
 
-from core.cache_config import BLOCKED_EVENTS_REDIS_KEY
 from core.redis_cache import cache_rpush
 from logger import logger
+from settings.cache_config import BLOCKED_EVENTS_REDIS_KEY
 
 
 router = Router(name="chat_member_router")

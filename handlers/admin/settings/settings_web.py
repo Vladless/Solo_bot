@@ -6,7 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.web_config import WEB_CONFIG, update_web_config
 from database import async_session_maker
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
@@ -138,7 +138,9 @@ async def toggle_web_open_mode(callback: CallbackQuery) -> None:
     )
 
 
-@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_email_binding_toggle"), flags={"popup": True})
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "settings_web_email_binding_toggle"), flags={"popup": True}
+)
 async def toggle_email_binding(callback: CallbackQuery) -> None:
     current = bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
     new_config = dict(WEB_CONFIG)

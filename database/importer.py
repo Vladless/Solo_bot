@@ -8,9 +8,9 @@ from itertools import cycle
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USE_COUNTRY_SELECTION
 from core.bootstrap import MODES_CONFIG
 from database.models import Key, Server, User
+from settings.config import USE_COUNTRY_SELECTION
 
 
 async def import_keys_from_3xui_db(db_path: str, session: AsyncSession) -> tuple[int, int]:

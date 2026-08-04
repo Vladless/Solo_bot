@@ -5,6 +5,7 @@ from .overview import overview
 from .retention import retention
 from .revenue import revenue
 
+
 DOMAINS = {
     "overview": overview,
     "revenue": revenue,

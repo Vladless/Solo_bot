@@ -6,8 +6,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
-from core.cache_config import (
+from core.executor import run_io
+from core.redis_cache import cache_delete_pattern, cache_get, cache_key, cache_set
+from database import get_servers
+from logger import logger
+from panels.remnawave import RemnawaveAPI
+from settings.cache_config import (
     REMNAWAVE_ACTION_TIMEOUT_SEC,
     REMNAWAVE_MAX_CONCURRENCY,
     REMNAWAVE_PROFILE_CACHE_TTL_SEC,
@@ -15,11 +19,7 @@ from core.cache_config import (
     REMNAWAVE_PROFILE_TIMEOUT_SEC,
     REMNAWAVE_SERVER_CACHE_TTL_SEC,
 )
-from core.executor import run_io
-from core.redis_cache import cache_delete_pattern, cache_get, cache_key, cache_set
-from database import get_servers
-from logger import logger
-from panels.remnawave import RemnawaveAPI
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 
 _remnawave_semaphore = asyncio.Semaphore(REMNAWAVE_MAX_CONCURRENCY)

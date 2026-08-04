@@ -7,19 +7,12 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    CONNECT_MACOS,
-    CONNECT_WINDOWS,
-    DOWNLOAD_MACOS,
-    DOWNLOAD_PC,
-    HAPP_CRYPTOLINK,
-    REMNAWAVE_WEBAPP,
-    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
-    WEBHOOK_HOST,
-)
 from core.bootstrap import MODES_CONFIG
 from database import get_key_details, get_subscription_link
-from handlers.buttons import (
+from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
+from handlers.utils import build_support_button, edit_or_send_message, is_full_remnawave_cluster
+from hooks.processors import process_remnawave_webapp_override
+from settings.buttons import (
     BACK,
     CONNECT_MACOS_BUTTON,
     CONNECT_WINDOWS_BUTTON,
@@ -31,8 +24,17 @@ from handlers.buttons import (
     SUPPORT,
     TV_CONTINUE,
 )
-from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
-from handlers.texts import (
+from settings.config import (
+    CONNECT_MACOS,
+    CONNECT_WINDOWS,
+    DOWNLOAD_MACOS,
+    DOWNLOAD_PC,
+    HAPP_CRYPTOLINK,
+    REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
+    WEBHOOK_HOST,
+)
+from settings.texts import (
     CHOOSE_DEVICE_TEXT,
     CONNECT_TV_TEXT,
     INSTRUCTIONS,
@@ -42,8 +44,6 @@ from handlers.texts import (
     ROUTER_MESSAGE,
     SUBSCRIPTION_DETAILS_TEXT,
 )
-from handlers.utils import build_support_button, edit_or_send_message, is_full_remnawave_cluster
-from hooks.processors import process_remnawave_webapp_override
 
 
 router = Router()

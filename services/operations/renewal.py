@@ -4,7 +4,6 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import SUPERNODE
 from database import (
     delete_notification,
     filter_cluster_by_subgroup,
@@ -25,6 +24,7 @@ from logger import (
 from panels._3xui import extend_client_key, get_xui_instance
 from panels.remnawave_runtime import invalidate_remnawave_profile, with_remnawave_api
 from services.clusters import ALLOWED_GROUP_CODES
+from settings.config import SUPERNODE
 
 from .aggregated_links import make_aggregated_link
 

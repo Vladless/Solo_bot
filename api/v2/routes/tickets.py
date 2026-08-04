@@ -8,12 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin, verify_identity_agent, verify_identity_token
-from config import REDIS_URL
 from core.settings.modes_config import MODES_CONFIG
 from database import async_session_maker
 from database.models import Admin, Identity, Ticket, TicketMessage, User
 from services import tickets as svc
 from services.tickets.events import TICKETS_EVENTS_CHANNEL, tickets_client_channel
+from settings.config import REDIS_URL
 
 
 async def require_tickets_enabled() -> None:

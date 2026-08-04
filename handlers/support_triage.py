@@ -3,10 +3,10 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import SUPPORT_CHAT_URL
-from handlers.buttons import BACK, MAIN_MENU, MY_SUBS, NOT_HELPED, SUPPORT
-from handlers.texts import TRIAGE_FAIL_TEXT, TRIAGE_ITEMS, TRIAGE_ROOT_TEXT
 from handlers.utils import edit_or_send_message
+from settings.buttons import BACK, MAIN_MENU, MY_SUBS, NOT_HELPED, SUPPORT
+from settings.config import SUPPORT_CHAT_URL
+from settings.texts import TRIAGE_FAIL_TEXT, TRIAGE_ITEMS, TRIAGE_ROOT_TEXT
 
 
 router = Router(name="support_triage")

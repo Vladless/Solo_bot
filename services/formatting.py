@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from config import USERNAME_BOT
+from settings.config import USERNAME_BOT
 
 
 def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:

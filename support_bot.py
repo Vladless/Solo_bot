@@ -1,11 +1,11 @@
 import asyncio
 
-import config
-
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+
+from settings import config
 
 
 SUPPORT_BOT_TOKEN = (getattr(config, "SUPPORT_BOT_TOKEN", "") or "").strip()

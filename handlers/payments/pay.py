@@ -9,17 +9,17 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DONATIONS_ENABLE, TRIBUTE_LINK
+from settings.config import DONATIONS_ENABLE, TRIBUTE_LINK
 from core.bootstrap import BUTTONS_CONFIG, PAYMENTS_CONFIG
 from core.settings.money_config import get_currency_mode
 from database.access.resolution import resolve_user_optional
 from database.models import User
 from database.payments import get_balance_activity
-from handlers import buttons as btn
+from settings import buttons as btn
 from handlers.payments.currency_flow import build_currency_choice_kb
 from handlers.payments.stars.handlers import process_callback_pay_stars
 from handlers.payments.tribute.handlers import process_callback_pay_tribute
-from handlers.texts import (
+from settings.texts import (
     BALANCE_HISTORY_GIFT_LINE,
     BALANCE_HISTORY_HEADER,
     BALANCE_MANAGEMENT_TEXT,

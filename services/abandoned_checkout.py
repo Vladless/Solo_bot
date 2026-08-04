@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models.users import TemporaryData
 from database.notifications import add_notification, check_notification_time
 from database.web_notifications import notify_web
-from handlers.buttons import COMPLETE_PAYMENT
-from handlers.texts import (
+from logger import logger
+from settings.buttons import COMPLETE_PAYMENT
+from settings.texts import (
     ABANDONED_CHECKOUT_ADDONS_BODY,
     ABANDONED_CHECKOUT_ADDONS_TITLE,
     ABANDONED_CHECKOUT_NEW_BODY,
@@ -16,7 +17,6 @@ from handlers.texts import (
     ABANDONED_CHECKOUT_RENEWAL_BODY,
     ABANDONED_CHECKOUT_RENEWAL_TITLE,
 )
-from logger import logger
 
 
 _WAITING_STATES = (

@@ -4,11 +4,11 @@ from aiogram import BaseMiddleware, Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
-from core.cache_config import (
+from core.redis_cache import cache_incr, cache_key, cache_setnx
+from settings.cache_config import (
     THROTTLE_CACHE_TTL_SEC,
     THROTTLE_NOTICE_TTL_SEC,
 )
-from core.redis_cache import cache_incr, cache_key, cache_setnx
 
 
 class ThrottlingMiddleware(BaseMiddleware):

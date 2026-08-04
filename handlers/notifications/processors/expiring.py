@@ -8,7 +8,6 @@ import pytz
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from config import EXECUTOR_POOL_SIZE
 from database import add_notification, check_notification_time_bulk, check_notifications_bulk
 from database.web_notifications import notify_web
 from handlers.notifications.context import NotificationContext
@@ -24,11 +23,12 @@ from handlers.notifications.sender import (
     send_messages_with_limit,
     send_notification,
 )
-from handlers.texts import KEY_CANNOT_RENEW_CURRENT, KEY_EXPIRY, get_renewal_message
 from handlers.utils import get_russian_month
 from logger import logger
 from middlewares.session import wrap_session
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from settings.config import EXECUTOR_POOL_SIZE
+from settings.texts import KEY_CANNOT_RENEW_CURRENT, KEY_EXPIRY, get_renewal_message
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")

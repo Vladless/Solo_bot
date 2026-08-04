@@ -5,11 +5,11 @@ from sqlalchemy import and_, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import DISCOUNT_ACTIVE_HOURS
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from database.access.resolution import resolve_user_optional
 from database.models import BlockedUser, Key, Notification, User
 from logger import logger
+from settings.config import DISCOUNT_ACTIVE_HOURS
 
 
 _NOTIFICATION_TIME_BATCH_SIZE = 300

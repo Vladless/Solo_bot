@@ -1,11 +1,11 @@
 from sqlalchemy import and_, desc, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import CHECK_REFERRAL_REWARD_ISSUED, REFERRAL_BONUS_PERCENTAGES
 from core.bootstrap import BUTTONS_CONFIG
 from database.access.resolution import resolve_user_optional
 from database.models import Referral
 from logger import logger
+from settings.config import CHECK_REFERRAL_REWARD_ISSUED, REFERRAL_BONUS_PERCENTAGES
 
 
 async def add_referral(session: AsyncSession, referred_legacy: int, referrer_legacy: int):

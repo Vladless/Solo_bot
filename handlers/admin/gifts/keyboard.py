@@ -2,8 +2,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database.models import Gift, Tariff
-from handlers.buttons import BACK
 from handlers.utils import format_days
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
 

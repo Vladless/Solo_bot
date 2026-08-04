@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import API_TOKEN_TTL_DAYS
 from database.models import Identity, IdentitySession
+from settings.config import API_TOKEN_TTL_DAYS
 
 
 _LAST_SEEN_TOUCH_SECONDS = 60

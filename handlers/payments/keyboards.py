@@ -3,8 +3,8 @@ from collections.abc import Iterable
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import RENEWAL_PRICES
-from handlers.buttons import BACK, CUSTOM_AMOUNT
+from settings.config import RENEWAL_PRICES
+from settings.buttons import BACK, CUSTOM_AMOUNT
 from services.payments.currency_rates import format_for_user
 
 
@@ -97,7 +97,7 @@ def back_keyboard(back_cb: str) -> InlineKeyboardMarkup:
 
 
 def balance_fallback_kb() -> InlineKeyboardMarkup:
-    from handlers.buttons import BALANCE
+    from settings.buttons import BALANCE
 
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text=BALANCE, callback_data="balance"))

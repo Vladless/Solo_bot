@@ -4,8 +4,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
 
-from config import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE, USE_PGBOUNCER
-from core.cache_config import UPDATE_STALE_AGE_SEC
+from settings.cache_config import UPDATE_STALE_AGE_SEC
+from settings.config import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE, USE_PGBOUNCER
 
 
 CONCURRENT_UPDATES_LIMIT = DB_POOL_SIZE + DB_MAX_OVERFLOW

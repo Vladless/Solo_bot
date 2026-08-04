@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Payment, User
 from database.subscription_events import _INTERNAL_PAYMENT_SYSTEMS as INTERNAL_SYSTEMS
 
+
 DAY_MS = 86_400_000
 
 
 class StatsCtx:
-    def __init__(self, session: AsyncSession, days: int):
+    def __init__(self, session: AsyncSession, days: int) -> None:
         self.session = session
         self.days = days
         self.now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)

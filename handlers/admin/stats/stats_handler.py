@@ -21,7 +21,6 @@ from audit import (
     set_audit_db_reset_at,
 )
 from bot import bot
-from config import ADMIN_ID
 from database import (
     count_active_keys,
     count_active_paid_keys,
@@ -45,6 +44,7 @@ from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_STATS
 from hooks.hooks import run_hooks
 from logger import logger
+from settings.config import ADMIN_ID
 from utils.csv_export import (
     export_hot_leads_csv,
     export_keys_csv,
@@ -567,8 +567,10 @@ async def handle_audit_reset_ask(callback_query: CallbackQuery):
 
 
 @router.callback_query(
-    AdminPanelCallback.filter(F.action.in_(["audit_reset_do_redis", "audit_reset_do_db"])), IsAdminFilter()
-, flags={"popup": True})
+    AdminPanelCallback.filter(F.action.in_(["audit_reset_do_redis", "audit_reset_do_db"])),
+    IsAdminFilter(),
+    flags={"popup": True},
+)
 async def handle_audit_reset_do(callback_query: CallbackQuery, session: AsyncSession):
     source = "redis" if callback_query.data and "redis" in callback_query.data else "db"
     try:

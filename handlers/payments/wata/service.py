@@ -12,7 +12,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from settings.config import (
     WATA_FAIL_URL,
     WATA_INT_TOKEN,
     WATA_RU_TOKEN,
@@ -21,7 +21,7 @@ from config import (
 from core.bootstrap import PAYMENTS_CONFIG
 from database import add_payment, async_session_maker
 from database.models import User
-from handlers.buttons import BACK, PAY_2, WATA_INT, WATA_RU
+from settings.buttons import BACK, PAY_2, WATA_INT, WATA_RU
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -29,7 +29,7 @@ from handlers.payments.keyboards import (
     pay_keyboard,
     payment_options_for_user,
 )
-from handlers.texts import (
+from settings.texts import (
     WATA_INT_DESCRIPTION,
     WATA_PAYMENT_MESSAGE,
     WATA_PAYMENT_TITLE,

@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.serialization import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
+from settings.config import (
     OVERPAY_API_URL,
     OVERPAY_CARDS_TERMINAL_ID,
     OVERPAY_CERT_PASSWORD,
@@ -36,7 +36,7 @@ from config import (
 from core.bootstrap import PAYMENTS_CONFIG
 from database import register_pending_payment
 from database.models import User
-from handlers.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
+from settings.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
 from handlers.payments.keyboards import (
     balance_fallback_kb,
     build_amounts_keyboard,
@@ -44,7 +44,7 @@ from handlers.payments.keyboards import (
     pay_keyboard,
     payment_options_for_user,
 )
-from handlers.texts import (
+from settings.texts import (
     OVERPAY_CARDS_DESCRIPTION,
     OVERPAY_PAYMENT_MESSAGE,
     OVERPAY_PAYMENT_TITLE,

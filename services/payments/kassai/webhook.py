@@ -2,7 +2,6 @@ import hashlib
 
 from aiohttp import web
 
-from config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID, KASSAI_WEBHOOK_RESPONSE
 from core.webhook_abuse import (
     get_webhook_client_ip,
     is_webhook_ip_blocked,
@@ -10,6 +9,7 @@ from core.webhook_abuse import (
 )
 from logger import logger
 from services.payments.pipeline import ParsedPayment, process_success_payment
+from settings.config import KASSAI_SECRET_KEY, KASSAI_SHOP_ID, KASSAI_WEBHOOK_RESPONSE
 
 
 _PROVIDER = "kassai"

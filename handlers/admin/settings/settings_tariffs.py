@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.tariffs_config import TARIFFS_CONFIG, update_tariffs_config
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback
 

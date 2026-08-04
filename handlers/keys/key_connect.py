@@ -10,16 +10,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    APP_URL,
-    CONNECT_ANDROID,
-    CONNECT_IOS,
-    DOWNLOAD_ANDROID,
-    DOWNLOAD_IOS,
-    INSTRUCTIONS_BUTTON,
-)
 from database import get_key_details, get_subscription_link
-from handlers.buttons import (
+from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
+from handlers.utils import edit_or_send_message
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.processors import process_connect_device_menu
+from logger import logger
+from settings.buttons import (
     ANDROID,
     BACK,
     DOWNLOAD_ANDROID_BUTTON,
@@ -32,17 +29,20 @@ from handlers.buttons import (
     PC,
     TV,
 )
-from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
-from handlers.texts import (
+from settings.config import (
+    APP_URL,
+    CONNECT_ANDROID,
+    CONNECT_IOS,
+    DOWNLOAD_ANDROID,
+    DOWNLOAD_IOS,
+    INSTRUCTIONS_BUTTON,
+)
+from settings.texts import (
     ANDROID_DESCRIPTION_TEMPLATE,
     CHOOSE_DEVICE_TEXT,
     IOS_DESCRIPTION_TEMPLATE,
     SUBSCRIPTION_DESCRIPTION,
 )
-from handlers.utils import edit_or_send_message
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.processors import process_connect_device_menu
-from logger import logger
 
 
 router = Router()

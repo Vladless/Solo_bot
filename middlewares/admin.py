@@ -6,10 +6,10 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_ID
-from core.cache_config import ADMIN_CACHE_TTL_SEC
 from core.redis_cache import cache_get, cache_key, cache_set
 from database.models import Admin
+from settings.cache_config import ADMIN_CACHE_TTL_SEC
+from settings.config import ADMIN_ID
 
 
 _ADMIN_CACHE_TTL = ADMIN_CACHE_TTL_SEC

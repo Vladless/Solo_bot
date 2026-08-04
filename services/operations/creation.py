@@ -4,7 +4,6 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
 from database.users import mark_trial_started_if_eligible
 from hooks.processors import process_extract_cryptolink_from_result
@@ -13,6 +12,7 @@ from logger import (
     PANEL_REMNA,
     PANEL_XUI,
 )
+from settings.config import PUBLIC_LINK, REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 
 from .aggregated_links import make_aggregated_link
 

@@ -8,8 +8,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import async_session_maker
 from database.identities import get_or_create_identity_for_tg
 from handlers.support_bot.media import collect_attachment
-from handlers.texts import TRIAGE_ITEMS
 from services import tickets as svc
+from settings.texts import TRIAGE_ITEMS
 
 
 router = Router()
@@ -98,9 +98,7 @@ async def start_plain(message: Message, state: FSMContext) -> None:
     await state.set_state(IntakeSG.categorizing)
     await state.update_data(pending_body=None, pending_attachments=None)
     await message.answer(
-        "<b>Служба поддержки</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
-        f"{_CATEGORY_PROMPT}",
+        f"<b>Служба поддержки</b>\n━━━━━━━━━━━━━━━\n\n{_CATEGORY_PROMPT}",
         reply_markup=_cat_kb(bool(tickets)).as_markup(),
     )
 

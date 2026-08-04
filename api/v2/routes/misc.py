@@ -80,6 +80,7 @@ async def list_payments_admin(
     ]
     return {"total": int(total), "items": items}
 
+
 router.include_router(
     generate_crud_router(
         model=Payment,

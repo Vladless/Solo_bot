@@ -8,11 +8,11 @@ from pathlib import Path
 
 from loguru import logger
 
-import config as cfg
+from settings import config as cfg
 
 
 try:
-    from core.cache_config import (
+    from settings.cache_config import (
         ERROR_THROTTLE_MAX_KEYS,
         ERROR_THROTTLE_MESSAGE_MAX_LEN,
         ERROR_THROTTLE_WINDOW_SEC,

@@ -20,7 +20,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USERNAME_BOT
 from database import (
     update_trial,
 )
@@ -29,6 +28,7 @@ from database.models import Admin, Identity, Key, ManualBan, Payment, Referral, 
 from database.subscription_events import get_user_subscription_history, resolve_user_ref_by_client_id
 from filters.admin import IsAdminFilter
 from logger import logger
+from settings.config import USERNAME_BOT
 from utils.csv_export import export_referrals_csv
 
 from ..panel.keyboard import (
@@ -111,9 +111,7 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
     user_conds = [User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like)]
     if is_digit:
         user_conds += [User.tg_id == int(raw), User.id == int(raw)]
-    for (uid,) in (
-        await session.execute(select(User.id).where(or_(*user_conds)).limit(SEARCH_LIMIT_PER_SOURCE))
-    ).all():
+    for (uid,) in (await session.execute(select(User.id).where(or_(*user_conds)).limit(SEARCH_LIMIT_PER_SOURCE))).all():
         note(uid, "профиль")
 
     key_conds = [
@@ -131,7 +129,9 @@ async def smart_user_search(session: AsyncSession, raw: str) -> list[dict]:
     if is_digit and int(raw) <= 2_147_483_647:
         pay_conds.append(Payment.id == int(raw))
     pay_rows = (
-        await session.execute(select(Payment.user_id, Payment.tg_id).where(or_(*pay_conds)).limit(SEARCH_LIMIT_PER_SOURCE))
+        await session.execute(
+            select(Payment.user_id, Payment.tg_id).where(or_(*pay_conds)).limit(SEARCH_LIMIT_PER_SOURCE)
+        )
     ).all()
     pending_tg: set[int] = set()
     for u_id, tg in pay_rows:
@@ -209,18 +209,13 @@ async def search_from_forward(session: AsyncSession, fwd) -> list[dict]:
     return await _fetch_search_candidates(session, uid_reasons)
 
 
-async def _render_search_results(
-    target: types.Message, results: list[dict], query: str, page: int, edit: bool
-) -> None:
+async def _render_search_results(target: types.Message, results: list[dict], query: str, page: int, edit: bool) -> None:
     pages = max(1, (len(results) + SEARCH_PAGE_SIZE - 1) // SEARCH_PAGE_SIZE)
     page = max(1, min(page, pages))
     start = (page - 1) * SEARCH_PAGE_SIZE
     chunk = results[start : start + SEARCH_PAGE_SIZE]
 
-    text = (
-        f"🔍 Найдено: <b>{len(results)}</b> по запросу «<code>{html.escape(query)}</code>»\n"
-        "Выберите нужного:"
-    )
+    text = f"🔍 Найдено: <b>{len(results)}</b> по запросу «<code>{html.escape(query)}</code>»\nВыберите нужного:"
     builder = InlineKeyboardBuilder()
     for c in chunk:
         builder.row(
@@ -231,11 +226,19 @@ async def _render_search_results(
         )
     nav: list[InlineKeyboardButton] = []
     if page > 1:
-        nav.append(InlineKeyboardButton(text="◀️", callback_data=AdminPanelCallback(action="search_page", page=page - 1).pack()))
+        nav.append(
+            InlineKeyboardButton(text="◀️", callback_data=AdminPanelCallback(action="search_page", page=page - 1).pack())
+        )
     if pages > 1:
-        nav.append(InlineKeyboardButton(text=f"{page}/{pages}", callback_data=AdminPanelCallback(action="search_page", page=page).pack()))
+        nav.append(
+            InlineKeyboardButton(
+                text=f"{page}/{pages}", callback_data=AdminPanelCallback(action="search_page", page=page).pack()
+            )
+        )
     if page < pages:
-        nav.append(InlineKeyboardButton(text="▶️", callback_data=AdminPanelCallback(action="search_page", page=page + 1).pack()))
+        nav.append(
+            InlineKeyboardButton(text="▶️", callback_data=AdminPanelCallback(action="search_page", page=page + 1).pack())
+        )
     if nav:
         builder.row(*nav)
     builder.row(build_admin_back_btn())

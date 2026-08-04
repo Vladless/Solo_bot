@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from config import (
-    CASHBACK as DEFAULT_CASHBACK,
-    CHECK_REFERRAL_REWARD_ISSUED,
-    REFERRAL_BONUS_PERCENTAGES,
-)
 from core.bootstrap import MONEY_CONFIG
 from database import add_payment
 from database.access.resolution import resolve_user_optional
 from database.referrals import get_referral_by_referred_id, mark_referral_reward_issued
 from database.users import update_balance
 from logger import logger
+from settings.config import (
+    CASHBACK as DEFAULT_CASHBACK,
+    CHECK_REFERRAL_REWARD_ISSUED,
+    REFERRAL_BONUS_PERCENTAGES,
+)
 
 
 if TYPE_CHECKING:

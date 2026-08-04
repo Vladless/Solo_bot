@@ -5,7 +5,7 @@ async def send_admin_alert(text: str) -> bool:
     """Шлёт текстовое уведомление всем админам через основной бот.
     Best-effort: не бросает исключений, возвращает True если хоть кому-то ушло."""
     try:
-        from config import ADMIN_ID
+        from settings.config import ADMIN_ID
     except Exception:
         return False
     if not ADMIN_ID:

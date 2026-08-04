@@ -11,12 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.models import Key, Server, User
 from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
 from panels.remnawave import RemnawaveAPI
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu

@@ -6,7 +6,6 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database import get_servers, update_key_expiry
 from database.models import Key, Server, Tariff
 from filters.admin import IsAdminFilter
@@ -14,6 +13,7 @@ from logger import logger
 from middlewares.session import release_session_early
 from panels.remnawave import RemnawaveAPI
 from services.operations import renew_key_in_cluster
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 from ..panel.keyboard import build_admin_back_kb
 from .base import AdminClusterStates, router

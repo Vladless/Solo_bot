@@ -1,10 +1,10 @@
 from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.cache_config import SERVERS_CACHE_TTL_SEC
 from core.redis_cache import cache_delete_pattern, cache_get, cache_key, cache_set
 from database.models import Key, Server, ServerSpecialgroup, ServerSubgroup, Tariff
 from logger import logger
+from settings.cache_config import SERVERS_CACHE_TTL_SEC
 
 
 async def _invalidate_servers_cache() -> None:

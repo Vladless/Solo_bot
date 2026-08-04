@@ -5,9 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
 from database.models import User
-from handlers.buttons import MAIN_MENU, PAY_2
+from settings.buttons import MAIN_MENU, PAY_2
 from handlers.payments.keyboards import balance_fallback_kb
-from handlers.texts import OVERPAY_PAYMENT_MESSAGE
+from settings.texts import OVERPAY_PAYMENT_MESSAGE
 from handlers.utils import edit_or_send_message
 from logger import logger
 from services.payments.currency_rates import format_for_user

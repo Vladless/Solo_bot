@@ -7,7 +7,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
 from logger import logger
 from services.subscription_keys import (
     HOSTS_PER_PAGE,
@@ -16,6 +15,7 @@ from services.subscription_keys import (
     resolve_remnawave_server_ref,
 )
 from services.users_utils import resolve_admin_key
+from settings.buttons import BACK
 
 from .keyboard import AdminUserEditorCallback
 

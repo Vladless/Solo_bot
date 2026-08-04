@@ -57,7 +57,9 @@ async def coupon_stats(
 ):
     """Метрики купонов: использования за период и всего."""
     since = datetime.utcnow() - timedelta(days=days)
-    used_period = (await session.execute(select(func.count()).select_from(CouponUsage).where(CouponUsage.used_at >= since))).scalar() or 0
+    used_period = (
+        await session.execute(select(func.count()).select_from(CouponUsage).where(CouponUsage.used_at >= since))
+    ).scalar() or 0
     total_coupons = (await session.execute(select(func.count()).select_from(Coupon))).scalar() or 0
     total_redemptions = (await session.execute(select(func.coalesce(func.sum(Coupon.usage_count), 0)))).scalar() or 0
     return {

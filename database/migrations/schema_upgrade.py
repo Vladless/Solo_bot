@@ -5,8 +5,8 @@ import re
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from config import DATABASE_URL
 from logger import logger
+from settings.config import DATABASE_URL
 
 
 def _is_postgresql() -> bool:
@@ -1693,7 +1693,9 @@ async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
         await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_identity_id ON tickets (identity_id)")
         await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets (status)")
         await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_category ON tickets (category)")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_assigned_agent_tg_id ON tickets (assigned_agent_tg_id)")
+        await _exec_ignore(
+            conn, "CREATE INDEX IF NOT EXISTS ix_tickets_assigned_agent_tg_id ON tickets (assigned_agent_tg_id)"
+        )
         await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_last_message_at ON tickets (last_message_at)")
     if not await _table_exists(conn, "ticket_messages"):
         await _exec_ignore(
@@ -1712,8 +1714,12 @@ async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
             )
             """,
         )
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_ticket_id ON ticket_messages (ticket_id)")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_created_at ON ticket_messages (created_at)")
+        await _exec_ignore(
+            conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_ticket_id ON ticket_messages (ticket_id)"
+        )
+        await _exec_ignore(
+            conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_created_at ON ticket_messages (created_at)"
+        )
 
 
 async def _migration_v46_ticket_extras(conn: AsyncConnection) -> None:
@@ -1762,7 +1768,7 @@ async def _migration_v48_ticket_timestamptz(conn: AsyncConnection) -> None:
             if dtype == "timestamp without time zone":
                 await _exec_ignore(
                     conn,
-                    f'ALTER TABLE {table} ALTER COLUMN {col} TYPE TIMESTAMPTZ USING {col} AT TIME ZONE \'UTC\'',
+                    f"ALTER TABLE {table} ALTER COLUMN {col} TYPE TIMESTAMPTZ USING {col} AT TIME ZONE 'UTC'",
                 )
 
 

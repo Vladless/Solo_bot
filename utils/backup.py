@@ -11,7 +11,8 @@ import aiofiles
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
 
-from config import (
+from logger import logger
+from settings.config import (
     ADMIN_ID,
     BACKUP_CAPTION,
     BACKUP_CREATE_ARCHIVE,
@@ -36,7 +37,6 @@ from config import (
     PG_IN_DOCKER,
     PG_PORT,
 )
-from logger import logger
 
 
 DOCKER_POSTGRES_CONTAINER = "solobot-postgres"
@@ -221,20 +221,20 @@ def _create_backup_archive() -> tuple[str | None, Exception | None]:
                     logger.info("[Backup] БД добавлена в архив")
 
             if BACKUP_INCLUDE_CONFIG:
-                config_path = project_root / "config.py"
+                config_path = project_root / "settings" / "config.py"
                 if config_path.exists():
                     tar.add(config_path, arcname=f"{archive_folder}/config.py")
                     logger.info("[Backup] config.py в архив")
                 else:
-                    logger.warning("[Backup] config.py не найден")
+                    logger.warning("[Backup] settings/config.py не найден")
 
             if BACKUP_INCLUDE_TEXTS:
-                texts_path = project_root / "handlers" / "texts.py"
+                texts_path = project_root / "settings" / "texts.py"
                 if texts_path.exists():
                     tar.add(texts_path, arcname=f"{archive_folder}/texts.py")
                     logger.info("[Backup] texts.py в архив")
                 else:
-                    logger.warning("[Backup] handlers/texts.py не найден")
+                    logger.warning("[Backup] settings/texts.py не найден")
 
             if BACKUP_INCLUDE_IMG:
                 img_dir = project_root / "img"

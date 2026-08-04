@@ -9,11 +9,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ping3 import ping
 
 from bot import bot
-from config import ADMIN_ID, PING_TIME
 from core.executor import run_io
 from database import async_session_maker, get_servers
 from handlers.admin.servers.keyboard import AdminServerCallback
 from logger import logger
+from settings.config import ADMIN_ID, PING_TIME
 
 
 last_ping_times = {}

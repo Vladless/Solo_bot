@@ -5,14 +5,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import HWID_RESET_BUTTON
 from core.bootstrap import BUTTONS_CONFIG
 from database import get_clusters, get_key_expiry_presets
-from handlers.buttons import BACK, FREEZE, UNFREEZE
 from handlers.utils import format_days
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from services.users_utils import build_admin_key_ref
+from settings.buttons import BACK, FREEZE, UNFREEZE
+from settings.config import HWID_RESET_BUTTON
 
 from ..panel.keyboard import build_admin_back_btn
 

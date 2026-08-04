@@ -17,10 +17,10 @@ from handlers.notifications.context import NotificationContext
 from handlers.notifications.keyboards import build_notification_expired_kb, build_notification_kb
 from handlers.notifications.renewal import RenewalStatus, try_auto_renew
 from handlers.notifications.sender import send_messages_with_limit
-from handlers.texts import KEY_DELETED_MSG, KEY_EXPIRED_DELAY_MSG, KEY_EXPIRED_NO_DELAY_MSG
 from handlers.utils import format_hours, format_minutes
 from logger import logger
 from services.operations import delete_key_from_cluster
+from settings.texts import KEY_DELETED_MSG, KEY_EXPIRED_DELAY_MSG, KEY_EXPIRED_NO_DELAY_MSG
 
 from .expiring import _send_renewed
 

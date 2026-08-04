@@ -8,8 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from handlers.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
 from logger import logger
+from settings.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
 
 from .utils import edit_or_send_message
 

@@ -23,7 +23,11 @@ async def _referrals(ctx: StatsCtx) -> dict:
     """Реферальная воронка: всего / с выплаченной наградой."""
     total = int(await ctx.scalar(select(func.count()).select_from(Referral)))
     rewarded = int(await ctx.scalar(select(func.count()).select_from(Referral).where(Referral.reward_issued.is_(True))))
-    return {"total": total, "rewarded": rewarded, "reward_rate_pct": round(100.0 * rewarded / total, 1) if total else 0.0}
+    return {
+        "total": total,
+        "rewarded": rewarded,
+        "reward_rate_pct": round(100.0 * rewarded / total, 1) if total else 0.0,
+    }
 
 
 async def audience(ctx: StatsCtx) -> dict:

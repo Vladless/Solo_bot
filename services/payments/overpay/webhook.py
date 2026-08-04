@@ -4,7 +4,6 @@ import secrets
 
 from aiohttp import web
 
-from config import OVERPAY_WEBHOOK_PASSWORD, OVERPAY_WEBHOOK_USERNAME
 from core.webhook_abuse import (
     get_webhook_client_ip,
     is_webhook_ip_blocked,
@@ -17,6 +16,7 @@ from services.payments.pipeline import (
     process_cancelled_payment,
     process_success_payment,
 )
+from settings.config import OVERPAY_WEBHOOK_PASSWORD, OVERPAY_WEBHOOK_USERNAME
 
 
 _PROVIDER = "overpay"
@@ -42,9 +42,8 @@ def _verify_basic_auth(request: web.Request) -> bool:
     try:
         decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
         username, password = decoded.split(":", 1)
-        return (
-            secrets.compare_digest(username, OVERPAY_WEBHOOK_USERNAME)
-            and secrets.compare_digest(password, OVERPAY_WEBHOOK_PASSWORD)
+        return secrets.compare_digest(username, OVERPAY_WEBHOOK_USERNAME) and secrets.compare_digest(
+            password, OVERPAY_WEBHOOK_PASSWORD
         )
     except Exception:
         return False

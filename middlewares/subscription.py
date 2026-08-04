@@ -9,12 +9,12 @@ from aiogram.types import InlineKeyboardButton, Message, Update
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
-from config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
 from core.bootstrap import MODES_CONFIG
-from handlers.buttons import SUB_CHANELL, SUB_CHANELL_DONE
-from handlers.texts import SUBSCRIPTION_REQUIRED_MSG
 from handlers.utils import edit_or_send_message
 from logger import logger
+from settings.buttons import SUB_CHANELL, SUB_CHANELL_DONE
+from settings.config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
+from settings.texts import SUBSCRIPTION_REQUIRED_MSG
 
 
 class SubscriptionMiddleware(BaseMiddleware):

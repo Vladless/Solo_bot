@@ -23,12 +23,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
-from config import ADMIN_ID
 from database import get_servers
 from database.access.resolution import resolve_user_optional
 from database.models import Key, Notification, Server
 from hooks.processors import process_cluster_balancer
 from logger import logger
+from settings.config import ADMIN_ID
 
 
 ALLOWED_GROUP_CODES = ["trial", "discounts", "discounts_max", "cold_discounts", "cold_discounts_max", "gifts"]
@@ -490,8 +490,8 @@ def extract_user_data(user) -> dict:
 async def build_support_button(text: str | None = None) -> "InlineKeyboardButton | None":
     from aiogram.types import InlineKeyboardButton
 
-    from config import SUPPORT_CHAT_URL
-    from handlers.buttons import SUPPORT
+    from settings.buttons import SUPPORT
+    from settings.config import SUPPORT_CHAT_URL
 
     label = text or SUPPORT
     url = (SUPPORT_CHAT_URL or "").strip()

@@ -11,8 +11,8 @@ from database.notifications import bulk_add_notifications
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.keyboards import build_cold_lead_discount_kb
 from handlers.notifications.sender import send_messages_with_limit
-from handlers.texts import COLD_LEAD_FINAL_MESSAGE, COLD_LEAD_MESSAGE
 from logger import logger
+from settings.texts import COLD_LEAD_FINAL_MESSAGE, COLD_LEAD_MESSAGE
 
 
 _DEFAULT_INTERVAL_HOURS = 48

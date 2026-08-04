@@ -4,7 +4,6 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import SUPERNODE
 from database import get_servers
 from database.access.resolution import resolve_user_optional
 from database.keys import (
@@ -18,6 +17,7 @@ from panels.remnawave_runtime import (
     invalidate_remnawave_profile,
     with_remnawave_api,
 )
+from settings.config import SUPERNODE
 
 
 async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dict[str, Any]:

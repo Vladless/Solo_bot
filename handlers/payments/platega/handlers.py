@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_temporary_data
 from database.models import User
-from handlers.buttons import MAIN_MENU, PAY_2
-from handlers.texts import PLATEGA_PAYMENT_MESSAGE
+from settings.buttons import MAIN_MENU, PAY_2
+from settings.texts import PLATEGA_PAYMENT_MESSAGE
 from handlers.payments.keyboards import balance_fallback_kb
 from handlers.utils import edit_or_send_message
 from logger import logger

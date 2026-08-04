@@ -7,6 +7,7 @@ from database.models import Identity, Ticket, TicketMessage
 
 from .events import publish_tickets_changed
 
+
 OPEN = "open"
 ANSWERED = "answered"
 CLOSED = "closed"
@@ -30,16 +31,12 @@ def _now() -> datetime:
 async def _enforce_create_limits(session: AsyncSession, identity_id: str) -> None:
     cutoff = _now() - timedelta(seconds=CREATE_COOLDOWN_SEC)
     recent = await session.scalar(
-        select(func.count())
-        .select_from(Ticket)
-        .where(Ticket.identity_id == identity_id, Ticket.created_at >= cutoff)
+        select(func.count()).select_from(Ticket).where(Ticket.identity_id == identity_id, Ticket.created_at >= cutoff)
     )
     if recent and int(recent) > 0:
         raise TicketRateLimited("cooldown")
     open_count = await session.scalar(
-        select(func.count())
-        .select_from(Ticket)
-        .where(Ticket.identity_id == identity_id, Ticket.status != CLOSED)
+        select(func.count()).select_from(Ticket).where(Ticket.identity_id == identity_id, Ticket.status != CLOSED)
     )
     if open_count and int(open_count) >= MAX_OPEN_PER_CLIENT:
         raise TicketRateLimited("too_many_open")
@@ -281,7 +278,9 @@ async def delete_stale(session: AsyncSession, *, answered_days: int = 2, closed_
                     )
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     if not tickets:
         return 0
@@ -342,7 +341,11 @@ async def build_client_context(session: AsyncSession, identity) -> dict | None:
                 "amount": last_pay.amount,
                 "status": last_pay.status,
                 "created_at": (
-                    (last_pay.created_at.replace(tzinfo=UTC) if last_pay.created_at.tzinfo is None else last_pay.created_at).isoformat()
+                    (
+                        last_pay.created_at.replace(tzinfo=UTC)
+                        if last_pay.created_at.tzinfo is None
+                        else last_pay.created_at
+                    ).isoformat()
                     if last_pay.created_at
                     else None
                 ),
@@ -355,9 +358,18 @@ async def build_client_context(session: AsyncSession, identity) -> dict | None:
 
 DEFAULT_CANNED_REPLIES = [
     {"title": "Приветствие", "body": "Здравствуйте! Уже смотрю ваше обращение, отвечу в ближайшее время."},
-    {"title": "Смена локации", "body": "Попробуйте сменить локацию и переподключиться. Если не поможет — пришлите скриншот ошибки."},
-    {"title": "Переустановка", "body": "Удалите профиль в приложении и добавьте подписку заново по актуальной ссылке из кабинета."},
-    {"title": "Решено?", "body": "Проблема решена? Если да — закрою обращение. Если нет — опишите, что происходит сейчас."},
+    {
+        "title": "Смена локации",
+        "body": "Попробуйте сменить локацию и переподключиться. Если не поможет — пришлите скриншот ошибки.",
+    },
+    {
+        "title": "Переустановка",
+        "body": "Удалите профиль в приложении и добавьте подписку заново по актуальной ссылке из кабинета.",
+    },
+    {
+        "title": "Решено?",
+        "body": "Проблема решена? Если да — закрою обращение. Если нет — опишите, что происходит сейчас.",
+    },
 ]
 
 

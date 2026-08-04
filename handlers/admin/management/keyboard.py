@@ -5,7 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.bootstrap import MANAGEMENT_CONFIG
 from filters.permissions import PERM_ADMINS, PERM_MANAGEMENT
-from handlers.buttons import BACK
+from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 

@@ -4,10 +4,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 from database import get_servers
 from logger import logger
 from panels._3xui import get_xui_instance, toggle_client
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, SUPERNODE
 
 
 async def toggle_client_on_cluster(

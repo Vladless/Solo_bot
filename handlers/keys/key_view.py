@@ -15,47 +15,11 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    ENABLE_DELETE_KEY_BUTTON,
-    HAPP_CRYPTOLINK,
-    HWID_RESET_BUTTON,
-    QRCODE,
-    REMNAWAVE_WEBAPP,
-    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
-    USE_COUNTRY_SELECTION,
-)
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import get_key_details, get_keys, get_vless_enabled_batch
 from database.access.resolution import resolve_user_optional
 from database.models import Key
-from handlers.buttons import (
-    ADDONS_BUTTON_DEVICES,
-    ADDONS_BUTTON_DEVICES_TRAFFIC,
-    ADDONS_BUTTON_TRAFFIC,
-    ALIAS,
-    BACK,
-    CHANGE_LOCATION,
-    CONNECT_DEVICE,
-    DELETE,
-    MAIN_MENU,
-    MY_DEVICES,
-    QR,
-    RENEW_KEY,
-    ROUTER_BUTTON,
-    TV_BUTTON,
-    UNBIND_DEVICE,
-)
 from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
-from handlers.texts import (
-    DAYS_LEFT_MESSAGE,
-    FROZEN_SUBSCRIPTION_MSG,
-    KEYS_FOOTER,
-    KEYS_HEADER,
-    NO_SUBSCRIPTIONS_MSG,
-    RENAME_KEY_PROMPT,
-    key_message,
-    single_subscription_profile_text,
-)
 from handlers.utils import (
     edit_or_send_message,
     format_days,
@@ -78,6 +42,42 @@ from panels.remnawave_runtime import (
     with_remnawave_api,
 )
 from services.tariffs.tariff_display import GB, get_key_tariff_addons_state, get_key_tariff_display
+from settings.buttons import (
+    ADDONS_BUTTON_DEVICES,
+    ADDONS_BUTTON_DEVICES_TRAFFIC,
+    ADDONS_BUTTON_TRAFFIC,
+    ALIAS,
+    BACK,
+    CHANGE_LOCATION,
+    CONNECT_DEVICE,
+    DELETE,
+    MAIN_MENU,
+    MY_DEVICES,
+    QR,
+    RENEW_KEY,
+    ROUTER_BUTTON,
+    TV_BUTTON,
+    UNBIND_DEVICE,
+)
+from settings.config import (
+    ENABLE_DELETE_KEY_BUTTON,
+    HAPP_CRYPTOLINK,
+    HWID_RESET_BUTTON,
+    QRCODE,
+    REMNAWAVE_WEBAPP,
+    REMNAWAVE_WEBAPP_OPEN_IN_BROWSER,
+    USE_COUNTRY_SELECTION,
+)
+from settings.texts import (
+    DAYS_LEFT_MESSAGE,
+    FROZEN_SUBSCRIPTION_MSG,
+    KEYS_FOOTER,
+    KEYS_HEADER,
+    NO_SUBSCRIPTIONS_MSG,
+    RENAME_KEY_PROMPT,
+    key_message,
+    single_subscription_profile_text,
+)
 
 
 router = Router()
@@ -729,7 +729,9 @@ async def _render_my_devices(
     if total == 0:
         text = "💻 <b>Мои устройства</b>\n\n🔌 Нет привязанных устройств."
         builder = InlineKeyboardBuilder()
-        empty_back_cb = "profile" if bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_MODE", False)) else f"view_key|{key_ref}"
+        empty_back_cb = (
+            "profile" if bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_MODE", False)) else f"view_key|{key_ref}"
+        )
         builder.row(InlineKeyboardButton(text=BACK, callback_data=empty_back_cb))
         await edit_or_send_message(
             target_message=callback_query.message,

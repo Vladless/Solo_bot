@@ -13,7 +13,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED, USE_COUNTRY_SELECTION
 from core.bootstrap import MODES_CONFIG
 from database import (
     check_server_name_by_cluster,
@@ -35,7 +34,6 @@ from database import (
 )
 from database.models import Key
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
 from handlers.utils import generate_random_email, handle_error
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_admin_key_edit_menu
@@ -52,6 +50,8 @@ from services.operations import (
     update_subscription,
 )
 from services.users_utils import resolve_admin_key
+from settings.buttons import BACK
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED, USE_COUNTRY_SELECTION
 
 from ...panel.keyboard import AdminPanelCallback, build_admin_back_btn, build_admin_back_kb
 from ..keyboard import (

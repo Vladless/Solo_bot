@@ -19,9 +19,9 @@ from api.v2.schemas.identities import (
     LoginResponse,
     LoginTelegramRequest,
 )
-from config import API_TOKEN
 from database import identities as idb
 from logger import logger
+from settings.config import API_TOKEN
 from utils.telegram_login import verify_telegram_login
 
 
@@ -30,7 +30,7 @@ router = APIRouter()
 
 def _get_oidc_credentials() -> tuple[str, str]:
     try:
-        from config import TELEGRAM_CLIENT_ID, TELEGRAM_CLIENT_SECRET
+        from settings.config import TELEGRAM_CLIENT_ID, TELEGRAM_CLIENT_SECRET
 
         cid = str(TELEGRAM_CLIENT_ID).strip()
         secret = str(TELEGRAM_CLIENT_SECRET).strip()

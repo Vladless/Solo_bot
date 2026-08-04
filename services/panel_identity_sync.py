@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 from database.access.resolution import panel_identity_fields
 from database.keys import get_keys
 from database.servers import get_servers
-from logger import CLOGGER as logger, PANEL_REMNA
+from logger import (
+    CLOGGER as logger,
+    PANEL_REMNA,
+)
+from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 
 async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None:

@@ -18,11 +18,11 @@ from database import (
 )
 from database.models import Tariff
 from filters.admin import IsAdminFilter
-from handlers.buttons import BACK
 from logger import logger
 from middlewares.session import release_session_early
 from services.operations import renew_key_in_cluster
 from services.users_utils import resolve_admin_key
+from settings.buttons import BACK
 
 from .keyboard import AdminUserEditorCallback, build_editor_kb
 from .users_keys import handle_key_edit

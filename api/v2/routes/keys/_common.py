@@ -45,16 +45,6 @@ from api.v2.schemas.web_public import (
     AccountKeyResetHwidResponse,
     AccountKeyResponse,
 )
-from config import (
-    ENABLE_DELETE_KEY_BUTTON,
-    HWID_RESET_BUTTON,
-    INSTRUCTIONS_BUTTON,
-    QRCODE,
-    REMNAWAVE_LOGIN,
-    REMNAWAVE_PASSWORD,
-    RENEW_BUTTON_BEFORE_DAYS,
-    USE_COUNTRY_SELECTION,
-)
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, NOTIFICATIONS_CONFIG, PAYMENTS_CONFIG, TARIFFS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
@@ -73,7 +63,6 @@ from database.coupons import mark_coupon_used
 from database.models import Key, Server, ServerSpecialgroup, Tariff
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
 from database.temporary_data import create_temporary_data
-from handlers.buttons import CONNECT_DEVICE, ROUTER_BUTTON, TV_BUTTON
 from handlers.keys.key_view import build_key_view_payload
 from handlers.tariffs.addons.key_addons_pack import calc_pack_full_price_rub, get_pack_flags
 from handlers.tariffs.addons.utils import calc_remaining_ratio_seconds, is_not_downgrade
@@ -93,6 +82,17 @@ from services.payments.payment_links import PaymentLinkRequest, create_payment_l
 from services.payments.providers import get_web_link_provider_ids
 from services.tariffs import calculate_config_price
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key, get_key_tariff_addons_state
+from settings.buttons import CONNECT_DEVICE, ROUTER_BUTTON, TV_BUTTON
+from settings.config import (
+    ENABLE_DELETE_KEY_BUTTON,
+    HWID_RESET_BUTTON,
+    INSTRUCTIONS_BUTTON,
+    QRCODE,
+    REMNAWAVE_LOGIN,
+    REMNAWAVE_PASSWORD,
+    RENEW_BUTTON_BEFORE_DAYS,
+    USE_COUNTRY_SELECTION,
+)
 
 
 router = generate_crud_router(
@@ -117,11 +117,26 @@ async def key_stats(
     """Метрики ключей: активные/заморожённые, доля заморозки, корзины истечения."""
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     total = int((await session.execute(select(func.count()).select_from(Key))).scalar() or 0)
-    active = int((await session.execute(select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.is_frozen.is_(False)))).scalar() or 0)
-    frozen = int((await session.execute(select(func.count()).select_from(Key).where(Key.is_frozen.is_(True)))).scalar() or 0)
+    active = int(
+        (
+            await session.execute(
+                select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.is_frozen.is_(False))
+            )
+        ).scalar()
+        or 0
+    )
+    frozen = int(
+        (await session.execute(select(func.count()).select_from(Key).where(Key.is_frozen.is_(True)))).scalar() or 0
+    )
     expiring = {}
     for d in (1, 3, 7, 14, 30):
-        cnt = (await session.execute(select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.expiry_time <= now_ms + d * 86_400_000, Key.is_frozen.is_(False)))).scalar() or 0
+        cnt = (
+            await session.execute(
+                select(func.count())
+                .select_from(Key)
+                .where(Key.expiry_time > now_ms, Key.expiry_time <= now_ms + d * 86_400_000, Key.is_frozen.is_(False))
+            )
+        ).scalar() or 0
         expiring[f"{d}d"] = int(cnt)
     denom = active + frozen
     return {
@@ -131,7 +146,6 @@ async def key_stats(
         "frozen_ratio_pct": round(100.0 * frozen / denom, 1) if denom else 0.0,
         "expiring": expiring,
     }
-
 
 
 def _renew_available_from_ms(expiry_time_ms: int) -> int:

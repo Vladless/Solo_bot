@@ -104,7 +104,14 @@ async def partner_stats(
         )
     ).fetchone()
     if not row:
-        return {"total_partners": 0, "partners_today": 0, "total_referred": 0, "total_balance": 0.0, "top_partner_tg_id": 0, "top_partner_refs": 0}
+        return {
+            "total_partners": 0,
+            "partners_today": 0,
+            "total_referred": 0,
+            "total_balance": 0.0,
+            "top_partner_tg_id": 0,
+            "top_partner_refs": 0,
+        }
     return {
         "total_partners": int(row[0] or 0),
         "partners_today": int(row[1] or 0),

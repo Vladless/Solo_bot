@@ -53,7 +53,49 @@ def _ensure_cli_deps() -> None:
             continue
 
 
+def _bootstrap_rpc() -> None:
+    """Бутстрап: тянет core/rpc с публичной ветки, если его ещё нет рядом с CLI."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import core.rpc  # noqa: F401
+
+        return
+    except Exception:
+        pass
+
+    core_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "core")
+    os.makedirs(core_dir, exist_ok=True)
+    base_url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/core"
+    for name in ("__init__.py", "rpc.cpython-312-x86_64-linux-gnu.so"):
+        try:
+            with urlopen(Request(f"{base_url}/{name}", headers={"Cache-Control": "no-cache"}), timeout=20) as resp:
+                data = resp.read()
+            if data:
+                with open(os.path.join(core_dir, name), "wb") as fh:
+                    fh.write(data)
+        except Exception:
+            continue
+
+    try:
+        import core.rpc  # noqa: F401
+    except Exception as e:
+        print(f"Не удалось подготовить core/rpc: {e}")
+        sys.exit(1)
+
+
 _ensure_cli_deps()
+_bootstrap_rpc()
+
+from core.rpc import (  # noqa: E402
+    adopt_beta_files,
+    cli_gate,
+    extract_version,
+    local_version,
+    migrate_settings_layout,
+    resolve_config_path,
+    resolve_texts_path,
+    settings_gate,
+)
 
 
 try:
@@ -218,22 +260,22 @@ def ensure_utf8_locale():
     except Exception:
         pass
 
-    console.print("[yellow]⏳ Проверка и установка локали UTF-8...[/yellow]")
+    step_warn("Проверка и установка локали UTF-8...")
 
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
 
     result = subprocess.run(["locale", "-a"], capture_output=True, text=True)
     if "en_US.utf8" not in result.stdout.lower():
-        console.print("[blue]Добавляю локаль en_US.UTF-8 в систему...[/blue]")
+        console.print("[title]Добавляю локаль en_US.UTF-8 в систему...[/title]")
         try:
             subprocess.run(["sudo", "locale-gen", "en_US.UTF-8"], check=True)
             subprocess.run(["sudo", "update-locale", "LANG=en_US.UTF-8"], check=True)
-            console.print("[green]Локаль успешно установлена.[/green]")
+            step_ok("Локаль успешно установлена.")
         except Exception as e:
-            console.print(f"[red]❌ Ошибка при установке локали: {e}[/red]")
+            step_fail(f"Ошибка при установке локали: {e}")
     else:
-        console.print("[green]Локаль UTF-8 уже доступна в системе.[/green]")
+        step_ok("Локаль UTF-8 уже доступна в системе.")
 
 
 try:
@@ -244,47 +286,124 @@ except Exception:
 
 if _HAS_RICH:
     SOLO_THEME = Theme({
-        "accent": "#22d3ee",
-        "accent.dim": "#0e7490",
-        "title": "bold #e6edf3",
+        "brand": "bold #ff8c42",
+        "accent": "#ff8c42",
+        "accent.dim": "#8a4a1f",
+        "title": "bold #f2f5f9",
+        "text": "#d7dde5",
         "muted": "#8b949e",
-        "ok": "#34d399",
-        "ok.bold": "bold #34d399",
-        "warn": "#f59e0b",
-        "warn.bold": "bold #f59e0b",
+        "faint": "#666f7b",
+        "line": "#333a44",
+        "key": "bold #ff8c42",
+        "ok": "#4ade80",
+        "ok.bold": "bold #4ade80",
+        "warn": "#fbbf24",
+        "warn.bold": "bold #fbbf24",
         "err": "#f87171",
         "err.bold": "bold #f87171",
-        "step": "bold #22d3ee",
+        "step": "bold #ff8c42",
     })
     console = Console(theme=SOLO_THEME, highlight=False)
 else:
     console = Console()
 
-_STEP_GLYPH = "›"
+
+_G_STEP = "›"
+_G_OK = "✓"
+_G_WARN = "!"
+_G_FAIL = "✗"
+_G_DOT = "•"
+_G_PROMPT = "❯"
+_PANEL_W = 76
+
+
+def hr() -> None:
+    console.print(Rule(style="line"), width=_PANEL_W)
+
+
+def heading(title: str, subtitle: str = "") -> None:
+    console.print()
+    console.print(f"  [title]{title}[/title]" + (f"   [muted]{subtitle}[/muted]" if subtitle else ""))
+    console.print(Rule(style="line"), width=_PANEL_W)
 
 
 def step_rule(index: int, total: int, title: str) -> None:
-    """Аккуратный разделитель шага установки: ─── [2/5] · Nginx ───────."""
     console.print()
     console.print(
         Rule(
-            f"[step]{index}/{total}[/step] [muted]{_STEP_GLYPH}[/muted] [title]{title}[/title]",
+            f"[step]{index}/{total}[/step] [faint]{_G_STEP}[/faint] [title]{title}[/title]",
             style="accent.dim",
             align="left",
-        )
+        ),
+        width=_PANEL_W,
     )
 
 
 def step_ok(text: str) -> None:
-    console.print(f"  [ok.bold]✓[/ok.bold] [muted]{text}[/muted]")
+    console.print(f"  [ok.bold]{_G_OK}[/ok.bold] [text]{text}[/text]")
 
 
 def step_warn(text: str) -> None:
-    console.print(f"  [warn.bold]![/warn.bold] [warn]{text}[/warn]")
+    console.print(f"  [warn.bold]{_G_WARN}[/warn.bold] [warn]{text}[/warn]")
 
 
 def step_fail(text: str) -> None:
-    console.print(f"  [err.bold]✗[/err.bold] [err]{text}[/err]")
+    console.print(f"  [err.bold]{_G_FAIL}[/err.bold] [err]{text}[/err]")
+
+
+def step_info(text: str) -> None:
+    console.print(f"  [faint]{_G_DOT}[/faint] [muted]{text}[/muted]")
+
+
+def menu(title: str, groups: list, subtitle: str = "") -> None:
+    """Меню одним блоком: [(заголовок группы, [(номер, значок, подпись, доступен, примечание)])]."""
+    blocks = []
+    notes = []
+    for position, (group_title, items) in enumerate(groups):
+        if position:
+            blocks.append("")
+        if group_title:
+            blocks.append(f"[faint]{group_title}[/faint]")
+
+        table = Table(box=None, show_header=False, padding=(0, 1), pad_edge=False, expand=False)
+        table.add_column(justify="right", no_wrap=True, width=2)
+        table.add_column(justify="center", no_wrap=True, width=1)
+        table.add_column(overflow="fold")
+        for number, glyph, label, enabled, note in items:
+            if enabled:
+                table.add_row(f"[key]{number}[/key]", f"[accent]{glyph}[/accent]", f"[text]{label}[/text]")
+            else:
+                table.add_row(f"[faint]{number}[/faint]", f"[faint]{glyph}[/faint]", f"[faint]{label}[/faint]")
+                if note and note not in notes:
+                    notes.append(note)
+        blocks.append(table)
+
+    for note in notes:
+        blocks.append("")
+        blocks.append(f"[faint]{note}[/faint]")
+
+    console.print()
+    console.print(
+        Panel(
+            Group(*blocks),
+            title=f"[brand]{title}[/brand]",
+            subtitle=f"[faint]{subtitle}[/faint]" if subtitle else None,
+            subtitle_align="right",
+            title_align="left",
+            border_style="accent.dim",
+            box=box.ROUNDED,
+            padding=(1, 3),
+            width=_PANEL_W,
+        )
+    )
+
+
+def ask_choice(count: int, label: str = "Выберите пункт") -> str:
+    return safe_prompt(
+        f"[key]{_G_PROMPT}[/key] [title]{label}[/title]",
+        choices=[str(i) for i in range(1, count + 1)],
+        show_choices=False,
+    )
 
 
 ensure_utf8_locale()
@@ -300,6 +419,8 @@ GHCR_IMAGE = os.environ.get("GHCR_IMAGE", "vladless/solo-brick").strip() or "vla
 DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
+SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
+CLI_VERSION = "v1.0.0"
 
 
 def _ensure_solobot_command() -> None:
@@ -356,7 +477,7 @@ def http_get(url: str, *, params=None, timeout: int = 10) -> HttpResponse:
 
 
 def detect_service_name() -> str:
-    config_path = os.path.join(PROJECT_DIR, "config.py")
+    config_path = resolve_config_path(PROJECT_DIR)
     if os.path.isfile(config_path):
         try:
             with open(config_path, encoding="utf-8") as config_file:
@@ -398,8 +519,8 @@ def _parse_tag_version(tag_name: str) -> tuple[int, ...]:
 
 def warn_english_only():
     """Предупреждение о необходимости английской раскладки."""
-    console.print("[red]Обнаружен ввод с неанглийской раскладкой.[/red]")
-    console.print("[yellow]Пожалуйста, переключите раскладку на ENG и введите снова.[/yellow]")
+    step_fail("Обнаружен ввод с неанглийской раскладкой.")
+    step_warn("Пожалуйста, переключите раскладку на ENG и введите снова.")
 
 
 _CONFIRM_YES = {"y", "yes", "1", "true", "д", "да", "у"}
@@ -412,10 +533,10 @@ def safe_confirm(message: str, default: bool = False, **kwargs) -> bool:
     Срезает не-ASCII «мусор» от переключения раскладки и принимает y/n в любой
     раскладке (y/да/д/у → да, n/нет/н → нет). Пустой ввод → значение по умолчанию.
     """
-    suffix = " (Y/n)" if default else " (y/n)"
+    suffix = "[faint](Y/n)[/faint]" if default else "[faint](y/n)[/faint]"
     while True:
         try:
-            raw = Prompt.ask(f"{message}{suffix}", **kwargs)
+            raw = Prompt.ask(f"[key]{_G_PROMPT}[/key] [text]{message}[/text] {suffix}", **kwargs)
         except UnicodeDecodeError:
             warn_english_only()
             continue
@@ -428,7 +549,7 @@ def safe_confirm(message: str, default: bool = False, **kwargs) -> bool:
             return True
         if candidate in _CONFIRM_NO or candidate[:1] in ("n",):
             return False
-        console.print("[yellow]Введите y (да) или n (нет).[/yellow]")
+        step_warn("Введите y (да) или n (нет).")
 
 
 def safe_prompt(message: str, **kwargs) -> str:
@@ -445,7 +566,7 @@ def safe_prompt(message: str, **kwargs) -> str:
             warn_english_only()
             continue
         except ValueError as e:
-            console.print(f"[red]{e}[/red]")
+            step_fail(f"{e}")
             continue
         if isinstance(value, str) and not is_ascii_only(value):
             cleaned = "".join(ch for ch in value if ord(ch) < 128)
@@ -459,14 +580,14 @@ def safe_prompt(message: str, **kwargs) -> str:
 if IS_ROOT_DIR:
     _required_paths = ("requirements.txt", "main.py")
     _has_project = all(os.path.exists(os.path.join(PROJECT_DIR, p)) for p in _required_paths)
-    _has_config = os.path.exists(os.path.join(PROJECT_DIR, "config.py"))
+    _has_config = os.path.exists(resolve_config_path(PROJECT_DIR))
 
     if _has_project or _has_config:
-        console.print("[bold red]КРИТИЧЕСКАЯ ОШИБКА:[/bold red]")
-        console.print("[red]Обнаружена установка бота прямо в корневой папке (/root).[/red]")
-        console.print("[red]Это крайне опасно и может привести к потере данных![/red]")
-        console.print("[red]Рекомендуется перенести бота в отдельную папку, например /root/Solo_bot[/red]")
-        console.print("[red]Обновление заблокировано в целях безопасности.[/red]")
+        step_fail("КРИТИЧЕСКАЯ ОШИБКА:")
+        step_fail("Обнаружена установка бота прямо в корневой папке (/root).")
+        step_fail("Это крайне опасно и может привести к потере данных!")
+        step_fail("Рекомендуется перенести бота в отдельную папку, например /root/Solo_bot")
+        step_fail("Обновление заблокировано в целях безопасности.")
         sys.exit(1)
 
     _target_dir = "/root/Solo_bot"
@@ -475,11 +596,11 @@ if IS_ROOT_DIR:
     try:
         shutil.move(__file__, _target_path)
     except Exception as e:
-        console.print(f"[red]Не удалось перенести launcher в {_target_dir}: {e}[/red]")
+        step_fail(f"Не удалось перенести launcher в {_target_dir}: {e}")
         sys.exit(1)
     os.chdir(_target_dir)
-    console.print(f"[green]✓ Launcher перенесён в {_target_dir}[/green]")
-    console.print("[dim]Перезапуск из новой папки...[/dim]")
+    step_ok(f"✓ Launcher перенесён в {_target_dir}")
+    console.print("[faint]Перезапуск из новой папки...[/faint]")
     os.execv(sys.executable, [sys.executable, _target_path, *sys.argv[1:]])
 
 
@@ -521,7 +642,7 @@ def has_project_code() -> bool:
 
 
 def has_local_config() -> bool:
-    return os.path.exists(os.path.join(PROJECT_DIR, "config.py"))
+    return os.path.exists(resolve_config_path(PROJECT_DIR))
 
 
 def bootstrap_project_files(branch: str = "main") -> bool:
@@ -529,7 +650,7 @@ def bootstrap_project_files(branch: str = "main") -> bool:
     if has_project_code():
         return True
 
-    console.print("[yellow]Полный проект рядом не найден. Подтягиваю файлы бота...[/yellow]")
+    step_warn("Полный проект рядом не найден. Подтягиваю файлы бота...")
     install_core_packages_if_needed()
     install_rsync_if_needed()
 
@@ -539,16 +660,21 @@ def bootstrap_project_files(branch: str = "main") -> bool:
         status_text=f"Клонирование {GITHUB_REPO} (ветка {branch})",
     )
     if clone_result.returncode != 0:
-        console.print("[red]❌ Не удалось скачать проект из GitHub.[/red]")
+        step_fail("Не удалось скачать проект из GitHub.")
         return False
 
     rsync_cmd = ["rsync", "-a", f"{TEMP_DIR}/", f"{PROJECT_DIR}/"]
     if has_local_config():
         rsync_cmd.insert(2, "--exclude=config.py")
+        rsync_cmd.insert(2, "--exclude=settings/config.py")
     if os.path.exists(os.path.join(PROJECT_DIR, "handlers", "texts.py")):
         rsync_cmd.insert(2, "--exclude=handlers/texts.py")
-    if os.path.exists(os.path.join(PROJECT_DIR, "handlers", "buttons.py")):
-        rsync_cmd.insert(2, "--exclude=handlers/buttons.py")
+    if os.path.exists(os.path.join(SETTINGS_DIR, "texts.py")):
+        rsync_cmd.insert(2, "--exclude=settings/texts.py")
+    if os.path.exists(os.path.join(PROJECT_DIR, "handlers", "buttons.py")) or os.path.exists(
+        os.path.join(SETTINGS_DIR, "buttons.py")
+    ):
+        rsync_cmd.insert(2, "--exclude=settings/buttons.py")
     if os.path.exists(os.path.join(PROJECT_DIR, "core", "redis_cache.py")):
         rsync_cmd.insert(2, "--exclude=core/redis_cache.py")
     if os.path.exists(os.path.join(PROJECT_DIR, "img")):
@@ -560,11 +686,12 @@ def bootstrap_project_files(branch: str = "main") -> bool:
     sync_result = run_with_status(rsync_cmd, status_text="Распаковка файлов проекта")
     subprocess.run(["rm", "-rf", TEMP_DIR], check=False)
     if sync_result.returncode != 0:
-        console.print("[red]❌ Не удалось распаковать файлы проекта.[/red]")
+        step_fail("Не удалось распаковать файлы проекта.")
         return False
 
+    migrate_settings_layout(PROJECT_DIR, out=console.print)
     refresh_service_name()
-    console.print("[green]Файлы проекта подготовлены.[/green]")
+    step_ok("Файлы проекта подготовлены.")
     return True
 
 
@@ -595,7 +722,7 @@ def install_core_packages_if_needed():
         return
 
     unique_packages = list(dict.fromkeys(missing_packages))
-    console.print(f"[yellow]Устанавливаю системные пакеты: {', '.join(unique_packages)}[/yellow]")
+    step_warn(f"Устанавливаю системные пакеты: {', '.join(unique_packages)}")
     run_with_status(["sudo", "apt", "update"], status_text="apt update", check=True)
     run_with_status(
         ["sudo", "apt", "install", "-y", *unique_packages],
@@ -627,7 +754,7 @@ def build_systemd_service() -> str:
 
 def ensure_systemd_service() -> bool:
     refresh_service_name()
-    console.print(f"[yellow]Проверяю systemd-службу {SERVICE_NAME}...[/yellow]")
+    step_warn(f"Проверяю systemd-службу {SERVICE_NAME}...")
     service_text = build_systemd_service()
     service_exists = os.path.exists(SYSTEMD_SERVICE_PATH)
 
@@ -635,7 +762,7 @@ def ensure_systemd_service() -> bool:
         try:
             with open(SYSTEMD_SERVICE_PATH, encoding="utf-8") as service_file:
                 if service_file.read() == service_text:
-                    console.print(f"[green]Служба {SERVICE_NAME} уже настроена.[/green]")
+                    step_ok(f"Служба {SERVICE_NAME} уже настроена.")
                     return True
         except Exception:
             pass
@@ -649,18 +776,18 @@ def ensure_systemd_service() -> bool:
             check=True,
         )
         subprocess.run(["sudo", "systemctl", "daemon-reload"], check=True)
-        console.print(f"[green]Служба {SERVICE_NAME} настроена.[/green]")
+        step_ok(f"Служба {SERVICE_NAME} настроена.")
         return True
     except Exception as e:
-        console.print(f"[red]❌ Не удалось настроить службу {SERVICE_NAME}: {e}[/red]")
+        step_fail(f"Не удалось настроить службу {SERVICE_NAME}: {e}")
         return False
 
 
 def initialize_database() -> bool:
     if not os.path.exists(VENV_PYTHON):
-        console.print("[yellow]Инициализация базы пропущена: виртуальное окружение ещё не создано.[/yellow]")
+        step_warn("Инициализация базы пропущена: виртуальное окружение ещё не создано.")
         return False
-    console.print("[yellow]Инициализация базы данных...[/yellow]")
+    step_warn("Инициализация базы данных...")
     try:
         subprocess.run(
             [
@@ -671,10 +798,10 @@ def initialize_database() -> bool:
             cwd=PROJECT_DIR,
             check=True,
         )
-        console.print("[green]База данных успешно инициализирована.[/green]")
+        step_ok("База данных успешно инициализирована.")
         return True
     except Exception as e:
-        console.print(f"[red]❌ Не удалось инициализировать базу данных: {e}[/red]")
+        step_fail(f"Не удалось инициализировать базу данных: {e}")
         return False
 
 
@@ -684,10 +811,10 @@ def enable_and_start_service(start_now: bool = True) -> None:
     subprocess.run(["sudo", "systemctl", "enable", SERVICE_NAME], check=True)
     if start_now:
         subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME], check=True)
-        console.print(f"[green]Служба {SERVICE_NAME} включена и запущена.[/green]")
+        step_ok(f"Служба {SERVICE_NAME} включена и запущена.")
     else:
         console.print(
-            f"[yellow]Служба {SERVICE_NAME} включена, но не запущена. Проверьте config.py и доступность базы данных.[/yellow]"
+            f"[warn]Служба {SERVICE_NAME} включена, но не запущена. Проверьте config.py и доступность базы данных.[/warn]"
         )
 
 
@@ -700,7 +827,7 @@ def is_runtime_ready() -> bool:
 
 def _read_config_str(key: str) -> str:
     try:
-        text = open(os.path.join(PROJECT_DIR, "config.py"), encoding="utf-8").read()
+        text = open(resolve_config_path(PROJECT_DIR), encoding="utf-8").read()
     except Exception:
         return ""
     m = re.search(rf'^{key}\s*=\s*[\'"]([^\'"]*)[\'"]', text, re.M)
@@ -708,11 +835,11 @@ def _read_config_str(key: str) -> str:
 
 
 def _write_config_value(key: str, value: str) -> bool:
-    path = os.path.join(PROJECT_DIR, "config.py")
+    path = resolve_config_path(PROJECT_DIR)
     try:
         text = open(path, encoding="utf-8").read()
     except Exception as e:
-        console.print(f"[yellow]Не удалось открыть config.py: {e}[/yellow]")
+        step_warn(f"Не удалось открыть config.py: {e}")
         return False
     line = f'{key} = "{value}"'
     text, n = re.subn(rf"(?m)^{key}\s*=.*$", line, text)
@@ -723,30 +850,30 @@ def _write_config_value(key: str, value: str) -> bool:
             f.write(text)
         return True
     except Exception as e:
-        console.print(f"[yellow]Не удалось записать config.py: {e}[/yellow]")
+        step_warn(f"Не удалось записать config.py: {e}")
         return False
 
 
 def _prompt_domain() -> str:
     cur = _read_config_str("WEBHOOK_HOST")
     console.print(
-        "[dim]Домен, на котором работает бот (A-запись домена должна указывать на IP этого сервера). "
-        "Обязателен: по нему Telegram доставляет сообщения и клиенты получают ссылки подписок.[/dim]"
+        "[faint]Домен, на котором работает бот (A-запись домена должна указывать на IP этого сервера). "
+        "Обязателен: по нему Telegram доставляет сообщения и клиенты получают ссылки подписок.[/faint]"
     )
-    raw = (safe_prompt("[cyan]Домен бота[/cyan] (например vpn.example.com)", default=cur) or "").strip()
+    raw = (safe_prompt("[accent]Домен бота[/accent] (например vpn.example.com)", default=cur) or "").strip()
     raw = raw.replace("https://", "").replace("http://", "").strip("/ ")
     if not raw:
         return ""
     host = f"https://{raw}"
     if _write_config_value("WEBHOOK_HOST", host):
-        console.print(f"[green]Домен сохранён в config.py: {host}[/green]")
+        step_ok(f"Домен сохранён в config.py: {host}")
     return host
 
 
 def _read_config_db_creds() -> dict:
     creds = {"user": "myuser", "password": "", "name": "solobot"}
     try:
-        text = open(os.path.join(PROJECT_DIR, "config.py"), encoding="utf-8").read()
+        text = open(resolve_config_path(PROJECT_DIR), encoding="utf-8").read()
     except Exception:
         return creds
     for key, field in (("DB_USER", "user"), ("DB_PASSWORD", "password"), ("DB_NAME", "name")):
@@ -757,11 +884,11 @@ def _read_config_db_creds() -> dict:
 
 
 def _write_config_db_creds(creds: dict) -> bool:
-    path = os.path.join(PROJECT_DIR, "config.py")
+    path = resolve_config_path(PROJECT_DIR)
     try:
         text = open(path, encoding="utf-8").read()
     except Exception as e:
-        console.print(f"[yellow]Не удалось открыть config.py: {e}[/yellow]")
+        step_warn(f"Не удалось открыть config.py: {e}")
         return False
     for key, field in (("DB_NAME", "name"), ("DB_USER", "user"), ("DB_PASSWORD", "password")):
         line = f'{key} = "{creds[field]}"'
@@ -773,7 +900,7 @@ def _write_config_db_creds(creds: dict) -> bool:
             f.write(text)
         return True
     except Exception as e:
-        console.print(f"[yellow]Не удалось записать config.py: {e}[/yellow]")
+        step_warn(f"Не удалось записать config.py: {e}")
         return False
 
 
@@ -781,21 +908,21 @@ def _prompt_db_creds() -> dict:
     cur = _read_config_db_creds()
     if not cur["password"]:
         cur["password"] = secrets.token_urlsafe(18)
-        console.print("[dim]Пароль БД сгенерирован автоматически — оставьте его (Enter) или задайте свой.[/dim]")
-    console.print("[dim]Доступ к базе данных. Нажмите Enter, чтобы оставить предложенное значение.[/dim]")
-    name = (safe_prompt("[cyan]Имя базы данных[/cyan]", default=cur["name"]) or cur["name"]).strip()
-    user = (safe_prompt("[cyan]Пользователь БД[/cyan]", default=cur["user"]) or cur["user"]).strip()
-    password = (safe_prompt("[cyan]Пароль БД[/cyan]", default=cur["password"]) or cur["password"]).strip()
+        console.print("[faint]Пароль БД сгенерирован автоматически — оставьте его (Enter) или задайте свой.[/faint]")
+    console.print("[faint]Доступ к базе данных. Нажмите Enter, чтобы оставить предложенное значение.[/faint]")
+    name = (safe_prompt("[accent]Имя базы данных[/accent]", default=cur["name"]) or cur["name"]).strip()
+    user = (safe_prompt("[accent]Пользователь БД[/accent]", default=cur["user"]) or cur["user"]).strip()
+    password = (safe_prompt("[accent]Пароль БД[/accent]", default=cur["password"]) or cur["password"]).strip()
     creds = {"name": name, "user": user, "password": password}
     if _write_config_db_creds(creds):
-        console.print("[green]Доступ к БД сохранён в config.py.[/green]")
+        step_ok("Доступ к БД сохранён в config.py.")
     return creds
 
 
 def _ensure_data_services(creds: dict) -> bool:
     compose_file = os.path.join(PROJECT_DIR, "docker-compose.local.yml")
     if not os.path.exists(compose_file):
-        console.print("[yellow]Файл docker-compose.local.yml не найден — данные не поднять автоматически.[/yellow]")
+        step_warn("Файл docker-compose.local.yml не найден — данные не поднять автоматически.")
         return False
     if not _ensure_docker():
         return False
@@ -803,13 +930,13 @@ def _ensure_data_services(creds: dict) -> bool:
         owner = _port_owner(port)
         if owner and "docker" not in owner.lower():
             console.print(
-                f"[yellow]Порт {port} уже занят процессом «{owner}» (не Docker) — это помешает поднять {svc}.[/yellow]"
+                f"[warn]Порт {port} уже занят процессом «{owner}» (не Docker) — это помешает поднять {svc}.[/warn]"
             )
             console.print(
-                f"[dim]Обычно это системный {svc}. Остановите его (например: sudo systemctl stop postgresql) "
-                f"или освободите порт {port}, затем повторите.[/dim]"
+                f"[faint]Обычно это системный {svc}. Остановите его (например: sudo systemctl stop postgresql) "
+                f"или освободите порт {port}, затем повторите.[/faint]"
             )
-            if not safe_confirm("[cyan]Попробовать поднять контейнеры всё равно?[/cyan]", default=False):
+            if not safe_confirm("Попробовать поднять контейнеры всё равно?", default=False):
                 return False
     env = {
         **os.environ,
@@ -818,12 +945,12 @@ def _ensure_data_services(creds: dict) -> bool:
         "POSTGRES_DB": creds["name"],
     }
     base = ["docker", "compose", "-f", compose_file, "up", "-d"]
-    with console.status("[bold yellow]Запуск PostgreSQL и Redis…[/bold yellow]"):
+    with console.status("[warn.bold]Запуск PostgreSQL и Redis…[/warn.bold]"):
         res = subprocess.run(base + ["--wait"], capture_output=True, text=True, env=env)
         if res.returncode != 0:
             res = subprocess.run(base, capture_output=True, text=True, env=env)
     if res.returncode != 0:
-        console.print(f"[red]{(res.stderr or '').strip()[:500]}[/red]")
+        console.print(f"[err]{(res.stderr or '').strip()[:500]}[/err]")
         return False
     for _ in range(30):
         chk = subprocess.run(
@@ -834,33 +961,34 @@ def _ensure_data_services(creds: dict) -> bool:
         if chk.returncode == 0:
             return True
         sleep(2)
-    console.print("[yellow]PostgreSQL запущен, но не ответил готовностью за отведённое время.[/yellow]")
+    step_warn("PostgreSQL запущен, но не ответил готовностью за отведённое время.")
     return False
 
 
 def install_bot():
     console.print(
         Panel(
-            "[white]CLI подготовит окружение, поднимет базу данных и Redis, установит зависимости, "
-            "создаст systemd-службу и инициализирует базу. Если проекта ещё нет рядом, CLI сначала скачает его автоматически.[/white]\n\n"
-            "[yellow]Понадобятся два файла с сайта:[/yellow] [bold]config.py[/bold] и [bold]texts.py[/bold] "
+            "[text]CLI подготовит окружение, поднимет базу данных и Redis, установит зависимости, "
+            "создаст systemd-службу и инициализирует базу. Если проекта ещё нет рядом, CLI сначала скачает его автоматически.[/text]\n\n"
+            "[warn]Понадобятся два файла с сайта:[/warn] [bold]config.py[/bold] и [bold]texts.py[/bold] "
             "(токен, доступ к БД, тексты). Если их ещё нет — CLI остановится и подскажет, куда их положить.\n\n"
-            "[bold red]Важно:[/bold red] боту обязательно нужен [bold]домен с HTTPS[/bold]. Без него Telegram не доставляет "
+            "[err.bold]Важно:[/err.bold] боту обязательно нужен [bold]домен с HTTPS[/bold]. Без него Telegram не доставляет "
             "сообщения и не работают ссылки подписок. Домен указывается на сайте при генерации config.py.",
-            border_style="green",
-            title="[bold green]Автоматическая установка SoloBot[/bold green]",
+            border_style="ok",
+            width=_PANEL_W,
+            title="[ok.bold]Автоматическая установка SoloBot[/ok.bold]",
             padding=(1, 2),
         )
     )
 
-    if not safe_confirm("[bold green]Запустить автоматическую установку?[/bold green]", default=True):
+    if not safe_confirm("Запустить автоматическую установку?", default=True):
         return
 
     total = 8
     try:
         step_rule(1, total, "Файлы проекта")
         console.print(
-            "[dim]Проверяю исходники бота рядом с лаунчером. Если их нет — скачаю стабильную версию с GitHub.[/dim]"
+            "[faint]Проверяю исходники бота рядом с лаунчером. Если их нет — скачаю стабильную версию с GitHub.[/faint]"
         )
         if not bootstrap_project_files(branch="main"):
             step_fail("Не удалось подготовить файлы проекта. Установка прервана.")
@@ -870,76 +998,80 @@ def install_bot():
 
         step_rule(2, total, "Конфигурация")
         console.print(
-            "[dim]config.py и texts.py вы получаете на сайте (там задаются токен бота, доступ к базе данных, тексты). "
-            "В исходниках их нет, поэтому без этих двух файлов установка не продолжится.[/dim]"
+            "[faint]config.py и texts.py вы получаете на сайте (там задаются токен бота, доступ к базе данных, тексты). "
+            "В исходниках их нет, поэтому без этих двух файлов установка не продолжится.[/faint]"
         )
-        config_path = os.path.join(PROJECT_DIR, "config.py")
-        texts_path = os.path.join(PROJECT_DIR, "handlers", "texts.py")
+        config_path = resolve_config_path(PROJECT_DIR)
+        texts_path = resolve_texts_path(PROJECT_DIR)
 
         def _missing_cfg():
+            migrate_settings_layout(PROJECT_DIR, out=console.print)
             miss = []
             if not os.path.exists(config_path):
-                miss.append("config.py")
+                miss.append(os.path.relpath(config_path, PROJECT_DIR))
             if not os.path.exists(texts_path):
-                miss.append("handlers/texts.py")
+                miss.append(os.path.relpath(texts_path, PROJECT_DIR))
             return miss
 
         while _missing_cfg():
             step_warn("Пока нет файлов: " + ", ".join(_missing_cfg()))
             console.print(
                 Panel(
-                    "[white]Положите рядом с ботом два файла, которые вы скачиваете на сайте:[/white]\n\n"
-                    f"  • [cyan]config.py[/cyan] кладётся сюда:\n    [bold]{config_path}[/bold]\n"
-                    f"  • [cyan]texts.py[/cyan] кладётся сюда:\n    [bold]{texts_path}[/bold]\n\n"
-                    f"[white]Где взять файлы:[/white] [bold]{CONFIG_BUILDER_URL}[/bold]\n"
-                    "[yellow]Это шаблоны с пустыми значениями — заполните config.py "
-                    f"(токен бота и др.) по инструкции на вики:[/yellow] [bold]{WIKI_URL}[/bold]\n\n"
-                    "[white]Как загрузить (команды с вашего компьютера):[/white]\n"
+                    "[text]Положите рядом с ботом два файла, которые вы скачиваете на сайте:[/text]\n\n"
+                    f"  • [accent]config.py[/accent] кладётся сюда:\n    [bold]{config_path}[/bold]\n"
+                    f"  • [accent]texts.py[/accent] кладётся сюда:\n    [bold]{texts_path}[/bold]\n\n"
+                    f"[text]Где взять файлы:[/text] [bold]{CONFIG_BUILDER_URL}[/bold]\n"
+                    "[warn]Это шаблоны с пустыми значениями — заполните config.py "
+                    f"(токен бота и др.) по инструкции на вики:[/warn] [bold]{WIKI_URL}[/bold]\n\n"
+                    "[text]Как загрузить (команды с вашего компьютера):[/text]\n"
                     f"  • [bold]scp config.py root@ВАШ_IP:{config_path}[/bold]\n"
                     f"  • [bold]scp texts.py root@ВАШ_IP:{texts_path}[/bold]\n"
+                    "  • если файлы окажутся в местах от другой версии бота — CLI сам перенесёт их куда нужно.\n"
                     "  • либо перетащите файлы в FileZilla/SFTP по этим путям.\n\n"
-                    "[dim]В этих файлах ваши токены и пароли — никому не пересылайте их.[/dim]",
-                    border_style="yellow",
-                    title="[bold yellow]Нужны config.py и texts.py[/bold yellow]",
+                    "[faint]В этих файлах ваши токены и пароли — никому не пересылайте их.[/faint]",
+                    border_style="warn",
+                    width=_PANEL_W,
+                    title="[warn.bold]Нужны config.py и texts.py[/warn.bold]",
                     padding=(1, 2),
                 )
             )
-            if not safe_confirm("[green]Загрузили файлы? Проверить снова?[/green]", default=True):
+            if not safe_confirm("Загрузили файлы? Проверить снова?", default=True):
                 step_warn("Установка приостановлена. Запустите снова, когда загрузите файлы: sudo solobot")
                 return
         step_ok("config.py и texts.py на месте.")
 
         console.print(
-            f"[yellow]Напоминание:[/yellow] config.py — это шаблон с пустыми значениями. "
+            f"[warn]Напоминание:[/warn] config.py — это шаблон с пустыми значениями. "
             f"Заполните его по инструкции на вики ([bold]{WIKI_URL}[/bold]) — обязателен токен бота, иначе бот не запустится."
         )
         domain = _prompt_domain()
         if not domain:
             console.print(
                 Panel(
-                    "[white]Боту обязательно нужен домен с HTTPS:[/white] по нему Telegram доставляет сообщения, "
+                    "[text]Боту обязательно нужен домен с HTTPS:[/text] по нему Telegram доставляет сообщения, "
                     "и по этому же адресу клиенты получают ссылки подписок.\n\n"
-                    "[white]Что нужно:[/white]\n"
+                    "[text]Что нужно:[/text]\n"
                     "  1. Купите домен и направьте его A-записью на IP этого сервера.\n"
                     "  2. Запустите установку снова и введите домен (или впишите в config.py "
                     'WEBHOOK_HOST = "https://ваш-домен").\n\n'
-                    "[dim]Без домена бот не будет отвечать в Telegram.[/dim]",
-                    border_style="red",
-                    title="[bold red]Домен не указан[/bold red]",
+                    "[faint]Без домена бот не будет отвечать в Telegram.[/faint]",
+                    border_style="err",
+                    width=_PANEL_W,
+                    title="[err.bold]Домен не указан[/err.bold]",
                     padding=(1, 2),
                 )
             )
-            if not safe_confirm("[yellow]Продолжить установку без домена?[/yellow]", default=False):
+            if not safe_confirm("Продолжить установку без домена?", default=False):
                 step_warn("Установка остановлена. Подготовьте домен и запустите снова: sudo solobot")
                 return
 
         step_rule(3, total, "Системные пакеты")
-        console.print("[dim]git, rsync, Python 3.12 и модуль venv — это база, без которой бот не запустится.[/dim]")
+        console.print("[faint]git, rsync, Python 3.12 и модуль venv — это база, без которой бот не запустится.[/faint]")
         install_core_packages_if_needed()
         step_ok("Системные пакеты готовы.")
 
         step_rule(4, total, "Python-окружение")
-        console.print("[dim]Создаю виртуальное окружение venv/ и ставлю зависимости из requirements.txt.[/dim]")
+        console.print("[faint]Создаю виртуальное окружение venv/ и ставлю зависимости из requirements.txt.[/faint]")
         install_dependencies()
         if not os.path.exists(VENV_PYTHON):
             step_fail("Виртуальное окружение не создано. Установка прервана.")
@@ -948,8 +1080,8 @@ def install_bot():
 
         step_rule(5, total, "Данные (PostgreSQL и Redis)")
         console.print(
-            "[dim]Зададим доступ к базе данных (Enter — значения по умолчанию). Эти значения пропишутся "
-            "в config.py и в контейнер PostgreSQL, чтобы бот и база точно совпали. Затем подниму PostgreSQL и Redis.[/dim]"
+            "[faint]Зададим доступ к базе данных (Enter — значения по умолчанию). Эти значения пропишутся "
+            "в config.py и в контейнер PostgreSQL, чтобы бот и база точно совпали. Затем подниму PostgreSQL и Redis.[/faint]"
         )
         db_creds = _prompt_db_creds()
         if _ensure_data_services(db_creds):
@@ -962,8 +1094,8 @@ def install_bot():
 
         step_rule(6, total, "База данных")
         console.print(
-            "[dim]Создаю таблицы по доступам из config.py. "
-            "Если данные базы в config.py неверные — шаг можно завершить позже, перезапустив бота из меню.[/dim]"
+            "[faint]Создаю таблицы по доступам из config.py. "
+            "Если данные базы в config.py неверные — шаг можно завершить позже, перезапустив бота из меню.[/faint]"
         )
         db_ready = initialize_database()
         if db_ready:
@@ -971,13 +1103,13 @@ def install_bot():
         else:
             step_warn("База не готова: бот не смог подключиться по доступам из config.py.")
             console.print(
-                "[dim]Если база уже создавалась раньше с другими логином/паролем, контейнер хранит старые доступы. "
-                "Пересоздать БД (СОТРЁТ данные): docker compose -f docker-compose.local.yml down -v, затем переустановите.[/dim]"
+                "[faint]Если база уже создавалась раньше с другими логином/паролем, контейнер хранит старые доступы. "
+                "Пересоздать БД (СОТРЁТ данные): docker compose -f docker-compose.local.yml down -v, затем переустановите.[/faint]"
             )
 
         step_rule(7, total, "Служба автозапуска")
         console.print(
-            "[dim]Создаю systemd-службу, чтобы бот стартовал сам и поднимался после перезагрузки сервера.[/dim]"
+            "[faint]Создаю systemd-службу, чтобы бот стартовал сам и поднимался после перезагрузки сервера.[/faint]"
         )
         if not ensure_systemd_service():
             step_fail("Не удалось настроить службу. Установка прервана.")
@@ -986,7 +1118,7 @@ def install_bot():
 
         step_rule(8, total, "Права и запуск")
         console.print(
-            "[dim]Назначаю владельца и права на файлы проекта, закрываю секреты (config.py, тексты) и запускаю бота.[/dim]"
+            "[faint]Назначаю владельца и права на файлы проекта, закрываю секреты (config.py, тексты) и запускаю бота.[/faint]"
         )
         fix_permissions()
         enable_and_start_service(start_now=db_ready)
@@ -994,20 +1126,20 @@ def install_bot():
 
         console.print()
         if db_ready:
-            console.print("[bold green]✅ Установка SoloBot завершена. Бот запущен.[/bold green]")
+            step_ok("Установка SoloBot завершена. Бот запущен.")
             console.print(
-                "[dim]Проверка: в меню пункт 6 (статус) и 5 (логи). Откройте бота в Telegram и нажмите /start. "
-                "Если бот не отвечает — проверьте токен в config.py, затем перезапустите (пункт 3).[/dim]"
+                "[faint]Проверка: в меню пункт 6 (статус) и 5 (логи). Откройте бота в Telegram и нажмите /start. "
+                "Если бот не отвечает — проверьте токен в config.py, затем перезапустите (пункт 3).[/faint]"
             )
         else:
             console.print(
-                "[bold yellow]✅ Установка почти готова.[/bold yellow] "
-                "[yellow]Осталась база: проверьте доступ к БД в config.py и перезапустите бота (пункт 3 в меню).[/yellow]"
+                "[warn.bold]Установка почти готова.[/warn.bold] "
+                "[warn]Осталась база: проверьте доступ к БД в config.py и перезапустите бота (пункт 3 в меню).[/warn]"
             )
     except subprocess.CalledProcessError as e:
         step_fail(f"Ошибка во время установки: {e}")
     except KeyboardInterrupt:
-        console.print("\n[yellow]Установка прервана пользователем.[/yellow]")
+        console.print("\n[warn]Установка прервана пользователем.[/warn]")
 
 
 def prompt_install_if_needed():
@@ -1022,16 +1154,17 @@ def prompt_install_if_needed():
     if not has_project:
         console.print(
             Panel(
-                "[white]В этой папке ещё нет установки.[/white]\n\n"
+                "[text]В этой папке ещё нет установки.[/text]\n\n"
                 "[bold]SoloBot состоит из двух независимых частей:[/bold]\n"
-                "  • [cyan]Telegram-бот[/cyan] — продажа VPN-ключей в ТГ\n"
+                "  • [accent]Telegram-бот[/accent] — продажа VPN-ключей в ТГ\n"
                 "    (пункт меню [bold]9 — Установить / переустановить бота[/bold])\n"
-                "  • [cyan]Веб-сайт[/cyan] — личный кабинет для клиентов\n"
-                "    (пункт меню [bold]10 — 🌐 Веб-сайт[/bold])\n\n"
-                "[white]Можно установить только одно из двух, либо оба.[/white]\n"
-                "[white]Выберите нужный пункт в меню ниже.[/white]",
-                border_style="cyan",
-                title="[bold green]Первый запуск[/bold green]",
+                "  • [accent]Веб-сайт[/accent] — личный кабинет для клиентов\n"
+                "    (пункт меню [bold]10 — Веб-сайт[/bold])\n\n"
+                "[text]Можно установить только одно из двух, либо оба.[/text]\n"
+                "[text]Выберите нужный пункт в меню ниже.[/text]",
+                border_style="accent.dim",
+                width=_PANEL_W,
+                title="[ok.bold]Первый запуск[/ok.bold]",
                 padding=(1, 2),
             )
         )
@@ -1047,16 +1180,32 @@ def prompt_install_if_needed():
     bullets = "\n".join(f"  • {label}" for label in missing_labels)
     console.print(
         Panel(
-            "[white]Установка бота частично нарушена.[/white]\n"
-            f"[yellow]Не хватает:[/yellow]\n{bullets}\n\n"
-            "[white]CLI допустит недостающие части — исходники и настройки не трогаются.[/white]",
-            border_style="yellow",
-            title="[bold yellow]Починка установки бота[/bold yellow]",
+            "[text]Установка бота частично нарушена.[/text]\n"
+            f"[warn]Не хватает:[/warn]\n{bullets}\n\n"
+            "[text]CLI допустит недостающие части — исходники и настройки не трогаются.[/text]",
+            border_style="warn",
+            width=_PANEL_W,
+            title="[warn.bold]Починка установки бота[/warn.bold]",
             padding=(1, 2),
         )
     )
-    if safe_confirm("[green]Выполнить починку сейчас?[/green]", default=True):
+    if safe_confirm("Выполнить починку сейчас?", default=True):
         install_bot()
+
+
+def _bot_state() -> tuple:
+    if not has_project_code():
+        return "faint", "не установлен"
+    if not is_service_exists(SERVICE_NAME):
+        return "warn", "служба не создана"
+    state = _service_state()
+    if state == "active":
+        return "ok", "работает"
+    if state == "activating":
+        return "warn", "запускается"
+    if state == "failed":
+        return "err", "сбой"
+    return "muted", "остановлен"
 
 
 def print_logo():
@@ -1068,25 +1217,28 @@ def print_logo():
         "███████║╚██████╔╝███████╗╚██████╔╝██████╔╝╚██████╔╝   ██║   ",
         "╚══════╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   ",
     ]
-
-    panel = Panel(
-        Group(*[f"[accent]{line}[/accent]" for line in logo_lines]),
-        border_style="accent.dim",
-        box=box.ROUNDED,
-        padding=(0, 3),
-        expand=False,
-        subtitle="[muted]Solobot CLI[/muted]",
-        subtitle_align="right",
-    )
-    console.print(panel)
-
-    local_version = get_local_version() or "—"
-    last_update = get_last_update_date() or "—"
+    console.print()
     console.print(
-        f"[muted]версия[/muted] [title]{local_version}[/title]   "
-        f"[muted]обновлён[/muted] [title]{last_update}[/title]   "
-        f"[muted]{PROJECT_DIR}[/muted]\n"
+        Panel(
+            Group(*[f"[accent]{line.center(_PANEL_W - 8)}[/accent]" for line in logo_lines]),
+            border_style="accent.dim",
+            box=box.ROUNDED,
+            padding=(0, 3),
+            width=_PANEL_W,
+            subtitle=f"[faint]Solobot CLI {CLI_VERSION}[/faint]",
+            subtitle_align="right",
+        )
     )
+
+    home = os.path.expanduser("~")
+    where = PROJECT_DIR.replace(home, "~", 1) if PROJECT_DIR.startswith(home) else PROJECT_DIR
+    style, state = _bot_state()
+
+    console.print()
+    console.print(f"  [faint]бот[/faint]        [{style}]{_G_DOT} {state}[/{style}]")
+    console.print(f"  [faint]версия[/faint]     [title]{local_version(PROJECT_DIR) or '—'}[/title]")
+    console.print(f"  [faint]обновлён[/faint]   [text]{get_last_update_date() or '—'}[/text]")
+    console.print(f"  [faint]папка[/faint]      [muted]{where}[/muted]")
 
 
 def list_backups():
@@ -1120,13 +1272,13 @@ def backup_project() -> str | None:
     os.makedirs(BACK_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dst = os.path.join(BACK_DIR, f"backup-{ts}")
-    console.print("[yellow]Создаётся резервная копия проекта...[/yellow]")
-    with console.status("[bold cyan]Копирование файлов...[/bold cyan]"):
+    step_warn("Создаётся резервная копия проекта...")
+    with console.status("[brand]Копирование файлов...[/brand]"):
         result = subprocess.run(["cp", "-r", PROJECT_DIR, dst], check=False)
     if result.returncode != 0:
-        console.print("[red]❌ Не удалось создать бэкап[/red]")
+        step_fail("Не удалось создать бэкап")
         return None
-    console.print(f"[green]Бэкап сохранён в: {dst}[/green]")
+    step_ok(f"Бэкап сохранён в: {dst}")
     prune_old_backups()
     return dst
 
@@ -1150,6 +1302,7 @@ def _build_update_rsync_excludes(update_buttons: bool, update_img: bool, update_
         excludes.append("--exclude=img")
     if not update_buttons:
         excludes.append("--exclude=handlers/buttons.py")
+        excludes.append("--exclude=settings/buttons.py")
     if not update_redis_cache:
         excludes.append("--exclude=core/redis_cache.py")
     excludes.append("--exclude=modules")
@@ -1162,23 +1315,22 @@ def restore_from_backup():
 
     backups = list_backups()[:3]
     if not backups:
-        console.print(f"[red]❌ Бэкапы не найдены: {BACK_DIR}[/red]")
+        step_fail(f"Бэкапы не найдены: {BACK_DIR}")
         return
 
-    console.print("\n[bold green]Доступные бэкапы:[/bold green]")
+    heading("Резервные копии", BACK_DIR)
     shown = []
     for idx, path in enumerate(backups, 1):
         try:
-            mtime = os.path.getmtime(path)
-            dt = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            dt = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d.%m.%Y %H:%M")
         except Exception:
-            dt = "unknown"
-        console.print(f"[cyan]{idx}.[/cyan] {os.path.basename(path)}  [dim]{dt}[/dim]")
+            dt = "дата неизвестна"
+        console.print(f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt}[/faint]")
         shown.append((idx, path))
 
     try:
         choice = safe_prompt(
-            "[bold blue]Выберите номер бэкапа[/bold blue]",
+            f"[key]{_G_PROMPT}[/key] [title]Какой бэкап восстановить[/title]",
             choices=[str(i) for i, _ in shown],
         )
     except Exception:
@@ -1186,29 +1338,29 @@ def restore_from_backup():
 
     sel_path = shown[int(choice) - 1][1]
 
-    console.print("[red]Внимание: текущие файлы проекта будут перезаписаны выбранным бэкапом.[/red]")
-    if not safe_confirm("[yellow]Продолжить восстановление из бэкапа?[/yellow]"):
+    step_warn("Текущие файлы проекта будут перезаписаны выбранным бэкапом")
+    if not safe_confirm("Продолжить восстановление из бэкапа?"):
         return
 
     if is_service_exists(SERVICE_NAME):
-        console.print("[blue]Останавливаю службу перед восстановлением...[/blue]")
+        console.print("[title]Останавливаю службу перед восстановлением...[/title]")
         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
 
     install_rsync_if_needed()
 
-    console.print("[yellow]Копирую файлы из бэкапа в проект...[/yellow]")
+    step_warn("Копирую файлы из бэкапа в проект...")
     rc = subprocess.run(
         ["rsync", "-a", "--delete", f"{sel_path}/", f"{PROJECT_DIR}/"],
         check=False,
     ).returncode
     if rc != 0:
-        console.print("[red]❌ Ошибка rsync при восстановлении[/red]")
+        step_fail("Ошибка rsync при восстановлении")
         return
 
     install_dependencies()
     fix_permissions()
     restart_service()
-    console.print("[green]✅ Восстановление из бэкапа завершено[/green]")
+    step_ok("Восстановление из бэкапа завершено")
 
 
 def _sync_rpc_files() -> bool:
@@ -1233,10 +1385,10 @@ def _sync_rpc_files() -> bool:
             with urlopen(req, timeout=20) as resp:
                 remote_bytes = resp.read()
         except Exception as e:
-            console.print(f"[red]Не удалось скачать core/{name}: {e}[/red]")
+            step_fail(f"Не удалось скачать core/{name}: {e}")
             continue
         if not remote_bytes:
-            console.print(f"[red]core/{name}: пустой ответ от GitHub[/red]")
+            step_fail(f"core/{name}: пустой ответ от GitHub")
             continue
         local_bytes = None
         if os.path.exists(path):
@@ -1252,9 +1404,9 @@ def _sync_rpc_files() -> bool:
                 f.write(remote_bytes)
             updated.append(f"core/{name}")
         except Exception as e:
-            console.print(f"[red]Не удалось записать core/{name}: {e}[/red]")
+            step_fail(f"Не удалось записать core/{name}: {e}")
     if updated:
-        console.print(f"[green]Обновлены: {', '.join(updated)}[/green]")
+        step_ok(f"Обновлены: {', '.join(updated)}")
         import sys as _sys
 
         for mod_name in list(_sys.modules.keys()):
@@ -1265,12 +1417,12 @@ def _sync_rpc_files() -> bool:
 
 
 def auto_update_cli():
-    console.print("[yellow]Проверка обновлений CLI...[/yellow]")
+    step_warn("Проверка обновлений CLI...")
     try:
         url = "https://raw.githubusercontent.com/Vladless/Solo_bot/dev/cli_launcher.py"
         response = http_get(url, timeout=10)
         if response.status_code != 200:
-            console.print("[red]Не удалось получить обновление CLI[/red]")
+            step_fail("Не удалось получить обновление CLI")
             return
 
         latest_text = response.text
@@ -1281,27 +1433,27 @@ def auto_update_cli():
         rpc_updated = _sync_rpc_files()
 
         if current_text != latest_text:
-            console.print("[green]Доступна новая версия CLI. Обновляю...[/green]")
+            step_ok("Доступна новая версия CLI. Обновляю...")
             with open(current_path, "w", encoding="utf-8") as f:
                 f.write(latest_text)
             os.chmod(current_path, 0o644)
-            console.print("[green]CLI обновлён. Перезапуск...[/green]")
+            step_ok("CLI обновлён. Перезапуск...")
             os.execv(sys.executable, [sys.executable, current_path])
         elif rpc_updated:
-            console.print("[green]core/rpc обновлён. Перезапуск CLI...[/green]")
+            step_ok("core/rpc обновлён. Перезапуск CLI...")
             os.execv(sys.executable, [sys.executable, current_path])
         else:
-            console.print("[green]CLI уже актуален[/green]")
+            step_ok("CLI уже актуален")
     except Exception as e:
-        console.print(f"[red]❌ Ошибка при автообновлении CLI: {e}[/red]")
+        step_fail(f"Ошибка при автообновлении CLI: {e}")
 
 
 def fix_permissions():
-    console.print("[yellow]Восстанавливаю владельца и права доступа к проекту...[/yellow]")
+    step_warn("Восстанавливаю владельца и права доступа к проекту...")
 
     try:
         user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
-        console.log(f"[cyan]Используем пользователь: {user}[/cyan]")
+        console.log(f"[accent]Используем пользователь: {user}[/accent]")
 
         skip_dirs = {"venv", ".venv", ".git", "node_modules"}
         for root, dirs, files in os.walk(PROJECT_DIR):
@@ -1316,28 +1468,34 @@ def fix_permissions():
                     pyc_path = os.path.join(root, file)
                     subprocess.run(["sudo", "rm", "-f", pyc_path], check=False)
 
-        console.log("[blue]Изменение владельца на весь проект...[/blue]")
+        console.log("[title]Изменение владельца на весь проект...[/title]")
         subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
 
-        console.log("[blue]Изменение прав доступа (u=rwX,go=rX)...[/blue]")
+        console.log("[title]Изменение прав доступа (u=rwX,go=rX)...[/title]")
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
-        for secret in ("config.py", os.path.join("handlers", "texts.py"), ".env"):
+        for secret in (
+            "config.py",
+            os.path.join("handlers", "texts.py"),
+            os.path.join("settings", "config.py"),
+            os.path.join("settings", "texts.py"),
+            ".env",
+        ):
             secret_path = os.path.join(PROJECT_DIR, secret)
             if os.path.exists(secret_path):
-                console.log(f"[blue]Закрываю доступ к секретам: {secret} (600)...[/blue]")
+                console.log(f"[title]Закрываю доступ к секретам: {secret} (600)...[/title]")
                 subprocess.run(["sudo", "chown", f"{user}:{user}", secret_path], check=False)
                 subprocess.run(["sudo", "chmod", "600", secret_path], check=False)
 
         launcher_path = os.path.join(PROJECT_DIR, "cli_launcher.py")
         if os.path.exists(launcher_path):
-            console.log("[blue]Установка флага +x для cli_launcher.py...[/blue]")
+            console.log("[title]Установка флага +x для cli_launcher.py...[/title]")
             subprocess.run(["chmod", "+x", launcher_path], check=True)
 
-        console.print(f"[green]Все права восстановлены для пользователя [bold]{user}[/bold][/green]")
+        console.print(f"[ok]Все права восстановлены для пользователя [bold]{user}[/bold][/ok]")
 
     except Exception as e:
-        console.print(f"[red]❌ Ошибка при установке прав: {e}[/red]")
+        step_fail(f"Ошибка при установке прав: {e}")
 
 
 def install_rsync_if_needed():
@@ -1345,14 +1503,20 @@ def install_rsync_if_needed():
 
 
 def clean_project_dir_safe(update_buttons=False, update_img=False, update_redis_cache=False):
-    console.print("[yellow]Очистка проекта перед обновлением...[/yellow]")
+    step_warn("Очистка проекта перед обновлением...")
 
     preserved_paths = set()
 
     preserved_paths.update([
         os.path.join(PROJECT_DIR, "config.py"),
         os.path.join(PROJECT_DIR, "handlers", "texts.py"),
+        os.path.join(PROJECT_DIR, "settings"),
+        os.path.join(PROJECT_DIR, "settings", "config.py"),
+        os.path.join(PROJECT_DIR, "settings", "texts.py"),
         os.path.join(PROJECT_DIR, ".git"),
+        os.path.join(PROJECT_DIR, ".cli_session"),
+        os.path.join(PROJECT_DIR, ".license_state"),
+        os.path.join(PROJECT_DIR, ".license_lease"),
         os.path.join(PROJECT_DIR, "modules"),
         os.path.join(PROJECT_DIR, "static"),
         os.path.join(PROJECT_DIR, "static", "web_uploads"),
@@ -1368,6 +1532,7 @@ def clean_project_dir_safe(update_buttons=False, update_img=False, update_redis_
 
     if not update_buttons:
         preserved_paths.add(os.path.join(PROJECT_DIR, "handlers", "buttons.py"))
+        preserved_paths.add(os.path.join(PROJECT_DIR, "settings", "buttons.py"))
 
     if not update_img:
         preserved_paths.add(os.path.join(PROJECT_DIR, "img"))
@@ -1388,7 +1553,7 @@ def clean_project_dir_safe(update_buttons=False, update_img=False, update_redis_
             except PermissionError:
                 subprocess.run(["sudo", "rm", "-f", path])
             except Exception as e:
-                console.print(f"[red]Не удалось удалить файл: {path}: {e}[/red]")
+                step_fail(f"Не удалось удалить файл: {path}: {e}")
 
         for dir in dirs:
             dir_path = os.path.join(root, dir)
@@ -1397,6 +1562,7 @@ def clean_project_dir_safe(update_buttons=False, update_img=False, update_redis_
                 os.path.join(PROJECT_DIR, "handlers"),
                 os.path.join(PROJECT_DIR, "img"),
                 os.path.join(PROJECT_DIR, "modules"),
+                os.path.join(PROJECT_DIR, "settings"),
                 os.path.join(PROJECT_DIR, "static"),
                 os.path.join(PROJECT_DIR, "static", "web_uploads"),
             ]:
@@ -1419,13 +1585,13 @@ def install_git_if_needed():
 
 
 def install_dependencies():
-    console.print("[blue]Установка зависимостей...[/blue]")
+    console.print("[title]Установка зависимостей...[/title]")
     install_core_packages_if_needed()
 
     python312_path = shutil.which("python3.12")
     if not python312_path:
-        console.print("[red]Не найден python3.12 в системе[/red]")
-        console.print("[yellow]Установите Python 3.12: sudo apt install python3.12 python3.12-venv[/yellow]")
+        step_fail("Не найден python3.12 в системе")
+        step_warn("Установите Python 3.12: sudo apt install python3.12 python3.12-venv")
         sys.exit(1)
 
     with Progress(
@@ -1437,7 +1603,7 @@ def install_dependencies():
         try:
             if os.path.exists("venv"):
                 shutil.rmtree("venv")
-                console.print("[yellow]Удалён старый venv[/yellow]")
+                step_warn("Удалён старый venv")
 
             subprocess.run([python312_path, "-m", "venv", "venv"], check=True)
 
@@ -1451,14 +1617,14 @@ def install_dependencies():
             progress.update(task_id, description="Установка завершена")
 
         except subprocess.CalledProcessError as e:
-            progress.update(task_id, description="❌ Ошибка при установке")
-            console.print(f"[red]❌ Ошибка: {e}[/red]")
+            progress.update(task_id, description="Ошибка при установке")
+            step_fail(f"Ошибка: {e}")
 
 
 def restart_service():
     if ensure_systemd_service():
-        console.print("[blue]🚀 Перезапуск службы...[/blue]")
-        with console.status("[bold yellow]Перезапуск...[/bold yellow]"):
+        console.print("[title]Перезапуск службы...[/title]")
+        with console.status("[warn.bold]Перезапуск...[/warn.bold]"):
             subprocess.run(["sudo", "systemctl", "enable", SERVICE_NAME], check=False)
             subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
 
@@ -1530,8 +1696,11 @@ def _extract_error_summary(lines: list[str]) -> list[str]:
                 break
         file_lines = [line.strip() for line in block if line.strip().startswith("File ")]
         tail_line = next(
-            (line.strip() for line in reversed(block)
-             if not _is_noise_line(line) and not line.strip().startswith("File ")),
+            (
+                line.strip()
+                for line in reversed(block)
+                if not _is_noise_line(line) and not line.strip().startswith("File ")
+            ),
             block[-1].strip(),
         )
         summary = [_shorten(line) for line in file_lines[-2:]]
@@ -1548,10 +1717,11 @@ def _extract_error_summary(lines: list[str]) -> list[str]:
 
     file_lines = [line.strip() for line in block if line.strip().startswith("File ")]
     code_line = next(
-        (line.strip() for line in reversed(block)
-         if not line.strip().startswith("File ")
-         and not _is_noise_line(line)
-         and "Traceback" not in line),
+        (
+            line.strip()
+            for line in reversed(block)
+            if not line.strip().startswith("File ") and not _is_noise_line(line) and "Traceback" not in line
+        ),
         None,
     )
 
@@ -1580,7 +1750,7 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
     """Стримит логи службы после рестарта до полного запуска бота или явной ошибки."""
     if not is_service_exists(SERVICE_NAME):
         return
-    console.print(f"[blue]Слежу за логами запуска бота (до {timeout} сек)...[/blue]")
+    console.print(f"[title]Слежу за логами запуска бота (до {timeout} сек)...[/title]")
 
     try:
         proc = subprocess.Popen(
@@ -1591,13 +1761,13 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
             bufsize=1,
         )
     except Exception as e:
-        console.print(f"[yellow]journalctl недоступен ({e}) — проверяю только статус службы.[/yellow]")
+        step_warn(f"journalctl недоступен ({e}) — проверяю только статус службы.")
         sleep(10)
         state = _service_state()
         if state == "active":
-            console.print("[green]✅ Успешно: служба активна.[/green]")
+            step_ok("Успешно: служба активна.")
         else:
-            console.print(f"[red]❌ Служба не активна ({state or 'нет статуса'}). Проверьте логи (пункт 5 меню).[/red]")
+            step_fail(f"Служба не активна ({state or 'нет статуса'}). Проверьте логи (пункт 5 меню).")
         return
 
     started_at = time_mod.time()
@@ -1648,17 +1818,17 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
             pass
 
     if verdict == "ok":
-        console.print("[green]✅ Успешно: бот полностью запущен.[/green]")
+        step_ok("Успешно: бот полностью запущен.")
     elif verdict == "fail":
-        console.print("[red]❌ Бот не запустился. Ошибка из службы:[/red]")
+        step_fail("Бот не запустился. Ошибка из службы:")
         summary = _extract_error_summary(_journal_tail(200)) or _extract_error_summary(error_lines)
         for line in summary:
             console.print(line, markup=False, highlight=False, style="err")
     else:
         if _service_state() == "active":
-            console.print("[green]✅ Успешно: служба активна.[/green]")
+            step_ok("Успешно: служба активна.")
         else:
-            console.print("[red]❌ Служба не активна. Ошибка из службы:[/red]")
+            step_fail("Служба не активна. Ошибка из службы:")
             for line in _extract_error_summary(_journal_tail(80)):
                 console.print(line, markup=False, highlight=False, style="err")
 
@@ -1666,46 +1836,6 @@ def wait_for_bot_startup(timeout: int = 300) -> None:
         input("Нажмите Enter, чтобы вернуться в меню CLI... ")
     except (EOFError, KeyboardInterrupt):
         pass
-
-
-def _extract_version_from_versioning(text: str) -> str | None:
-    match = re.search(r'["\'](v\.\d+(?:[.-][\w\d]+)*)', text)
-    return match.group(1) if match else None
-
-
-def get_local_version():
-    path = os.path.join(PROJECT_DIR, "utils", "versioning.py")
-    if os.path.isfile(path):
-        try:
-            with open(path, encoding="utf-8") as f:
-                version = _extract_version_from_versioning(f.read())
-            if version:
-                return version
-        except Exception:
-            pass
-
-    try:
-        result = subprocess.run(
-            ["git", "-C", PROJECT_DIR, "describe", "--tags", "--always"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        version = result.stdout.strip()
-        if result.returncode == 0 and version:
-            return version
-    except Exception:
-        pass
-
-    path = os.path.join(PROJECT_DIR, "bot.py")
-    if not os.path.isfile(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            match = re.search(r'version\s*=\s*["\'](.+?)["\']', line)
-            if match:
-                return match.group(1)
-    return None
 
 
 def get_last_update_date():
@@ -1742,7 +1872,7 @@ def get_remote_version(branch="main"):
         url = f"https://raw.githubusercontent.com/Vladless/Solo_bot/{branch}/utils/versioning.py"
         response = http_get(url, timeout=10)
         if response.status_code == 200:
-            version = _extract_version_from_versioning(response.text)
+            version = extract_version(response.text)
             if version:
                 return version
     except Exception:
@@ -1760,58 +1890,22 @@ def get_remote_version(branch="main"):
     return None
 
 
-def _adopt_beta_config_files() -> list[str]:
-    renamed = []
-    parent = os.path.dirname(PROJECT_DIR)
-    targets = [
-        (
-            [
-                os.path.join(PROJECT_DIR, "config_beta.py"),
-                os.path.join(parent, "config_beta.py"),
-            ],
-            os.path.join(PROJECT_DIR, "config.py"),
-        ),
-        (
-            [
-                os.path.join(PROJECT_DIR, "handlers", "texts_beta.py"),
-                os.path.join(PROJECT_DIR, "texts_beta.py"),
-                os.path.join(parent, "texts_beta.py"),
-            ],
-            os.path.join(PROJECT_DIR, "handlers", "texts.py"),
-        ),
-    ]
-    for sources, dst in targets:
-        for src in sources:
-            if not os.path.exists(src):
-                continue
-            try:
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                try:
-                    os.replace(src, dst)
-                except OSError:
-                    shutil.move(src, dst)
-                renamed.append(f"{os.path.basename(src)} → {os.path.relpath(dst, PROJECT_DIR)}")
-            except Exception as e:
-                console.print(f"[yellow]Не удалось переименовать {os.path.basename(src)}: {e}[/yellow]")
-            break
-    return renamed
-
-
 def _prompt_config_update() -> None:
     console.print(
         Panel(
-            "[white]Если для этой версии вы скачали свежие config и texts на сайте — "
-            "загрузите их на сервер сейчас, и CLI подставит их сам.[/white]\n\n"
-            f"[white]Где взять:[/white] [bold]{CONFIG_BUILDER_URL}[/bold]\n\n"
-            "[white]Файлы беты называются [bold]config_beta.py[/bold] и [bold]texts_beta.py[/bold] — "
-            "CLI автоматически переименует их в обычные config.py и texts.py.[/white]\n"
-            f"[dim]Класть сюда: {PROJECT_DIR}/config_beta.py и {PROJECT_DIR}/handlers/texts_beta.py[/dim]",
-            border_style="cyan",
-            title="[bold cyan]Обновляли config и texts?[/bold cyan]",
+            "[text]Если для этой версии вы скачали свежие config и texts на сайте — "
+            "загрузите их на сервер сейчас, и CLI подставит их сам.[/text]\n\n"
+            f"[text]Где взять:[/text] [bold]{CONFIG_BUILDER_URL}[/bold]\n\n"
+            "[text]Файлы беты называются [bold]config_beta.py[/bold] и [bold]texts_beta.py[/bold] — "
+            "CLI автоматически переименует их в обычные config.py и texts.py.[/text]\n"
+            f"[faint]Класть сюда: {PROJECT_DIR}/config_beta.py и {PROJECT_DIR}/texts_beta.py[/faint]",
+            border_style="accent.dim",
+            width=_PANEL_W,
+            title="[brand]Обновляли config и texts?[/brand]",
             padding=(1, 2),
         )
     )
-    renamed = _adopt_beta_config_files()
+    renamed = adopt_beta_files(PROJECT_DIR)
     if renamed:
         for item in renamed:
             step_ok(f"Подставлен новый файл: {item}")
@@ -1820,54 +1914,59 @@ def _prompt_config_update() -> None:
 
 
 def update_from_beta():
-    local_version = get_local_version()
+    installed_version = local_version(PROJECT_DIR)
     remote_version = get_remote_version(branch="dev")
 
     console.print(
         Panel(
-            "[bold red]Обновление на DEV / BETA-ветку[/bold red]\n\n"
-            "[white]"
+            "[err.bold]Обновление на DEV / BETA-ветку[/err.bold]\n\n"
+            "[text]"
             "• Dev-ветка может содержать изменения, которые ещё находятся в доработке.\n"
             "• Возможны ошибки и непредсказуемое поведение отдельных функций, особенно режима стран.\n\n"
             "• BETA-версии бота в первую очередь ориентированы на опытных пользователей, "
             "готовых протестировать новые возможности и осознанно работать с обновлённым функционалом.\n"
-            "[/white]\n\n"
-            "[yellow]Перед началом обновления CLI автоматически создаёт резервную копию проекта, "
-            "что позволит при необходимости безопасно восстановиться из бэкапа.[/yellow]",
-            border_style="red",
-            title="[bold red]Нестабильная ветка разработки[/bold red]",
+            "[/text]\n\n"
+            "[warn]Перед началом обновления CLI автоматически создаёт резервную копию проекта, "
+            "что позволит при необходимости безопасно восстановиться из бэкапа.[/warn]",
+            border_style="err",
+            width=_PANEL_W,
+            title="[err.bold]Нестабильная ветка разработки[/err.bold]",
             padding=(1, 2),
         )
     )
 
-    if local_version and remote_version:
-        console.print(f"[cyan]Локальная версия: {local_version} | Последняя в dev: {remote_version}[/cyan]")
-        if local_version == remote_version:
-            if not safe_confirm("[yellow]Версия актуальна. Обновить всё равно?[/yellow]"):
+    if installed_version and remote_version:
+        console.print(f"[accent]Локальная версия: {installed_version} | Последняя в dev: {remote_version}[/accent]")
+        if installed_version == remote_version:
+            if not safe_confirm("Версия актуальна. Обновить всё равно?"):
                 return
 
     if not safe_confirm(
-        "[bold red]Продолжить обновление на dev-ветку с учётом возможных особенностей работы?[/bold red]"
+        "[err.bold]Продолжить обновление на dev-ветку с учётом возможных особенностей работы?[/err.bold]"
     ):
         return
 
-    console.print("[red]ВНИМАНИЕ! Папка бота будет перезаписана![/red]")
-    if not safe_confirm("[red]Продолжить обновление?[/red]"):
+    step_fail("ВНИМАНИЕ! Папка бота будет перезаписана!")
+    if not safe_confirm("Продолжить обновление?"):
         return
 
-    update_buttons = safe_confirm("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = safe_confirm("[yellow]Обновлять папку img?[/yellow]", default=False)
-    update_redis_cache = safe_confirm("[yellow]Обновлять файл core/redis_cache.py?[/yellow]", default=False)
+    update_buttons = safe_confirm("Обновлять файл buttons.py?", default=False)
+    update_img = safe_confirm("Обновлять папку img?", default=False)
+    update_redis_cache = safe_confirm("Обновлять файл core/redis_cache.py?", default=False)
 
     backup_path = backup_project()
     if not backup_path and not safe_confirm(
-        "[yellow]Бэкап не создан. Продолжить обновление БЕЗ бэкапа?[/yellow]", default=False
+        "[warn]Бэкап не создан. Продолжить обновление БЕЗ бэкапа?[/warn]", default=False
     ):
         return
     install_git_if_needed()
     install_rsync_if_needed()
 
     _prompt_config_update()
+
+    if not settings_gate(PROJECT_DIR, "beta", console.print, safe_confirm, CONFIG_BUILDER_URL):
+        step_warn("Обновление отменено. Обновите config и texts и запустите снова.")
+        return
 
     try:
         os.chdir(PROJECT_DIR)
@@ -1896,6 +1995,8 @@ def update_from_beta():
         if rsync_result.returncode != 0:
             raise RuntimeError("rsync обновления не удался")
 
+        migrate_settings_layout(PROJECT_DIR, out=console.print)
+
         modules_path = os.path.join(PROJECT_DIR, "modules")
         if not os.path.exists(modules_path):
             try:
@@ -1911,22 +2012,26 @@ def update_from_beta():
         install_dependencies()
         fix_permissions()
         restart_service()
-        console.print("[green]Обновление с ветки dev завершено. Проверяю запуск бота...[/green]")
+        step_ok("Обновление с ветки dev завершено. Проверяю запуск бота...")
         wait_for_bot_startup()
     except Exception as e:
-        console.print(f"[red]❌ Обновление упало: {e}[/red]")
-        if backup_path and safe_confirm("[yellow]Откатить проект из свежего бэкапа?[/yellow]", default=True):
+        step_fail(f"Обновление упало: {e}")
+        if backup_path and safe_confirm("Откатить проект из свежего бэкапа?", default=True):
             if _restore_backup_unattended(backup_path):
-                console.print(f"[green]✓ Проект восстановлен из {backup_path}[/green]")
+                step_ok(f"✓ Проект восстановлен из {backup_path}")
                 restart_service()
             else:
-                console.print(f"[red]Автооткат не удался. Восстановите вручную: пункт 8 меню → {backup_path}[/red]")
+                step_fail(f"Автооткат не удался. Восстановите вручную: пункт 8 меню → {backup_path}")
         else:
-            console.print(f"[yellow]Для ручного отката: пункт 8 меню → {backup_path or 'нет бэкапа'}[/yellow]")
+            step_warn(f"Для ручного отката: пункт 8 меню → {backup_path or 'нет бэкапа'}")
 
 
 def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, update_redis_cache: bool) -> None:
     """Общая логика обновления до указанного тега (релиз или произвольный тег)."""
+    if not settings_gate(PROJECT_DIR, "release", console.print, safe_confirm, CONFIG_BUILDER_URL):
+        step_warn("Обновление отменено. Обновите config и texts и запустите снова.")
+        return
+
     subprocess.run(["rm", "-rf", TEMP_DIR])
     run_with_status(
         ["git", "clone", "--branch", tag_name, "--depth", "1", GITHUB_REPO, TEMP_DIR],
@@ -1934,7 +2039,7 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
         check=True,
     )
 
-    console.print("[red]Начинается перезапись файлов бота![/red]")
+    step_fail("Начинается перезапись файлов бота!")
     subprocess.run(["sudo", "rm", "-rf", os.path.join(PROJECT_DIR, "venv")])
     clean_project_dir_safe(
         update_buttons=update_buttons,
@@ -1951,14 +2056,16 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
     if rsync_result.returncode != 0:
         raise RuntimeError(f"rsync тега {tag_name} не удался")
 
+    migrate_settings_layout(PROJECT_DIR, out=console.print)
+
     modules_path = os.path.join(PROJECT_DIR, "modules")
     if not os.path.exists(modules_path):
-        console.print("[yellow]Папка modules отсутствует — создаю вручную...[/yellow]")
+        step_warn("Папка modules отсутствует — создаю вручную...")
         try:
             os.makedirs(modules_path, exist_ok=True)
-            console.print("[green]Папка modules успешно создана.[/green]")
+            step_ok("Папка modules успешно создана.")
         except Exception as e:
-            console.print(f"[red]❌ Не удалось создать папку modules: {e}[/red]")
+            step_fail(f"Не удалось создать папку modules: {e}")
 
     if os.path.exists(os.path.join(TEMP_DIR, ".git")):
         subprocess.run(["cp", "-r", os.path.join(TEMP_DIR, ".git"), PROJECT_DIR])
@@ -1968,26 +2075,26 @@ def _do_update_to_tag(tag_name: str, update_buttons: bool, update_img: bool, upd
     install_dependencies()
     fix_permissions()
     restart_service()
-    console.print(f"[green]Обновление до {tag_name} завершено. Проверяю запуск бота...[/green]")
+    step_ok(f"Обновление до {tag_name} завершено. Проверяю запуск бота...")
     wait_for_bot_startup()
 
 
 def update_from_release():
-    if not safe_confirm("[yellow]Подтвердите обновление Solobot до релиза или патча[/yellow]"):
+    if not safe_confirm("Подтвердите обновление Solobot до релиза или патча"):
         return
 
-    console.print("[red]ВНИМАНИЕ! Папка бота будет полностью перезаписана![/red]")
-    console.print("[red]  Исключения: папка img, файл handlers/buttons.py и файл core/redis_cache.py[/red]")
-    if not safe_confirm("[red]Вы точно хотите продолжить?[/red]"):
+    step_fail("ВНИМАНИЕ! Папка бота будет полностью перезаписана!")
+    step_fail("Исключения: папка img, файл кнопок buttons.py и файл core/redis_cache.py")
+    if not safe_confirm("Вы точно хотите продолжить?"):
         return
 
-    update_buttons = safe_confirm("[yellow]Обновлять файл buttons.py?[/yellow]", default=False)
-    update_img = safe_confirm("[yellow]Обновлять папку img?[/yellow]", default=False)
-    update_redis_cache = safe_confirm("[yellow]Обновлять файл core/redis_cache.py?[/yellow]", default=False)
+    update_buttons = safe_confirm("Обновлять файл buttons.py?", default=False)
+    update_img = safe_confirm("Обновлять папку img?", default=False)
+    update_redis_cache = safe_confirm("Обновлять файл core/redis_cache.py?", default=False)
 
     backup_path = backup_project()
     if not backup_path and not safe_confirm(
-        "[yellow]Бэкап не создан. Продолжить обновление БЕЗ бэкапа?[/yellow]", default=False
+        "[warn]Бэкап не создан. Продолжить обновление БЕЗ бэкапа?[/warn]", default=False
     ):
         return
     install_git_if_needed()
@@ -2017,33 +2124,33 @@ def update_from_release():
         if not tag_names:
             raise ValueError("Нет доступных тегов (ожидаются версии начиная с 4)")
 
-        console.print("\n[bold green]Релизы и патчи:[/bold green]")
+        heading("Релизы и патчи", f"установлено: {local_version(PROJECT_DIR) or '—'}")
         for idx, name in enumerate(tag_names, 1):
-            label = " [dim](релиз)[/dim]" if name in release_tag_names else " [dim](патч)[/dim]"
-            console.print(f"[cyan]{idx}.[/cyan] {name}{label}")
+            label = "релиз" if name in release_tag_names else "патч"
+            console.print(f"  [key]{idx}[/key]  [text]{name}[/text]  [faint]{label}[/faint]")
 
         choices = [str(i) for i in range(1, len(tag_names) + 1)]
         selected = safe_prompt(
-            "[bold blue]Выберите номер версии[/bold blue]",
+            f"[key]{_G_PROMPT}[/key] [title]Какую версию поставить[/title]",
             choices=choices,
         )
         tag_name = tag_names[int(selected) - 1]
 
-        if not safe_confirm(f"[yellow]Установить {tag_name}?[/yellow]"):
+        if not safe_confirm(f"Установить {tag_name}?"):
             return
 
         _do_update_to_tag(tag_name, update_buttons, update_img, update_redis_cache)
 
     except Exception as e:
-        console.print(f"[red]❌ Ошибка при обновлении: {e}[/red]")
-        if backup_path and safe_confirm("[yellow]Откатить проект из свежего бэкапа?[/yellow]", default=True):
+        step_fail(f"Ошибка при обновлении: {e}")
+        if backup_path and safe_confirm("Откатить проект из свежего бэкапа?", default=True):
             if _restore_backup_unattended(backup_path):
-                console.print(f"[green]✓ Проект восстановлен из {backup_path}[/green]")
+                step_ok(f"✓ Проект восстановлен из {backup_path}")
                 restart_service()
             else:
-                console.print(f"[red]Автооткат не удался. Восстановите вручную: пункт 8 меню → {backup_path}[/red]")
+                step_fail(f"Автооткат не удался. Восстановите вручную: пункт 8 меню → {backup_path}")
         else:
-            console.print(f"[yellow]Для ручного отката: пункт 8 меню → {backup_path or 'нет бэкапа'}[/yellow]")
+            step_warn(f"Для ручного отката: пункт 8 меню → {backup_path or 'нет бэкапа'}")
 
 
 WEB_IMAGE_REPO = "ghcr.io/vladless/solo-brick"
@@ -2139,12 +2246,12 @@ def _generate_vapid_keys() -> tuple[str, str] | None:
 def _ask_web_tag(default: str = WEB_TAG_DEFAULT) -> str:
     console.print(
         "\n[bold]Канал обновлений:[/bold]\n"
-        "  [cyan]1[/cyan] — [green]latest[/green]  стабильный (из ветки main)\n"
-        "  [cyan]2[/cyan] — [yellow]dev[/yellow]     тестовый (последний коммит dev)"
+        "  [accent]1[/accent] — [ok]latest[/ok]  стабильный (из ветки main)\n"
+        "  [accent]2[/accent] — [warn]dev[/warn]     тестовый (последний коммит dev)"
     )
     default_choice = "2" if default == "dev" else "1"
     choice = safe_prompt(
-        "[bold blue]Выберите канал[/bold blue]",
+        f"[key]{_G_PROMPT}[/key] [title]Канал сборки сайта[/title]",
         choices=["1", "2"],
         default=default_choice,
         show_choices=False,
@@ -2218,22 +2325,22 @@ def _copy_local_web_source(src: str, dst: str) -> bool:
 def _prepare_web_sources(dst: str) -> bool:
     local = _find_local_web_source()
     if local:
-        console.print(f"[cyan]Найден локальный web-app: {local}[/cyan]")
+        console.print(f"[accent]Найден локальный web-app: {local}[/accent]")
         if _copy_local_web_source(local, dst):
-            console.print("[green]✓ Локальные исходники скопированы[/green]")
+            step_ok("✓ Локальные исходники скопированы")
             return True
-        console.print("[yellow]Не удалось скопировать локальные исходники.[/yellow]")
+        step_warn("Не удалось скопировать локальные исходники.")
 
-    console.print("[red]❌ Локальные исходники web-app не найдены и не удалось использовать.[/red]")
+    step_fail("Локальные исходники web-app не найдены и не удалось использовать.")
     console.print(
-        "[yellow]Проверьте, что пакет ghcr.io/vladless/solo-brick публичен, либо что рядом с CLI лежит каталог web-app.[/yellow]"
+        "[warn]Проверьте, что пакет ghcr.io/vladless/solo-brick публичен, либо что рядом с CLI лежит каталог web-app.[/warn]"
     )
     return False
 
 
 def _pull_web_image(tag: str) -> bool:
     image = _web_image(tag)
-    console.print(f"[cyan]Загрузка готового образа: {image}[/cyan]")
+    console.print(f"[accent]Загрузка готового образа: {image}[/accent]")
     result = subprocess.run(
         ["docker", "pull", image],
         check=False,
@@ -2246,26 +2353,26 @@ def _build_web_image(src_dir: str, tag: str) -> bool:
         if not _prepare_web_sources(src_dir):
             return False
     if not os.path.isfile(os.path.join(src_dir, "Dockerfile")):
-        console.print("[red]❌ В исходниках нет Dockerfile[/red]")
+        step_fail("В исходниках нет Dockerfile")
         return False
-    console.print("[cyan]Сборка Docker-образа (несколько минут)...[/cyan]")
+    console.print("[accent]Сборка Docker-образа (несколько минут)...[/accent]")
     result = subprocess.run(
         ["docker", "build", "-t", _web_image(tag), "."],
         cwd=src_dir,
         check=False,
     )
     if result.returncode != 0:
-        console.print("[red]❌ Ошибка сборки. Проверьте логи выше.[/red]")
+        step_fail("Ошибка сборки. Проверьте логи выше.")
         return False
     return True
 
 
 def _ensure_web_image(src_dir: str, tag: str, force_pull: bool = False) -> bool:
     if _pull_web_image(tag):
-        console.print(f"[green]✓ Образ {_web_image(tag)} получен из GHCR[/green]")
+        step_ok(f"✓ Образ {_web_image(tag)} получен из GHCR")
         return True
 
-    console.print("[yellow]Не удалось скачать образ из GHCR. Пробую локальную сборку.[/yellow]")
+    step_warn("Не удалось скачать образ из GHCR. Пробую локальную сборку.")
     return _build_web_image(src_dir, tag)
 
 
@@ -2328,9 +2435,9 @@ def _authorize_web_install(code: str, password: str) -> bool:
         except Exception:
             pass
 
-    console.print("[red]❌ Не удалось загрузить модуль проверки лицензии[/red]")
+    step_fail("Не удалось загрузить модуль проверки лицензии")
     console.print(
-        "[yellow]Запустите CLI через Python 3.12, или установите бот в этой папке для использования его venv.[/yellow]"
+        "[warn]Запустите CLI через Python 3.12, или установите бот в этой папке для использования его venv.[/warn]"
     )
     return False
 
@@ -2342,17 +2449,17 @@ def _ensure_docker():
             subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             return True
         except subprocess.CalledProcessError:
-            console.print("[yellow]Docker установлен, но не запущен.[/yellow]")
+            step_warn("Docker установлен, но не запущен.")
             subprocess.run(["sudo", "systemctl", "start", "docker"], check=False)
             return True
-    console.print("[cyan]Установка Docker...[/cyan]")
+    console.print("[accent]Установка Docker...[/accent]")
     try:
         subprocess.run("curl -fsSL https://get.docker.com | sh", shell=True, check=True)
         subprocess.run(["sudo", "systemctl", "enable", "docker"], check=False)
         subprocess.run(["sudo", "systemctl", "start", "docker"], check=False)
         return True
     except subprocess.CalledProcessError:
-        console.print("[red]❌ Не удалось установить Docker.[/red]")
+        step_fail("Не удалось установить Docker.")
         return False
 
 
@@ -2385,11 +2492,12 @@ def _check_http_ports_free() -> bool:
         return True
     console.print(
         Panel(
-            "[white]Порты HTTP/HTTPS заняты не-nginx процессом:[/white]\n"
+            "[text]Порты HTTP/HTTPS заняты не-nginx процессом:[/text]\n"
             + "\n".join(f"  • [bold]{c}[/bold]" for c in conflicts)
-            + "\n\n[white]Остановите конфликтующий процесс и повторите.[/white]",
-            border_style="red",
-            title="[bold red]Порты заняты[/bold red]",
+            + "\n\n[text]Остановите конфликтующий процесс и повторите.[/text]",
+            border_style="err",
+            width=_PANEL_W,
+            title="[err.bold]Порты заняты[/err.bold]",
             padding=(1, 2),
         )
     )
@@ -2413,7 +2521,7 @@ def _ensure_nginx():
         subprocess.run(["sudo", "systemctl", "start", "nginx"], check=False)
         return True
     except subprocess.CalledProcessError:
-        console.print("[yellow]Не удалось установить nginx автоматически.[/yellow]")
+        step_warn("Не удалось установить nginx автоматически.")
         return False
 
 
@@ -2442,15 +2550,16 @@ def _resolve_domain_ip(domain: str) -> str | None:
 
 
 def _dns_precheck(domain: str) -> bool:
-    console.print(f"[dim]Проверяю DNS для {domain}...[/dim]")
+    console.print(f"[faint]Проверяю DNS для {domain}...[/faint]")
     resolved = _resolve_domain_ip(domain)
     if not resolved:
         console.print(
             Panel(
-                f"[white]DNS-имя [bold]{domain}[/bold] не резолвится в IP.[/white]\n"
-                "[white]Добавьте A-запись в DNS и дождитесь пропагации (5–30 мин).[/white]",
-                border_style="red",
-                title="[bold red]DNS не настроен[/bold red]",
+                f"[text]DNS-имя [bold]{domain}[/bold] не резолвится в IP.[/text]\n"
+                "[text]Добавьте A-запись в DNS и дождитесь пропагации (5–30 мин).[/text]",
+                border_style="err",
+                width=_PANEL_W,
+                title="[err.bold]DNS не настроен[/err.bold]",
                 padding=(1, 2),
             )
         )
@@ -2459,16 +2568,17 @@ def _dns_precheck(domain: str) -> bool:
     if local and resolved != local:
         console.print(
             Panel(
-                f"[white]DNS [bold]{domain}[/bold] указывает на [yellow]{resolved}[/yellow],[/white]\n"
-                f"[white]а этот сервер имеет IP [yellow]{local}[/yellow].[/white]\n\n"
-                "[white]Поправьте A-запись, дождитесь пропагации и повторите.[/white]",
-                border_style="red",
-                title="[bold red]DNS указывает не на этот сервер[/bold red]",
+                f"[text]DNS [bold]{domain}[/bold] указывает на [warn]{resolved}[/warn],[/text]\n"
+                f"[text]а этот сервер имеет IP [warn]{local}[/warn].[/text]\n\n"
+                "[text]Поправьте A-запись, дождитесь пропагации и повторите.[/text]",
+                border_style="err",
+                width=_PANEL_W,
+                title="[err.bold]DNS указывает не на этот сервер[/err.bold]",
                 padding=(1, 2),
             )
         )
         return False
-    console.print(f"[green]✓ DNS ок: {domain} → {resolved}[/green]")
+    step_ok(f"✓ DNS ок: {domain} → {resolved}")
     return True
 
 
@@ -2476,7 +2586,7 @@ def _wait_for_web_container(web_port: int, timeout_sec: int = 60) -> bool:
     import socket
 
     deadline = time_mod.time() + timeout_sec
-    with console.status(f"[bold cyan]Ожидание контейнера на :{web_port}...[/bold cyan]", spinner="dots"):
+    with console.status(f"[brand]Ожидание контейнера на :{web_port}...[/brand]", spinner="dots"):
         while time_mod.time() < deadline:
             try:
                 with socket.create_connection(("127.0.0.1", web_port), timeout=2):
@@ -2488,21 +2598,22 @@ def _wait_for_web_container(web_port: int, timeout_sec: int = 60) -> bool:
 
 def _check_bot_api_reachable(api_url: str) -> bool:
     probe = api_url.rstrip("/") + "/health"
-    console.print(f"[dim]Проверяю доступность API: {probe}[/dim]")
+    console.print(f"[faint]Проверяю доступность API: {probe}[/faint]")
     try:
         response = http_get(probe, timeout=5)
         if 200 <= response.status_code < 500:
-            console.print(f"[green]✓ API отвечает ({response.status_code})[/green]")
+            step_ok(f"✓ API отвечает ({response.status_code})")
             return True
-        console.print(f"[yellow]API ответил {response.status_code}[/yellow]")
+        step_warn(f"API ответил {response.status_code}")
         return False
     except Exception as e:
         console.print(
             Panel(
-                f"[white]API [bold]{api_url}[/bold] недоступен: {e}[/white]\n\n"
-                f"[white]Проверьте: DNS, nginx, SSL, firewall, бот запущен.[/white]",
-                border_style="red",
-                title="[bold red]Bot API недоступен[/bold red]",
+                f"[text]API [bold]{api_url}[/bold] недоступен: {e}[/text]\n\n"
+                f"[text]Проверьте: DNS, nginx, SSL, firewall, бот запущен.[/text]",
+                border_style="err",
+                width=_PANEL_W,
+                title="[err.bold]Bot API недоступен[/err.bold]",
                 padding=(1, 2),
             )
         )
@@ -2543,16 +2654,17 @@ def _print_manual_nginx_hint(domain: str, web_port: int) -> None:
     snippet = _web_nginx_snippet(domain, web_port)
     console.print(
         Panel(
-            "[white]CLI не трогал ваш nginx. Вставьте блоки ниже в существующий\n"
-            f"[cyan]server {{ ... server_name {domain}; ... }}[/cyan] (HTTPS-блок),\n"
-            "рядом с другими [cyan]location[/cyan] бота, и перезагрузите nginx:\n"
-            "[dim]sudo nginx -t && sudo systemctl reload nginx[/dim]",
-            border_style="yellow",
-            title="[bold yellow]Ручная настройка nginx[/bold yellow]",
+            "[text]CLI не трогал ваш nginx. Вставьте блоки ниже в существующий\n"
+            f"[accent]server {{ ... server_name {domain}; ... }}[/accent] (HTTPS-блок),\n"
+            "рядом с другими [accent]location[/accent] бота, и перезагрузите nginx:\n"
+            "[faint]sudo nginx -t && sudo systemctl reload nginx[/faint]",
+            border_style="warn",
+            width=_PANEL_W,
+            title="[warn.bold]Ручная настройка nginx[/warn.bold]",
             padding=(1, 2),
         )
     )
-    console.print(f"\n[dim]---8<--- snippet ---8<---[/dim]\n{snippet}\n[dim]---8<--- end ---8<---[/dim]\n")
+    console.print(f"\n[faint]---8<--- snippet ---8<---[/faint]\n{snippet}\n[faint]---8<--- end ---8<---[/faint]\n")
 
 
 def _nginx_domain_conflict(domain: str) -> str | None:
@@ -2599,7 +2711,7 @@ def _setup_nginx(domain, web_port=3000):
         subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=True)
         return True
     except subprocess.CalledProcessError:
-        console.print("[yellow]Не удалось настроить nginx.[/yellow]")
+        step_warn("Не удалось настроить nginx.")
         return False
 
 
@@ -2695,7 +2807,7 @@ def _ensure_caddy() -> bool:
         subprocess.run(["sudo", "systemctl", "start", "caddy"], check=False)
         return True
     except subprocess.CalledProcessError:
-        console.print("[yellow]Не удалось установить Caddy автоматически.[/yellow]")
+        step_warn("Не удалось установить Caddy автоматически.")
         return False
 
 
@@ -2720,7 +2832,7 @@ def _setup_caddy(domain, web_port=3000) -> bool:
         return True
     except subprocess.CalledProcessError:
         console.print(
-            "[yellow]Не удалось настроить Caddy (проверьте: sudo caddy validate --config /etc/caddy/Caddyfile).[/yellow]"
+            "[warn]Не удалось настроить Caddy (проверьте: sudo caddy validate --config /etc/caddy/Caddyfile).[/warn]"
         )
         return False
 
@@ -2729,16 +2841,17 @@ def _print_manual_caddy_hint(domain: str, web_port: int) -> None:
     snippet = _web_caddy_snippet(domain, int(web_port))
     console.print(
         Panel(
-            "[white]CLI не трогал ваш Caddy. Добавьте site-блок ниже в [cyan]/etc/caddy/Caddyfile[/cyan]\n"
+            "[text]CLI не трогал ваш Caddy. Добавьте site-блок ниже в [accent]/etc/caddy/Caddyfile[/accent]\n"
             "(или в свой conf.d) и перезагрузите Caddy:\n"
-            "[dim]sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy[/dim]\n"
-            "[dim]Caddy выпустит SSL автоматически — certbot не нужен.[/dim]",
-            border_style="yellow",
-            title="[bold yellow]Ручная настройка Caddy[/bold yellow]",
+            "[faint]sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy[/faint]\n"
+            "[faint]Caddy выпустит SSL автоматически — certbot не нужен.[/faint]",
+            border_style="warn",
+            width=_PANEL_W,
+            title="[warn.bold]Ручная настройка Caddy[/warn.bold]",
             padding=(1, 2),
         )
     )
-    console.print(f"\n[dim]---8<--- Caddyfile ---8<---[/dim]\n{snippet}\n[dim]---8<--- end ---8<---[/dim]\n")
+    console.print(f"\n[faint]---8<--- Caddyfile ---8<---[/faint]\n{snippet}\n[faint]---8<--- end ---8<---[/faint]\n")
 
 
 def _ensure_certbot_nginx() -> bool:
@@ -2751,14 +2864,14 @@ def _ensure_certbot_nginx() -> bool:
             )
             return True
         except subprocess.CalledProcessError:
-            console.print("[yellow]Не удалось установить certbot.[/yellow]")
+            step_warn("Не удалось установить certbot.")
             return False
 
     plugins = subprocess.run(["sudo", "certbot", "plugins"], capture_output=True, text=True)
     if "nginx" in (plugins.stdout + plugins.stderr):
         return True
 
-    console.print("[yellow]certbot есть, но плагин для nginx не установлен. Ставлю плагин...[/yellow]")
+    step_warn("certbot есть, но плагин для nginx не установлен. Ставлю плагин...")
     try:
         run_with_status(
             ["sudo", "apt-get", "install", "-y", "python3-certbot-nginx"],
@@ -2768,8 +2881,8 @@ def _ensure_certbot_nginx() -> bool:
         return True
     except subprocess.CalledProcessError:
         console.print(
-            "[yellow]Не удалось установить плагин. Установите вручную: "
-            "sudo apt-get install -y python3-certbot-nginx[/yellow]"
+            "[warn]Не удалось установить плагин. Установите вручную: "
+            "sudo apt-get install -y python3-certbot-nginx[/warn]"
         )
         return False
 
@@ -2799,13 +2912,14 @@ def _setup_ssl(domain):
     except subprocess.CalledProcessError:
         console.print(
             Panel(
-                f"[white]Сертификат не удалось выпустить. Причина обычно —[/white]\n"
-                f"[white]DNS [bold]{domain}[/bold] ещё не указывает на сервер, либо порт 80/443 закрыт.[/white]\n\n"
-                f"[yellow]Сайт без SSL открывать нельзя.[/yellow] После пропагации DNS:\n"
+                f"[text]Сертификат не удалось выпустить. Причина обычно —[/text]\n"
+                f"[text]DNS [bold]{domain}[/bold] ещё не указывает на сервер, либо порт 80/443 закрыт.[/text]\n\n"
+                f"[warn]Сайт без SSL открывать нельзя.[/warn] После пропагации DNS:\n"
                 f"  1. [bold]dig +short {domain}[/bold]\n"
                 f"  2. [bold]sudo certbot --nginx -d {domain}[/bold]",
-                border_style="yellow",
-                title="[bold yellow]⚠ SSL отложен[/bold yellow]",
+                border_style="warn",
+                width=_PANEL_W,
+                title="[warn.bold]SSL отложен[/warn.bold]",
                 padding=(1, 2),
             )
         )
@@ -2815,54 +2929,56 @@ def _setup_ssl(domain):
 def install_website():
     """Устанавливает веб-приложение (сайт) через Docker."""
     if not _check_feature("web"):
-        console.print("[yellow]Эта функция недоступна в текущей версии. Обновите бота.[/yellow]")
+        step_warn("Эта функция недоступна в текущей версии. Обновите бота.")
         return
 
     show_website_version_banner()
     console.print(
         Panel(
-            "[white]CLI установит Docker, скачает готовый образ сайта, настроит nginx и SSL.\n"
-            "Бэкенд (бот) может быть на этом же сервере или на другом.[/white]",
-            border_style="green",
-            title="[bold green]Установка веб-приложения[/bold green]",
+            "[text]CLI установит Docker, скачает готовый образ сайта, настроит nginx и SSL.\n"
+            "Бэкенд (бот) может быть на этом же сервере или на другом.[/text]",
+            border_style="ok",
+            width=_PANEL_W,
+            title="[ok.bold]Установка веб-приложения[/ok.bold]",
             padding=(1, 2),
         )
     )
 
     console.print(
         Panel(
-            "[bold cyan]Вариант A:[/bold cyan] Бот и сайт на одном сервере\n"
+            "[brand]Вариант A:[/brand] Бот и сайт на одном сервере\n"
             "  → API вызывается локально внутри сервера\n\n"
-            "[bold cyan]Вариант B:[/bold cyan] Сайт на отдельном сервере\n"
+            "[brand]Вариант B:[/brand] Сайт на отдельном сервере\n"
             "  → API вызывается по домену (например api.example.com)\n"
             "  → На сервере бота должен быть nginx+SSL перед API и открыт порт 443",
             border_style="dim",
-            title="[dim]Варианты размещения[/dim]",
+            width=_PANEL_W,
+            title="[faint]Варианты размещения[/faint]",
             padding=(1, 2),
         )
     )
 
-    if not safe_confirm("[bold green]Начать установку сайта?[/bold green]", default=True):
+    if not safe_confirm("Начать установку сайта?", default=True):
         return
 
     step_rule(0, 5, "Авторизация")
-    console.print("[dim]Введите логин и пароль от вашего кабинета на сайте Solo.[/dim]")
-    console.print("[dim]Данные используются только для проверки лицензии и нигде не сохраняются.[/dim]\n")
+    console.print("[faint]Введите логин и пароль от вашего кабинета на сайте Solo.[/faint]")
+    console.print("[faint]Данные используются только для проверки лицензии и нигде не сохраняются.[/faint]\n")
 
     max_attempts = 3
     for attempt in range(1, max_attempts + 1):
-        lc_code = safe_prompt("[cyan]Логин (Client Code)[/cyan]")
+        lc_code = safe_prompt("[accent]Логин (Client Code)[/accent]")
         if not lc_code or not lc_code.strip():
-            console.print("[red]Логин обязателен.[/red]")
+            step_fail("Логин обязателен.")
             return
         try:
             import getpass
 
             lc_pass = getpass.getpass("  Пароль: ")
         except Exception:
-            lc_pass = safe_prompt("[cyan]Пароль[/cyan]")
+            lc_pass = safe_prompt("[accent]Пароль[/accent]")
         if not lc_pass or not lc_pass.strip():
-            console.print("[red]Пароль обязателен.[/red]")
+            step_fail("Пароль обязателен.")
             return
 
         ok = _authorize_web_install(lc_code.strip(), lc_pass.strip())
@@ -2871,12 +2987,12 @@ def install_website():
         if ok:
             break
         if attempt < max_attempts:
-            console.print(f"[yellow]Попытка {attempt}/{max_attempts} не прошла.[/yellow]")
-            if not safe_confirm("[cyan]Повторить ввод?[/cyan]", default=True):
+            step_warn(f"Попытка {attempt}/{max_attempts} не прошла.")
+            if not safe_confirm("Повторить ввод?", default=True):
                 return
         else:
             console.print(
-                "[red]Исчерпаны попытки авторизации. Проверьте логин/пароль на сайте Solo и повторите установку.[/red]"
+                "[err]Исчерпаны попытки авторизации. Проверьте логин/пароль на сайте Solo и повторите установку.[/err]"
             )
             return
 
@@ -2887,24 +3003,24 @@ def install_website():
     step_rule(2, 5, "Настройки")
 
     console.print(
-        "[dim]Домен, по которому будет открываться сайт.\nDNS (A-запись) должна уже указывать на IP этого сервера.[/dim]"
+        "[faint]Домен, по которому будет открываться сайт.\nDNS (A-запись) должна уже указывать на IP этого сервера.[/faint]"
     )
-    domain = safe_prompt("[cyan]Домен сайта[/cyan] (например vpn.example.com)")
+    domain = safe_prompt("[accent]Домен сайта[/accent] (например vpn.example.com)")
     if not domain or not domain.strip():
-        console.print("[red]Домен обязателен.[/red]")
+        step_fail("Домен обязателен.")
         return
     domain = domain.strip()
 
     try:
-        from config import API_PORT as _BOT_API_PORT
+        from settings.config import API_PORT as _BOT_API_PORT
 
         _bot_api_port = int(_BOT_API_PORT)
     except Exception:
         _bot_api_port = 3004
 
-    console.print("\n[dim]Где запущен бот?[/dim]")
+    console.print("\n[faint]Где запущен бот?[/faint]")
     bot_location = safe_prompt(
-        "[cyan]Размещение бота[/cyan]: [1] на этом же сервере  [2] на другом сервере",
+        "[accent]Размещение бота[/accent]: [1] на этом же сервере  [2] на другом сервере",
         choices=["1", "2"],
         default="1",
         show_choices=False,
@@ -2914,59 +3030,61 @@ def install_website():
         api_url = f"http://host.docker.internal:{_bot_api_port}"
         console.print(
             Panel(
-                f"[white]API: [bold]{api_url}[/bold] (через docker host-gateway)[/white]\n\n"
-                f"[dim]Требования к боту на этом сервере:[/dim]\n"
+                f"[text]API: [bold]{api_url}[/bold] (через docker host-gateway)[/text]\n\n"
+                f"[faint]Требования к боту на этом сервере:[/faint]\n"
                 f"  • Бот запущен на хосте и слушает [bold]0.0.0.0:{_bot_api_port}[/bold]\n"
                 f'  • В config.py: [bold]API_HOST="0.0.0.0"[/bold], [bold]API_PORT={_bot_api_port}[/bold]',
                 border_style="dim",
-                title="[dim]Размещение: один сервер[/dim]",
+                width=_PANEL_W,
+                title="[faint]Размещение: один сервер[/faint]",
                 padding=(1, 2),
             )
         )
     else:
         console.print(
-            "\n[dim]Домен, по которому web-контейнер будет ходить на API бота.\nНа сервере бота должен стоять nginx+SSL перед портом API.[/dim]"
+            "\n[faint]Домен, по которому web-контейнер будет ходить на API бота.\nНа сервере бота должен стоять nginx+SSL перед портом API.[/faint]"
         )
-        api_domain = safe_prompt("[cyan]Домен API бота[/cyan] (например api.example.com)")
+        api_domain = safe_prompt("[accent]Домен API бота[/accent] (например api.example.com)")
         if not api_domain or not api_domain.strip():
-            console.print("[red]Домен API обязателен.[/red]")
+            step_fail("Домен API обязателен.")
             return
         api_domain = api_domain.strip().replace("https://", "").replace("http://", "").strip("/")
         api_url = f"https://{api_domain}"
         console.print(
             Panel(
-                f"[white]API: [bold]{api_url}[/bold][/white]\n\n"
-                f"[yellow]На сервере бота настройте:[/yellow]\n"
+                f"[text]API: [bold]{api_url}[/bold][/text]\n\n"
+                f"[warn]На сервере бота настройте:[/warn]\n"
                 f"  • nginx: [bold]https://{api_domain}[/bold] → [bold]http://127.0.0.1:{_bot_api_port}[/bold]\n"
                 f"  • SSL сертификат (certbot --nginx -d {api_domain})\n"
                 f'  • config.py: [bold]API_HOST="0.0.0.0"[/bold], [bold]API_PORT={_bot_api_port}[/bold]\n'
                 f"  • Опционально firewall: порт {_bot_api_port} открыт только с IP web-сервера",
-                border_style="yellow",
-                title="[bold yellow]Размещение: разные серверы[/bold yellow]",
+                border_style="warn",
+                width=_PANEL_W,
+                title="[warn.bold]Размещение: разные серверы[/warn.bold]",
                 padding=(1, 2),
             )
         )
-        if not safe_confirm("[cyan]Всё настроено на сервере бота?[/cyan]", default=True):
-            console.print("[yellow]Настройте сервер бота и повторите установку.[/yellow]")
+        if not safe_confirm("Всё настроено на сервере бота?", default=True):
+            step_warn("Настройте сервер бота и повторите установку.")
             return
         if not _check_bot_api_reachable(api_url):
             if not safe_confirm(
-                "[yellow]API недоступен. Продолжить всё равно (сайт не заработает без API)?[/yellow]",
+                "[warn]API недоступен. Продолжить всё равно (сайт не заработает без API)?[/warn]",
                 default=False,
             ):
                 return
 
     console.print(
-        "\n[dim]Внутренний порт, на котором запустится сайт.\nNginx проксирует на него запросы. Менять нужно только если порт занят.[/dim]"
+        "\n[faint]Внутренний порт, на котором запустится сайт.\nNginx проксирует на него запросы. Менять нужно только если порт занят.[/faint]"
     )
-    web_port = safe_prompt("[cyan]Порт сайта[/cyan]", default="3000")
+    web_port = safe_prompt("[accent]Порт сайта[/accent]", default="3000")
 
     console.print(
-        "\n[dim]Для push-уведомлений на сайте (колокольчик).\nМожно сгенерировать ключи прямо сейчас (приватный ключ печатается — сохраните его).\nЕсли push не нужны — пропустите.[/dim]"
+        "\n[faint]Для push-уведомлений на сайте (колокольчик).\nМожно сгенерировать ключи прямо сейчас (приватный ключ печатается — сохраните его).\nЕсли push не нужны — пропустите.[/faint]"
     )
     vapid_key = ""
     vapid_action = safe_prompt(
-        "[cyan]VAPID ключи[/cyan]: [1] сгенерировать  [2] ввести публичный ключ вручную  [3] пропустить",
+        "[accent]VAPID ключи[/accent]: [1] сгенерировать  [2] ввести публичный ключ вручную  [3] пропустить",
         choices=["1", "2", "3"],
         default="1",
         show_choices=False,
@@ -2974,10 +3092,8 @@ def install_website():
     if vapid_action == "1":
         pair = _generate_vapid_keys()
         if pair is None:
-            console.print(
-                "[yellow]Не удалось сгенерировать (нет cryptography). Введите вручную или пропустите.[/yellow]"
-            )
-            vapid_key = safe_prompt("[cyan]VAPID Public Key[/cyan] (Enter — пропустить)", default="")
+            console.print("[warn]Не удалось сгенерировать (нет cryptography). Введите вручную или пропустите.[/warn]")
+            vapid_key = safe_prompt("[accent]VAPID Public Key[/accent] (Enter — пропустить)", default="")
         else:
             vapid_pub, vapid_priv = pair
             vapid_key = vapid_pub
@@ -2999,60 +3115,60 @@ def install_website():
             except Exception:
                 vapid_saved = False
             saved_hint = (
-                f"[green]✓ Ключи сохранены в файл:[/green] [bold]{vapid_file}[/bold] [dim](chmod 600)[/dim]"
+                f"[ok]✓ Ключи сохранены в файл:[/ok] [bold]{vapid_file}[/bold] [faint](chmod 600)[/faint]"
                 if vapid_saved
-                else "[red]⚠ Не удалось записать файл — скопируйте строки ниже СЕЙЧАС.[/red]"
+                else "[err]Не удалось записать файл — скопируйте строки ниже СЕЙЧАС.[/err]"
             )
-            console.print("\n[bold yellow]VAPID keypair[/bold yellow]")
+            console.print("\n[warn.bold]VAPID keypair[/warn.bold]")
             console.print(saved_hint)
-            console.print("[dim]Скопируйте строки ниже КАК ЕСТЬ (с кавычками) в config.py бота:[/dim]\n")
+            console.print("[faint]Скопируйте строки ниже КАК ЕСТЬ (с кавычками) в config.py бота:[/faint]\n")
             console.print(py_snippet)
             console.print(
-                "[yellow]Публичный ключ CLI пропишет в web .env автоматически.\n"
-                "Приватный ключ и email добавьте в config.py бота и перезапустите.[/yellow]\n"
+                "[warn]Публичный ключ CLI пропишет в web .env автоматически.\n"
+                "Приватный ключ и email добавьте в config.py бота и перезапустите.[/warn]\n"
             )
     elif vapid_action == "2":
-        vapid_key = safe_prompt("[cyan]VAPID Public Key[/cyan]", default="")
+        vapid_key = safe_prompt("[accent]VAPID Public Key[/accent]", default="")
 
     console.print(
-        "\n[dim]Cloudflare Turnstile защищает формы логина от ботов.\nПолучите ключ на dash.cloudflare.com → Turnstile.\nЕсли не нужно — пропустите, формы будут работать без CAPTCHA.[/dim]"
+        "\n[faint]Cloudflare Turnstile защищает формы логина от ботов.\nПолучите ключ на dash.cloudflare.com → Turnstile.\nЕсли не нужно — пропустите, формы будут работать без CAPTCHA.[/faint]"
     )
-    turnstile_key = safe_prompt("[cyan]Turnstile Site Key[/cyan] (Enter — пропустить)", default="")
+    turnstile_key = safe_prompt("[accent]Turnstile Site Key[/accent] (Enter — пропустить)", default="")
 
     console.print(
-        "\n[dim]Username Telegram-бота (без @) для кнопки «Войти через Telegram» на сайте.\nЕсли не нужно — пропустите.[/dim]"
+        "\n[faint]Username Telegram-бота (без @) для кнопки «Войти через Telegram» на сайте.\nЕсли не нужно — пропустите.[/faint]"
     )
-    tg_bot_username = safe_prompt("[cyan]Telegram Bot Username[/cyan] (Enter — пропустить)", default="")
+    tg_bot_username = safe_prompt("[accent]Telegram Bot Username[/accent] (Enter — пропустить)", default="")
 
     console.print(
-        "\n[dim]Для отправки email-кодов (логин, подтверждение, сброс пароля).\nЕсли не нужно — пропустите, регистрация по email+паролю будет работать без этого.[/dim]"
+        "\n[faint]Для отправки email-кодов (логин, подтверждение, сброс пароля).\nЕсли не нужно — пропустите, регистрация по email+паролю будет работать без этого.[/faint]"
     )
-    smtp_host = safe_prompt("[cyan]SMTP Host[/cyan] (Enter — пропустить)", default="")
+    smtp_host = safe_prompt("[accent]SMTP Host[/accent] (Enter — пропустить)", default="")
     smtp_user = ""
     smtp_password = ""
     smtp_from = ""
     if smtp_host:
-        smtp_user = safe_prompt("[cyan]SMTP User[/cyan]", default="")
+        smtp_user = safe_prompt("[accent]SMTP User[/accent]", default="")
         try:
             import getpass
 
             smtp_password = getpass.getpass("  SMTP Password: ")
         except Exception:
-            smtp_password = safe_prompt("[cyan]SMTP Password[/cyan]", default="")
-        smtp_from = safe_prompt("[cyan]Email From[/cyan]", default=smtp_user)
+            smtp_password = safe_prompt("[accent]SMTP Password[/accent]", default="")
+        smtp_from = safe_prompt("[accent]Email From[/accent]", default=smtp_user)
 
     web_tag = _ask_web_tag(default=_get_saved_web_tag())
 
-    setup_ssl = safe_confirm("[cyan]Установить SSL (Let's Encrypt)?[/cyan]", default=True)
+    setup_ssl = safe_confirm("Установить SSL (Let's Encrypt)?", default=True)
 
     site_url = f"https://{domain}" if setup_ssl else f"http://{domain}"
 
-    console.print(f"\n  Домен:   [green]{domain}[/green]")
-    console.print(f"  Backend: [green]{api_url}[/green]")
-    console.print(f"  Канал:   [green]{web_tag}[/green]")
-    console.print(f"  SSL:     [green]{'Да' if setup_ssl else 'Нет'}[/green]")
+    console.print(f"\n  Домен:   [ok]{domain}[/ok]")
+    console.print(f"  Backend: [ok]{api_url}[/ok]")
+    console.print(f"  Канал:   [ok]{web_tag}[/ok]")
+    console.print(f"  SSL:     [ok]{'Да' if setup_ssl else 'Нет'}[/ok]")
 
-    if not safe_confirm("\n[yellow]Всё верно?[/yellow]", default=True):
+    if not safe_confirm("\n[warn]Всё верно?[/warn]", default=True):
         return
 
     step_rule(3, 5, "Запуск сайта")
@@ -3096,11 +3212,12 @@ def install_website():
         console.print(
             Panel(
                 f"[bold]PLUGIN_BUILDER_TOKEN[/bold] = {plugin_builder_token}\n\n"
-                "[yellow]Токен защищает plugin-builder API от посторонних.\n"
+                "[warn]Токен защищает plugin-builder API от посторонних.\n"
                 "Сохраните, если планируете использовать внешний билд-воркер для custom-elements —\n"
-                "воркер должен слать этот же токен в заголовке Authorization: Bearer <token>.[/yellow]",
-                border_style="yellow",
-                title="[bold yellow]PLUGIN_BUILDER_TOKEN — сгенерирован[/bold yellow]",
+                "воркер должен слать этот же токен в заголовке Authorization: Bearer <token>.[/warn]",
+                border_style="warn",
+                width=_PANEL_W,
+                title="[warn.bold]PLUGIN_BUILDER_TOKEN — сгенерирован[/warn.bold]",
                 padding=(1, 2),
             )
         )
@@ -3136,19 +3253,20 @@ services:
 """)
 
     _ensure_web_logs_dir()
-    console.print("[cyan]Запуск контейнера...[/cyan]")
+    console.print("[accent]Запуск контейнера...[/accent]")
     subprocess.run(["docker", "compose", "up", "-d"], cwd=WEB_DIR, check=True)
 
     if _wait_for_web_container(int(web_port), timeout_sec=60):
-        console.print(f"[green]✅ Контейнер запущен и отвечает на порту {web_port}[/green]")
+        step_ok(f"Контейнер запущен и отвечает на порту {web_port}")
     else:
         console.print(
             Panel(
-                f"[white]Контейнер запущен, но не отвечает на http://127.0.0.1:{web_port} за 60 сек.[/white]\n"
-                f"[white]Проверьте логи:[/white]\n"
+                f"[text]Контейнер запущен, но не отвечает на http://127.0.0.1:{web_port} за 60 сек.[/text]\n"
+                f"[text]Проверьте логи:[/text]\n"
                 f"  [bold]cd {WEB_DIR} && docker compose logs -f[/bold]",
-                border_style="yellow",
-                title="[bold yellow]⚠ Healthcheck не прошёл[/bold yellow]",
+                border_style="warn",
+                width=_PANEL_W,
+                title="[warn.bold]Healthcheck не прошёл[/warn.bold]",
                 padding=(1, 2),
             )
         )
@@ -3157,11 +3275,11 @@ services:
     px = _detect_proxies()
     if px["nginx_active"] and px["caddy_active"]:
         console.print(
-            "[yellow]⚠ Одновременно запущены nginx и Caddy — они конфликтуют за порты 80/443.\n"
-            "  80/443 может слушать только один. Выберите владельца и при необходимости остановите второй.[/yellow]"
+            "[warn]Одновременно запущены nginx и Caddy — они конфликтуют за порты 80/443.\n"
+            "  80/443 может слушать только один. Выберите владельца и при необходимости остановите второй.[/warn]"
         )
     elif px["nginx_installed"] and px["caddy_installed"]:
-        console.print("[dim]На сервере есть и nginx, и Caddy.[/dim]")
+        console.print("[faint]На сервере есть и nginx, и Caddy.[/faint]")
 
     opts = [
         ("nginx", "nginx" + (" (установлен)" if px["nginx_installed"] else " — установить")),
@@ -3169,7 +3287,7 @@ services:
         ("manual", "Вручную (показать конфиг)"),
     ]
     default_idx = 2 if (px["caddy_active"] and not px["nginx_active"]) else 1
-    console.print("[cyan]Чем настроить домен сайта:[/cyan]")
+    console.print("[accent]Чем настроить домен сайта:[/accent]")
     for i, (_, label) in enumerate(opts, 1):
         console.print(f"  {i}. {label}")
     sel = safe_prompt(
@@ -3184,14 +3302,14 @@ services:
         conflict_path = _nginx_domain_conflict(domain)
         if conflict_path:
             console.print(
-                f"[yellow]⚠ На домене [bold]{domain}[/bold] уже есть nginx-конфиг:[/yellow] {conflict_path}\n"
-                "[yellow]Автонастройка создала бы второй server-блок.[/yellow]"
+                f"[warn]На домене [bold]{domain}[/bold] уже есть nginx-конфиг:[/warn] {conflict_path}\n"
+                "[warn]Автонастройка создала бы второй server-блок.[/warn]"
             )
-            do_auto = safe_confirm("[cyan]Всё равно создать отдельный server-блок?[/cyan]", default=False)
+            do_auto = safe_confirm("Всё равно создать отдельный server-блок?", default=False)
         else:
             do_auto = True
         if do_auto and _ensure_nginx() and _setup_nginx(domain, int(web_port)):
-            console.print(f"[green]✅ nginx настроен для {domain}[/green]")
+            step_ok(f"nginx настроен для {domain}")
             proxy_kind = "nginx"
         else:
             _print_manual_nginx_hint(domain, int(web_port))
@@ -3199,11 +3317,11 @@ services:
         conflict_path = _caddy_domain_conflict(domain)
         if conflict_path:
             console.print(
-                f"[yellow]⚠ Домен [bold]{domain}[/bold] уже есть в Caddy: {conflict_path}. Покажу конфиг для ручной правки.[/yellow]"
+                f"[warn]Домен [bold]{domain}[/bold] уже есть в Caddy: {conflict_path}. Покажу конфиг для ручной правки.[/warn]"
             )
             _print_manual_caddy_hint(domain, int(web_port))
         elif _ensure_caddy() and _setup_caddy(domain, int(web_port)):
-            console.print(f"[green]✅ Caddy настроен для {domain} (SSL автоматический)[/green]")
+            step_ok(f"Caddy настроен для {domain} (SSL автоматический)")
             proxy_kind = "caddy"
         else:
             _print_manual_caddy_hint(domain, int(web_port))
@@ -3216,62 +3334,62 @@ services:
     step_rule(5, 5, "SSL")
     if proxy_kind == "caddy":
         console.print(
-            "[green]✅ SSL выпустит Caddy автоматически (Let's Encrypt) при первом запросе — certbot не нужен.[/green]"
+            "[ok]SSL выпустит Caddy автоматически (Let's Encrypt) при первом запросе — certbot не нужен.[/ok]"
         )
-        console.print(f"[dim]Условие: DNS [bold]{domain}[/bold] указывает на сервер и порты 80/443 открыты.[/dim]")
+        console.print(f"[faint]Условие: DNS [bold]{domain}[/bold] указывает на сервер и порты 80/443 открыты.[/faint]")
         site_url = f"https://{domain}"
     elif proxy_kind == "nginx":
         if setup_ssl:
             if _setup_ssl(domain):
-                console.print("[green]✅ SSL сертификат установлен[/green]")
+                step_ok("SSL сертификат установлен")
                 site_url = f"https://{domain}"
             else:
                 ssl_deferred = True
         else:
-            console.print("[dim]SSL пропущен[/dim]")
+            console.print("[faint]SSL пропущен[/faint]")
     else:
         if setup_ssl:
-            console.print("[yellow]SSL отложен: сначала настройте прокси (конфиг показан выше).[/yellow]")
-            console.print(f"[dim]nginx: sudo certbot --nginx -d {domain} · Caddy выпускает SSL сам[/dim]")
+            step_warn("SSL отложен: сначала настройте прокси (конфиг показан выше).")
+            console.print(f"[faint]nginx: sudo certbot --nginx -d {domain} · Caddy выпускает SSL сам[/faint]")
             ssl_deferred = True
         else:
-            console.print("[dim]SSL пропущен[/dim]")
+            console.print("[faint]SSL пропущен[/faint]")
 
     smtp_hint = ""
     if not smtp_host:
-        smtp_hint = "\n\n[yellow]⚠ SMTP не настроен — вход по email-коду и сброс пароля не будут работать.\n  Настройте позже через: меню → Управление сайтом → Изменить настройки[/yellow]"
+        smtp_hint = "\n\n[warn]SMTP не настроен — вход по email-коду и сброс пароля не будут работать.\n  Настройте позже через: меню → Управление сайтом → Изменить настройки[/warn]"
 
     bot_note = (
-        f"\n\n[yellow]⚠ На сервере бота установите в [bold]config.py[/bold]:[/yellow]\n"
+        f"\n\n[warn]На сервере бота установите в [bold]config.py[/bold]:[/warn]\n"
         f'  SITE_URL = "{site_url}"\n'
-        f"[dim]  (используется для TG WebApp-кнопок и gift-ссылок)[/dim]\n"
-        f"[dim]  После правки перезапустите бота.[/dim]"
+        f"[faint]  (используется для TG WebApp-кнопок и gift-ссылок)[/faint]\n"
+        f"[faint]  После правки перезапустите бота.[/faint]"
     )
 
     if ssl_deferred:
         header = (
-            f"[bold yellow]Сайт собран, но SSL ещё не получен.[/bold yellow]\n"
-            f"[white]Откроется по [bold]{site_url}[/bold] только после выпуска сертификата.[/white]\n\n"
-            f"[cyan]Что сделать:[/cyan]\n"
+            f"[warn.bold]Сайт собран, но SSL ещё не получен.[/warn.bold]\n"
+            f"[text]Откроется по [bold]{site_url}[/bold] только после выпуска сертификата.[/text]\n\n"
+            f"[accent]Что сделать:[/accent]\n"
             f"  1. [bold]dig +short {domain}[/bold] — должен вернуть IP этого сервера\n"
             f"  2. [bold]sudo certbot --nginx -d {domain}[/bold]"
         )
         border = "yellow"
-        title = "[bold yellow]⚠ Установка почти завершена[/bold yellow]"
+        title = "[warn.bold]Установка почти завершена[/warn.bold]"
     else:
-        header = f"[bold green]Сайт доступен: {site_url}[/bold green]"
+        header = f"[ok.bold]Сайт доступен: {site_url}[/ok.bold]"
         border = "green"
-        title = "[bold green]✅ Установка завершена[/bold green]"
+        title = "[ok.bold]Установка завершена[/ok.bold]"
 
     console.print(
         Panel(
             f"{header}{smtp_hint}{bot_note}\n\n"
-            f"[white]Управление:[/white]\n"
+            f"[text]Управление:[/text]\n"
             f"  cd {WEB_DIR}\n"
-            f"  docker compose logs -f       [dim]— логи[/dim]\n"
-            f"  docker compose restart       [dim]— перезапуск[/dim]\n"
-            f"  docker compose down          [dim]— остановка[/dim]\n"
-            f"  nano .env                    [dim]— настройки[/dim]",
+            f"  docker compose logs -f       [faint]— логи[/faint]\n"
+            f"  docker compose restart       [faint]— перезапуск[/faint]\n"
+            f"  docker compose down          [faint]— остановка[/faint]\n"
+            f"  nano .env                    [faint]— настройки[/faint]",
             border_style=border,
             title=title,
             padding=(1, 2),
@@ -3305,46 +3423,47 @@ def _web_container_status() -> str:
         )
         states = [s.strip() for s in (result.stdout or "").splitlines() if s.strip()]
         if not states:
-            return "[dim]не запущен[/dim]"
+            return "[faint]не запущен[/faint]"
         running = sum(1 for s in states if s.lower() == "running")
         total = len(states)
         if running == total:
-            return f"[green]running ({running}/{total})[/green]"
-        return f"[yellow]{running}/{total} running[/yellow]"
+            return f"[ok]running ({running}/{total})[/ok]"
+        return f"[warn]{running}/{total} running[/warn]"
     except Exception:
-        return "[dim]статус неизвестен[/dim]"
+        return "[faint]статус неизвестен[/faint]"
 
 
 def uninstall_website():
     if not os.path.exists(WEB_DIR):
-        console.print("[yellow]Сайт не установлен (папка отсутствует).[/yellow]")
+        step_warn("Сайт не установлен (папка отсутствует).")
         return
 
     domain = _read_env_domain()
     console.print(
         Panel(
-            f"[bold red]Вы собираетесь полностью удалить сайт.[/bold red]\n\n"
-            f"[white]Будет удалено:[/white]\n"
+            f"[err.bold]Вы собираетесь полностью удалить сайт.[/err.bold]\n\n"
+            f"[text]Будет удалено:[/text]\n"
             f"  • Docker-контейнеры и volumes (данные кабинета)\n"
             f"  • Docker-образ {_web_image(_get_saved_web_tag())}\n"
             f"  • Папка проекта [bold]{WEB_DIR}[/bold] (.env, логи)\n"
             + (f"  • Nginx-конфиг [bold]/etc/nginx/sites-*/solo-{domain}[/bold]\n" if domain else "")
             + (f"  • SSL-сертификат для [bold]{domain}[/bold]\n" if domain else "")
-            + "\n[yellow]Действие необратимо. Рекомендуется сделать бэкап БД заранее.[/yellow]",
-            border_style="red",
-            title="[bold red]⚠ Удаление сайта[/bold red]",
+            + "\n[warn]Действие необратимо. Рекомендуется сделать бэкап БД заранее.[/warn]",
+            border_style="err",
+            width=_PANEL_W,
+            title="[err.bold]Удаление сайта[/err.bold]",
             padding=(1, 2),
         )
     )
 
-    if not safe_confirm("[bold red]Продолжить удаление?[/bold red]", default=False):
+    if not safe_confirm("Продолжить удаление?", default=False):
         return
     confirm_text = safe_prompt(
-        "[red]Введите [bold]DELETE[/bold] заглавными чтобы подтвердить[/red]",
+        "[err]Введите [bold]DELETE[/bold] заглавными чтобы подтвердить[/err]",
         default="",
     )
     if confirm_text.strip() != "DELETE":
-        console.print("[yellow]Удаление отменено.[/yellow]")
+        step_warn("Удаление отменено.")
         return
 
     if os.path.exists(os.path.join(WEB_DIR, "docker-compose.yml")):
@@ -3387,52 +3506,61 @@ def uninstall_website():
             except Exception:
                 pass
 
-    console.print("[green]✅ Сайт удалён.[/green]")
+    step_ok("Сайт удалён.")
 
 
 def manage_website():
     """Меню управления сайтом."""
     if not _check_feature("web"):
-        console.print("[yellow]Эта функция недоступна в текущей версии. Обновите бота.[/yellow]")
+        step_warn("Эта функция недоступна в текущей версии. Обновите бота.")
         return
+    heading("Веб-сайт", WEB_DIR)
     show_website_version_banner()
     if not os.path.exists(os.path.join(WEB_DIR, "docker-compose.yml")):
-        console.print("[yellow]Сайт не установлен.[/yellow]")
-        if safe_confirm("[green]Установить сейчас?[/green]", default=True):
+        step_warn("Сайт не установлен")
+        if safe_confirm("Установить сейчас?", default=True):
             install_website()
         return
 
     tag = _get_saved_web_tag()
-    status = _web_container_status()
-    console.print(f"[bold]Образ:[/bold] [cyan]{_web_image(tag)}[/cyan]  [bold]Статус:[/bold] {status}")
-
-    table = Table(
-        title="Управление сайтом",
-        title_style="title",
-        header_style="muted",
-        box=box.SIMPLE,
-        padding=(0, 2),
-        expand=False,
+    console.print(
+        f"  [faint]образ[/faint]  [text]{_web_image(tag)}[/text]"
+        f"  [faint]{_G_DOT}[/faint]  [faint]статус[/faint] {_web_container_status()}"
     )
-    table.add_column("№", justify="right", style="accent", no_wrap=True)
-    table.add_column("Действие", style="white")
-    table.add_row("1", "Показать статус")
-    table.add_row("2", "Показать логи")
-    table.add_row("3", "Перезапустить")
-    table.add_row("4", "Остановить")
-    table.add_row("5", "Обновить (пересборка + restart)")
-    table.add_row("6", "Изменить настройки (.env)")
-    table.add_row("7", "Показать .env")
-    table.add_row("8", "Переустановить")
-    table.add_row("9", "[red]Удалить сайт[/red]")
-    table.add_row("10", "Назад")
-    console.print(table)
 
-    choice = safe_prompt(
-        "[bold blue]👉 Выберите действие[/bold blue]",
-        choices=[str(i) for i in range(1, 11)],
-        show_choices=False,
+    menu(
+        "Управление сайтом",
+        [
+            (
+                "Работа",
+                [
+                    ("1", "◉", "Статус контейнера", True, ""),
+                    ("2", "≡", "Логи", True, ""),
+                    ("3", "⟳", "Перезапустить", True, ""),
+                    ("4", "■", "Остановить", True, ""),
+                ],
+            ),
+            (
+                "Обслуживание",
+                [
+                    ("5", "↑", "Обновить: пересборка и перезапуск", True, ""),
+                    ("6", "⚙", "Изменить настройки (.env)", True, ""),
+                    ("7", "≡", "Показать .env", True, ""),
+                    ("8", "⭯", "Переустановить", True, ""),
+                    ("9", "✕", "Удалить сайт", True, ""),
+                ],
+            ),
+            (
+                "",
+                [
+                    ("10", "←", "Назад", True, ""),
+                ],
+            ),
+        ],
+        subtitle=tag,
     )
+
+    choice = ask_choice(10, "Действие")
 
     if choice == "1":
         subprocess.run(["docker", "compose", "ps"], cwd=WEB_DIR)
@@ -3440,19 +3568,19 @@ def manage_website():
         subprocess.run(["docker", "compose", "logs", "--tail", "80", "-f"], cwd=WEB_DIR)
     elif choice == "3":
         subprocess.run(["docker", "compose", "restart"], cwd=WEB_DIR)
-        console.print("[green]✅ Перезапущено[/green]")
+        step_ok("Перезапущено")
     elif choice == "4":
         subprocess.run(["docker", "compose", "down"], cwd=WEB_DIR)
-        console.print("[yellow]Сайт остановлен[/yellow]")
+        step_warn("Сайт остановлен")
     elif choice == "5":
         src_dir = os.path.join(WEB_DIR, "src")
         show_website_version_banner()
         current_tag = _get_saved_web_tag()
-        console.print(f"[dim]Текущий канал: [green]{current_tag}[/green][/dim]")
+        console.print(f"[faint]Текущий канал: [ok]{current_tag}[/ok][/faint]")
         web_tag = _ask_web_tag(default=current_tag)
-        if not safe_confirm("[green]Продолжить обновление?[/green]", default=True):
+        if not safe_confirm("Продолжить обновление?", default=True):
             return
-        console.print("[cyan]Обновление образа...[/cyan]")
+        console.print("[accent]Обновление образа...[/accent]")
         if not _ensure_web_image(src_dir, web_tag, force_pull=True):
             return
         compose_path = os.path.join(WEB_DIR, "docker-compose.yml")
@@ -3468,7 +3596,7 @@ def manage_website():
                 with open(compose_path, "w") as f:
                     f.write(compose)
             except Exception as e:
-                console.print(f"[yellow]Не удалось обновить docker-compose.yml: {e}[/yellow]")
+                step_warn(f"Не удалось обновить docker-compose.yml: {e}")
         try:
             with open(compose_path) as f:
                 compose = f.read()
@@ -3482,38 +3610,39 @@ def manage_website():
                     with open(compose_path, "w") as f:
                         f.write(patched)
                     console.print(
-                        "[dim]docker-compose.yml: добавлен extra_hosts: host.docker.internal → host-gateway[/dim]"
+                        "[faint]docker-compose.yml: добавлен extra_hosts: host.docker.internal → host-gateway[/faint]"
                     )
         except Exception as e:
-            console.print(f"[yellow]Не удалось пропатчить extra_hosts в docker-compose.yml: {e}[/yellow]")
+            step_warn(f"Не удалось пропатчить extra_hosts в docker-compose.yml: {e}")
         _save_web_tag(web_tag)
         _ensure_web_logs_dir()
         subprocess.run(["docker", "compose", "up", "-d", "--force-recreate"], cwd=WEB_DIR)
-        console.print(f"[green]✅ Обновлено до канала {web_tag}[/green]")
+        step_ok(f"Обновлено до канала {web_tag}")
     elif choice == "6":
         env_path = os.path.join(WEB_DIR, ".env")
         editor = os.environ.get("EDITOR", "nano")
         subprocess.run([editor, env_path])
-        if safe_confirm("[cyan]Перезапустить сайт с новыми настройками?[/cyan]", default=True):
+        if safe_confirm("Перезапустить сайт с новыми настройками?", default=True):
             subprocess.run(["docker", "compose", "restart"], cwd=WEB_DIR)
     elif choice == "7":
         env_path = os.path.join(WEB_DIR, ".env")
         if not os.path.isfile(env_path):
-            console.print(f"[yellow].env не найден: {env_path}[/yellow]")
+            step_warn(f".env не найден: {env_path}")
         else:
             try:
                 with open(env_path, encoding="utf-8") as f:
                     content = f.read()
                 console.print(
                     Panel(
-                        content or "[dim]пусто[/dim]",
-                        border_style="cyan",
-                        title=f"[bold cyan]{env_path}[/bold cyan]",
+                        content or "[faint]пусто[/faint]",
+                        border_style="accent.dim",
+                        width=_PANEL_W,
+                        title=f"[brand]{env_path}[/brand]",
                         padding=(1, 2),
                     )
                 )
             except Exception as e:
-                console.print(f"[red]Не удалось прочитать .env: {e}[/red]")
+                step_fail(f"Не удалось прочитать .env: {e}")
     elif choice == "8":
         install_website()
     elif choice == "9":
@@ -3522,26 +3651,25 @@ def manage_website():
 
 def show_update_menu():
     if IS_ROOT_DIR:
-        console.print("[red]Обновление невозможно: бот находится в /root[/red]")
-        console.print("[yellow]Перенесите бота в отдельную папку и повторите попытку[/yellow]")
+        step_fail("Обновление невозможно: бот лежит в /root")
+        step_info("Перенесите бота в отдельную папку и повторите")
         return
 
-    table = Table(
-        title="Выберите способ обновления",
-        title_style="title",
-        header_style="muted",
-        box=box.SIMPLE,
-        padding=(0, 2),
-        expand=False,
+    menu(
+        "Обновление",
+        [
+            (
+                "",
+                [
+                    ("1", "◐", "Бета-ветка (dev)", True, ""),
+                    ("2", "●", "Релиз или патч", True, ""),
+                    ("3", "←", "Назад", True, ""),
+                ],
+            ),
+        ],
+        subtitle=local_version(PROJECT_DIR) or "",
     )
-    table.add_column("№", justify="right", style="accent", no_wrap=True)
-    table.add_column("Источник", style="white")
-    table.add_row("1", "Обновить до BETA")
-    table.add_row("2", "Обновить до релиза (релизы и патчи)")
-    table.add_row("3", "Назад в меню")
-
-    console.print(table)
-    choice = safe_prompt("[bold blue]Введите номер[/bold blue]", choices=["1", "2", "3"])
+    choice = ask_choice(3, "Источник обновления")
 
     if choice == "1":
         update_from_beta()
@@ -3629,7 +3757,7 @@ def fetch_latest_ghcr_tag(image: str) -> str | None:
 def show_website_version_banner():
     """Короткий баннер с установленной и доступной версией сайта."""
     installed = read_installed_solo_brick_version()
-    with console.status("[cyan]Проверка версии Solo-brick...[/cyan]"):
+    with console.status("[accent]Проверка версии Solo-brick...[/accent]"):
         latest = fetch_latest_ghcr_tag(GHCR_IMAGE)
     installed_str = installed if installed else "не определено"
     latest_str = latest if latest else "недоступно"
@@ -3638,76 +3766,94 @@ def show_website_version_banner():
         cur = _parse_solo_brick_semver(installed)
         nxt = _parse_solo_brick_semver(latest)
         if cur and nxt and nxt > cur:
-            tag = "  [bold yellow]⚡ Доступно обновление[/bold yellow]"
+            tag = "   [warn.bold]доступно обновление[/warn.bold]"
         elif cur and nxt:
-            tag = "  [green]✅ Актуально[/green]"
+            tag = "   [ok]актуально[/ok]"
     console.print(
-        f"[dim]Solo-brick:[/dim] установлено [bold]{installed_str}[/bold] · доступно [bold]{latest_str}[/bold]{tag}"
+        f"  [faint]solo-brick[/faint]  [title]{installed_str}[/title]"
+        f"  [faint]{_G_DOT}[/faint]  [muted]в реестре[/muted] [text]{latest_str}[/text]{tag}"
     )
 
 
 def show_menu():
     bot_installed = has_project_code()
-    bot_runtime_ready = bot_installed and os.path.exists(VENV_PYTHON) and is_service_exists(SERVICE_NAME)
+    venv_ready = bot_installed and os.path.exists(VENV_PYTHON)
+    bot_runtime_ready = venv_ready and is_service_exists(SERVICE_NAME)
+    need_install = "Серые пункты станут доступны после установки бота — пункт 9."
 
-    def fmt(text: str, enabled: bool) -> str:
-        return text if enabled else f"[muted]{text}  · нужен пункт 9[/muted]"
-
-    table = Table(
-        title="Solobot CLI v0.7.0",
-        title_style="title",
-        header_style="muted",
-        box=box.SIMPLE,
-        padding=(0, 2),
-        expand=False,
+    menu(
+        "Solobot",
+        [
+            (
+                "Бот",
+                [
+                    ("1", "▶", "Запустить", bot_runtime_ready, need_install),
+                    ("2", "⌁", "Запустить вручную (venv)", venv_ready, need_install),
+                    ("3", "⟳", "Перезапустить", bot_runtime_ready, need_install),
+                    ("4", "■", "Остановить", bot_runtime_ready, need_install),
+                ],
+            ),
+            (
+                "Наблюдение",
+                [
+                    ("5", "≡", "Логи, последние 80 строк", bot_runtime_ready, need_install),
+                    ("6", "◉", "Статус службы", bot_runtime_ready, need_install),
+                ],
+            ),
+            (
+                "Обслуживание",
+                [
+                    ("7", "↑", "Обновить Solobot", bot_installed, need_install),
+                    ("8", "⭯", "Восстановить из бэкапа", True, ""),
+                    ("9", "⚙", "Установить или переустановить бота", True, ""),
+                ],
+            ),
+            (
+                "Сайт",
+                [
+                    ("10", "◈", "Веб-сайт: установка и управление", True, ""),
+                ],
+            ),
+            (
+                "",
+                [
+                    ("11", "✕", "Выход", True, ""),
+                ],
+            ),
+        ],
+        subtitle=SERVICE_NAME,
     )
-    table.add_column("№", justify="right", style="accent", no_wrap=True)
-    table.add_column("Операция", style="white")
-    table.add_row("1", fmt("Запустить бота (systemd)", bot_runtime_ready))
-    table.add_row(
-        "2", fmt("Запустить напрямую: venv/bin/python main.py", bot_installed and os.path.exists(VENV_PYTHON))
-    )
-    table.add_row("3", fmt("Перезапустить бота (systemd)", bot_runtime_ready))
-    table.add_row("4", fmt("Остановить бота (systemd)", bot_runtime_ready))
-    table.add_row("5", fmt("Показать логи (80 строк)", bot_runtime_ready))
-    table.add_row("6", fmt("Показать статус", bot_runtime_ready))
-    table.add_row("7", fmt("Обновить Solobot", bot_installed))
-    table.add_row("8", "Восстановить из бэкапа")
-    table.add_row("9", "Установить / переустановить бота")
-    table.add_row("10", "🌐 Веб-сайт (установка / управление)")
-    table.add_row("11", "Выход")
-    console.print(table)
 
 
 def main():
     os.chdir(PROJECT_DIR)
+    if sys.version_info[:2] != (3, 12):
+        python312 = shutil.which("python3.12")
+        if python312 and os.path.realpath(python312) != os.path.realpath(sys.executable):
+            os.execv(python312, [python312] + sys.argv)
     auto_update_cli()
     print_logo()
     _ensure_solobot_command()
+    if not cli_gate(PROJECT_DIR, lambda label, secret: safe_prompt(label, password=secret), console.print):
+        return
     prompt_install_if_needed()
     try:
         while True:
             refresh_service_name()
             show_menu()
-            choice = safe_prompt(
-                "[bold blue]👉 Введите номер действия[/bold blue]",
-                choices=[str(i) for i in range(1, 12)],
-                show_choices=False,
-            )
+            choice = ask_choice(11)
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
                     wait_for_bot_startup()
                 else:
-                    console.print(f"[yellow]Служба {SERVICE_NAME} не найдена.[/yellow]")
-                    if safe_confirm("[green]Установить бота и создать службу сейчас?[/green]", default=True):
+                    step_warn(f"Служба {SERVICE_NAME} не найдена.")
+                    if safe_confirm("Установить бота и создать службу сейчас?", default=True):
                         install_bot()
             elif choice == "2":
                 if not os.path.exists(VENV_PYTHON):
-                    console.print("[yellow]Виртуальное окружение ещё не создано.[/yellow]")
-                    if safe_confirm(
-                        "[green]Подготовить окружение через автоматическую установку?[/green]", default=True
-                    ):
+                    step_warn("Виртуальное окружение ещё не создано.")
+                    if safe_confirm("[ok]Подготовить окружение через автоматическую установку?[/ok]", default=True):
                         install_bot()
                     continue
                 try:
@@ -3719,27 +3865,27 @@ def main():
                     )
                     if not any(v in ver_out.stdout for v in ("(3, 12)", "(3, 13)", "(3, 14)")):
                         console.print(
-                            f"[yellow]⚠ venv использует Python {ver_out.stdout.strip()} — ожидается 3.12+.[/yellow]"
+                            f"[warn]venv использует Python {ver_out.stdout.strip()} — ожидается 3.12+.[/warn]"
                         )
-                        if not safe_confirm("[cyan]Запустить всё равно?[/cyan]", default=False):
+                        if not safe_confirm("Запустить всё равно?", default=False):
                             continue
                 except Exception:
                     pass
-                if safe_confirm("[green]Вы действительно хотите запустить main.py вручную?[/green]"):
+                if safe_confirm("Вы действительно хотите запустить main.py вручную?"):
                     subprocess.run(["venv/bin/python", "main.py"])
             elif choice == "3":
                 if is_service_exists(SERVICE_NAME):
-                    if safe_confirm("[yellow]Вы действительно хотите перезапустить бота?[/yellow]"):
+                    if safe_confirm("Вы действительно хотите перезапустить бота?"):
                         subprocess.run(["sudo", "systemctl", "restart", SERVICE_NAME])
                         wait_for_bot_startup()
                 else:
-                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
+                    step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "4":
                 if is_service_exists(SERVICE_NAME):
-                    if safe_confirm("[red]Вы уверены, что хотите остановить бота?[/red]"):
+                    if safe_confirm("Вы уверены, что хотите остановить бота?"):
                         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME])
                 else:
-                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
+                    step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "5":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run([
@@ -3752,12 +3898,12 @@ def main():
                         "--no-pager",
                     ])
                 else:
-                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
+                    step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "6":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "status", SERVICE_NAME])
                 else:
-                    console.print(f"[red]❌ Служба {SERVICE_NAME} не найдена.[/red]")
+                    step_fail(f"Служба {SERVICE_NAME} не найдена.")
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
@@ -3767,10 +3913,10 @@ def main():
             elif choice == "10":
                 manage_website()
             elif choice == "11":
-                console.print("[bold cyan]Выход из CLI. Удачного дня![/bold cyan]")
+                console.print("[brand]Выход из CLI. Удачного дня![/brand]")
                 break
     except KeyboardInterrupt:
-        console.print("\n[bold red]⏹ Прерывание. Выход из CLI.[/bold red]")
+        console.print("\n[err.bold]Прерывание. Выход из CLI.[/err.bold]")
 
 
 if __name__ == "__main__":

@@ -13,9 +13,9 @@ from sqlalchemy.exc import (
     OperationalError as SQLAlchemyOperationalError,
 )
 
-from config import ADMIN_ID
 from database import async_session_maker
 from logger import logger
+from settings.config import ADMIN_ID
 
 
 _OBFUSCATED_MIN_SEQ = 15

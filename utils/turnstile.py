@@ -1,7 +1,7 @@
 import httpx
 
-from config import TURNSTILE_SECRET_KEY
 from logger import logger
+from settings.config import TURNSTILE_SECRET_KEY
 
 
 _VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"

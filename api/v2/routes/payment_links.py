@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_token
 from api.v2.schemas.payment_links import PaymentLinkCreateRequest, PaymentLinkCreateResponse, PaymentLinkStatusResponse
-from config import REDIS_URL
 from database import (
     async_session_maker,
     get_payment_by_payment_id,
@@ -22,6 +21,7 @@ from database.temporary_data import create_temporary_data
 from logger import logger
 from services.tariffs.cooldown import get_tariff_cooldown_remaining
 from services.tariffs.visibility import is_tariff_visible_for
+from settings.config import REDIS_URL
 
 
 _PAYMENT_LINK_TTL_MIN = 60

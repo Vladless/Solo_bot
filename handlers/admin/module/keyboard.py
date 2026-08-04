@@ -2,7 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from handlers.admin.panel.keyboard import AdminPanelCallback
-from handlers.buttons import BACK
+from settings.buttons import BACK
 from utils.modules_manager import manager
 
 

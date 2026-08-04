@@ -6,19 +6,27 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import USE_NEW_PAYMENT_FLOW
 from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from database import get_balance, get_key_details, get_tariff_by_id, save_key_config_with_mode, update_balance
-from handlers.buttons import (
+from handlers.keys.key_view import render_key_info
+from handlers.payments.fast_payment_flow import try_fast_payment_flow
+from handlers.utils import edit_or_send_message, get_plural_form
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.processors import process_addon_purchase_complete, process_addons_menu
+from logger import logger
+from middlewares.session import release_session_early
+from services.errors import InsufficientFundsError
+from services.payments.currency_rates import format_for_user
+from services.tariffs.tariff_display import GB, get_effective_limits_for_key
+from settings.buttons import (
     BACK,
     CONFIRM_ADDON_BUTTON_TEXT,
     DOWNGRADE_ADDON_BUTTON_TEXT,
     DOWNGRADE_CONFIRM_BUTTON_TEXT,
     PAYMENT,
 )
-from handlers.keys.key_view import render_key_info
-from handlers.payments.fast_payment_flow import try_fast_payment_flow
-from handlers.texts import (
+from settings.config import USE_NEW_PAYMENT_FLOW
+from settings.texts import (
     ADDONS_APPLIED_TEXT,
     DOWNGRADE_INLINE_WARNING_TEXT,
     DOWNGRADE_SAVED_TEXT,
@@ -28,14 +36,6 @@ from handlers.texts import (
     UNLIMITED_DEVICES_LABEL,
     UNLIMITED_TRAFFIC_LABEL,
 )
-from handlers.utils import edit_or_send_message, get_plural_form
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.processors import process_addon_purchase_complete, process_addons_menu
-from logger import logger
-from middlewares.session import release_session_early
-from services.errors import InsufficientFundsError
-from services.payments.currency_rates import format_for_user
-from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 
 from ...keys.utils import build_key_callback, resolve_key
 from ..buy.key_tariffs import calculate_config_price

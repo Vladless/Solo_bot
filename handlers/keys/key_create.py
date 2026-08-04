@@ -13,12 +13,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import (
-    DISCOUNT_ACTIVE_HOURS,
-    NOTIFY_EXTRA_DAYS,
-    TRIAL_TIME_DISABLE,
-    USE_COUNTRY_SELECTION,
-)
 from core.bootstrap import MODES_CONFIG, NOTIFICATIONS_CONFIG
 from database import (
     add_user,
@@ -31,15 +25,7 @@ from database.notifications import check_cold_lead_discount, check_hot_lead_disc
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_subgroup_description, get_tariffs
 from database.users import get_balance
 from handlers.admin.panel.keyboard import AdminPanelCallback
-from handlers.buttons import BACK, MAIN_MENU
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
-from handlers.texts import (
-    CREATING_CONNECTION_MSG,
-    DISCOUNT_OFFER_MESSAGE,
-    DISCOUNT_OFFER_STEP2,
-    DISCOUNT_OFFER_STEP3,
-    SELECT_TARIFF_PLAN_MSG,
-)
 from handlers.utils import edit_or_send_message, format_discount_time_left, get_least_loaded_cluster
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import (
@@ -48,6 +34,20 @@ from hooks.processors import (
 )
 from logger import logger
 from services.tariffs.visibility import filter_visible_tariffs
+from settings.buttons import BACK, MAIN_MENU
+from settings.config import (
+    DISCOUNT_ACTIVE_HOURS,
+    NOTIFY_EXTRA_DAYS,
+    TRIAL_TIME_DISABLE,
+    USE_COUNTRY_SELECTION,
+)
+from settings.texts import (
+    CREATING_CONNECTION_MSG,
+    DISCOUNT_OFFER_MESSAGE,
+    DISCOUNT_OFFER_STEP2,
+    DISCOUNT_OFFER_STEP3,
+    SELECT_TARIFF_PLAN_MSG,
+)
 
 from .key_mode.key_cluster_mode import key_cluster_mode
 from .key_mode.key_country_mode import key_country_mode

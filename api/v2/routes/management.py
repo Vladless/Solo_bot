@@ -23,7 +23,6 @@ from api.v2.schemas.audit import (
     AuditEventResponse,
 )
 from audit import drain_audit_redis_to_db, list_audit_events
-from config import API_TOKEN, BOT_SERVICE
 from core.bootstrap import MANAGEMENT_CONFIG
 from core.executor import run_io
 from core.redis_cache import cache_incr
@@ -49,6 +48,7 @@ from handlers.admin.sender.scheduled_service import (
     scheduled_broadcast_to_dict,
 )
 from logger import logger
+from settings.config import API_TOKEN, BOT_SERVICE
 from utils.backup import backup_database
 
 

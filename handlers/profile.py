@@ -5,20 +5,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import (
-    BALANCE_BUTTON,
-    GIFT_BUTTON,
-    INSTRUCTIONS_BUTTON,
-    NEWS_MESSAGE,
-    REFERRAL_BUTTON,
-    SHOW_START_MENU_ONCE,
-    TRIAL_TIME_DISABLE,
-)
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
-from core.cache_config import BALANCE_CACHE_TTL_SEC, KEY_COUNT_CACHE_TTL_SEC, PROFILE_DATA_CACHE_TTL_SEC
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import get_balance_trial_key_count
-from handlers.buttons import (
+from hooks.hook_buttons import insert_hook_buttons
+from hooks.hooks import run_hooks
+from middlewares.session import release_session_early
+from services.payments.currency_rates import format_for_user
+from settings.buttons import (
     ABOUT_VPN,
     ADD_SUB,
     ADMIN_BTN,
@@ -33,11 +27,17 @@ from handlers.buttons import (
     TRIAL_SUB,
     WEB_CABINET,
 )
-from handlers.texts import ADD_SUBSCRIPTION_HINT
-from hooks.hook_buttons import insert_hook_buttons
-from hooks.hooks import run_hooks
-from middlewares.session import release_session_early
-from services.payments.currency_rates import format_for_user
+from settings.cache_config import BALANCE_CACHE_TTL_SEC, KEY_COUNT_CACHE_TTL_SEC, PROFILE_DATA_CACHE_TTL_SEC
+from settings.config import (
+    BALANCE_BUTTON,
+    GIFT_BUTTON,
+    INSTRUCTIONS_BUTTON,
+    NEWS_MESSAGE,
+    REFERRAL_BUTTON,
+    SHOW_START_MENU_ONCE,
+    TRIAL_TIME_DISABLE,
+)
+from settings.texts import ADD_SUBSCRIPTION_HINT
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .texts import profile_message_send
@@ -113,9 +113,7 @@ async def process_callback_view_profile(
     if single_sub_mode and key_count == 1:
         from handlers.keys.key_view import build_single_subscription_profile
 
-        single_sub_payload = await build_single_subscription_profile(
-            session, chat_id, username, balance_text
-        )
+        single_sub_payload = await build_single_subscription_profile(session, chat_id, username, balance_text)
         if single_sub_payload:
             profile_message, single_sub_rows = single_sub_payload
 

@@ -8,9 +8,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from core.settings.web_config import is_email_binding_enabled
 from database.identities import get_identity_by_email, get_or_create_identity_for_tg
-from handlers.buttons import BACK
 from handlers.utils import edit_or_send_message
 from logger import logger
+from settings.buttons import BACK
 
 
 router = Router(name="email_binding")

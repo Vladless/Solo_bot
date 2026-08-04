@@ -61,7 +61,7 @@ BLACK_ORANGE_THEME = {
 
 def _apply_runtime_links(theme_tokens: dict) -> dict:
     try:
-        from config import SUPPORT_CHAT_URL, USERNAME_BOT
+        from settings.config import SUPPORT_CHAT_URL, USERNAME_BOT
     except Exception:
         return theme_tokens
     footer = theme_tokens.get("footer")
@@ -84,7 +84,7 @@ def _apply_runtime_links(theme_tokens: dict) -> dict:
 
 def _apply_support_links_to_pages(pages: dict) -> None:
     try:
-        from config import SUPPORT_CHAT_URL, USERNAME_BOT
+        from settings.config import SUPPORT_CHAT_URL, USERNAME_BOT
     except Exception:
         return
     bot_url = f"https://telegram.me/{USERNAME_BOT}" if USERNAME_BOT else ""
