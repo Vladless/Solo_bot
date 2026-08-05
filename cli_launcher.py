@@ -460,7 +460,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.0.2"
+CLI_VERSION = "v1.0.3"
 
 
 def _ensure_solobot_command() -> None:
@@ -1531,7 +1531,9 @@ def fix_permissions():
 
     try:
         user = os.environ.get("SUDO_USER") or subprocess.check_output(["whoami"], text=True).strip()
-        console.log(f"[accent]Используем пользователь: {user}[/accent]")
+        console.print(
+            f"  [faint]Пользователь {user}: владелец проекта, права u=rwX,go=rX, чистка __pycache__[/faint]"
+        )
 
         skip_dirs = {"venv", ".venv", ".git", "node_modules"}
         for root, dirs, files in os.walk(PROJECT_DIR):
@@ -1546,12 +1548,10 @@ def fix_permissions():
                     pyc_path = os.path.join(root, file)
                     subprocess.run(["sudo", "rm", "-f", pyc_path], check=False)
 
-        console.log("[title]Изменение владельца на весь проект...[/title]")
         subprocess.run(["sudo", "chown", "-R", f"{user}:{user}", PROJECT_DIR], check=True)
-
-        console.log("[title]Изменение прав доступа (u=rwX,go=rX)...[/title]")
         subprocess.run(["sudo", "chmod", "-R", "u=rwX,go=rX", PROJECT_DIR], check=True)
 
+        closed = []
         for secret in (
             "config.py",
             os.path.join("handlers", "texts.py"),
@@ -1561,16 +1561,17 @@ def fix_permissions():
         ):
             secret_path = os.path.join(PROJECT_DIR, secret)
             if os.path.exists(secret_path):
-                console.log(f"[title]Закрываю доступ к секретам: {secret} (600)...[/title]")
                 subprocess.run(["sudo", "chown", f"{user}:{user}", secret_path], check=False)
                 subprocess.run(["sudo", "chmod", "600", secret_path], check=False)
+                closed.append(secret)
+        if closed:
+            console.print(f"  [faint]Секреты закрыты (600): {', '.join(closed)}[/faint]")
 
         launcher_path = os.path.join(PROJECT_DIR, "cli_launcher.py")
         if os.path.exists(launcher_path):
-            console.log("[title]Установка флага +x для cli_launcher.py...[/title]")
             subprocess.run(["chmod", "+x", launcher_path], check=True)
 
-        console.print(f"[ok]Все права восстановлены для пользователя [bold]{user}[/bold][/ok]")
+        step_ok(f"Права восстановлены для пользователя {user}.")
 
     except Exception as e:
         step_fail(f"Ошибка при установке прав: {e}")

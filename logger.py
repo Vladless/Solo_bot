@@ -103,6 +103,7 @@ for name in (
     "async_api",
     "async_api_client",
     "charset_normalizer",
+    "asyncio",
 ):
     lg = logging.getLogger(name)
     lg.setLevel(logging.ERROR)
