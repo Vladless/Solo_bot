@@ -6,6 +6,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from logger import logger
+
+
+def _mig_out(msg: str) -> None:
+    print(msg, flush=True)
 from settings.config import DATABASE_URL
 
 
@@ -269,7 +273,7 @@ async def _migration_v1_add_users_id(conn: AsyncConnection) -> None:
         logger.warning(f"[schema_upgrade] users PK неожиданен {pk}, пропуск v1")
         return
 
-    logger.info("[schema_upgrade] v1: Добавление users.id")
+    _mig_out("[schema_upgrade] v1: Добавление users.id")
 
     if not await _column_exists(conn, "users", "id"):
         await conn.execute(
@@ -284,7 +288,7 @@ async def _migration_v1_add_users_id(conn: AsyncConnection) -> None:
 
 
 async def _migration_v2_add_user_id_columns(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v2: Добавление user_id колонок в связанные таблицы")
+    _mig_out("[schema_upgrade] v2: Добавление user_id колонок в связанные таблицы")
 
     tables_columns = [
         ("keys", "user_id"),
@@ -354,12 +358,12 @@ async def _backfill_users_from_table(conn: AsyncConnection, table: str, tg_col: 
     )
     created = result.rowcount or 0
     if created > 0:
-        logger.info(f"[schema_upgrade] users backfill: создано {created} юзеров из orphan {table}.{tg_col}")
+        _mig_out(f"[schema_upgrade] users backfill: создано {created} юзеров из orphan {table}.{tg_col}")
     return created
 
 
 async def _migration_v3_populate_user_ids(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v3: Заполнение user_id из tg_id")
+    _mig_out("[schema_upgrade] v3: Заполнение user_id из tg_id")
 
     if not await _table_exists(conn, "users") or not await _column_exists(conn, "users", "id"):
         return
@@ -467,7 +471,7 @@ async def _migration_v3_populate_user_ids(conn: AsyncConnection) -> None:
 
 
 async def _migration_v4_add_tg_id_mirrors(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v4: Добавление tg_id mirror колонок")
+    _mig_out("[schema_upgrade] v4: Добавление tg_id mirror колонок")
 
     mirrors = [
         ("referrals", "referred_tg_id"),
@@ -491,7 +495,7 @@ async def _migration_v4_add_tg_id_mirrors(conn: AsyncConnection) -> None:
 
 
 async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v5: Переключение PK на user_id где возможно")
+    _mig_out("[schema_upgrade] v5: Переключение PK на user_id где возможно")
 
     await _drop_fkeys_to_users(conn)
     await _ensure_users_id_referenceable(conn)
@@ -542,7 +546,7 @@ async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
             continue
         if not await _column_exists(conn, tbl, "user_id"):
             continue
-        logger.info(f"[schema_upgrade] {tbl} оставлен на legacy PK по tg_id")
+        _mig_out(f"[schema_upgrade] {tbl} оставлен на legacy PK по tg_id")
 
     if await _table_exists(conn, "users"):
         await _drop_pk(conn, "users")
@@ -552,7 +556,7 @@ async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
 
 
 async def _migration_v6_add_foreign_keys(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v6: Добавление foreign key constraints")
+    _mig_out("[schema_upgrade] v6: Добавление foreign key constraints")
 
     if await _table_exists(conn, "referrals"):
         await _add_constraint_if_missing(
@@ -768,12 +772,12 @@ async def _run_tg_mirror_backfill(conn: AsyncConnection, *, nulls_only: bool) ->
 
 
 async def _migration_v7_backfill_tg_mirrors(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v7: Backfill tg_id mirrors")
+    _mig_out("[schema_upgrade] v7: Backfill tg_id mirrors")
     await _run_tg_mirror_backfill(conn, nulls_only=False)
 
 
 async def _migration_v8_fix_notification_timezone(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v8: Исправление timezone для last_notification_time")
+    _mig_out("[schema_upgrade] v8: Исправление timezone для last_notification_time")
 
     if not await _table_exists(conn, "notifications"):
         return
@@ -813,7 +817,7 @@ async def _migration_v8_fix_notification_timezone(conn: AsyncConnection) -> None
 
 
 async def _migration_v9_cleanup_orphaned_records(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v5: Мягкий backfill user_id для legacy таблиц")
+    _mig_out("[schema_upgrade] v5: Мягкий backfill user_id для legacy таблиц")
 
     tables_to_clean = [
         ("blocked_users", "user_id"),
@@ -842,15 +846,15 @@ async def _migration_v9_cleanup_orphaned_records(conn: AsyncConnection) -> None:
         )
         updated = result.rowcount
         if updated > 0:
-            logger.info(f"[schema_upgrade] v5: заполнено {updated} записей в {table}")
+            _mig_out(f"[schema_upgrade] v5: заполнено {updated} записей в {table}")
 
 
 async def _migration_v10_finalize_user_id_not_null(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v10: legacy таблицы сохраняют nullable user_id и PK по tg_id")
+    _mig_out("[schema_upgrade] v10: legacy таблицы сохраняют nullable user_id и PK по tg_id")
 
 
 async def _migration_v11_finalize_legacy_tables(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v11: финализация legacy таблиц на user_id")
+    _mig_out("[schema_upgrade] v11: финализация legacy таблиц на user_id")
 
     for table in ("blocked_users", "manual_bans", "temporary_data"):
         if not await _table_exists(conn, table):
@@ -894,7 +898,7 @@ async def _migration_v11_finalize_legacy_tables(conn: AsyncConnection) -> None:
 
 
 async def _migration_v12_relax_legacy_tg_id_nullability(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v12: приведение tg_id к nullable в legacy таблицах")
+    _mig_out("[schema_upgrade] v12: приведение tg_id к nullable в legacy таблицах")
 
     for table in ("blocked_users", "manual_bans", "temporary_data"):
         if not await _table_exists(conn, table):
@@ -905,7 +909,7 @@ async def _migration_v12_relax_legacy_tg_id_nullability(conn: AsyncConnection) -
 
 
 async def _migration_v13_add_web_page_variants(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v13: добавление таблиц вариантов web-страниц")
+    _mig_out("[schema_upgrade] v13: добавление таблиц вариантов web-страниц")
 
     await _exec_ignore(
         conn,
@@ -1016,7 +1020,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
     Обходит все таблицы, где может быть orphan tg_id, создаёт недостающих юзеров
     и повторно заполняет user_id. Идемпотентно: если orphan'ов нет — no-op.
     """
-    logger.info("[schema_upgrade] v15: Восстановление orphan tg_ids в users")
+    _mig_out("[schema_upgrade] v15: Восстановление orphan tg_ids в users")
 
     if not await _table_exists(conn, "users") or not await _column_exists(conn, "users", "id"):
         return
@@ -1041,7 +1045,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
         total_created += await _backfill_users_from_table(conn, table, tg_col)
 
     if total_created > 0:
-        logger.info(f"[schema_upgrade] v15: всего создано {total_created} orphan-юзеров")
+        _mig_out(f"[schema_upgrade] v15: всего создано {total_created} orphan-юзеров")
 
     repopulate = [
         ("keys", "user_id", "tg_id"),
@@ -1078,11 +1082,11 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
             )
         )
         if result.rowcount and result.rowcount > 0:
-            logger.info(f"[schema_upgrade] v15: повторно заполнено {result.rowcount} записей {table}.{user_col}")
+            _mig_out(f"[schema_upgrade] v15: повторно заполнено {result.rowcount} записей {table}.{user_col}")
 
 
 async def _migration_v18_web_error_reports(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v18: таблица web_error_reports")
+    _mig_out("[schema_upgrade] v18: таблица web_error_reports")
     await _exec_ignore(
         conn,
         """
@@ -1115,7 +1119,7 @@ async def _migration_v18_web_error_reports(conn: AsyncConnection) -> None:
 
 
 async def _migration_v16b_web_flow_events(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v17: таблица web_flow_events")
+    _mig_out("[schema_upgrade] v17: таблица web_flow_events")
 
     await _exec_ignore(
         conn,
@@ -1146,7 +1150,7 @@ async def _migration_v16b_web_flow_events(conn: AsyncConnection) -> None:
 
 
 async def _migration_v16_custom_element_builds(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v16: таблица web_custom_element_builds")
+    _mig_out("[schema_upgrade] v16: таблица web_custom_element_builds")
 
     await _exec_ignore(
         conn,
@@ -1193,7 +1197,7 @@ async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
     пользователей, у которых tg_id=NULL. user_id у ключа есть всегда (FK на
     users.id), поэтому делаем его новым компонентом PK.
     """
-    logger.info("[schema_upgrade] v19: keys.tg_id nullable, PK на (user_id, client_id)")
+    _mig_out("[schema_upgrade] v19: keys.tg_id nullable, PK на (user_id, client_id)")
 
     if not await _table_exists(conn, "keys"):
         return
@@ -1223,7 +1227,7 @@ async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
 
 
 async def _migration_v20_add_identity_google_sub(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v20: identities.google_sub")
+    _mig_out("[schema_upgrade] v20: identities.google_sub")
     if not await _table_exists(conn, "identities"):
         return
     if not await _column_exists(conn, "identities", "google_sub"):
@@ -1235,7 +1239,7 @@ async def _migration_v20_add_identity_google_sub(conn: AsyncConnection) -> None:
 
 
 async def _migration_v21_add_identity_yandex_sub(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v21: identities.yandex_sub")
+    _mig_out("[schema_upgrade] v21: identities.yandex_sub")
     if not await _table_exists(conn, "identities"):
         return
     if not await _column_exists(conn, "identities", "yandex_sub"):
@@ -1247,7 +1251,7 @@ async def _migration_v21_add_identity_yandex_sub(conn: AsyncConnection) -> None:
 
 
 async def _migration_v22_add_identity_onboarding_completed_at(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v22: identities.onboarding_completed_at")
+    _mig_out("[schema_upgrade] v22: identities.onboarding_completed_at")
     if not await _table_exists(conn, "identities"):
         return
     if not await _column_exists(conn, "identities", "onboarding_completed_at"):
@@ -1255,7 +1259,7 @@ async def _migration_v22_add_identity_onboarding_completed_at(conn: AsyncConnect
 
 
 async def _migration_v23_add_identity_onboarding_stage(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v23: identities.onboarding_stage")
+    _mig_out("[schema_upgrade] v23: identities.onboarding_stage")
     if not await _table_exists(conn, "identities"):
         return
     if not await _column_exists(conn, "identities", "onboarding_stage"):
@@ -1263,7 +1267,7 @@ async def _migration_v23_add_identity_onboarding_stage(conn: AsyncConnection) ->
 
 
 async def _migration_v26_add_keys_indexes(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v26: индексы keys(expiry_time/server_id/tariff_id)")
+    _mig_out("[schema_upgrade] v26: индексы keys(expiry_time/server_id/tariff_id)")
     if not await _table_exists(conn, "keys"):
         return
     if not await _index_exists(conn, "keys", "ix_keys_expiry_time"):
@@ -1275,7 +1279,7 @@ async def _migration_v26_add_keys_indexes(conn: AsyncConnection) -> None:
 
 
 async def _migration_v25_add_partners_indexes(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v25: индексы на partners(partner_tg_id/joined_tg_id)")
+    _mig_out("[schema_upgrade] v25: индексы на partners(partner_tg_id/joined_tg_id)")
     if not await _table_exists(conn, "partners"):
         return
     if not await _index_exists(conn, "partners", "ix_partners_partner_tg_id"):
@@ -1285,7 +1289,7 @@ async def _migration_v25_add_partners_indexes(conn: AsyncConnection) -> None:
 
 
 async def _migration_v27_add_admins_permissions(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v27: admins.permissions (JSONB)")
+    _mig_out("[schema_upgrade] v27: admins.permissions (JSONB)")
     if not await _table_exists(conn, "admins"):
         return
     if not await _column_exists(conn, "admins", "permissions"):
@@ -1304,7 +1308,7 @@ async def _migration_v27_add_admins_permissions(conn: AsyncConnection) -> None:
 
 
 async def _migration_v28_add_identity_notif_prefs(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v28: таблица identity_notif_prefs (toggle каналов уведомлений)")
+    _mig_out("[schema_upgrade] v28: таблица identity_notif_prefs (toggle каналов уведомлений)")
     if not await _table_exists(conn, "identities"):
         return
     if not await _table_exists(conn, "identity_notif_prefs"):
@@ -1323,7 +1327,7 @@ async def _migration_v28_add_identity_notif_prefs(conn: AsyncConnection) -> None
 
 
 async def _migration_v24_add_identity_sessions(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v24: таблица identity_sessions + перенос существующих токенов")
+    _mig_out("[schema_upgrade] v24: таблица identity_sessions + перенос существующих токенов")
     if not await _table_exists(conn, "identities"):
         return
     if not await _table_exists(conn, "identity_sessions"):
@@ -1375,7 +1379,7 @@ async def _migration_v24_add_identity_sessions(conn: AsyncConnection) -> None:
 
 
 async def _migration_v29_add_scheduled_broadcasts_channel(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v29: scheduled_broadcasts.channel (bot/site/both)")
+    _mig_out("[schema_upgrade] v29: scheduled_broadcasts.channel (bot/site/both)")
     if not await _table_exists(conn, "scheduled_broadcasts"):
         return
     if not await _column_exists(conn, "scheduled_broadcasts", "channel"):
@@ -1385,7 +1389,7 @@ async def _migration_v29_add_scheduled_broadcasts_channel(conn: AsyncConnection)
 
 
 async def _migration_v49_widen_scheduled_broadcasts_channel(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v49: scheduled_broadcasts.channel → VARCHAR(32)")
+    _mig_out("[schema_upgrade] v49: scheduled_broadcasts.channel → VARCHAR(32)")
     if not await _table_exists(conn, "scheduled_broadcasts"):
         return
     await _exec_ignore(
@@ -1395,7 +1399,7 @@ async def _migration_v49_widen_scheduled_broadcasts_channel(conn: AsyncConnectio
 
 
 async def _migration_v30_add_users_created_at_index(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v30: индекс users(created_at)")
+    _mig_out("[schema_upgrade] v30: индекс users(created_at)")
     if not await _table_exists(conn, "users"):
         return
     if not await _column_exists(conn, "users", "created_at"):
@@ -1405,12 +1409,12 @@ async def _migration_v30_add_users_created_at_index(conn: AsyncConnection) -> No
 
 
 async def _migration_v31_repair_tg_mirror_nulls(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v31: Repair NULL tg_id mirrors")
+    _mig_out("[schema_upgrade] v31: Repair NULL tg_id mirrors")
     await _run_tg_mirror_backfill(conn, nulls_only=True)
 
 
 async def _migration_v32_add_polls(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v32: таблицы опросов (polls + poll_messages + poll_votes)")
+    _mig_out("[schema_upgrade] v32: таблицы опросов (polls + poll_messages + poll_votes)")
     if not await _table_exists(conn, "polls"):
         await _exec_ignore(
             conn,
@@ -1460,7 +1464,7 @@ async def _migration_v32_add_polls(conn: AsyncConnection) -> None:
 
 
 async def _migration_v33_web_page_views(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v33: таблица web_page_views")
+    _mig_out("[schema_upgrade] v33: таблица web_page_views")
 
     await _exec_ignore(
         conn,
@@ -1495,7 +1499,7 @@ async def _migration_v33_web_page_views(conn: AsyncConnection) -> None:
 
 
 async def _migration_v34_web_page_views_source(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v34: web_page_views.source (web/webapp)")
+    _mig_out("[schema_upgrade] v34: web_page_views.source (web/webapp)")
     if not await _table_exists(conn, "web_page_views"):
         return
     if not await _column_exists(conn, "web_page_views", "source"):
@@ -1503,7 +1507,7 @@ async def _migration_v34_web_page_views_source(conn: AsyncConnection) -> None:
 
 
 async def _migration_v36_web_page_views_ab_variant(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v36: web_page_views.ab_variant (A/B)")
+    _mig_out("[schema_upgrade] v36: web_page_views.ab_variant (A/B)")
     if not await _table_exists(conn, "web_page_views"):
         return
     if not await _column_exists(conn, "web_page_views", "ab_variant"):
@@ -1511,7 +1515,7 @@ async def _migration_v36_web_page_views_ab_variant(conn: AsyncConnection) -> Non
 
 
 async def _migration_v37_rate_limit_counters(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v37: таблица rate_limit_counters (распределённый fallback)")
+    _mig_out("[schema_upgrade] v37: таблица rate_limit_counters (распределённый fallback)")
     await _exec_ignore(
         conn,
         """
@@ -1530,7 +1534,7 @@ async def _migration_v37_rate_limit_counters(conn: AsyncConnection) -> None:
 
 
 async def _migration_v35_key_traffic_history(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v35: таблица key_traffic_history (история использования)")
+    _mig_out("[schema_upgrade] v35: таблица key_traffic_history (история использования)")
     await _exec_ignore(
         conn,
         """
@@ -1557,7 +1561,7 @@ async def _migration_v35_key_traffic_history(conn: AsyncConnection) -> None:
 
 
 async def _migration_v38_subscription_events(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v38: таблица subscription_events (журнал жизненного цикла подписок)")
+    _mig_out("[schema_upgrade] v38: таблица subscription_events (журнал жизненного цикла подписок)")
     await _exec_ignore(
         conn,
         """
@@ -1593,7 +1597,7 @@ async def _migration_v38_subscription_events(conn: AsyncConnection) -> None:
 
 
 async def _migration_v39_daily_subscription_metrics(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v39: таблица daily_subscription_metrics (дневные снапшоты подписок)")
+    _mig_out("[schema_upgrade] v39: таблица daily_subscription_metrics (дневные снапшоты подписок)")
     await _exec_ignore(
         conn,
         """
@@ -1614,7 +1618,7 @@ async def _migration_v39_daily_subscription_metrics(conn: AsyncConnection) -> No
 
 
 async def _migration_v40_tariff_cooldown_days(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v40: tariffs.cooldown_days (задержка между покупками тарифа, дней)")
+    _mig_out("[schema_upgrade] v40: tariffs.cooldown_days (задержка между покупками тарифа, дней)")
     await _exec_ignore(
         conn,
         "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS cooldown_days INTEGER NOT NULL DEFAULT 0",
@@ -1622,7 +1626,7 @@ async def _migration_v40_tariff_cooldown_days(conn: AsyncConnection) -> None:
 
 
 async def _migration_v41_tariff_visibility_rules(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v41: tariffs.visibility_rules (условная видимость тарифа по признаку юзера)")
+    _mig_out("[schema_upgrade] v41: tariffs.visibility_rules (условная видимость тарифа по признаку юзера)")
     await _exec_ignore(
         conn,
         "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS visibility_rules JSONB",
@@ -1630,7 +1634,7 @@ async def _migration_v41_tariff_visibility_rules(conn: AsyncConnection) -> None:
 
 
 async def _migration_v42_tariff_description(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v42: tariffs.description (описание состава тарифа)")
+    _mig_out("[schema_upgrade] v42: tariffs.description (описание состава тарифа)")
     await _exec_ignore(
         conn,
         "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS description VARCHAR",
@@ -1638,7 +1642,7 @@ async def _migration_v42_tariff_description(conn: AsyncConnection) -> None:
 
 
 async def _migration_v43_tariff_subgroup_settings(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v43: tariff_subgroup_settings (текст подгруппы на экране выбора)")
+    _mig_out("[schema_upgrade] v43: tariff_subgroup_settings (текст подгруппы на экране выбора)")
     await _exec_ignore(
         conn,
         """
@@ -1655,7 +1659,7 @@ async def _migration_v43_tariff_subgroup_settings(conn: AsyncConnection) -> None
 
 
 async def _migration_v44_key_traffic_hourly(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v44: key_traffic_hourly (почасовая история трафика)")
+    _mig_out("[schema_upgrade] v44: key_traffic_hourly (почасовая история трафика)")
     await _exec_ignore(
         conn,
         """
@@ -1680,7 +1684,7 @@ async def _migration_v44_key_traffic_hourly(conn: AsyncConnection) -> None:
 
 
 async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v45: таблицы тикетов (tickets + ticket_messages)")
+    _mig_out("[schema_upgrade] v45: таблицы тикетов (tickets + ticket_messages)")
     if not await _table_exists(conn, "tickets"):
         await _exec_ignore(
             conn,
@@ -1733,7 +1737,7 @@ async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
 
 
 async def _migration_v46_ticket_extras(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v46: tickets.rating/tags/ref_type/ref_id")
+    _mig_out("[schema_upgrade] v46: tickets.rating/tags/ref_type/ref_id")
     if not await _table_exists(conn, "tickets"):
         return
     if not await _column_exists(conn, "tickets", "rating"):
@@ -1750,7 +1754,7 @@ async def _migration_v46_ticket_extras(conn: AsyncConnection) -> None:
 
 
 async def _migration_v47_ticket_topic_id(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v47: tickets.topic_id (форум-темы)")
+    _mig_out("[schema_upgrade] v47: tickets.topic_id (форум-темы)")
     if not await _table_exists(conn, "tickets"):
         return
     if not await _column_exists(conn, "tickets", "topic_id"):
@@ -1759,7 +1763,7 @@ async def _migration_v47_ticket_topic_id(conn: AsyncConnection) -> None:
 
 
 async def _migration_v48_ticket_timestamptz(conn: AsyncConnection) -> None:
-    logger.info("[schema_upgrade] v48: tickets/ticket_messages timestamp → timestamptz (UTC)")
+    _mig_out("[schema_upgrade] v48: tickets/ticket_messages timestamp → timestamptz (UTC)")
     targets = (
         ("tickets", ("created_at", "updated_at", "last_message_at")),
         ("ticket_messages", ("created_at",)),
@@ -1846,16 +1850,16 @@ async def apply_all_migrations(conn: AsyncConnection) -> None:
         if version <= current_version:
             continue
 
-        logger.info(f"[schema_upgrade] Применение миграции v{version}: {description}")
+        _mig_out(f"[schema_upgrade] Применение миграции v{version}: {description}")
         try:
             await migration_func(conn)
             await _mark_migration_applied(conn, version, description)
-            logger.info(f"[schema_upgrade] Миграция v{version} применена успешно")
+            _mig_out(f"[schema_upgrade] Миграция v{version} применена успешно")
         except Exception as e:
             logger.error(f"[schema_upgrade] Ошибка при применении миграции v{version}: {e}")
             raise
 
-    logger.info(f"[schema_upgrade] Все миграции применены, текущая версия: {await _get_current_version(conn)}")
+    _mig_out(f"[schema_upgrade] Все миграции применены, текущая версия: {await _get_current_version(conn)}")
 
 
 async def apply_account_schema_if_needed(conn: AsyncConnection) -> None:

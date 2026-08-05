@@ -1286,6 +1286,29 @@ def _bot_state() -> tuple:
     return "muted", "остановлен"
 
 
+def _site_state() -> tuple:
+    if not os.path.exists(WEB_DIR):
+        return "faint", "не установлен", None
+    version = read_installed_solo_brick_version()
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "ps", "--format", "{{.State}}"],
+            cwd=WEB_DIR,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        states = [s.strip() for s in (result.stdout or "").splitlines() if s.strip()]
+    except Exception:
+        return "warn", "статус неизвестен", version
+    if not states:
+        return "muted", "остановлен", version
+    running = sum(1 for s in states if s.lower() == "running")
+    if running == len(states):
+        return "ok", "работает", version
+    return "warn", f"частично ({running}/{len(states)})", version
+
+
 def print_logo():
     logo_lines = [
         "███████╗ ██████╗ ██╗      ██████╗ ██████╗  ██████╗ ████████╗",
@@ -1311,12 +1334,25 @@ def print_logo():
     home = os.path.expanduser("~")
     where = PROJECT_DIR.replace(home, "~", 1) if PROJECT_DIR.startswith(home) else PROJECT_DIR
     style, state = _bot_state()
+    s_style, s_state, s_version = _site_state()
+    bot_installed = has_project_code()
+    site_installed = os.path.exists(WEB_DIR)
 
     console.print()
-    console.print(f"  [faint]бот[/faint]        [{style}]{_G_DOT} {state}[/{style}]")
-    console.print(f"  [faint]версия[/faint]     [title]{local_version(PROJECT_DIR) or '—'}[/title]")
-    console.print(f"  [faint]обновлён[/faint]   [text]{get_last_update_date() or '—'}[/text]")
-    console.print(f"  [faint]папка[/faint]      [muted]{where}[/muted]")
+    bot_line = f"  [faint]бот[/faint]        [{style}]{_G_DOT} {state}[/{style}]"
+    if bot_installed:
+        bot_line += f"   [title]{local_version(PROJECT_DIR) or '—'}[/title]"
+    console.print(bot_line)
+    site_line = f"  [faint]сайт[/faint]       [{s_style}]{_G_DOT} {s_state}[/{s_style}]"
+    if s_version:
+        site_line += f"   [title]{s_version}[/title]"
+    console.print(site_line)
+    if bot_installed:
+        console.print(f"  [faint]обновлён[/faint]   [text]{get_last_update_date() or '—'}[/text]")
+        console.print(f"  [faint]папка[/faint]      [muted]{where}[/muted]")
+    elif site_installed:
+        site_where = WEB_DIR.replace(home, "~", 1) if WEB_DIR.startswith(home) else WEB_DIR
+        console.print(f"  [faint]папка[/faint]      [muted]{site_where}[/muted]")
 
 
 def list_backups():
