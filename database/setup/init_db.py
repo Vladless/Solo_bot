@@ -21,8 +21,9 @@ async def run_schema_setup(*, create_all: bool = True) -> None:
         await engine.dispose()
 
 
-async def init_db():
-    await run_schema_setup(create_all=True)
+async def init_db(run_migrations: bool = True):
+    if run_migrations:
+        await run_schema_setup(create_all=True)
 
     async with db.async_session_maker() as session:
         result = await session.execute(select(User).where(User.tg_id == 0))

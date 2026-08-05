@@ -262,12 +262,14 @@ async def handle_cabinet_tab_link(message, tab):
     site_url = get_site_url()
     if not site_url:
         return False
+    from settings.buttons import WEB_CABINET
+
     builder = InlineKeyboardBuilder()
     if is_web_open_in_browser():
-        button = InlineKeyboardButton(text="🌐 Личный кабинет", url=f"{site_url}/dashboard?tab={tab}")
+        button = InlineKeyboardButton(text=WEB_CABINET, url=f"{site_url}/dashboard?tab={tab}")
     else:
         button = InlineKeyboardButton(
-            text="🌐 Личный кабинет",
+            text=WEB_CABINET,
             web_app=WebAppInfo(url=f"{site_url}/dashboard?tab={tab}&webapp=1"),
         )
     builder.row(button)
