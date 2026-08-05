@@ -610,7 +610,7 @@ async def execute_renewal(
     key_row = await get_key_details(session, key_email)
     effective_client_id = key_row["client_id"] if key_row else client_id
 
-    await update_key_expiry(session, effective_client_id, new_expiry_time, record_event=False)
+    await update_key_expiry(session, effective_client_id, new_expiry_time, price_rub=float(cost))
     from database.keys import invalidate_keys_list
 
     await invalidate_keys_list(session, billing_user_id)

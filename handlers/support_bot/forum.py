@@ -1,8 +1,9 @@
 from aiogram import F, Router
 from aiogram.filters import BaseFilter, Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from database import async_session_maker
+from database.models import Identity
 from handlers.support_bot.media import collect_attachment
 from services import tickets as svc
 from services.tickets.forum import forum_chat_id
@@ -128,6 +129,65 @@ async def on_command(message: Message, command: CommandObject) -> None:
     elif cmd == "open":
         await svc.set_topic_state(ticket, closed=False)
     await message.reply(f"Статус: {status}")
+
+
+@router.callback_query(F.data.startswith("sf:"))
+async def on_agent_button(callback: CallbackQuery) -> None:
+    fid = forum_chat_id()
+    if fid is None or callback.message is None or callback.message.chat.id != fid:
+        await callback.answer()
+        return
+    _, action, ticket_id = callback.data.split(":", 2)
+    fresh = None
+    admin_ref = None
+    async with async_session_maker() as session:
+        ticket = await svc.get_ticket(session, ticket_id)
+        if ticket is None:
+            await callback.answer("Обращение не найдено", show_alert=True)
+            return
+        if action == "close":
+            was_closed = ticket.status == svc.CLOSED
+            await svc.set_status(session, ticket_id=ticket_id, status=svc.CLOSED)
+            if not was_closed:
+                await svc.notify_client_ticket_closed(session, ticket=ticket)
+        elif action == "open":
+            await svc.set_status(session, ticket_id=ticket_id, status=svc.OPEN)
+        elif action == "pending":
+            await svc.set_status(session, ticket_id=ticket_id, status=svc.PENDING)
+        elif action == "mine":
+            await svc.assign_ticket(session, ticket_id=ticket_id, agent_tg_id=callback.from_user.id)
+        elif action == "prio":
+            ticket.priority = "normal" if (ticket.priority or "normal") == "high" else "high"
+        else:
+            await callback.answer()
+            return
+        fresh = await svc.get_ticket(session, ticket_id)
+        try:
+            client = await session.get(Identity, fresh.identity_id) if fresh is not None else None
+            if client is not None:
+                admin_ref = await svc.resolve_billing_user_ref(session, client)
+        except Exception:
+            admin_ref = None
+        await session.commit()
+    if fresh is None:
+        await callback.answer()
+        return
+    if action == "close":
+        await svc.set_topic_state(fresh, closed=True)
+    elif action == "open":
+        await svc.set_topic_state(fresh, closed=False)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=svc.agent_controls_kb(fresh, admin_ref))
+    except Exception:
+        pass
+    labels = {
+        "close": "Обращение закрыто",
+        "open": "Обращение открыто",
+        "pending": "Переведено в ожидание",
+        "mine": "Назначено на вас",
+        "prio": "Приоритет обновлён",
+    }
+    await callback.answer(labels.get(action, "Готово"))
 
 
 @router.message(F.message_thread_id, F.text | F.caption | F.photo | F.document)

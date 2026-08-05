@@ -242,13 +242,29 @@ async def balance_history_handler(callback_query: CallbackQuery, session: Any):
     if records:
         language_code = getattr(callback_query.from_user, "language_code", None)
         history_text = f"{BALANCE_HISTORY_HEADER}\n\n<blockquote>"
+        spend_labels = {
+            "created": "покупка подписки",
+            "renewed": "продление подписки",
+            "addons": "докупка опций",
+        }
         for record in records:
             amount_rub = record.amount or 0
-            formatted_amount = await format_for_user(session, callback_query.from_user.id, amount_rub, language_code)
             date = record.created_at.strftime("%Y-%m-%d %H:%M:%S")
             if record.kind == "gift":
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, amount_rub, language_code
+                )
                 history_text += BALANCE_HISTORY_GIFT_LINE.format(amount=formatted_amount, date=date) + "\n\n"
+            elif record.kind == "spend":
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, abs(amount_rub), language_code
+                )
+                label = spend_labels.get(record.system, "списание")
+                history_text += f"💸 Списано: {formatted_amount} | {label}\nДата: {date}\n\n"
             else:
+                formatted_amount = await format_for_user(
+                    session, callback_query.from_user.id, amount_rub, language_code
+                )
                 history_text += (
                     f"Сумма: {formatted_amount}\nОплата: {record.system}\nСтатус: {record.status}\nДата: {date}\n\n"
                 )

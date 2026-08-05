@@ -128,14 +128,18 @@ async def check_server_name_by_cluster(session: AsyncSession, server_name: str) 
 
 async def get_panel_types_for_cluster(session: AsyncSession, cluster_name: str) -> list[str]:
     """Список panel_type всех серверов кластера (для проверки "весь remnawave")."""
-    result = await session.execute(select(Server.panel_type).where(Server.cluster_name == cluster_name))
-    return list(result.scalars().all())
+    grouped = await get_servers(session, include_enabled=True)
+    return [s.get("panel_type") for s in grouped.get(cluster_name, [])]
 
 
 async def get_panel_type_for_server(session: AsyncSession, server_name: str) -> str | None:
     """Возвращает panel_type конкретного сервера по его имени."""
-    result = await session.execute(select(Server.panel_type).where(Server.server_name == server_name))
-    return result.scalar_one_or_none()
+    grouped = await get_servers(session, include_enabled=True)
+    for servers in grouped.values():
+        for s in servers:
+            if s.get("server_name") == server_name:
+                return s.get("panel_type")
+    return None
 
 
 async def get_enabled_server_subscription_url(session: AsyncSession, server_name: str) -> str | None:

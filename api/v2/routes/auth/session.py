@@ -36,7 +36,7 @@ from database import (
     identities as idb,
     identity_sessions as idsess,
 )
-from database.models import CouponUsage, Gift, GiftUsage, IdentityNotifPref, Key, Payment, WebNotification
+from database.models import CouponUsage, Gift, GiftUsage, IdentityNotifPref, Key, Payment, SubscriptionEvent, WebNotification
 from database.referrals import get_referral_stats
 from database.web_notifications import count_unread_for_identity
 from logger import logger
@@ -215,11 +215,28 @@ async def auth_summary(
     trial_status = int(await _safe(lambda: get_trial(session, billing_user_id), 0) or 0)
     keys = await _safe(lambda: get_keys(session, billing_user_id), None)
     keys_total = len(keys) if keys else 0
-    gifts_sent = await _safe(lambda: _count(Gift, Gift.sender_user_id == billing_user_id), 0)
-    gifts_claimed = await _safe(lambda: _count(GiftUsage, GiftUsage.user_id == billing_user_id), 0)
-    coupons_used = await _safe(lambda: _count(CouponUsage, CouponUsage.user_id == billing_user_id), 0)
+    from core.redis_cache import cache_get, cache_key, cache_set
+
+    counters_key = cache_key("summary_counters", billing_user_id) if billing_user_id is not None else None
+    counters = await cache_get(counters_key) if counters_key else None
+    if not isinstance(counters, dict):
+        gifts_sent = await _safe(lambda: _count(Gift, Gift.sender_user_id == billing_user_id), 0)
+        gifts_claimed = await _safe(lambda: _count(GiftUsage, GiftUsage.user_id == billing_user_id), 0)
+        coupons_used = await _safe(lambda: _count(CouponUsage, CouponUsage.user_id == billing_user_id), 0)
+        partner = await _safe(lambda: _resolve_partner_snapshot(session, int(billing_user_id)), {}) or {}
+        counters = {
+            "gifts_sent": int(gifts_sent),
+            "gifts_claimed": int(gifts_claimed),
+            "coupons_used": int(coupons_used),
+            "partner": partner,
+        }
+        if counters_key:
+            await cache_set(counters_key, counters, 60)
+    gifts_sent = counters["gifts_sent"]
+    gifts_claimed = counters["gifts_claimed"]
+    coupons_used = counters["coupons_used"]
+    partner = counters.get("partner") or {}
     ref = await _safe(lambda: get_referral_stats(session, billing_user_id), {}) or {}
-    partner = await _safe(lambda: _resolve_partner_snapshot(session, int(billing_user_id)), {}) or {}
     unread_notifications = int(await _safe(lambda: count_unread_for_identity(session, identity.id), 0) or 0)
     return AccountSummaryResponse(
         identity_id=identity.id,
@@ -281,6 +298,12 @@ async def my_payments(
     if billing_user_id is None:
         return MyPaymentsResponse(ok=True, payments=[])
     safe_limit = max(1, min(200, int(limit) if limit else 50))
+    from core.redis_cache import cache_get, cache_key, cache_set
+
+    payments_key = cache_key("my_payments", billing_user_id, safe_limit)
+    cached_payments = await cache_get(payments_key)
+    if isinstance(cached_payments, list):
+        return MyPaymentsResponse(ok=True, payments=[MyPaymentItem.model_validate(p) for p in cached_payments])
     rows = await session.execute(
         select(Payment).where(Payment.user_id == billing_user_id).order_by(Payment.created_at.desc()).limit(safe_limit)
     )
@@ -329,8 +352,38 @@ async def my_payments(
             ),
         ))
 
+    spend_purposes = {
+        "created": "Покупка подписки",
+        "renewed": "Продление подписки",
+        "addons": "Докупка опций",
+    }
+    spend_rows = await session.execute(
+        select(SubscriptionEvent)
+        .where(SubscriptionEvent.user_id == billing_user_id)
+        .where(SubscriptionEvent.event_type.in_(("created", "renewed", "addons")))
+        .where(SubscriptionEvent.price_rub > 0)
+        .where((SubscriptionEvent.source.is_(None)) | (SubscriptionEvent.source != "backfill"))
+        .order_by(SubscriptionEvent.created_at.desc())
+        .limit(safe_limit)
+    )
+    for ev in spend_rows.scalars().all():
+        dated.append((
+            ev.created_at,
+            MyPaymentItem(
+                id=-(1_000_000_000 + int(ev.id)),
+                payment_id=str(ev.client_id) if ev.client_id else None,
+                amount=-float(ev.price_rub or 0),
+                currency="RUB",
+                status="success",
+                provider="spend",
+                created_at=ev.created_at.isoformat() if ev.created_at else None,
+                purpose=spend_purposes.get(ev.event_type, "Списание"),
+            ),
+        ))
+
     dated.sort(key=lambda r: (r[0] is not None, r[0]), reverse=True)
     items = [item for _, item in dated[:safe_limit]]
+    await cache_set(payments_key, [item.model_dump() for item in items], 60)
     return MyPaymentsResponse(ok=True, payments=items)
 
 

@@ -63,6 +63,19 @@ def build_settings_web_kb() -> InlineKeyboardBuilder:
             callback_data=AdminPanelCallback(action="settings_web_email_binding_toggle").pack(),
         )
     )
+    maintenance = bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False))
+    builder.row(
+        InlineKeyboardButton(
+            text=f"{'🛠 Тех. работы: ВКЛ' if maintenance else '🟢 Тех. работы: выкл'}",
+            callback_data=AdminPanelCallback(action="settings_web_maintenance_toggle").pack(),
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="✉️ Шаблоны писем",
+            callback_data=AdminPanelCallback(action="settings_email").pack(),
+        )
+    )
     builder.row(
         InlineKeyboardButton(
             text="🔄 Сбросить сайт к исходнику",
@@ -114,6 +127,27 @@ async def toggle_web_enabled(callback: CallbackQuery) -> None:
         await update_web_config(session, new_config)
 
     status = "✅ Сайт включён" if new_config["WEB_ENABLED"] else "❌ Сайт выключен"
+    await callback.answer(status, show_alert=True)
+    await callback.message.edit_text(
+        text=_web_settings_text(),
+        reply_markup=build_settings_web_kb().as_markup(),
+    )
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_maintenance_toggle"), flags={"popup": True})
+async def toggle_web_maintenance(callback: CallbackQuery) -> None:
+    current = bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False))
+    new_config = dict(WEB_CONFIG)
+    new_config["WEB_MAINTENANCE_MODE"] = not current
+
+    async with async_session_maker() as session:
+        await update_web_config(session, new_config)
+
+    status = (
+        "🛠 Сайт переведён на тех. работы: клиенты видят заглушку, админы работают как обычно"
+        if new_config["WEB_MAINTENANCE_MODE"]
+        else "🟢 Тех. работы на сайте выключены"
+    )
     await callback.answer(status, show_alert=True)
     await callback.message.edit_text(
         text=_web_settings_text(),

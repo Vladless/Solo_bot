@@ -54,6 +54,33 @@ def _client_bot_link(admin_ref: int | None):
     )
 
 
+def agent_controls_kb(ticket: Ticket, admin_ref: int | None = None):
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    rows = []
+    link = _client_bot_link(admin_ref)
+    if link is not None:
+        rows.extend(link.inline_keyboard)
+    tid = ticket.id
+    closed = ticket.status == "closed"
+    high = (ticket.priority or "normal") == "high"
+    if closed:
+        rows.append([InlineKeyboardButton(text="🔓 Открыть заново", callback_data=f"sf:open:{tid}")])
+    else:
+        rows.append([
+            InlineKeyboardButton(text="✅ Закрыть", callback_data=f"sf:close:{tid}"),
+            InlineKeyboardButton(text="🙋 Взять себе", callback_data=f"sf:mine:{tid}"),
+        ])
+        rows.append([
+            InlineKeyboardButton(text="⏳ В ожидание", callback_data=f"sf:pending:{tid}"),
+            InlineKeyboardButton(
+                text=("🔻 Обычный приоритет" if high else "🔺 Высокий приоритет"),
+                callback_data=f"sf:prio:{tid}",
+            ),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _post(topic_id: int, text: str | None = None, attachments: list | None = None, reply_markup=None) -> None:
     bot = _bot()
     chat_id = forum_chat_id()
@@ -149,17 +176,17 @@ async def ensure_topic(
             header += "\n" + ctx_text
     header += (
         "\n\nОтвечайте в этой теме — сообщение уйдёт клиенту."
-        "\nКоманды: /note /close /open /pending /priority /assign [id] /tag метка"
+        "\nДоп. команды: /note заметка · /assign [id] · /tag метка"
     )
     admin_ref = None
     if client is not None:
         from .service import resolve_billing_user_ref
 
         admin_ref = await resolve_billing_user_ref(session, client)
-    await _post(ticket.topic_id, text=header, reply_markup=_client_bot_link(admin_ref))
+    await _post(ticket.topic_id, text=header, reply_markup=agent_controls_kb(ticket, admin_ref))
     if first_body or first_attachments:
         await _post(
-            ticket.topic_id, text=f"👤 <b>Клиент:</b>\n{(first_body or '').strip()}", attachments=first_attachments
+            ticket.topic_id, text=(first_body or "").strip() or None, attachments=first_attachments
         )
     return ticket.topic_id
 
@@ -167,7 +194,7 @@ async def ensure_topic(
 async def post_client_message(ticket: Ticket, body: str, attachments: list | None = None) -> None:
     if not forum_enabled() or not ticket.topic_id:
         return
-    await _post(ticket.topic_id, text=f"👤 <b>Клиент:</b>\n{(body or '').strip()}", attachments=attachments)
+    await _post(ticket.topic_id, text=(body or "").strip() or None, attachments=attachments)
 
 
 async def post_system(ticket: Ticket, text: str) -> None:

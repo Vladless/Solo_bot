@@ -416,7 +416,8 @@ async def ensure_billing_user_for_identity(session: AsyncSession, identity: Iden
             await add_user(session, tid)
         ur = await session.execute(select(User).where(User.tg_id == tid).limit(1))
         u = ur.scalar_one()
-        await session.execute(update(User).where(User.id == u.id).values(identity_id=identity.id))
+        if u.identity_id != identity.id:
+            await session.execute(update(User).where(User.id == u.id).values(identity_id=identity.id))
         return int(u.id)
     res = await session.execute(select(User).where(User.identity_id == identity.id))
     row = res.scalars().first()

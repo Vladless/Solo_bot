@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.redis_cache import cache_delete, cache_get, cache_set
+from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_set
 from database.models import Setting
 
 
@@ -33,6 +33,7 @@ async def bump_site_revision(session: AsyncSession) -> int:
     if setting is None:
         session.add(Setting(key=_KEY, value=1))
         await cache_delete(_CACHE_KEY)
+        await cache_delete_pattern("web_page:*")
         return 1
     try:
         current = int(setting.value or 0)
@@ -40,4 +41,5 @@ async def bump_site_revision(session: AsyncSession) -> int:
         current = 0
     setting.value = current + 1
     await cache_delete(_CACHE_KEY)
+    await cache_delete_pattern("web_page:*")
     return current + 1

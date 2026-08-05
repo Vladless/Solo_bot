@@ -31,19 +31,15 @@ async def resolve_key(session: AsyncSession, tg_id: int, key_ref: str | int | No
 
     key_ref_str = str(key_ref)
 
-    key_obj = await get_key_by_email(session, key_ref_str, tg_id)
-    if key_obj:
-        return key_obj
-
-    key_obj = await get_key_by_client_id(session, key_ref_str, tg_id)
-    if key_obj:
-        return key_obj
-
     for candidate in await get_keys(session, tg_id):
         if build_key_ref(candidate.client_id, candidate.email) == key_ref_str:
             return await get_key_by_client_id(session, candidate.client_id, tg_id)
 
-    return None
+    key_obj = await get_key_by_email(session, key_ref_str, tg_id)
+    if key_obj:
+        return key_obj
+
+    return await get_key_by_client_id(session, key_ref_str, tg_id)
 
 
 def _escape_html(value: str) -> str:

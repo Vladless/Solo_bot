@@ -36,6 +36,29 @@ async def resolve_user_optional(session: AsyncSession, legacy_id: int) -> User |
     return r2.scalar_one_or_none()
 
 
+async def resolve_uid_cached(session: AsyncSession, legacy_id: int) -> int | None:
+    """Кешированный резолв legacy_ref → users.id для горячих читателей.
+
+    Маппинг практически иммутабелен (id не меняется, tg_id уникален), поэтому
+    безопасно кешируется. Негатив не кешируем — юзер может появиться сразу после /start.
+    """
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from settings.cache_config import UREF_CACHE_TTL_SEC
+
+    cached = await cache_get(cache_key("uref", legacy_id))
+    if cached is not None:
+        try:
+            return int(cached)
+        except (TypeError, ValueError):
+            pass
+    u = await resolve_user_optional(session, legacy_id)
+    if u is None:
+        return None
+    uid = int(u.id)
+    await cache_set(cache_key("uref", legacy_id), uid, UREF_CACHE_TTL_SEC)
+    return uid
+
+
 async def panel_identity_fields(session: AsyncSession, legacy_ref: int) -> tuple[int | None, str | None]:
     """Поля владельца ключа для внешней панели: (telegram_id, email).
 

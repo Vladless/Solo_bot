@@ -1,3 +1,5 @@
+import asyncio
+
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -10,9 +12,15 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot
 from core.bootstrap import MODES_CONFIG
+from core.redis_cache import cache_get, cache_key, cache_set
 from handlers.utils import edit_or_send_message
 from logger import logger
 from settings.buttons import SUB_CHANELL, SUB_CHANELL_DONE
+from settings.cache_config import (
+    SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC,
+    SUBSCRIPTION_CACHE_UNSUBSCRIBED_TTL_SEC,
+    SUBSCRIPTION_GET_CHAT_MEMBER_TIMEOUT_SEC,
+)
 from settings.config import CHANNEL_EXISTS, CHANNEL_ID, CHANNEL_REQUIRED, CHANNEL_URL
 from settings.texts import SUBSCRIPTION_REQUIRED_MSG
 
@@ -26,6 +34,9 @@ class SubscriptionMiddleware(BaseMiddleware):
     ) -> Any:
         channel_check_enabled = bool(MODES_CONFIG.get("CHANNEL_CHECK_ENABLED", CHANNEL_REQUIRED))
         if not CHANNEL_EXISTS or not channel_check_enabled:
+            return await handler(event, data)
+
+        if event.callback_query and event.callback_query.data == "check_subscription":
             return await handler(event, data)
 
         tg_id = None
@@ -57,12 +68,27 @@ class SubscriptionMiddleware(BaseMiddleware):
         else:
             return await handler(event, data)
 
+        ckey = cache_key("channel_sub", tg_id)
+        cached = await cache_get(ckey)
+        if cached is True:
+            return await handler(event, data)
+        if cached is False:
+            await self._store_user_state(data, message, from_user)
+            return await self._ask_to_subscribe(message)
+
         try:
-            member = await bot.get_chat_member(CHANNEL_ID, tg_id)
+            member = await asyncio.wait_for(
+                bot.get_chat_member(CHANNEL_ID, tg_id),
+                timeout=SUBSCRIPTION_GET_CHAT_MEMBER_TIMEOUT_SEC,
+            )
             if member.status not in ("member", "administrator", "creator"):
                 logger.info(f"[SubMiddleware] Пользователь {tg_id} не подписан")
+                await cache_set(ckey, False, SUBSCRIPTION_CACHE_UNSUBSCRIBED_TTL_SEC)
                 await self._store_user_state(data, message, from_user)
                 return await self._ask_to_subscribe(message)
+            await cache_set(ckey, True, SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC)
+        except TimeoutError:
+            logger.warning(f"[SubMiddleware] Таймаут проверки подписки {tg_id}, пропускаю без проверки")
         except (TelegramBadRequest, TelegramForbiddenError) as e:
             logger.warning(f"[SubMiddleware] Ошибка при проверке подписки {tg_id}: {e}")
             await self._store_user_state(data, message, from_user)

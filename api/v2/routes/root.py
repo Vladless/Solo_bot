@@ -162,18 +162,25 @@ async def site_config(session: AsyncSession = Depends(get_session)):
 
     from sqlalchemy import select
 
+    from core.redis_cache import cache_get, cache_key, cache_set
     from database.models import WebFlow
+    from database.site_revision import get_site_revision
 
-    trial_flow_ids: list[str] = []
-    flows_rows = await session.execute(select(WebFlow.id, WebFlow.nodes))
-    for flow_id, nodes in flows_rows.all():
-        for node in nodes or []:
-            if not isinstance(node, dict):
-                continue
-            action_cfg = node.get("action_config")
-            if isinstance(action_cfg, dict) and action_cfg.get("action_type") == "activate-trial":
-                trial_flow_ids.append(flow_id)
-                break
+    rev = await get_site_revision(session)
+    trial_key = cache_key("trial_flow_ids", rev)
+    trial_flow_ids = await cache_get(trial_key)
+    if not isinstance(trial_flow_ids, list):
+        trial_flow_ids = []
+        flows_rows = await session.execute(select(WebFlow.id, WebFlow.nodes))
+        for flow_id, nodes in flows_rows.all():
+            for node in nodes or []:
+                if not isinstance(node, dict):
+                    continue
+                action_cfg = node.get("action_config")
+                if isinstance(action_cfg, dict) and action_cfg.get("action_type") == "activate-trial":
+                    trial_flow_ids.append(flow_id)
+                    break
+        await cache_set(trial_key, trial_flow_ids, 300)
 
     return {
         "bot_username": bot_username or None,
@@ -181,6 +188,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
         "telegram_web_app_return_base": webapp_return_base,
         "project_name": (PROJECT_NAME or "Solo").strip() if isinstance(PROJECT_NAME, str) else "Solo",
         "site_mode": str(WEB_CONFIG.get("SITE_MODE", "full")).strip() or "full",
+        "maintenance": bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False)),
         "auth": {
             "telegram_login_enabled": bool(bot_username),
             "email_code_login_enabled": bool(MODES_CONFIG.get("WEB_EMAIL_CODE_LOGIN_ENABLED", True)),

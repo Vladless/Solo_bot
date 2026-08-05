@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import F, Router
 from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -5,6 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from core.bootstrap import MODES_CONFIG
 from database import async_session_maker
 from database.identities import get_or_create_identity_for_tg
 from handlers.support_bot.media import collect_attachment
@@ -42,10 +45,38 @@ def _fmt_dt(dt) -> str:
         return ""
 
 
+def _shadow_mode() -> bool:
+    return bool(MODES_CONFIG.get("SUPPORT_SHADOW_MODE", True))
+
+
+async def _answer_ephemeral(message: Message, text: str, delay: float = 4.0) -> None:
+    try:
+        sent = await message.answer(text)
+    except Exception:
+        return
+
+    async def _cleanup():
+        await asyncio.sleep(delay)
+        try:
+            await sent.delete()
+        except Exception:
+            pass
+
+    asyncio.create_task(_cleanup())
+
+
 async def _active_ticket(session, identity_id: str):
     tickets = await svc.list_for_identity(session, identity_id)
     for t in tickets:
         if t.status != svc.CLOSED:
+            return t
+    return None
+
+
+async def _latest_closed_ticket(session, identity_id: str):
+    tickets = await svc.list_for_identity(session, identity_id)
+    for t in tickets:
+        if t.status == svc.CLOSED:
             return t
     return None
 
@@ -95,6 +126,19 @@ async def start_plain(message: Message, state: FSMContext) -> None:
         identity = await get_or_create_identity_for_tg(session, message.from_user.id)
         tickets = await svc.list_for_identity(session, identity.id)
         await session.commit()
+    if _shadow_mode():
+        kb = None
+        if tickets:
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="📋 Мои обращения", callback_data="sc:list"))
+            kb = builder.as_markup()
+        await message.answer(
+            "<b>Служба поддержки</b>\n━━━━━━━━━━━━━━━\n\n"
+            "Просто напишите ваш вопрос — оператор ответит прямо здесь.\n\n"
+            "💡 Можно приложить скриншот или файл.",
+            reply_markup=kb,
+        )
+        return
     await state.set_state(IntakeSG.categorizing)
     await state.update_data(pending_body=None, pending_attachments=None)
     await message.answer(
@@ -105,6 +149,10 @@ async def start_plain(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "sc:new")
 async def cb_new(callback: CallbackQuery, state: FSMContext) -> None:
+    if _shadow_mode():
+        await callback.message.answer("Просто напишите ваш вопрос сообщением — оператор ответит здесь.")
+        await callback.answer()
+        return
     await state.set_state(IntakeSG.categorizing)
     await state.update_data(pending_body=None, pending_attachments=None)
     await callback.message.answer(_CATEGORY_PROMPT, reply_markup=_cat_kb().as_markup())
@@ -150,7 +198,11 @@ async def cb_rate(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Не удалось сохранить оценку", show_alert=True)
         return
     try:
-        await callback.message.edit_text(f"Спасибо за оценку! {'⭐' * rating}\n\nВаше мнение помогает нам стать лучше.")
+        await callback.message.edit_text(
+            f"Спасибо за оценку! {'⭐' * rating}\n\n"
+            "Ваше мнение помогает нам стать лучше.\n"
+            "Появится новый вопрос — просто напишите его сюда."
+        )
     except Exception:
         pass
     await callback.answer("Спасибо!")
@@ -207,7 +259,7 @@ async def cb_open(callback: CallbackQuery, state: FSMContext) -> None:
     if len(text) > 3900:
         text = text[-3900:]
     kb = InlineKeyboardBuilder()
-    if ticket.status != svc.CLOSED:
+    if ticket.status != svc.CLOSED and not _shadow_mode():
         kb.row(InlineKeyboardButton(text="✍️ Написать", callback_data="sc:new"))
     await callback.message.answer(text, reply_markup=kb.as_markup())
     await callback.answer()
@@ -265,6 +317,9 @@ async def _create_from_intake(target: Message, user_id: int, category, body: str
         ticket_id = ticket.id
         await svc.notify_agents_new_ticket(session, ticket=ticket)
         await session.commit()
+    if _shadow_mode():
+        await _answer_ephemeral(target, "✅ Передал в поддержку. Оператор ответит здесь.")
+        return
     await target.answer(
         f"✅ Обращение принято (<code>{ticket_id.split('-')[0][:8]}</code>).\n"
         "Оператор ответит здесь. Можете дополнять сообщение — всё придёт в поддержку."
@@ -283,6 +338,20 @@ async def on_intake(message: Message, state: FSMContext) -> None:
     await _create_from_intake(message, message.from_user.id, category, body, attachments)
 
 
+async def _shadow_reopen_and_append(message: Message, ticket_id: str) -> bool:
+    async with async_session_maker() as session:
+        ticket = await svc.set_status(session, ticket_id=ticket_id, status=svc.OPEN)
+        await session.commit()
+    if ticket is None:
+        return False
+    await _append_client_message(message, ticket_id)
+    try:
+        await svc.set_topic_state(ticket, closed=False)
+    except Exception:
+        pass
+    return True
+
+
 @router.message(F.text | F.caption | F.photo | F.document)
 async def on_free_text(message: Message, state: FSMContext) -> None:
     if (message.text or "").startswith("/"):
@@ -290,11 +359,23 @@ async def on_free_text(message: Message, state: FSMContext) -> None:
     async with async_session_maker() as session:
         identity = await get_or_create_identity_for_tg(session, message.from_user.id)
         active = await _active_ticket(session, identity.id)
+        closed = None if active is not None else await _latest_closed_ticket(session, identity.id)
         await session.commit()
         active_id = active.id if active is not None else None
+        closed_id = closed.id if closed is not None else None
     if active_id is not None:
         await _append_client_message(message, active_id)
-        await message.answer("✅ Передал в поддержку.")
+        await _answer_ephemeral(message, "✅ Передал в поддержку.")
+        return
+    if _shadow_mode():
+        if closed_id is not None and await _shadow_reopen_and_append(message, closed_id):
+            await _answer_ephemeral(message, "✅ Передал в поддержку.")
+            return
+        body, attachments = await collect_attachment(message)
+        if not body and not attachments:
+            await _answer_ephemeral(message, "Опишите проблему текстом или пришлите скриншот.")
+            return
+        await _create_from_intake(message, message.from_user.id, None, body, attachments)
         return
     body, attachments = await collect_attachment(message)
     if not body and not attachments:

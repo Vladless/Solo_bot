@@ -50,7 +50,13 @@ from .scheduled_service import (
 )
 from .sender_service import BroadcastService, run_broadcast_in_thread
 from .sender_states import AdminSender
-from .sender_utils import get_recipients, is_telegram_chat_id, parse_message_buttons
+from .sender_utils import (
+    channels_to_str,
+    get_recipients,
+    is_telegram_chat_id,
+    parse_channels,
+    parse_message_buttons,
+)
 
 
 def _broadcast_progress_text(completed: int, total: int, sent: int, failed: int, pending: int = 0) -> str:
@@ -155,12 +161,19 @@ def _broadcast_result_text(recipients: int, stats: dict) -> str:
     duration_str = (
         f"{duration_minutes} мин {duration_seconds} сек" if duration_minutes > 0 else f"{duration_seconds} сек"
     )
+    email_line = ""
+    if "email_sent" in stats:
+        email_line = f"📧 <b>Писем отправлено:</b> {stats['email_sent']}"
+        if stats.get("email_failed"):
+            email_line += f" (ошибок {stats['email_failed']})"
+        email_line += "\n"
     return (
         f"📤 <b>Рассылка завершена!</b>\n\n"
         f"👥 <b>Количество получателей:</b> {recipients}\n"
         f"✅ <b>Доставлено:</b> {stats['success_count']}\n"
         f"❌ <b>Не доставлено:</b> {stats['failed_count']}\n"
-        f"🚫 <b>Заблокировавших бота:</b> {stats['blocked_users']}\n\n"
+        f"🚫 <b>Заблокировавших бота:</b> {stats['blocked_users']}\n"
+        f"{email_line}\n"
         f"⏱️ <b>Время выполнения:</b> {duration_str}\n"
         f"⚡ <b>Средняя скорость:</b> {stats['avg_speed']:.1f} сообщений/сек"
     )
@@ -289,12 +302,12 @@ async def handle_broadcast_type(
             reply_markup=build_scheduled_broadcast_detail_kb(updated, page=page),
         )
         return
-    await callback_query.message.edit_text(
-        text="📢 Куда отправить рассылку?",
-        reply_markup=build_channel_kb(),
-    )
-    await state.update_data(type=callback_data.type, cluster_name=callback_data.data)
+    await state.update_data(type=callback_data.type, cluster_name=callback_data.data, channels=["bot", "site"])
     await state.set_state(AdminSender.waiting_for_channel)
+    await callback_query.message.edit_text(
+        text="📢 Куда отправить рассылку?\nОтметьте каналы и нажмите «Продолжить».",
+        reply_markup=build_channel_kb(["bot", "site"]),
+    )
 
 
 @router.callback_query(
@@ -307,14 +320,35 @@ async def handle_channel_select(
     callback_data: AdminSenderChannelCallback,
     state: FSMContext,
 ):
-    if callback_data.channel not in ("bot", "site", "both"):
+    token = callback_data.channel
+    data = await state.get_data()
+    channels = list(data.get("channels", ["bot", "site"]))
+
+    if token in ("bot", "site", "email"):
+        if token in channels:
+            channels.remove(token)
+        else:
+            channels.append(token)
+        await state.update_data(channels=channels)
+        try:
+            await callback_query.message.edit_reply_markup(reply_markup=build_channel_kb(channels))
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e).lower():
+                raise
+        await callback_query.answer()
         return
-    await state.update_data(channel=callback_data.channel)
-    await state.set_state(AdminSender.waiting_for_message)
-    await callback_query.message.edit_text(
-        text=_compose_message_text(),
-        reply_markup=build_admin_back_kb("sender"),
-    )
+
+    if token == "continue":
+        if not channels:
+            await callback_query.answer("Выберите хотя бы один канал", show_alert=True)
+            return
+        await state.update_data(channel=channels_to_str(channels))
+        await state.set_state(AdminSender.waiting_for_message)
+        await callback_query.message.edit_text(
+            text=_compose_message_text(),
+            reply_markup=build_admin_back_kb("sender"),
+        )
+        await callback_query.answer()
 
 
 @router.message(AdminSender.waiting_for_message, IsAdminFilter())
@@ -337,7 +371,7 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     send_to = data.get("type", "all")
     cluster_name = data.get("cluster_name")
     channel = data.get("channel", "both")
-    _, user_count = await get_recipients(session, send_to, cluster_name, telegram_only=channel == "bot")
+    _, user_count = await get_recipients(session, send_to, cluster_name, channel=channel)
 
     if keyboard:
         try:
@@ -400,7 +434,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         session,
         send_to,
         cluster_name,
-        telegram_only=channel == "bot",
+        channel=channel,
     )
 
     if not tg_ids:
@@ -412,10 +446,8 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         return
 
     status_message = callback_query.message
-    if channel == "both":
+    if "bot" in parse_channels(channel):
         total_users_for_bar = sum(1 for tid in tg_ids if is_telegram_chat_id(tid))
-    elif channel == "bot":
-        total_users_for_bar = total_users
     else:
         total_users_for_bar = 0
     await status_message.edit_text(

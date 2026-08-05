@@ -16,7 +16,6 @@ from aiogram.types import (
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
@@ -28,7 +27,6 @@ from database import (
     get_referral_stats,
 )
 from database.access.resolution import resolve_user_optional
-from database.models import Referral
 from database.tariffs import get_tariffs
 from logger import logger
 from services.payments.currency_rates import format_for_user
@@ -208,47 +206,24 @@ async def show_referral_qr(callback_query: CallbackQuery):
 @router.callback_query(F.data == "top_referrals")
 async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSession):
     user_id = callback_query.from_user.id
-    u = await resolve_user_optional(session, user_id)
-    uid = u.id if u is not None else None
+    from database.referrals import get_referral_position, get_top_referrals, get_user_referral_count
 
-    user_referral_count = 0
-    if uid is not None:
-        result = await session.execute(
-            select(func.count()).select_from(Referral).where(Referral.referrer_user_id == uid)
-        )
-        user_referral_count = result.scalar_one() or 0
+    user_referral_count = await get_user_referral_count(session, user_id)
 
     personal_block = "Твоё место в рейтинге:\n"
     if user_referral_count > 0:
-        subquery = (
-            select(func.count().label("cnt"))
-            .select_from(Referral)
-            .group_by(Referral.referrer_user_id)
-            .having(func.count() > user_referral_count)
-            .subquery()
-        )
-        result = await session.execute(select(func.count()).select_from(subquery))
-        user_position = result.scalar_one() + 1
+        user_position = await get_referral_position(session, user_referral_count)
         personal_block += f"{user_position}. {user_id} - {user_referral_count} чел."
     else:
         personal_block += "Ты еще не приглашал пользователей в проект."
 
-    result = await session.execute(
-        select(
-            Referral.referrer_user_id,
-            func.count(Referral.referred_user_id).label("referral_count"),
-        )
-        .group_by(Referral.referrer_user_id)
-        .order_by(desc("referral_count"))
-        .limit(5)
-    )
-    top_referrals = result.all()
+    top_referrals = await get_top_referrals(session, limit=5)
 
     is_admin = user_id in ADMIN_ID
     rows = ""
     for index, row in enumerate(top_referrals, 1):
-        referrer_id = str(row.referrer_user_id)
-        count = row.referral_count
+        referrer_id = str(row["referrer_user_id"])
+        count = row["referral_count"]
         display_id = referrer_id if is_admin else f"{referrer_id[:5]}*****"
         rows += f"{index}. {display_id} - {count} чел.\n"
 

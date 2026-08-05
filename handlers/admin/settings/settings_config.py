@@ -85,6 +85,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "WEB_TRIAL_DISABLED": "Отключить триал на сайте",
     "SUPPORT_TRIAGE_ENABLED": "Опросник поддержки",
     "SUPPORT_TICKETS_ENABLED": "Система тикетов",
+    "SUPPORT_SHADOW_MODE": "Тикеты без кнопок",
     "PROTECT_CONTENT_ENABLED": "Защита контента",
     "TARIFF_OPTIONS_PAGINATION": "Слайдер опций",
     "HWID_DELETE_COOLDOWN_ENABLED": "Кулдаун HWID",

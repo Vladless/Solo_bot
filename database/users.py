@@ -5,7 +5,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import resolve_uid_cached, resolve_user_optional
 from database.models import (
     BlockedUser,
     CouponUsage,
@@ -25,6 +25,7 @@ from database.models import (
 from logger import logger
 from settings.cache_config import (
     BALANCE_CACHE_TTL_SEC,
+    PREFERRED_CURRENCY_CACHE_TTL_SEC,
     USER_EXISTS_CACHE_TTL_SEC,
     USER_SNAPSHOT_CACHE_TTL_SEC,
 )
@@ -125,10 +126,9 @@ async def check_user_exists(session: AsyncSession, legacy_user_ref: int) -> bool
 
 
 async def get_balance(session: AsyncSession, legacy_user_ref: int) -> float:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return 0.0
-    uid = u.id
     cached = await cache_get(cache_key("balance", uid))
     if cached is not None:
         try:
@@ -159,8 +159,14 @@ async def set_user_balance(
 
 async def get_user_preferred_currency(session: AsyncSession, tg_id: int) -> str | None:
     """Предпочитаемая валюта пользователя по ``tg_id``, если установлена."""
+    ckey = cache_key("pref_ccy", tg_id)
+    cached = await cache_get(ckey)
+    if isinstance(cached, str):
+        return cached or None
     result = await session.execute(select(User.preferred_currency).where(User.tg_id == int(tg_id)))
-    return result.scalar()
+    value = result.scalar()
+    await cache_set(ckey, value or "", PREFERRED_CURRENCY_CACHE_TTL_SEC)
+    return value
 
 
 async def mark_trial_started_if_eligible(session: AsyncSession, tg_id: int) -> None:
@@ -188,24 +194,24 @@ async def update_trial(session: AsyncSession, legacy_user_ref: int, status: int)
 
 
 async def get_trial(session: AsyncSession, legacy_user_ref: int) -> int:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return 0
-    result = await session.execute(select(func.coalesce(User.trial, 0)).where(User.id == u.id))
+    result = await session.execute(select(func.coalesce(User.trial, 0)).where(User.id == uid))
     trial = result.scalar_one_or_none()
     return int(trial or 0)
 
 
 async def get_balance_and_trial(session: AsyncSession, legacy_user_ref: int) -> tuple[float, int]:
     """Один запрос к БД для баланса и триала (профиль при промахе кэша)."""
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return 0.0, 0
     result = await session.execute(
         select(
             func.coalesce(User.balance, 0.0),
             func.coalesce(User.trial, 0),
-        ).where(User.id == u.id)
+        ).where(User.id == uid)
     )
     row = result.one_or_none()
     if row is None:
@@ -219,8 +225,8 @@ async def get_balance_trial_key_count(session: AsyncSession, legacy_user_ref: in
     Один запрос: баланс, триал и число ключей пользователя (для профиля при промахе кэша).
     Возвращает (balance_rub, trial_status, key_count).
     """
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return 0.0, 0, 0
     key_count_subq = select(func.count()).select_from(Key).where(Key.user_id == User.id).scalar_subquery()
     result = await session.execute(
@@ -228,7 +234,7 @@ async def get_balance_trial_key_count(session: AsyncSession, legacy_user_ref: in
             func.coalesce(User.balance, 0.0),
             func.coalesce(User.trial, 0),
             key_count_subq,
-        ).where(User.id == u.id)
+        ).where(User.id == uid)
     )
     row = result.one_or_none()
     if row is None:
@@ -387,10 +393,9 @@ async def mark_trial_extended(legacy_user_ref: int, session: AsyncSession):
 
 
 async def get_user_snapshot(session: AsyncSession, legacy_user_ref: int) -> tuple[int, int] | None:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return None
-    uid = u.id
     cached = await cache_get(cache_key("user_snapshot", uid))
     if isinstance(cached, list) and len(cached) == 2:
         return (int(cached[0]), int(cached[1]))

@@ -46,7 +46,7 @@ ALIAS = "✏️"
 TOP_FIVE = "🏆 Топ-5"
 
 PAYMENT = "💳 Пополнить баланс"
-BALANCE_HISTORY = "📊 История пополнения"
+BALANCE_HISTORY = "📊 Транзакции"
 COUPON = "🎟️ Активировать купон"
 COUPON_RESTART = "🎟️ Попробовать другой купон"
 

@@ -3,11 +3,18 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.redis_cache import cache_delete, cache_key
 from database.models import Identity, IdentitySession
 from settings.config import API_TOKEN_TTL_DAYS
 
 
 _LAST_SEEN_TOUCH_SECONDS = 60
+
+
+async def _drop_auth_cache(*token_hashes: str | None) -> None:
+    for th in token_hashes:
+        if th:
+            await cache_delete(cache_key("auth_actor", th))
 
 
 def _device_label_from_user_agent(user_agent: str | None) -> str:
@@ -55,6 +62,16 @@ async def create_identity_session(
     label = device_label or _device_label_from_user_agent(user_agent)
 
     if user_agent:
+        stale_hashes = list(
+            (
+                await session.execute(
+                    select(IdentitySession.token_hash).where(
+                        IdentitySession.identity_id == identity.id,
+                        IdentitySession.user_agent == user_agent,
+                    )
+                )
+            ).scalars()
+        )
         existing = await session.scalar(
             select(IdentitySession)
             .where(
@@ -78,6 +95,7 @@ async def create_identity_session(
             existing.last_seen_at = now
             existing.expires_at = expires_at
             await session.flush()
+            await _drop_auth_cache(*stale_hashes)
             return existing
 
     obj = IdentitySession(
@@ -113,26 +131,43 @@ async def list_sessions_for_identity(session: AsyncSession, identity_id: str) ->
 
 async def delete_session_by_id(session: AsyncSession, *, session_id: str, identity_id: str) -> bool:
     """Удаляет сессию по id при условии, что она принадлежит identity_id."""
+    th = await session.scalar(
+        select(IdentitySession.token_hash)
+        .where(IdentitySession.id == session_id)
+        .where(IdentitySession.identity_id == identity_id)
+    )
     result = await session.execute(
         delete(IdentitySession)
         .where(IdentitySession.id == session_id)
         .where(IdentitySession.identity_id == identity_id)
     )
+    await _drop_auth_cache(th)
     return (result.rowcount or 0) > 0
 
 
 async def delete_session_by_token_hash(session: AsyncSession, token_hash: str) -> bool:
     result = await session.execute(delete(IdentitySession).where(IdentitySession.token_hash == token_hash))
+    await _drop_auth_cache(token_hash)
     return (result.rowcount or 0) > 0
 
 
 async def delete_other_sessions(session: AsyncSession, *, identity_id: str, keep_token_hash: str) -> int:
     """Удаляет все сессии identity кроме той, которая соответствует keep_token_hash."""
+    stale_hashes = list(
+        (
+            await session.execute(
+                select(IdentitySession.token_hash)
+                .where(IdentitySession.identity_id == identity_id)
+                .where(IdentitySession.token_hash != keep_token_hash)
+            )
+        ).scalars()
+    )
     result = await session.execute(
         delete(IdentitySession)
         .where(IdentitySession.identity_id == identity_id)
         .where(IdentitySession.token_hash != keep_token_hash)
     )
+    await _drop_auth_cache(*stale_hashes)
     return int(result.rowcount or 0)
 
 

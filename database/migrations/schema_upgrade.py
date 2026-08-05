@@ -1384,6 +1384,16 @@ async def _migration_v29_add_scheduled_broadcasts_channel(conn: AsyncConnection)
         )
 
 
+async def _migration_v49_widen_scheduled_broadcasts_channel(conn: AsyncConnection) -> None:
+    logger.info("[schema_upgrade] v49: scheduled_broadcasts.channel → VARCHAR(32)")
+    if not await _table_exists(conn, "scheduled_broadcasts"):
+        return
+    await _exec_ignore(
+        conn,
+        "ALTER TABLE scheduled_broadcasts ALTER COLUMN channel TYPE VARCHAR(32)",
+    )
+
+
 async def _migration_v30_add_users_created_at_index(conn: AsyncConnection) -> None:
     logger.info("[schema_upgrade] v30: индекс users(created_at)")
     if not await _table_exists(conn, "users"):
@@ -1821,6 +1831,7 @@ _MIGRATIONS = [
     (46, "tickets.rating/tags/ref (CSAT, теги, контекст)", _migration_v46_ticket_extras),
     (47, "tickets.topic_id (форум-темы)", _migration_v47_ticket_topic_id),
     (48, "tickets/ticket_messages → timestamptz (UTC)", _migration_v48_ticket_timestamptz),
+    (49, "scheduled_broadcasts.channel → VARCHAR(32) (мультиканал)", _migration_v49_widen_scheduled_broadcasts_channel),
 ]
 
 

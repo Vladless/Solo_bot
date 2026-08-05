@@ -156,7 +156,7 @@ async def try_auto_renew(ctx: NotificationContext, key) -> RenewalResult:
         debited = await update_balance(ctx.session, tg_id, -renewal_cost)
         if debited is None:
             return RenewalResult(RenewalStatus.NO_BALANCE)
-        await update_key_expiry(ctx.session, client_id, new_expiry_time)
+        await update_key_expiry(ctx.session, client_id, new_expiry_time, price_rub=float(renewal_cost))
         await update_key_tariff(ctx.session, client_id, current_tariff["id"])
         await add_notification(ctx.session, tg_id, renew_notification_id)
 

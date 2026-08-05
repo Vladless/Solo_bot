@@ -249,8 +249,19 @@ async def get_vless_enabled_batch(session: AsyncSession, tariff_ids: list[int]) 
     if not tariff_ids:
         return {}
     unique_ids = list(dict.fromkeys(tariff_ids))
-    result = await session.execute(select(Tariff.id, Tariff.vless).where(Tariff.id.in_(unique_ids)))
-    return {row[0]: bool(row[1]) for row in result.all()}
+    out: dict[int, bool] = {}
+    missing: list[int] = []
+    for tid in unique_ids:
+        cached = await cache_get(cache_key("tariff", tid))
+        if isinstance(cached, dict):
+            out[tid] = bool(cached.get("vless"))
+        else:
+            missing.append(tid)
+    if missing:
+        result = await session.execute(select(Tariff.id, Tariff.vless).where(Tariff.id.in_(missing)))
+        for row in result.all():
+            out[row[0]] = bool(row[1])
+    return out
 
 
 async def get_tariff_sort_order(session: AsyncSession, tariff_id: int) -> int:

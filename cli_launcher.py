@@ -59,7 +59,7 @@ def _bootstrap_rpc() -> None:
     try:
         import core.rpc  # noqa: F401
 
-        if hasattr(core.rpc, "adopt_beta_files"):
+        if hasattr(core.rpc, "fetch_bot_proxy_template"):
             return
     except Exception:
         pass
@@ -94,6 +94,34 @@ def _bootstrap_rpc() -> None:
         sys.exit(1)
 
 
+def _reexec_into_target_python() -> None:
+    if sys.platform != "linux" or os.environ.get("_SOLOBOT_REEXEC") == "1":
+        return
+    proj = os.path.abspath(os.path.dirname(__file__))
+    venv_py = os.path.join(proj, "venv", "bin", "python")
+    target = None
+    if os.path.exists(venv_py):
+        target = venv_py
+    elif sys.version_info[:2] != (3, 12):
+        target = shutil.which("python3.12")
+    if not target:
+        return
+    try:
+        if os.path.realpath(target) == os.path.realpath(sys.executable):
+            return
+    except Exception:
+        return
+    try:
+        os.execve(
+            target,
+            [target, os.path.abspath(__file__), *sys.argv[1:]],
+            dict(os.environ, _SOLOBOT_REEXEC="1"),
+        )
+    except Exception:
+        pass
+
+
+_reexec_into_target_python()
 _ensure_cli_deps()
 _bootstrap_rpc()
 
@@ -103,6 +131,7 @@ from core.rpc import (  # noqa: E402
     extract_version,
     local_version,
     migrate_settings_layout,
+    project_uses_new_layout,
     resolve_config_path,
     resolve_texts_path,
     settings_gate,
@@ -431,14 +460,25 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.0.0"
+CLI_VERSION = "v1.0.2"
 
 
 def _ensure_solobot_command() -> None:
     if sys.platform != "linux":
         return
     cli_name = os.path.basename(os.path.abspath(__file__))
-    wrapper = f'#!/bin/bash\ncd {PROJECT_DIR} && python3 {cli_name} "$@"\n'
+    wrapper = (
+        "#!/bin/bash\n"
+        f'cd "{PROJECT_DIR}" || exit 1\n'
+        f'if [ -x "{VENV_PYTHON}" ]; then\n'
+        f'  PY="{VENV_PYTHON}"\n'
+        "elif command -v python3.12 >/dev/null 2>&1; then\n"
+        '  PY="$(command -v python3.12)"\n'
+        "else\n"
+        '  PY="python3"\n'
+        "fi\n"
+        f'exec "$PY" "{cli_name}" "$@"\n'
+    )
     try:
         if os.path.isfile(SOLOBOT_CMD_PATH):
             with open(SOLOBOT_CMD_PATH, encoding="utf-8") as fh:
@@ -984,7 +1024,9 @@ def install_bot():
             "[warn]Понадобятся два файла с сайта:[/warn] [bold]config.py[/bold] и [bold]texts.py[/bold] "
             "(токен, доступ к БД, тексты). Если их ещё нет — CLI остановится и подскажет, куда их положить.\n\n"
             "[err.bold]Важно:[/err.bold] боту обязательно нужен [bold]домен с HTTPS[/bold]. Без него Telegram не доставляет "
-            "сообщения и не работают ссылки подписок. Домен указывается на сайте при генерации config.py.",
+            "сообщения и не работают ссылки подписок. Домен указывается на сайте при генерации config.py.\n"
+            "[text]HTTPS CLI может настроить сам — предложит выбор: Caddy (сертификат сам), "
+            "Nginx + certbot, или пропустить, если прокси уже есть.[/text]",
             border_style="ok",
             width=_PANEL_W,
             title="[ok.bold]Автоматическая установка SoloBot[/ok.bold]",
@@ -995,7 +1037,7 @@ def install_bot():
     if not safe_confirm("Запустить автоматическую установку?", default=True):
         return
 
-    total = 8
+    total = 9
     try:
         step_rule(1, total, "Файлы проекта")
         console.print(
@@ -1012,20 +1054,37 @@ def install_bot():
             "[faint]config.py и texts.py вы получаете на сайте (там задаются токен бота, доступ к базе данных, тексты). "
             "В исходниках их нет, поэтому без этих двух файлов установка не продолжится.[/faint]"
         )
-        config_path = resolve_config_path(PROJECT_DIR)
-        texts_path = resolve_texts_path(PROJECT_DIR)
+        migrate_settings_layout(PROJECT_DIR, out=console.print)
+
+        installed_ver = local_version(PROJECT_DIR) or "неизвестна"
+        layout_hint = (
+            "settings/ (версии выше 5.1.2 и бета)"
+            if project_uses_new_layout(PROJECT_DIR)
+            else "корень проекта и handlers/ (версии до 5.1.2 включительно)"
+        )
+        console.print(f"[accent]Версия бота: {installed_ver}[/accent] [faint]→ файлы настроек: {layout_hint}[/faint]")
+
+        def _cfg_paths():
+            return resolve_config_path(PROJECT_DIR), resolve_texts_path(PROJECT_DIR)
 
         def _missing_cfg():
-            migrate_settings_layout(PROJECT_DIR, out=console.print)
+            moved = migrate_settings_layout(PROJECT_DIR, out=console.print)
+            if moved:
+                step_ok("Нашёл файлы в местах от другой версии и перенёс их куда нужно.")
+            cp, tp = _cfg_paths()
             miss = []
-            if not os.path.exists(config_path):
-                miss.append(os.path.relpath(config_path, PROJECT_DIR))
-            if not os.path.exists(texts_path):
-                miss.append(os.path.relpath(texts_path, PROJECT_DIR))
+            if not os.path.exists(cp):
+                miss.append(os.path.relpath(cp, PROJECT_DIR))
+            if not os.path.exists(tp):
+                miss.append(os.path.relpath(tp, PROJECT_DIR))
             return miss
 
-        while _missing_cfg():
-            step_warn("Пока нет файлов: " + ", ".join(_missing_cfg()))
+        while True:
+            missing = _missing_cfg()
+            if not missing:
+                break
+            config_path, texts_path = _cfg_paths()
+            step_warn("Пока нет файлов: " + ", ".join(missing))
             console.print(
                 Panel(
                     "[text]Положите рядом с ботом два файла, которые вы скачиваете на сайте:[/text]\n\n"
@@ -1037,7 +1096,7 @@ def install_bot():
                     "[text]Как загрузить (команды с вашего компьютера):[/text]\n"
                     f"  • [bold]scp config.py root@ВАШ_IP:{config_path}[/bold]\n"
                     f"  • [bold]scp texts.py root@ВАШ_IP:{texts_path}[/bold]\n"
-                    "  • если файлы окажутся в местах от другой версии бота — CLI сам перенесёт их куда нужно.\n"
+                    "  • положили не туда (места от другой версии)? — не страшно, CLI сам перенесёт куда нужно.\n"
                     "  • либо перетащите файлы в FileZilla/SFTP по этим путям.\n\n"
                     "[faint]В этих файлах ваши токены и пароли — никому не пересылайте их.[/faint]",
                     border_style="warn",
@@ -1049,7 +1108,8 @@ def install_bot():
             if not safe_confirm("Загрузили файлы? Проверить снова?", default=True):
                 step_warn("Установка приостановлена. Запустите снова, когда загрузите файлы: sudo solobot")
                 return
-        step_ok("config.py и texts.py на месте.")
+        config_path, texts_path = _cfg_paths()
+        step_ok(f"config.py и texts.py на месте: {os.path.relpath(config_path, PROJECT_DIR)}, {os.path.relpath(texts_path, PROJECT_DIR)}")
 
         console.print(
             f"[warn]Напоминание:[/warn] config.py — это шаблон с пустыми значениями. "
@@ -1076,12 +1136,19 @@ def install_bot():
                 step_warn("Установка остановлена. Подготовьте домен и запустите снова: sudo solobot")
                 return
 
-        step_rule(3, total, "Системные пакеты")
+        step_rule(3, total, "HTTPS для бота")
+        console.print(
+            "[faint]Telegram доставляет сообщения только на HTTPS. CLI может сам поставить реверс-прокси "
+            "и выпустить сертификат — или пропустите шаг, если прокси уже настроен.[/faint]"
+        )
+        setup_bot_https(domain)
+
+        step_rule(4, total, "Системные пакеты")
         console.print("[faint]git, rsync, Python 3.12 и модуль venv — это база, без которой бот не запустится.[/faint]")
         install_core_packages_if_needed()
         step_ok("Системные пакеты готовы.")
 
-        step_rule(4, total, "Python-окружение")
+        step_rule(5, total, "Python-окружение")
         console.print("[faint]Создаю виртуальное окружение venv/ и ставлю зависимости из requirements.txt.[/faint]")
         install_dependencies()
         if not os.path.exists(VENV_PYTHON):
@@ -1089,7 +1156,7 @@ def install_bot():
             return
         step_ok("Зависимости установлены.")
 
-        step_rule(5, total, "Данные (PostgreSQL и Redis)")
+        step_rule(6, total, "Данные (PostgreSQL и Redis)")
         console.print(
             "[faint]Зададим доступ к базе данных (Enter — значения по умолчанию). Эти значения пропишутся "
             "в config.py и в контейнер PostgreSQL, чтобы бот и база точно совпали. Затем подниму PostgreSQL и Redis.[/faint]"
@@ -1103,7 +1170,7 @@ def install_bot():
                 "docker compose -f docker-compose.local.yml up -d"
             )
 
-        step_rule(6, total, "База данных")
+        step_rule(7, total, "База данных")
         console.print(
             "[faint]Создаю таблицы по доступам из config.py. "
             "Если данные базы в config.py неверные — шаг можно завершить позже, перезапустив бота из меню.[/faint]"
@@ -1118,7 +1185,7 @@ def install_bot():
                 "Пересоздать БД (СОТРЁТ данные): docker compose -f docker-compose.local.yml down -v, затем переустановите.[/faint]"
             )
 
-        step_rule(7, total, "Служба автозапуска")
+        step_rule(8, total, "Служба автозапуска")
         console.print(
             "[faint]Создаю systemd-службу, чтобы бот стартовал сам и поднимался после перезагрузки сервера.[/faint]"
         )
@@ -1127,7 +1194,7 @@ def install_bot():
             return
         step_ok(f"Служба {SERVICE_NAME} настроена.")
 
-        step_rule(8, total, "Права и запуск")
+        step_rule(9, total, "Права и запуск")
         console.print(
             "[faint]Назначаю владельца и права на файлы проекта, закрываю секреты (config.py, тексты) и запускаю бота.[/faint]"
         )
@@ -2885,6 +2952,171 @@ def _print_manual_caddy_hint(domain: str, web_port: int) -> None:
         )
     )
     console.print(f"\n[faint]---8<--- Caddyfile ---8<---[/faint]\n{snippet}\n[faint]---8<--- end ---8<---[/faint]\n")
+
+
+def _read_config_port(key: str, default: int) -> int:
+    try:
+        text = open(resolve_config_path(PROJECT_DIR), encoding="utf-8").read()
+        m = re.search(rf"^{key}\s*=\s*(\d+)", text, re.M)
+        return int(m.group(1)) if m else default
+    except Exception:
+        return default
+
+
+def _fetch_bot_proxy_conf(kind: str, host: str, bot_port: int) -> str | None:
+    try:
+        from core import rpc as _rpc
+
+        fetch = getattr(_rpc, "fetch_bot_proxy_template", None)
+        if fetch is None:
+            return None
+        template = fetch(PROJECT_DIR, kind)
+    except Exception:
+        return None
+    if not template:
+        return None
+    sub_path = _read_config_str("SUB_PATH") or "/sub/"
+    webhook_path = _read_config_str("WEBHOOK_PATH") or "/webhook"
+    return (
+        template.replace("{DOMAIN}", host)
+        .replace("{BOT_PORT}", str(bot_port))
+        .replace("{SUB_PATH}", sub_path)
+        .replace("{WEBHOOK_PATH}", webhook_path)
+    )
+
+
+def _setup_bot_nginx(domain: str, conf: str) -> bool:
+    conf_path = f"/etc/nginx/sites-available/solo-bot-{domain}"
+    enabled_path = f"/etc/nginx/sites-enabled/solo-bot-{domain}"
+    try:
+        with open("/tmp/_solo_bot_nginx.conf", "w") as f:
+            f.write(conf)
+        subprocess.run(["sudo", "cp", "/tmp/_solo_bot_nginx.conf", conf_path], check=True)
+        subprocess.run(["sudo", "ln", "-sf", conf_path, enabled_path], check=True)
+        subprocess.run(["sudo", "nginx", "-t"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["sudo", "systemctl", "reload", "nginx"], check=True)
+        return True
+    except subprocess.CalledProcessError:
+        step_warn("Не удалось настроить nginx для бота.")
+        return False
+
+
+def _setup_bot_caddy(domain: str, block: str) -> bool:
+    caddyfile = "/etc/caddy/Caddyfile"
+    try:
+        subprocess.run(["sudo", "mkdir", "-p", "/etc/caddy"], check=True)
+        if not os.path.isfile(caddyfile):
+            subprocess.run(["sudo", "touch", caddyfile], check=True)
+        with open("/tmp/_solo_bot_caddy.conf", "w") as f:
+            f.write(f"\n# --- SoloBot ({domain}) ---\n{block}\n")
+        subprocess.run(["sudo", "bash", "-c", f"cat /tmp/_solo_bot_caddy.conf >> {caddyfile}"], check=True)
+        subprocess.run(
+            ["sudo", "caddy", "validate", "--adapter", "caddyfile", "--config", caddyfile],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(["sudo", "systemctl", "reload", "caddy"], check=True)
+        return True
+    except subprocess.CalledProcessError:
+        step_warn("Не удалось настроить Caddy для бота.")
+        return False
+
+
+def _print_manual_bot_proxy_hint(conf: str, prefer_caddy: bool) -> None:
+    if prefer_caddy:
+        head = (
+            "[text]Добавьте блок ниже в [accent]/etc/caddy/Caddyfile[/accent] и перезагрузите Caddy:[/text]\n"
+            "[faint]sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy[/faint]\n"
+            "[faint]SSL Caddy выпустит сам — certbot не нужен.[/faint]"
+        )
+    else:
+        head = (
+            "[text]Сохраните конфиг ниже в [accent]/etc/nginx/sites-available/[/accent], включите его "
+            "и выпустите сертификат:[/text]\n"
+            "[faint]sudo nginx -t && sudo systemctl reload nginx && sudo certbot --nginx -d ВАШ_ДОМЕН[/faint]"
+        )
+    console.print(
+        Panel(
+            head,
+            border_style="warn",
+            width=_PANEL_W,
+            title="[warn.bold]HTTPS для бота — ручная настройка[/warn.bold]",
+            padding=(1, 2),
+        )
+    )
+    console.print(f"[faint]---8<---[/faint]\n{conf}\n[faint]---8<---[/faint]")
+
+
+def setup_bot_https(domain: str) -> None:
+    host = (domain or "").replace("https://", "").replace("http://", "").strip("/ ")
+    if not host:
+        step_warn("Домен не указан — пропускаю настройку HTTPS. Без него бот не получит сообщения из Telegram.")
+        return
+    bot_port = _read_config_port("WEBAPP_PORT", 3001)
+    px = _detect_proxies()
+    if px["nginx_active"] and px["caddy_active"]:
+        console.print(
+            "[warn]Одновременно запущены nginx и Caddy — они конфликтуют за порты 80/443. "
+            "Выберите один и остановите второй.[/warn]"
+        )
+
+    opts = [
+        ("caddy", "Caddy — сертификат выпускается сам, самый простой вариант"
+         + (" (уже установлен)" if px["caddy_installed"] else " — установлю автоматически")),
+        ("nginx", "Nginx + сертификат Let's Encrypt (certbot)"
+         + (" (уже установлен)" if px["nginx_installed"] else " — установлю автоматически")),
+        ("skip", "Пропустить — прокси уже настроен или настрою вручную"),
+    ]
+    if px["nginx_active"] and not px["caddy_active"]:
+        default_idx = 2
+    elif px["caddy_active"]:
+        default_idx = 1
+    else:
+        default_idx = 1
+    console.print("[accent]Как настроить HTTPS для бота:[/accent]")
+    for i, (_, label) in enumerate(opts, 1):
+        console.print(f"  {i}. {label}")
+    sel = safe_prompt(
+        "Выбор", choices=[str(i) for i in range(1, len(opts) + 1)], default=str(default_idx), show_choices=False
+    )
+    choice = opts[int(sel) - 1][0]
+
+    if choice == "skip":
+        step_warn(f"Пропущено. Бот слушает 127.0.0.1:{bot_port} — направьте на него HTTPS-домен {host}.")
+        return
+
+    conf = _fetch_bot_proxy_conf(choice, host, bot_port)
+    if not conf:
+        step_warn(
+            "Не удалось получить шаблон прокси с сайта (нет сети или сессия CLI устарела). "
+            f"Настройте прокси вручную по вики: {WIKI_URL}"
+        )
+        return
+
+    if choice == "caddy":
+        conflict = _caddy_domain_conflict(host)
+        if conflict:
+            step_warn(f"Домен {host} уже есть в Caddy ({conflict}) — считаю, что прокси настроен.")
+            return
+        if _ensure_caddy() and _setup_bot_caddy(host, conf):
+            step_ok(f"Caddy настроен: https://{host} → бот. SSL выпустится автоматически.")
+        else:
+            _print_manual_bot_proxy_hint(conf, prefer_caddy=True)
+        return
+
+    conflict = _nginx_domain_conflict(host)
+    if conflict:
+        step_warn(f"Домен {host} уже есть в nginx ({conflict}) — считаю, что прокси настроен.")
+        return
+    if _ensure_nginx() and _setup_bot_nginx(host, conf):
+        step_ok(f"nginx настроен: {host} → бот.")
+        if _setup_ssl(host):
+            step_ok(f"SSL выпущен: https://{host} работает.")
+        else:
+            step_warn(f"SSL пока не выпущен. После настройки DNS: sudo certbot --nginx -d {host}")
+    else:
+        _print_manual_bot_proxy_hint(conf, prefer_caddy=False)
 
 
 def _ensure_certbot_nginx() -> bool:

@@ -69,6 +69,7 @@ storage/
 static/web_uploads/
 
 .license_state
+.license_lease
 Solo_backup/
 
 # Node / Next.js artifacts (root — web-app has its own)

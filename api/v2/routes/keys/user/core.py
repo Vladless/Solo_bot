@@ -26,17 +26,28 @@ async def user_keys(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
+    from core.redis_cache import cache_get, cache_key, cache_set
+
     billing_user_id = await _resolve_billing_user_id(request, identity, session)
     keys = await get_keys(session, billing_user_id)
     result: list[AccountKeyResponse] = []
     for key in keys:
         key_actions = AccountKeyActionsAvailability()
-        try:
-            key_ref = str(getattr(key, "client_id", "") or getattr(key, "email", "") or "")
-            _, markup, _ = await build_key_view_payload(session, int(billing_user_id), key_ref)
-            key_actions = _extract_key_actions_from_markup(markup)
-        except Exception:
-            key_actions = AccountKeyActionsAvailability()
+        key_ref = str(getattr(key, "client_id", "") or getattr(key, "email", "") or "")
+        actions_key = cache_key("key_actions", key_ref)
+        cached_actions = await cache_get(actions_key)
+        if isinstance(cached_actions, dict):
+            try:
+                key_actions = AccountKeyActionsAvailability.model_validate(cached_actions)
+            except Exception:
+                cached_actions = None
+        if not isinstance(cached_actions, dict):
+            try:
+                _, markup, _ = await build_key_view_payload(session, int(billing_user_id), key_ref)
+                key_actions = _extract_key_actions_from_markup(markup)
+                await cache_set(actions_key, key_actions.model_dump(), 60)
+            except Exception:
+                key_actions = AccountKeyActionsAvailability()
         if key_actions.can_renew and not _is_renew_available(int(getattr(key, "expiry_time", 0) or 0)):
             key_actions.can_renew = False
         result.append(
@@ -74,21 +85,27 @@ async def user_key_connection(
 ):
     """Лёгкая инфо о текущей подписке: онлайн/offline, сервер, протокол, дни до окончания."""
     billing_user_id = await _resolve_billing_user_id(request, identity, session)
-    db_key = (
-        await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
-    ).scalar_one_or_none()
+    db_key = next(
+        (k for k in await get_keys(session, billing_user_id) if str(getattr(k, "client_id", "")) == client_id),
+        None,
+    )
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     server_name = str(getattr(db_key, "server_id", "") or "")
     cluster_name = ""
     panel_type = ""
     if server_name:
-        srv = (
-            await session.execute(select(Server).where(Server.server_name == server_name).limit(1))
-        ).scalar_one_or_none()
-        if srv is not None:
-            cluster_name = str(getattr(srv, "cluster_name", "") or "")
-            panel_type = str(getattr(srv, "panel_type", "") or "").lower()
+        from database.servers import get_servers
+
+        grouped = await get_servers(session, include_enabled=True)
+        for cl_name, servers in grouped.items():
+            for s in servers:
+                if s.get("server_name") == server_name:
+                    cluster_name = str(cl_name or "")
+                    panel_type = str(s.get("panel_type") or "").lower()
+                    break
+            if panel_type or cluster_name:
+                break
     expiry_ms = int(getattr(db_key, "expiry_time", 0) or 0)
     is_frozen = bool(getattr(db_key, "is_frozen", False))
     now_ms = int(time.time() * 1000)

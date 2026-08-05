@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import resolve_uid_cached, resolve_user_optional
 from database.models import Key, Tariff, User
 from database.users import invalidate_profile_cache, invalidate_user_snapshot
 from logger import logger
@@ -30,6 +30,7 @@ async def _purge_keys_cache_ids(*ids: int) -> None:
     for i in ids:
         await cache_delete(cache_key("keys_list", i))
         await cache_delete(cache_key("key_count", i))
+        await cache_delete(cache_key("user_squads", i))
         await invalidate_profile_cache(i)
 
 
@@ -47,6 +48,7 @@ async def invalidate_keys_list(session: AsyncSession, legacy_user_ref: int) -> N
 async def invalidate_key_details_by_client_id(session: AsyncSession, client_id: str) -> None:
     email = await cache_get(cache_key("key_email", client_id))
     await cache_delete(cache_key("key_email", client_id))
+    await cache_delete(cache_key("key_actions", client_id))
     if email:
         await invalidate_key_details(str(email))
     else:
@@ -175,10 +177,9 @@ def _key_to_cache_dict(k: Key) -> dict:
 
 
 async def get_keys(session: AsyncSession, legacy_user_ref: int):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return []
-    uid = u.id
     ckey = cache_key("keys_list", uid)
     cached = await cache_get(ckey)
     if isinstance(cached, list):
@@ -196,10 +197,10 @@ async def get_all_keys(session: AsyncSession):
 
 
 async def get_key_by_server(session: AsyncSession, legacy_user_ref: int, client_id: str):
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return None
-    stmt = select(Key).where(Key.user_id == u.id, Key.client_id == client_id)
+    stmt = select(Key).where(Key.user_id == uid, Key.client_id == client_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
@@ -207,10 +208,10 @@ async def get_key_by_server(session: AsyncSession, legacy_user_ref: int, client_
 async def get_key_by_email(session: AsyncSession, email: str, legacy_user_ref: int | None = None) -> Key | None:
     stmt = select(Key).where(Key.email == email)
     if legacy_user_ref is not None:
-        u = await resolve_user_optional(session, legacy_user_ref)
-        if u is None:
+        uid = await resolve_uid_cached(session, legacy_user_ref)
+        if uid is None:
             return None
-        stmt = stmt.where(Key.user_id == u.id)
+        stmt = stmt.where(Key.user_id == uid)
     result = await session.execute(stmt.limit(1))
     return result.scalar_one_or_none()
 
@@ -218,10 +219,10 @@ async def get_key_by_email(session: AsyncSession, email: str, legacy_user_ref: i
 async def get_key_by_client_id(session: AsyncSession, client_id: str, legacy_user_ref: int | None = None) -> Key | None:
     stmt = select(Key).where(Key.client_id == client_id)
     if legacy_user_ref is not None:
-        u = await resolve_user_optional(session, legacy_user_ref)
-        if u is None:
+        uid = await resolve_uid_cached(session, legacy_user_ref)
+        if uid is None:
             return None
-        stmt = stmt.where(Key.user_id == u.id)
+        stmt = stmt.where(Key.user_id == uid)
     result = await session.execute(stmt.limit(1))
     return result.scalar_one_or_none()
 
@@ -312,10 +313,9 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
 
 
 async def get_key_count(session: AsyncSession, legacy_user_ref: int) -> int:
-    u = await resolve_user_optional(session, legacy_user_ref)
-    if u is None:
+    uid = await resolve_uid_cached(session, legacy_user_ref)
+    if uid is None:
         return 0
-    uid = u.id
     cached = await cache_get(cache_key("key_count", uid))
     if cached is not None:
         try:
@@ -486,7 +486,13 @@ async def delete_key(session: AsyncSession, identifier: int | str):
     logger.info(f"Ключ с идентификатором {identifier} удалён")
 
 
-async def update_key_expiry(session: AsyncSession, client_id: str, new_expiry_time: int, record_event: bool = True):
+async def update_key_expiry(
+    session: AsyncSession,
+    client_id: str,
+    new_expiry_time: int,
+    record_event: bool = True,
+    price_rub: float | None = None,
+):
     try:
         ctx = (
             await session.execute(
@@ -511,6 +517,7 @@ async def update_key_expiry(session: AsyncSession, client_id: str, new_expiry_ti
             client_id=client_id,
             tariff_id=ctx.tariff_id if ctx else None,
             server_id=ctx.server_id if ctx else None,
+            price_rub=price_rub,
             expiry_time=new_expiry_time,
             source="bot",
         )

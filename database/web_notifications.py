@@ -1,12 +1,25 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.redis_cache import cache_delete, cache_delete_pattern, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
 from database.models import User, WebNotification, WebPushSubscription
 from logger import logger
+
+
+_NOTIF_LIST_TTL_SEC = 30
+_NOTIF_UNREAD_TTL_SEC = 60
+
+
+async def _invalidate_notif_cache(identity_id: str | None) -> None:
+    if not identity_id:
+        return
+    await cache_delete(cache_key("notif_unread", identity_id))
+    await cache_delete_pattern(cache_key("notif_list", identity_id, "*"))
 
 
 async def upsert_push_subscription(
@@ -71,6 +84,18 @@ async def get_notifications_for_identity(
     limit: int = 20,
     offset: int = 0,
 ) -> list[WebNotification]:
+    ckey = cache_key("notif_list", identity_id, limit, offset)
+    cached = await cache_get(ckey)
+    if isinstance(cached, list):
+        return [
+            SimpleNamespace(
+                **{
+                    **d,
+                    "created_at": datetime.fromisoformat(d["created_at"]) if d.get("created_at") else None,
+                }
+            )
+            for d in cached
+        ]
     result = await session.execute(
         select(WebNotification)
         .where(WebNotification.identity_id == identity_id)
@@ -78,13 +103,34 @@ async def get_notifications_for_identity(
         .limit(limit)
         .offset(offset)
     )
-    return list(result.scalars().all())
+    rows = list(result.scalars().all())
+    serialized = [
+        {
+            "id": n.id,
+            "type": n.type,
+            "title": n.title,
+            "message": n.message,
+            "read": bool(n.read),
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+            "data": n.data,
+        }
+        for n in rows
+    ]
+    await cache_set(ckey, serialized, _NOTIF_LIST_TTL_SEC)
+    return rows
 
 
 async def count_unread_for_identity(
     session: AsyncSession,
     identity_id: str,
 ) -> int:
+    ckey = cache_key("notif_unread", identity_id)
+    cached = await cache_get(ckey)
+    if cached is not None:
+        try:
+            return int(cached)
+        except (TypeError, ValueError):
+            pass
     result = await session.execute(
         select(func.count())
         .select_from(WebNotification)
@@ -93,7 +139,9 @@ async def count_unread_for_identity(
             WebNotification.read == False,  # noqa: E712 SQLAlchemy expression
         )
     )
-    return result.scalar() or 0
+    count = result.scalar() or 0
+    await cache_set(ckey, count, _NOTIF_UNREAD_TTL_SEC)
+    return count
 
 
 async def mark_all_read_for_identity(
@@ -108,6 +156,7 @@ async def mark_all_read_for_identity(
         )
         .values(read=True)
     )
+    await _invalidate_notif_cache(identity_id)
     return result.rowcount
 
 
@@ -125,6 +174,7 @@ async def mark_one_read_for_identity(
         )
         .values(read=True)
     )
+    await _invalidate_notif_cache(identity_id)
     return (result.rowcount or 0) > 0
 
 
@@ -142,6 +192,7 @@ async def delete_one_for_identity(
             WebNotification.id == notification_id,
         )
     )
+    await _invalidate_notif_cache(identity_id)
     return (result.rowcount or 0) > 0
 
 
@@ -152,6 +203,7 @@ async def delete_all_for_identity(
     from sqlalchemy import delete as sql_delete
 
     result = await session.execute(sql_delete(WebNotification).where(WebNotification.identity_id == identity_id))
+    await _invalidate_notif_cache(identity_id)
     return result.rowcount or 0
 
 
@@ -184,6 +236,7 @@ async def create_notification(
     )
     session.add(notif)
     await session.flush()
+    await _invalidate_notif_cache(identity_id)
     return notif
 
 

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
-from handlers.admin.sender.sender_utils import is_telegram_chat_id
+from handlers.admin.sender.sender_utils import get_recipient_emails, is_telegram_chat_id, parse_channels
 from logger import logger
 
 
@@ -289,8 +289,10 @@ class BroadcastService:
         progress_every: int = 50,
         channel: str = "both",
     ) -> dict:
-        send_to_bot = channel in ("bot", "both")
-        send_to_site = channel in ("site", "both")
+        channels = parse_channels(channel)
+        send_to_bot = "bot" in channels
+        send_to_site = "site" in channels
+        send_to_email = "email" in channels
         self.is_running = True
         self.start_time = time.time()
         self.results = []
@@ -386,7 +388,68 @@ class BroadcastService:
         if send_to_site:
             await self._create_web_notifications(messages)
 
+        if send_to_email:
+            email_sent, email_failed = await self._send_emails(messages)
+            stats["email_sent"] = email_sent
+            stats["email_failed"] = email_failed
+
         return stats
+
+    async def _send_emails(self, messages: list[dict]) -> tuple[int, int]:
+        """Рассылает письмо на почту получателям, у кого привязан email."""
+        if not messages:
+            return (0, 0)
+        try:
+            from mail.smtp import build_broadcast_email, send_broadcast_email, smtp_configured
+
+            if not smtp_configured():
+                logger.warning("[Broadcast] Канал 'почта' выбран, но SMTP не настроен")
+                return (0, 0)
+
+            tg_ids = [m.get("tg_id") for m in messages if m.get("tg_id")]
+            if self._session is not None:
+                email_map = await get_recipient_emails(self._session, tg_ids)
+            else:
+                async with async_session_maker() as session:
+                    email_map = await get_recipient_emails(session, tg_ids)
+
+            addresses = sorted(set(email_map.values()))
+            if not addresses:
+                return (0, 0)
+
+            text = messages[0].get("text", "")
+            image_url = None
+            photo_id = messages[0].get("photo")
+            if photo_id and self.bot is not None:
+                try:
+                    from utils.web_media import host_telegram_photo
+
+                    image_url = await host_telegram_photo(self.bot, photo_id)
+                except Exception:
+                    image_url = None
+
+            subject, html_body, text_body = build_broadcast_email(text, image_url)
+
+            sent = 0
+            failed = 0
+            semaphore = asyncio.Semaphore(5)
+
+            async def _send_one(addr: str) -> None:
+                nonlocal sent, failed
+                async with semaphore:
+                    try:
+                        await send_broadcast_email(addr, subject, html_body, text_body)
+                        sent += 1
+                    except Exception as exc:
+                        failed += 1
+                        logger.warning(f"[Broadcast] Письмо на {addr} не отправлено: {exc}")
+
+            await asyncio.gather(*[_send_one(addr) for addr in addresses])
+            logger.info(f"📧 Email-рассылка завершена: отправлено {sent}, ошибок {failed}")
+            return (sent, failed)
+        except Exception as e:
+            logger.warning(f"[Broadcast] Ошибка email-рассылки: {e}")
+            return (0, 0)
 
     async def _create_web_notifications(self, messages: list[dict]) -> None:
         """Создаёт web-уведомления для всех получателей рассылки."""

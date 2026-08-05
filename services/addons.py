@@ -241,6 +241,21 @@ async def apply_addons(
         debited = await update_balance(session, billing_user_id, -extra_price_rub)
         if debited is None:
             raise InsufficientFundsError("Недостаточно средств на балансе")
+        try:
+            from database.subscription_events import record_subscription_event
+
+            await record_subscription_event(
+                session,
+                event_type="addons",
+                user_id=billing_user_id,
+                client_id=client_id,
+                tariff_id=tariff_id,
+                price_rub=float(extra_price_rub),
+                expiry_time=expiry_ms,
+                source="bot",
+            )
+        except Exception:
+            pass
 
     normalize_tariff_config(tariff)
     has_device, has_traffic, _ = get_pack_flags()

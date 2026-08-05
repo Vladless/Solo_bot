@@ -5,6 +5,7 @@ from .delivery import (
     support_persona,
 )
 from .forum import (
+    agent_controls_kb,
     ensure_topic,
     forum_enabled,
     post_client_message,
@@ -73,4 +74,5 @@ __all__ = [
     "post_client_message",
     "post_system",
     "set_topic_state",
+    "agent_controls_kb",
 ]

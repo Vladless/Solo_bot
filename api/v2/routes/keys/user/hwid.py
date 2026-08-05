@@ -76,6 +76,9 @@ async def user_key_reset_hwid(
         str(client_id),
         fallback_any=True,
     )
+    from core.redis_cache import cache_delete, cache_key
+
+    await cache_delete(cache_key("key_devices", client_id))
     return AccountKeyResetHwidResponse(
         ok=True,
         message="Устройства сброшены" if total_devices > 0 else "Устройства не были привязаны",
@@ -91,15 +94,24 @@ async def user_key_devices(
     session: AsyncSession = Depends(get_session),
     identity=Depends(verify_identity_token),
 ):
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from database import get_keys
+
     billing_user_id = await _resolve_billing_user_id(request, identity, session)
-    db_key = (
-        await session.execute(select(Key).where(Key.user_id == billing_user_id, Key.client_id == client_id).limit(1))
-    ).scalar_one_or_none()
+    db_key = next(
+        (k for k in await get_keys(session, billing_user_id) if str(getattr(k, "client_id", "")) == client_id),
+        None,
+    )
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     server_id = str(getattr(db_key, "server_id", "") or "")
     if not server_id:
         return {"devices": [], "total": 0}
+
+    devices_key = cache_key("key_devices", client_id)
+    cached = await cache_get(devices_key)
+    if isinstance(cached, dict):
+        return cached
 
     async def _list(api):
         return await api.get_user_hwid_devices(client_id)
@@ -112,7 +124,9 @@ async def user_key_devices(
         timeout_sec=12.0,
     )
     if not devices:
-        return {"devices": [], "total": 0}
+        response = {"devices": [], "total": 0}
+        await cache_set(devices_key, response, 60)
+        return response
     normalized = []
     for device in devices:
         if not isinstance(device, dict):
@@ -125,7 +139,9 @@ async def user_key_devices(
             "user_agent": str(device.get("userAgent") or device.get("user_agent") or ""),
             "created_at": str(device.get("createdAt") or device.get("created_at") or ""),
         })
-    return {"devices": normalized, "total": len(normalized)}
+    response = {"devices": normalized, "total": len(normalized)}
+    await cache_set(devices_key, response, 60)
+    return response
 
 
 @user_router.post("/{client_id}/devices/delete")
@@ -179,5 +195,8 @@ async def user_key_delete_device(
         str(client_id),
         fallback_any=True,
     )
+    from core.redis_cache import cache_delete, cache_key
+
+    await cache_delete(cache_key("key_devices", client_id))
     await register_deletion(client_id)
     return {"ok": True}

@@ -163,7 +163,7 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
     if support_bot is None:
         return
     try:
-        await support_bot.send_message(tg_id, f"<b>{support_persona()}</b>\n\n{body}")
+        await support_bot.send_message(tg_id, body)
     except Exception:
         pass
     from aiogram.types import FSInputFile

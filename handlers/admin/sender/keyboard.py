@@ -243,23 +243,44 @@ def build_sources_kb(sources: list) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_channel_kb() -> InlineKeyboardMarkup:
+_CHANNEL_OPTIONS = [
+    ("bot", "📲 Бот"),
+    ("site", "🌐 Сайт"),
+    ("email", "📧 Почта"),
+]
+
+_CHANNEL_NAMES = {"bot": "бот", "site": "сайт", "email": "почта"}
+
+
+def build_channel_kb(selected: list[str] | None = None) -> InlineKeyboardMarkup:
+    chosen = set(selected or ["bot", "site"])
     builder = InlineKeyboardBuilder()
+    for code, label in _CHANNEL_OPTIONS:
+        mark = "✅" if code in chosen else "☐"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{mark} {label}",
+                callback_data=AdminSenderChannelCallback(channel=code).pack(),
+            )
+        )
     builder.row(
         InlineKeyboardButton(
-            text="📢 Везде (бот + сайт)", callback_data=AdminSenderChannelCallback(channel="both").pack()
-        ),
-    )
-    builder.row(
-        InlineKeyboardButton(text="📲 Только бот", callback_data=AdminSenderChannelCallback(channel="bot").pack()),
-        InlineKeyboardButton(text="🌐 Только сайт", callback_data=AdminSenderChannelCallback(channel="site").pack()),
+            text="➡️ Продолжить",
+            callback_data=AdminSenderChannelCallback(channel="continue").pack(),
+        )
     )
     builder.row(build_admin_back_btn())
     return builder.as_markup()
 
 
 def channel_label(channel: str) -> str:
-    return {"both": "📢 везде", "bot": "📲 бот", "site": "🌐 сайт"}.get(channel, channel)
+    if channel in ("both", None, ""):
+        channel = "bot,site"
+    parts = [p.strip() for p in str(channel).split(",") if p.strip()]
+    names = [_CHANNEL_NAMES.get(p, p) for p in parts]
+    if not names:
+        return "—"
+    return " + ".join(names)
 
 
 def build_broadcast_preview_kb() -> InlineKeyboardMarkup:

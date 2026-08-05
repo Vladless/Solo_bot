@@ -314,60 +314,79 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     )
 
     builder = InlineKeyboardBuilder()
-    device_buttons = []
-    traffic_buttons = []
 
-    if has_device_option:
-        for value in device_int_options:
-            is_selected = selected_devices is not None and int(value) == int(selected_devices)
-            mark = " ✅" if is_selected else ""
-            if value == 0:
-                caption = f"{UNLIMITED_DEVICES_LABEL.capitalize()}{mark}"
-            else:
-                caption = f"{value} {get_plural_form(value, 'устройство', 'устройства', 'устройств')}{mark}"
-            device_buttons.append(
-                InlineKeyboardButton(
-                    text=caption,
-                    callback_data=f"key_addons_devices|{email}|{value}",
+    def _dev_label(v: int) -> str:
+        if int(v) == 0:
+            return UNLIMITED_DEVICES_LABEL.capitalize()
+        return f"{v} {get_plural_form(v, 'устройство', 'устройства', 'устройств')}"
+
+    def _traf_label(v: int) -> str:
+        if int(v) == 0:
+            return UNLIMITED_TRAFFIC_LABEL.capitalize()
+        return f"{v} ГБ"
+
+    def _addon_stepper_row(options, selected, cb_prefix, label_fn):
+        try:
+            options = sorted(options, key=lambda v: (int(v) == 0, int(v)))
+        except (TypeError, ValueError):
+            pass
+        cur = int(selected) if selected is not None else (options[0] if options else 0)
+        try:
+            idx = options.index(cur)
+        except ValueError:
+            idx = 0
+        prev_val = options[idx - 1] if idx > 0 else options[idx]
+        next_val = options[idx + 1] if idx < len(options) - 1 else options[idx]
+        left = "◀️" if idx > 0 else "▫️"
+        right = "▶️" if idx < len(options) - 1 else "▫️"
+        return [
+            InlineKeyboardButton(text=left, callback_data=f"{cb_prefix}|{email}|{prev_val}"),
+            InlineKeyboardButton(text=label_fn(options[idx]), callback_data=f"{cb_prefix}|{email}|{options[idx]}"),
+            InlineKeyboardButton(text=right, callback_data=f"{cb_prefix}|{email}|{next_val}"),
+        ]
+
+    use_pagination = bool((MODES_CONFIG or {}).get("TARIFF_OPTIONS_PAGINATION", True))
+    if use_pagination:
+        if has_device_option:
+            builder.row(*_addon_stepper_row(device_int_options, selected_devices, "key_addons_devices", _dev_label))
+        if has_traffic_option:
+            builder.row(*_addon_stepper_row(traffic_int_options, selected_traffic_gb, "key_addons_traffic", _traf_label))
+    else:
+        device_buttons = []
+        traffic_buttons = []
+        if has_device_option:
+            for value in device_int_options:
+                mark = " ✅" if selected_devices is not None and int(value) == int(selected_devices) else ""
+                device_buttons.append(
+                    InlineKeyboardButton(
+                        text=_dev_label(value) + mark,
+                        callback_data=f"key_addons_devices|{email}|{value}",
+                    )
                 )
-            )
-
-    if has_traffic_option:
-        for value in traffic_int_options:
-            is_selected = selected_traffic_gb is not None and int(selected_traffic_gb) == int(value)
-            mark = " ✅" if is_selected else ""
-            if value == 0:
-                caption = f"{UNLIMITED_TRAFFIC_LABEL.capitalize()}{mark}"
-            else:
-                caption = f"{value} ГБ{mark}"
-            traffic_buttons.append(
-                InlineKeyboardButton(
-                    text=caption,
-                    callback_data=f"key_addons_traffic|{email}|{value}",
+        if has_traffic_option:
+            for value in traffic_int_options:
+                mark = " ✅" if selected_traffic_gb is not None and int(selected_traffic_gb) == int(value) else ""
+                traffic_buttons.append(
+                    InlineKeyboardButton(
+                        text=_traf_label(value) + mark,
+                        callback_data=f"key_addons_traffic|{email}|{value}",
+                    )
                 )
-            )
-
-    logger.debug(
-        "[ADDONS] PACK_MODE buttons: "
-        f"devices={[b.text for b in device_buttons]} "
-        f"traffic={[b.text for b in traffic_buttons]}"
-    )
-
-    if device_buttons and traffic_buttons:
-        max_len = max(len(device_buttons), len(traffic_buttons))
-        for i in range(max_len):
-            row = []
-            if i < len(device_buttons):
-                row.append(device_buttons[i])
-            if i < len(traffic_buttons):
-                row.append(traffic_buttons[i])
-            builder.row(*row)
-    elif device_buttons:
-        for i in range(0, len(device_buttons), 2):
-            builder.row(*device_buttons[i : i + 2])
-    elif traffic_buttons:
-        for i in range(0, len(traffic_buttons), 2):
-            builder.row(*traffic_buttons[i : i + 2])
+        if device_buttons and traffic_buttons:
+            max_len = max(len(device_buttons), len(traffic_buttons))
+            for i in range(max_len):
+                row = []
+                if i < len(device_buttons):
+                    row.append(device_buttons[i])
+                if i < len(traffic_buttons):
+                    row.append(traffic_buttons[i])
+                builder.row(*row)
+        elif device_buttons:
+            for i in range(0, len(device_buttons), 2):
+                builder.row(*device_buttons[i : i + 2])
+        elif traffic_buttons:
+            for i in range(0, len(traffic_buttons), 2):
+                builder.row(*traffic_buttons[i : i + 2])
 
     builder.row(
         InlineKeyboardButton(

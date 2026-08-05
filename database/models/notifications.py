@@ -39,7 +39,7 @@ class ScheduledBroadcast(DictLikeMixin, Base):
     created_by_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="SET NULL"), nullable=True, index=True)
     status = Column(String(32), nullable=False, server_default=sql_text("'scheduled'"), index=True)
     send_to = Column(String(32), nullable=False, index=True)
-    channel = Column(String(8), nullable=False, server_default=sql_text("'both'"))
+    channel = Column(String(32), nullable=False, server_default=sql_text("'both'"))
     cluster_name = Column(String, nullable=True)
     text = Column(Text, nullable=False)
     photo = Column(String, nullable=True)

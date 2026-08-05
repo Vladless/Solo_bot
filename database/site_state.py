@@ -23,6 +23,8 @@ async def is_site_initialized(session: AsyncSession) -> bool:
 
 async def mark_site_initialized(session: AsyncSession) -> None:
     """Идемпотентно выставляет флаг инициализации сайта."""
+    if await cache_get(_CACHE_KEY) is True:
+        return
     result = await session.execute(select(Setting).where(Setting.key == _KEY))
     setting = result.scalar_one_or_none()
     first_init = False
@@ -32,7 +34,10 @@ async def mark_site_initialized(session: AsyncSession) -> None:
     elif setting.value is not True:
         setting.value = True
         first_init = True
-    await cache_delete(_CACHE_KEY)
+    if first_init:
+        await cache_delete(_CACHE_KEY)
+    else:
+        await cache_set(_CACHE_KEY, True, _CACHE_TTL_SEC)
     if first_init:
         try:
             from database.web_default_seed import seed_default_site

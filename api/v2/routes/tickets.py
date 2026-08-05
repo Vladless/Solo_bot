@@ -1,8 +1,10 @@
 import asyncio
+import uuid as uuid_mod
 
 from datetime import UTC
+from pathlib import Path as FsPath
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,10 +57,23 @@ class RatingBody(BaseModel):
     rating: int
 
 
+_ATTACHMENT_URL_PREFIX = "/api/web/uploads/"
+
+
 def _clean_attachments(items: list[str] | None) -> list[str] | None:
     if not items:
         return None
-    out = [str(x).strip() for x in items if isinstance(x, str) and str(x).strip()]
+    out = []
+    for x in items:
+        if not isinstance(x, str):
+            continue
+        url = x.strip()
+        if not url.startswith(_ATTACHMENT_URL_PREFIX):
+            continue
+        name = url[len(_ATTACHMENT_URL_PREFIX):]
+        if not name or "/" in name or ".." in name:
+            continue
+        out.append(url)
     return out[:MAX_ATTACHMENTS] or None
 
 
@@ -102,6 +117,48 @@ def _ticket_dict(t: Ticket) -> dict:
         "updated_at": _iso(t.updated_at),
         "last_message_at": _iso(t.last_message_at),
     }
+
+
+_UPLOAD_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_UPLOAD_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@router.post("/tickets/upload")
+async def upload_ticket_attachment(
+    request: Request,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    identity: Identity = Depends(verify_identity_token),
+) -> dict:
+    from api.ratelimit import enforce_rate_limit
+    from utils.web_media import MAX_UPLOAD_BYTES, WEB_UPLOAD_DIR
+
+    await enforce_rate_limit(request, session, bucket="ticket_upload", max_per_window=20, window_sec=60)
+    if not file.filename or "." not in file.filename:
+        raise HTTPException(status_code=400, detail="Файл должен иметь расширение")
+    ext = FsPath(file.filename).suffix.lower()
+    if ext not in _UPLOAD_IMAGE_EXT:
+        raise HTTPException(status_code=400, detail=f"Разрешены только картинки: {', '.join(sorted(_UPLOAD_IMAGE_EXT))}")
+    if file.content_type and file.content_type.lower() not in _UPLOAD_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Файл не похож на картинку")
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Пустой файл")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail=f"Размер не более {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ")
+    if ext != ".gif":
+        try:
+            from api.v2.routes.web import _optimize_image_bytes
+            from core.executor import run_cpu
+
+            data = await run_cpu(_optimize_image_bytes, data, ext)
+        except Exception:
+            pass
+    WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid_mod.uuid4().hex}{ext}"
+    with open(WEB_UPLOAD_DIR / name, "wb") as f:
+        f.write(data)
+    return {"url": f"{_ATTACHMENT_URL_PREFIX}{name}"}
 
 
 @router.post("/tickets")

@@ -68,20 +68,29 @@ async def process_callback_view_profile(
     username = get_username(user or chat)
 
     cached = await cache_get(cache_key("profile_data", chat_id))
+    has_email = None
     if isinstance(cached, dict) and "key_count" in cached and "balance_rub" in cached and "trial_status" in cached:
         key_count = int(cached["key_count"])
         balance_rub = float(cached.get("balance_rub") or 0)
         trial_status = int(cached.get("trial_status") or 0)
+        if isinstance(cached.get("has_email"), bool):
+            has_email = cached["has_email"]
     else:
         balance_rub, trial_status, key_count = await get_balance_trial_key_count(session, chat_id)
         balance_rub = balance_rub or 0
+        from core.settings.web_config import is_email_binding_enabled as _binding_on
+
+        if _binding_on():
+            from database.identities import get_identity_by_tg_id
+
+            identity = await get_identity_by_tg_id(session, chat_id)
+            has_email = bool(identity and identity.email)
         await cache_set(cache_key("balance", chat_id), balance_rub, BALANCE_CACHE_TTL_SEC)
         await cache_set(cache_key("key_count", chat_id), key_count, KEY_COUNT_CACHE_TTL_SEC)
-        await cache_set(
-            cache_key("profile_data", chat_id),
-            {"key_count": key_count, "balance_rub": balance_rub, "trial_status": trial_status},
-            PROFILE_DATA_CACHE_TTL_SEC,
-        )
+        payload = {"key_count": key_count, "balance_rub": balance_rub, "trial_status": trial_status}
+        if has_email is not None:
+            payload["has_email"] = has_email
+        await cache_set(cache_key("profile_data", chat_id), payload, PROFILE_DATA_CACHE_TTL_SEC)
 
     balance_text = await format_for_user(
         session,
@@ -137,10 +146,12 @@ async def process_callback_view_profile(
                 )
 
     if is_email_binding_enabled():
-        from database.identities import get_identity_by_tg_id
+        if has_email is None:
+            from database.identities import get_identity_by_tg_id
 
-        identity = await get_identity_by_tg_id(session, chat_id)
-        if not (identity and identity.email):
+            identity = await get_identity_by_tg_id(session, chat_id)
+            has_email = bool(identity and identity.email)
+        if not has_email:
             builder.row(InlineKeyboardButton(text=BIND_EMAIL, callback_data="bind_email"))
 
     trial_time_disabled = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))

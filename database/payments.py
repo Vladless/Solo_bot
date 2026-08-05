@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
-from database.models import Gift, Payment
+from database.models import Gift, Payment, SubscriptionEvent
 from logger import logger
 from settings.cache_config import PAYMENT_PENDING_CACHE_TTL_SEC
 
@@ -89,6 +89,9 @@ async def add_payment(
     )
     result = await session.execute(stmt)
     internal_id = result.scalar_one()
+    from core.redis_cache import cache_delete_pattern
+
+    await cache_delete_pattern(cache_key("my_payments", u.id, "*"))
     logger.info(
         f"Добавлен платёж id={internal_id}: user_id={u.id}, amount={amount}, system={payment_system}, status={status}"
     )
@@ -126,7 +129,27 @@ def _balance_activity_union(uid: int | None, tg_id: int | None, success_only: bo
         Gift.gift_id.label("ref"),
     ).where(or_(*gift_refs) if gift_refs else literal(False))
 
-    return union_all(p, g).subquery()
+    spend_refs = []
+    if uid is not None:
+        spend_refs.append(SubscriptionEvent.user_id == uid)
+    if tg_id is not None:
+        spend_refs.append(SubscriptionEvent.tg_id == tg_id)
+    s = (
+        select(
+            SubscriptionEvent.created_at.label("created_at"),
+            cast(-SubscriptionEvent.price_rub, Float).label("amount"),
+            literal("spend").label("kind"),
+            SubscriptionEvent.event_type.label("system"),
+            literal("success").label("status"),
+            SubscriptionEvent.client_id.label("ref"),
+        )
+        .where(or_(*spend_refs) if spend_refs else literal(False))
+        .where(SubscriptionEvent.event_type.in_(("created", "renewed", "addons")))
+        .where(SubscriptionEvent.price_rub > 0)
+        .where(or_(SubscriptionEvent.source.is_(None), SubscriptionEvent.source != "backfill"))
+    )
+
+    return union_all(p, g, s).subquery()
 
 
 async def count_balance_activity(

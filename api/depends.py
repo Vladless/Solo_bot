@@ -9,15 +9,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from audit import set_api_actor
+from core.redis_cache import cache_get, cache_key, cache_set
 from core.settings.runtime_sync import maybe_sync_runtime_configs
 from database import (
     async_session_maker,
     identities as idb,
     identity_sessions as idsess,
 )
-from database.access.resolution import ResolvedActor, resolve_actor_from_identity
+from database.access.resolution import ActorSurface, ResolvedActor, resolve_actor_from_identity
 from database.models import Admin, Identity
 from logger import logger
+from settings.cache_config import AUTH_ACTOR_CACHE_TTL_SEC
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
@@ -173,6 +175,56 @@ async def _identity_from_cookie(session: AsyncSession, request: Request | None) 
     return identity
 
 
+def _auth_cache_key(token_hash: str) -> str:
+    return cache_key("auth_actor", token_hash)
+
+
+async def _identity_from_auth_cache(
+    session: AsyncSession, request: Request | None, token_hash: str
+) -> Identity | None:
+    cached = await cache_get(_auth_cache_key(token_hash))
+    if not isinstance(cached, dict):
+        return None
+    exp = cached.get("exp")
+    if exp:
+        try:
+            if datetime.fromisoformat(exp) <= datetime.utcnow():
+                return None
+        except ValueError:
+            return None
+    identity = await idb.get_identity_by_id(session, cached.get("iid"))
+    if identity is None:
+        return None
+    if (identity.tg_id or None) != cached.get("itg"):
+        return None
+    actor = ResolvedActor(
+        surface=ActorSurface.WEB,
+        billing_user_id=cached.get("uid"),
+        telegram_chat_id=cached.get("atg"),
+        identity_id=identity.id,
+    )
+    set_api_actor(request, identity_id=actor.identity_id, tg_id=actor.telegram_chat_id)
+    if request is not None:
+        request.state.actor = actor
+    return identity
+
+
+async def _store_auth_cache(request: Request | None, token_hash: str, identity: Identity, actor: ResolvedActor) -> None:
+    sess = getattr(request.state, "auth_session", None) if request is not None else None
+    exp = sess.expires_at.isoformat() if sess is not None and sess.expires_at is not None else None
+    await cache_set(
+        _auth_cache_key(token_hash),
+        {
+            "iid": identity.id,
+            "itg": identity.tg_id or None,
+            "uid": actor.billing_user_id,
+            "atg": actor.telegram_chat_id,
+            "exp": exp,
+        },
+        AUTH_ACTOR_CACHE_TTL_SEC,
+    )
+
+
 async def verify_identity_token(
     request: Request,
     session: AsyncSession = Depends(get_session),
@@ -180,10 +232,18 @@ async def verify_identity_token(
     """Проверяет токен из HttpOnly cookie `auth_token`; возвращает Identity."""
     from database.site_state import mark_site_initialized
 
-    identity = await _identity_from_cookie(session, request)
-    if identity is None:
+    token = _read_auth_cookie(request)
+    if not token:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    await bind_identity_actor(request, session, identity)
+    token_hash = hash_token(token)
+
+    identity = await _identity_from_auth_cache(session, request, token_hash)
+    if identity is None:
+        identity = await _identity_from_cookie(session, request)
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        actor = await bind_identity_actor(request, session, identity)
+        await _store_auth_cache(request, token_hash, identity, actor)
     if getattr(identity, "is_admin", False):
         await mark_site_initialized(session)
     return identity

@@ -554,8 +554,18 @@ async def get_web_page(
 ):
     if not slug or len(slug) > 64 or not _SLUG_RE.match(slug):
         raise HTTPException(400, "Некорректный slug страницы")
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from database.site_revision import get_site_revision
+
+    rev = await get_site_revision(session)
+    ckey = cache_key("web_page", slug, variant or "", ab or "", rev)
+    cached = await cache_get(ckey)
+    if isinstance(cached, dict):
+        return WebPageResponse.model_validate(cached)
     current, variants = await _resolve_variant(session, slug, variant, ab_bucket=ab)
-    return await _build_page_response(session, slug, current, variants)
+    response = await _build_page_response(session, slug, current, variants)
+    await cache_set(ckey, response.model_dump(mode="json"), 300)
+    return response
 
 
 @router.get("/api/web/pages/{slug}/theme", response_model=WebPageThemeResponse)
@@ -567,12 +577,22 @@ async def get_web_page_theme(
     """Возвращает только theme tokens страницы (без блоков/вариантов). Используется для fallback-темы cabinet-страниц."""
     if not slug or len(slug) > 64 or not _SLUG_RE.match(slug):
         raise HTTPException(400, "Некорректный slug страницы")
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from database.site_revision import get_site_revision
+
+    rev = await get_site_revision(session)
+    ckey = cache_key("web_page", "theme", slug, variant or "", rev)
+    cached = await cache_get(ckey)
+    if isinstance(cached, dict):
+        return WebPageThemeResponse.model_validate(cached)
     current, _ = await _resolve_variant(session, slug, variant)
-    return WebPageThemeResponse(
+    response = WebPageThemeResponse(
         slug=slug,
         variant_key=current.variant_key,
         tokens=dict(current.theme_tokens or {}),
     )
+    await cache_set(ckey, response.model_dump(mode="json"), 300)
+    return response
 
 
 @router.put("/api/web/pages/{slug}/theme", response_model=WebPageThemeResponse)
@@ -2722,19 +2742,65 @@ async def get_logs_health(_identity=Depends(verify_identity_designer)):
 async def web_node_status(request: Request, session: AsyncSession = Depends(get_session)):
     """Статусы серверов для блока в кабинете — только серверы из тарифа юзера (его сквады
     в Remnawave). Гостю/без подписки отдаём пусто. host:port — для браузерной пробы пинга."""
-    from api.depends import bind_identity_actor
+    from api.depends import (
+        _identity_from_auth_cache,
+        _read_auth_cookie,
+        _store_auth_cache,
+        bind_identity_actor,
+        hash_token,
+    )
     from api.v2.routes.keys._common import _resolve_billing_user_id, resolve_user_squad_uuids
+    from core.redis_cache import cache_get, cache_key, cache_set
     from services.remnawave_monitor import get_client_node_statuses
 
-    identity = await _identity_from_cookie(session, request)
-    if identity is None:
+    token = _read_auth_cookie(request)
+    if not token:
         return {"nodes": []}
-    await bind_identity_actor(request, session, identity)
+    token_hash = hash_token(token)
+    identity = await _identity_from_auth_cache(session, request, token_hash)
+    if identity is None:
+        identity = await _identity_from_cookie(session, request)
+        if identity is None:
+            return {"nodes": []}
+        actor = await bind_identity_actor(request, session, identity)
+        await _store_auth_cache(request, token_hash, identity, actor)
     billing_user_id = await _resolve_billing_user_id(request, identity, session)
-    squads = await resolve_user_squad_uuids(session, billing_user_id)
+
+    squads_key = cache_key("user_squads", billing_user_id)
+    cached_squads = await cache_get(squads_key)
+    if isinstance(cached_squads, list):
+        squads = set(cached_squads)
+    else:
+        squads = await resolve_user_squad_uuids(session, billing_user_id)
+        await cache_set(squads_key, sorted(squads), 300)
     if not squads:
         return {"nodes": []}
     return {"nodes": await get_client_node_statuses(session, allowed_squad_uuids=squads)}
+
+
+@router.get("/api/web/maintenance")
+async def get_web_maintenance(
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_designer),
+):
+    from core.settings.web_config import WEB_CONFIG
+
+    return {"enabled": bool(WEB_CONFIG.get("WEB_MAINTENANCE_MODE", False))}
+
+
+@router.post("/api/web/maintenance")
+async def set_web_maintenance(
+    payload: dict,
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_designer),
+):
+    from core.settings.web_config import WEB_CONFIG, update_web_config
+
+    enabled = bool((payload or {}).get("enabled"))
+    new_config = dict(WEB_CONFIG)
+    new_config["WEB_MAINTENANCE_MODE"] = enabled
+    await update_web_config(session, new_config)
+    return {"enabled": enabled}
 
 
 @router.get("/api/web/node-status/admin")

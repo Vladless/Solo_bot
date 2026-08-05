@@ -15,6 +15,7 @@ from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
     add_user,
+    check_user_exists,
     get_user_snapshot,
     upsert_source_if_empty,
 )
@@ -125,6 +126,10 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
         if member.status not in ["member", "administrator", "creator"]:
             await prompt_subscription(callback)
             return
+        from core.redis_cache import cache_key, cache_set
+        from settings.cache_config import SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC
+
+        await cache_set(cache_key("channel_sub", user_id), True, SUBSCRIPTION_CACHE_SUBSCRIBED_TTL_SEC)
         await safe_answer_callback(callback, SUBSCRIPTION_CONFIRMED_MSG)
         data = await state.get_data()
         original_text = data.get("original_text") or callback.message.text
@@ -201,7 +206,8 @@ async def process_start_logic(
     if gift_detected:
         return
 
-    await add_user(session=session, **user_data)
+    if not await check_user_exists(session, user_data["tg_id"]):
+        await add_user(session=session, **user_data)
 
     tl = (text or "").strip().lower()
     if tl == "trial":
@@ -389,7 +395,9 @@ async def show_start_menu(
         kb.row(InlineKeyboardButton(text=ADMIN_BTN, callback_data=AdminPanelCallback(action="admin").pack()))
 
     try:
-        module_buttons = await run_hooks("start_menu", chat_id=message.chat.id, session=session)
+        module_buttons = await run_hooks(
+            "start_menu", chat_id=message.chat.id, session=session, trial=trial_status, key_count=key_cnt
+        )
         kb = insert_hook_buttons(kb, module_buttons)
     except Exception as e:
         logger.error(f"[Hooks:start_menu] Ошибка вставки кнопов: {e}", exc_info=True)

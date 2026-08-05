@@ -10,6 +10,7 @@ from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from database import get_balance, get_key_details, get_tariff_by_id, save_key_config_with_mode, update_balance
 from handlers.keys.key_view import render_key_info
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
+from core.bootstrap import MODES_CONFIG
 from handlers.utils import edit_or_send_message, get_plural_form
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_addon_purchase_complete, process_addons_menu
@@ -225,62 +226,87 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     )
 
     builder = InlineKeyboardBuilder()
-    device_buttons = []
-    traffic_buttons = []
 
-    if has_device_choice:
-        for value in device_int_options:
-            if not allow_downgrade and not is_not_downgrade(current_devices, value):
-                continue
-            is_selected = selected_devices is not None and int(value) == int(selected_devices)
-            mark = " ✅" if is_selected else ""
-            if value == 0:
-                caption = f"{UNLIMITED_DEVICES_LABEL.capitalize()}{mark}"
-            else:
-                caption = f"{value} {get_plural_form(value, 'устройство', 'устройства', 'устройств')}{mark}"
-            device_buttons.append(
-                InlineKeyboardButton(
-                    text=caption,
-                    callback_data=f"key_addons_devices|{email}|{value}",
-                )
-            )
+    def _dev_label(v: int) -> str:
+        if int(v) == 0:
+            return UNLIMITED_DEVICES_LABEL.capitalize()
+        return f"{v} {get_plural_form(v, 'устройство', 'устройства', 'устройств')}"
 
-    if has_traffic_choice:
-        for value in traffic_int_options:
-            if not allow_downgrade and not is_not_downgrade(current_traffic_gb, value):
-                continue
-            is_selected = selected_traffic_gb is not None and int(selected_traffic_gb) == int(value)
-            mark = " ✅" if is_selected else ""
-            if value == 0:
-                caption = f"{UNLIMITED_TRAFFIC_LABEL.capitalize()}{mark}"
-            else:
-                caption = f"{value} ГБ{mark}"
-            traffic_buttons.append(
-                InlineKeyboardButton(
-                    text=caption,
-                    callback_data=f"key_addons_traffic|{email}|{value}",
-                )
-            )
+    def _traf_label(v: int) -> str:
+        if int(v) == 0:
+            return UNLIMITED_TRAFFIC_LABEL.capitalize()
+        return f"{v} ГБ"
 
-    logger.debug(
-        f"[ADDONS] Buttons: devices={[b.text for b in device_buttons]} traffic={[b.text for b in traffic_buttons]}"
+    allowed_devices = (
+        [v for v in device_int_options if allow_downgrade or is_not_downgrade(current_devices, v)]
+        if has_device_choice
+        else []
+    )
+    allowed_traffic = (
+        [v for v in traffic_int_options if allow_downgrade or is_not_downgrade(current_traffic_gb, v)]
+        if has_traffic_choice
+        else []
     )
 
-    if device_buttons and traffic_buttons:
-        max_len = max(len(device_buttons), len(traffic_buttons))
-        for i in range(max_len):
-            row = []
-            if i < len(device_buttons):
-                row.append(device_buttons[i])
-            if i < len(traffic_buttons):
-                row.append(traffic_buttons[i])
-            builder.row(*row)
-    elif device_buttons:
-        for i in range(0, len(device_buttons), 2):
-            builder.row(*device_buttons[i : i + 2])
-    elif traffic_buttons:
-        for i in range(0, len(traffic_buttons), 2):
-            builder.row(*traffic_buttons[i : i + 2])
+    def _addon_stepper_row(options, selected, cb_prefix, label_fn):
+        try:
+            options = sorted(options, key=lambda v: (int(v) == 0, int(v)))
+        except (TypeError, ValueError):
+            pass
+        if not options:
+            return []
+        cur = int(selected) if selected is not None else options[0]
+        try:
+            idx = options.index(cur)
+        except ValueError:
+            idx = 0
+        prev_val = options[idx - 1] if idx > 0 else options[idx]
+        next_val = options[idx + 1] if idx < len(options) - 1 else options[idx]
+        left = "◀️" if idx > 0 else "▫️"
+        right = "▶️" if idx < len(options) - 1 else "▫️"
+        return [
+            InlineKeyboardButton(text=left, callback_data=f"{cb_prefix}|{email}|{prev_val}"),
+            InlineKeyboardButton(text=label_fn(options[idx]), callback_data=f"{cb_prefix}|{email}|{options[idx]}"),
+            InlineKeyboardButton(text=right, callback_data=f"{cb_prefix}|{email}|{next_val}"),
+        ]
+
+    use_pagination = bool((MODES_CONFIG or {}).get("TARIFF_OPTIONS_PAGINATION", True))
+    if use_pagination:
+        if allowed_devices:
+            builder.row(*_addon_stepper_row(allowed_devices, selected_devices, "key_addons_devices", _dev_label))
+        if allowed_traffic:
+            builder.row(*_addon_stepper_row(allowed_traffic, selected_traffic_gb, "key_addons_traffic", _traf_label))
+    else:
+        device_buttons = [
+            InlineKeyboardButton(
+                text=_dev_label(v) + (" ✅" if selected_devices is not None and int(v) == int(selected_devices) else ""),
+                callback_data=f"key_addons_devices|{email}|{v}",
+            )
+            for v in allowed_devices
+        ]
+        traffic_buttons = [
+            InlineKeyboardButton(
+                text=_traf_label(v)
+                + (" ✅" if selected_traffic_gb is not None and int(v) == int(selected_traffic_gb) else ""),
+                callback_data=f"key_addons_traffic|{email}|{v}",
+            )
+            for v in allowed_traffic
+        ]
+        if device_buttons and traffic_buttons:
+            max_len = max(len(device_buttons), len(traffic_buttons))
+            for i in range(max_len):
+                row = []
+                if i < len(device_buttons):
+                    row.append(device_buttons[i])
+                if i < len(traffic_buttons):
+                    row.append(traffic_buttons[i])
+                builder.row(*row)
+        elif device_buttons:
+            for i in range(0, len(device_buttons), 2):
+                builder.row(*device_buttons[i : i + 2])
+        elif traffic_buttons:
+            for i in range(0, len(traffic_buttons), 2):
+                builder.row(*traffic_buttons[i : i + 2])
 
     if allow_downgrade and (devices_downgrade or traffic_downgrade):
         builder.row(

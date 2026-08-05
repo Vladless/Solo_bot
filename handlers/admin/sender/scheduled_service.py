@@ -78,8 +78,9 @@ def prepare_broadcast_payload(
     text_raw = (text or "").strip()
     if not text_raw:
         raise ValueError("Broadcast text is required")
-    if channel not in ("bot", "site", "both"):
-        raise ValueError("channel must be one of: bot, site, both")
+    from .sender_utils import channels_to_str, parse_channels
+
+    channel = channels_to_str(parse_channels(channel))
     normalized_cluster_name = (cluster_name or "").strip() or None
     if send_to == "cluster" and not normalized_cluster_name:
         raise ValueError("Cluster name is required for cluster broadcast")
@@ -144,7 +145,7 @@ async def execute_broadcast_payload(payload: dict, bot: Bot | None = None) -> di
                 session,
                 payload["send_to"],
                 payload.get("cluster_name"),
-                telegram_only=channel == "bot",
+                channel=channel,
             )
             await session.commit()
         if not tg_ids:
