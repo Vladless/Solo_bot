@@ -460,7 +460,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.0.3"
+CLI_VERSION = "v1.1.0"
 
 
 def _ensure_solobot_command() -> None:
@@ -4083,6 +4083,255 @@ def show_website_version_banner():
     )
 
 
+def _dc(*args: str, capture: bool = False, check: bool = False):
+    """docker compose в папке проекта."""
+    cmd = ["docker", "compose", *args]
+    return subprocess.run(
+        cmd,
+        cwd=PROJECT_DIR,
+        capture_output=capture,
+        text=True,
+        check=check,
+    )
+
+
+def _docker_bot_state() -> tuple[str, str]:
+    if not os.path.isfile(os.path.join(PROJECT_DIR, "docker-compose.yml")):
+        return "faint", "нет docker-compose.yml"
+    if not shutil.which("docker"):
+        return "faint", "Docker не установлен"
+    try:
+        result = _dc("ps", "--format", "{{.Name}} {{.State}}", capture=True)
+        rows = [r.strip() for r in (result.stdout or "").splitlines() if r.strip()]
+    except Exception:
+        return "warn", "статус неизвестен"
+    if not rows:
+        return "faint", "не запущен"
+    running = sum(1 for r in rows if r.lower().endswith("running"))
+    if running == len(rows):
+        return "ok", f"работает ({running}/{len(rows)})"
+    return "warn", f"частично ({running}/{len(rows)})"
+
+
+def _write_docker_env(creds: dict, redis_external: bool) -> bool:
+    env_path = os.path.join(PROJECT_DIR, ".env")
+    lines = [
+        f"DB_NAME={creds['name']}",
+        f"DB_USER={creds['user']}",
+        f"DB_PASSWORD={creds['password']}",
+    ]
+    if redis_external:
+        lines.append("REDIS_URL=redis://host.docker.internal:6379/0")
+    try:
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        os.chmod(env_path, 0o600)
+        return True
+    except Exception as e:
+        step_fail(f"Не удалось записать .env: {e}")
+        return False
+
+
+def install_bot_docker():
+    console.print(
+        Panel(
+            "[text]CLI соберёт образ бота и поднимет его в Docker вместе с PostgreSQL и Redis "
+            "(или подключит к вашим, если они уже на хосте).[/text]\n\n"
+            "[warn]Понадобятся два файла с сайта:[/warn] [bold]config.py[/bold] и [bold]texts.py[/bold] — "
+            "CLI подскажет, куда их положить.\n\n"
+            "[err.bold]Важно:[/err.bold] боту нужен [bold]домен с HTTPS[/bold] — HTTPS CLI умеет настроить сам.",
+            border_style="ok",
+            width=_PANEL_W,
+            title="[ok.bold]Установка бота в Docker[/ok.bold]",
+            padding=(1, 2),
+        )
+    )
+    if not safe_confirm("Запустить установку в Docker?", default=True):
+        return
+
+    total = 6
+    try:
+        step_rule(1, total, "Файлы проекта")
+        if not bootstrap_project_files(branch="main"):
+            step_fail("Не удалось подготовить файлы проекта. Установка прервана.")
+            return
+        if not os.path.isfile(os.path.join(PROJECT_DIR, "docker-compose.yml")):
+            step_fail("В проекте нет docker-compose.yml — обновите бота (пункт 7) и повторите.")
+            return
+        step_ok("Файлы проекта на месте.")
+
+        step_rule(2, total, "Конфигурация")
+        migrate_settings_layout(PROJECT_DIR, out=console.print)
+
+        def _missing_cfg():
+            moved = migrate_settings_layout(PROJECT_DIR, out=console.print)
+            if moved:
+                step_ok("Нашёл файлы в местах от другой версии и перенёс их куда нужно.")
+            miss = []
+            for path in (resolve_config_path(PROJECT_DIR), resolve_texts_path(PROJECT_DIR)):
+                if not os.path.exists(path):
+                    miss.append(os.path.relpath(path, PROJECT_DIR))
+            return miss
+
+        while True:
+            missing = _missing_cfg()
+            if not missing:
+                break
+            config_path = resolve_config_path(PROJECT_DIR)
+            texts_path = resolve_texts_path(PROJECT_DIR)
+            step_warn("Пока нет файлов: " + ", ".join(missing))
+            console.print(
+                Panel(
+                    f"[text]Скачайте на сайте и положите на сервер:[/text]\n\n"
+                    f"  • [accent]config.py[/accent] → [bold]{config_path}[/bold]\n"
+                    f"  • [accent]texts.py[/accent] → [bold]{texts_path}[/bold]\n\n"
+                    f"[text]Где взять:[/text] [bold]{CONFIG_BUILDER_URL}[/bold]\n\n"
+                    f"  [bold]scp config.py root@ВАШ_IP:{config_path}[/bold]\n"
+                    f"  [bold]scp texts.py root@ВАШ_IP:{texts_path}[/bold]",
+                    border_style="warn",
+                    width=_PANEL_W,
+                    title="[warn.bold]Нужны config.py и texts.py[/warn.bold]",
+                    padding=(1, 2),
+                )
+            )
+            if not safe_confirm("Загрузили файлы? Проверить снова?", default=True):
+                step_warn("Установка приостановлена. Запустите снова: sudo solobot")
+                return
+        step_ok("config.py и texts.py на месте.")
+
+        step_rule(3, total, "Docker")
+        if not _ensure_docker():
+            step_fail("Docker недоступен. Установка прервана.")
+            return
+        step_ok("Docker готов.")
+
+        step_rule(4, total, "База данных и Redis")
+        console.print("[accent]Где будут база и Redis:[/accent]")
+        console.print("  1. Поднять в Docker вместе с ботом (рекомендуется)")
+        console.print("  2. Уже установлены на хосте — подключиться к ним")
+        mode = safe_prompt("Выбор", choices=["1", "2"], default="1", show_choices=False)
+        external = mode == "2"
+
+        creds = _prompt_db_creds()
+        if external:
+            _write_config_value("PG_HOST", "host.docker.internal")
+            redis_external = safe_confirm("Redis тоже на хосте?", default=True)
+            console.print(
+                "[faint]Не забудьте разрешить подключения из docker-сети: PostgreSQL — listen_addresses='*' "
+                "и строка «host all all 172.16.0.0/12 scram-sha-256» в pg_hba.conf; Redis — bind 0.0.0.0 + пароль.[/faint]"
+            )
+        else:
+            _write_config_value("PG_HOST", "postgres")
+            redis_external = False
+        _write_config_value("BACK_DIR", "/app/backups")
+        if not _write_docker_env(creds, redis_external):
+            return
+        step_ok("Доступы записаны в config.py и .env.")
+
+        step_rule(5, total, "HTTPS для бота")
+        domain = _prompt_domain()
+        setup_bot_https(domain)
+
+        step_rule(6, total, "Сборка и запуск")
+        console.print("[faint]Первая сборка образа занимает 3–5 минут.[/faint]")
+        args = ["up", "-d", "--build"]
+        if external:
+            args += ["--no-deps", "bot"]
+        result = _dc(*args)
+        if result.returncode != 0:
+            step_fail("Не удалось запустить контейнеры. Смотрите вывод выше.")
+            return
+        step_ok("Контейнеры запущены.")
+        console.print()
+        step_ok("Установка в Docker завершена.")
+        console.print("[faint]Логи: пункт «Логи контейнера» в меню Docker. Проверьте /start в Telegram.[/faint]")
+    except KeyboardInterrupt:
+        console.print("\n[warn]Установка прервана пользователем.[/warn]")
+
+
+def update_bot_docker():
+    if not safe_confirm("Обновить код из GitHub и пересобрать образ?", default=True):
+        return
+    if os.path.isdir(os.path.join(PROJECT_DIR, ".git")):
+        pull = subprocess.run(["git", "pull"], cwd=PROJECT_DIR)
+        if pull.returncode != 0:
+            step_warn("git pull не удался — пересобираю из текущих файлов.")
+    else:
+        step_warn("Проект не под git — пересобираю из текущих файлов.")
+    result = _dc("up", "-d", "--build")
+    if result.returncode == 0:
+        step_ok("Бот обновлён и перезапущен.")
+    else:
+        step_fail("Пересборка не удалась. Смотрите вывод выше.")
+
+
+def manage_bot_docker():
+    while True:
+        style, state = _docker_bot_state()
+        installed = state not in ("нет docker-compose.yml", "Docker не установлен")
+        menu(
+            "Бот в Docker",
+            [
+                (
+                    "Управление",
+                    [
+                        ("1", "▶", "Запустить", installed, ""),
+                        ("2", "⟳", "Перезапустить", installed, ""),
+                        ("3", "■", "Остановить", installed, ""),
+                    ],
+                ),
+                (
+                    "Наблюдение",
+                    [
+                        ("4", "≡", "Логи контейнера", installed, ""),
+                        ("5", "◉", "Статус контейнеров", installed, ""),
+                    ],
+                ),
+                (
+                    "Обслуживание",
+                    [
+                        ("6", "↑", "Обновить и пересобрать", installed, ""),
+                        ("7", "⚙", "Установить бота в Docker", True, ""),
+                    ],
+                ),
+                (
+                    "",
+                    [
+                        ("8", "←", "Назад", True, ""),
+                    ],
+                ),
+            ],
+            subtitle=f"статус: {state}",
+        )
+        choice = ask_choice(8)
+        if choice == "1":
+            _dc("up", "-d")
+            step_ok("Контейнеры запущены.")
+        elif choice == "2":
+            _dc("restart")
+            step_ok("Контейнеры перезапущены.")
+        elif choice == "3":
+            if safe_confirm("Остановить бота в Docker?", default=False):
+                _dc("stop")
+                step_ok("Контейнеры остановлены.")
+        elif choice == "4":
+            step_info("Живой поток логов. Выход — Ctrl+C.")
+            try:
+                _dc("logs", "-f", "--tail", "80", "bot")
+            except KeyboardInterrupt:
+                pass
+            console.print()
+            step_ok("Просмотр логов завершён.")
+        elif choice == "5":
+            _dc("ps")
+        elif choice == "6":
+            update_bot_docker()
+        elif choice == "7":
+            install_bot_docker()
+        elif choice == "8":
+            return
+
+
 def show_menu():
     bot_installed = has_project_code()
     venv_ready = bot_installed and os.path.exists(VENV_PYTHON)
@@ -4117,15 +4366,21 @@ def show_menu():
                 ],
             ),
             (
+                "Docker",
+                [
+                    ("10", "▣", "Бот в Docker: установка и управление", True, ""),
+                ],
+            ),
+            (
                 "Сайт",
                 [
-                    ("10", "◈", "Веб-сайт: установка и управление", True, ""),
+                    ("11", "◈", "Веб-сайт: установка и управление", True, ""),
                 ],
             ),
             (
                 "",
                 [
-                    ("11", "✕", "Выход", True, ""),
+                    ("12", "✕", "Выход", True, ""),
                 ],
             ),
         ],
@@ -4149,7 +4404,7 @@ def main():
         while True:
             refresh_service_name()
             show_menu()
-            choice = ask_choice(11)
+            choice = ask_choice(12)
             if choice == "1":
                 if is_service_exists(SERVICE_NAME):
                     subprocess.run(["sudo", "systemctl", "start", SERVICE_NAME])
@@ -4226,8 +4481,10 @@ def main():
             elif choice == "9":
                 install_bot()
             elif choice == "10":
-                manage_website()
+                manage_bot_docker()
             elif choice == "11":
+                manage_website()
+            elif choice == "12":
                 console.print("[brand]Выход из CLI. Удачного дня![/brand]")
                 break
     except KeyboardInterrupt:

@@ -1,43 +1,95 @@
+# Запуск бота в Docker. Две схемы — выберите свою.
+#
+# ── А. Всё в Docker: бот + PostgreSQL + Redis (по умолчанию) ────────────────
+#   1. Положите рядом файлы с сайта: settings/config.py и settings/texts.py
+#   2. В settings/config.py:
+#        PG_HOST = "postgres"          # имя сервиса, а не localhost
+#        DB_NAME / DB_USER / DB_PASSWORD — те же, что в .env
+#        BACK_DIR = "/app/backups"
+#   3. .env рядом с этим файлом:
+#        DB_NAME=solobot
+#        DB_USER=myuser
+#        DB_PASSWORD=ваш_пароль
+#   4. docker compose up -d --build
+#
+# ── Б. База и/или Redis уже на хосте ───────────────────────────────────────
+#   1. В settings/config.py:  PG_HOST = "host.docker.internal"
+#   2. Если Redis на хосте — добавьте в .env:
+#        REDIS_URL=redis://host.docker.internal:6379/0
+#   3. Запуск только бота, без своих postgres/redis:
+#        docker compose up -d --build --no-deps bot
+#   4. На хосте разрешите подключения из Docker:
+#        PostgreSQL: listen_addresses = '*' и в pg_hba.conf строка
+#                    host all all 172.16.0.0/12 scram-sha-256
+#        Redis:      bind 0.0.0.0 (и обязательно requirepass / firewall)
+#      Порты 5432/6379 наружу не открывайте — только для docker-сети.
+#
+# Бот слушает 127.0.0.1:3001 (вебхук Telegram, ссылки подписок) и 127.0.0.1:3004 (API).
+# HTTPS-домен направьте на 3001 через nginx/Caddy на хосте.
+
+name: solobot
+
 services:
   bot:
     container_name: solobot
     build: .
     restart: unless-stopped
-    network_mode: host
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      REDIS_URL: redis://127.0.0.1:6379/0
-      BACK_DIR: /app/backups
-      GHCR_IMAGE: ${GHCR_IMAGE:-vladless/solo-brick}
-      APP_VERSION: ${APP_VERSION:-0.2.0}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      TZ: ${TZ:-Europe/Moscow}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:3004:3004"
     volumes:
-      - /:/host:ro
-      - backups_data:/app/backups
+      - ./settings/config.py:/app/settings/config.py
+      - ./settings/texts.py:/app/settings/texts.py
+      - bot_logs:/app/logs
+      - bot_backups:/app/backups
+      - bot_modules:/app/modules
+      - bot_uploads:/app/static/web_uploads
+      - bot_img:/app/img
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: solobot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:?DB_NAME must be set}
+      POSTGRES_USER: ${DB_USER:?DB_USER must be set}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3004/api/health')"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 20
 
   redis:
     image: redis:7-alpine
     container_name: solobot-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 20
 
 volumes:
+  postgres_data:
   redis_data:
-  backups_data:
-
+  bot_logs:
+  bot_backups:
+  bot_modules:
+  bot_uploads:
+  bot_img:
