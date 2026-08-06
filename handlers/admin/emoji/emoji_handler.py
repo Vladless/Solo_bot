@@ -13,7 +13,7 @@ from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_EMOJI
 from settings.buttons import BACK
 
-from ..panel.headers import content_width, menu_text, menu_title, quote, strip_tags, wrap_text
+from ..panel.headers import menu_text, menu_title, quote, strip_tags, wrap_text
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 
@@ -52,7 +52,7 @@ async def show_emoji_menu(callback_query: CallbackQuery, state: FSMContext):
     marker = f"{{{{emoji:{example_id}}}}}"
     preview_placeholder = "😀"
     hint = wrap_text("Пришлите кастомное эмоджи — верну его ID и пример для файла текстов.")
-    text = strip_tags(menu_title("Эмоджи", content_width(hint))) + "\n\n" + hint + "\n\nПример:\n" + preview_placeholder
+    text = strip_tags(menu_title("Эмоджи")) + "\n\n" + hint + "\n\nПример:\n" + preview_placeholder
 
     entities: list[MessageEntity] = []
     start = 0

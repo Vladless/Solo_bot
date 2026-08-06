@@ -52,7 +52,7 @@ from utils.csv_export import (
     export_users_csv,
 )
 
-from ..panel.headers import card, content_width, keyboard_width, menu_text, menu_title, quote, section
+from ..panel.headers import card, menu_text, menu_title, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     build_audit_refresh_kb,
@@ -283,8 +283,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             stats_body += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
 
         new_kb = build_stats_kb()
-        width = max(content_width(stats_body), keyboard_width(new_kb))
-        stats_message = menu_title("Статистика проекта", width) + "\n\n" + stats_body
+        stats_message = menu_title("Статистика проекта") + "\n\n" + stats_body
         current_text = callback_query.message.html_text or callback_query.message.text or ""
         cur_kb = callback_query.message.reply_markup
         cur_kb_json = cur_kb.model_dump_json() if cur_kb else None
@@ -719,7 +718,7 @@ async def _send_report_to_admins(session: AsyncSession, text: str, chart) -> Non
 
 async def send_daily_stats_report(session: AsyncSession):
     try:
-        from handlers.admin.stats.report_charts import chart_legend, render_stats_chart
+        from handlers.admin.stats.report_charts import render_stats_chart
 
         moscow_tz = pytz.timezone("Europe/Moscow")
         now_moscow = datetime.now(moscow_tz)
@@ -838,7 +837,7 @@ def _month_window(year: int, month: int) -> tuple[date, date]:
 
 async def send_monthly_stats_report(session: AsyncSession):
     try:
-        from handlers.admin.stats.report_charts import chart_legend, render_stats_chart
+        from handlers.admin.stats.report_charts import render_stats_chart
 
         moscow_tz = pytz.timezone("Europe/Moscow")
         now_moscow = datetime.now(moscow_tz)

@@ -1,12 +1,9 @@
 import re
 
 
-MENU_TITLE_EM = 15.0
-MENU_TITLE_MAX = 24.0
 MENU_TEXT_EM = 15.6
 QUOTE_TEXT_EM = 14.8
 
-MENU_DASHES = 2
 MONO_LINE_LIMIT = 28
 
 _NARROW = set("iljtfrI.,:;!'`|/\\()[]{}")
@@ -77,9 +74,6 @@ def wrap_text(text: str, width: float = MENU_TEXT_EM) -> str:
     space = char_width(" ")
     result: list[str] = []
     for paragraph in _TAG_RE.sub(hide, text).split("\n"):
-        if _MASK_RE.sub("", paragraph).lstrip().startswith("--"):
-            result.append(paragraph)
-            continue
         line: list[str] = []
         size = 0.0
         for word in paragraph.split(" "):
@@ -101,27 +95,14 @@ def keyboard_width(markup) -> float:
     return max(widths, default=0.0)
 
 
-def menu_title(title: str, width: float = 0.0) -> str:
-    """Возвращает заголовок, добитый чёрточками до общей ширины меню."""
-    target = min(max(MENU_TITLE_EM, width), MENU_TITLE_MAX)
-    dash, space = char_width("-"), char_width(" ")
-    best = None
-    for gap in (1, 2):
-        free = target - text_width(title) - 2 * gap * space
-        dashes = int(free / (2 * dash) + 1e-6)
-        if dashes < MENU_DASHES:
-            continue
-        rest = free - 2 * dashes * dash
-        if best is None or rest < best[0]:
-            best = (rest, dashes, gap)
+RULE_CHAR_EM = 0.52
 
-    if best is None:
-        return f"<b>{title}</b>"
+MENU_RULE = "_" * int(MENU_TEXT_EM / RULE_CHAR_EM)
 
-    _, dashes, gap = best
-    line = "-" * dashes
-    pad = " " * gap
-    return f"<b>{line}{pad}{title}{pad}{line}</b>"
+
+def menu_title(title: str) -> str:
+    """Возвращает заголовок экрана с подчёркивающей линией."""
+    return f"<b>{title}</b>\n{MENU_RULE}"
 
 
 def _table(rows: list[str]) -> str | None:
@@ -174,9 +155,8 @@ def card(*sections: str) -> str:
 def menu_text(title: str, *paragraphs: str, markup=None) -> str:
     """Собирает текст экрана: заголовок и абзацы. Секции идут вплотную друг к другу."""
     body = [wrap_text(p) for p in paragraphs if p]
-    width = max(content_width(*body), keyboard_width(markup) if markup is not None else 0.0)
 
-    return "\n\n".join([menu_title(title, width), *body])
+    return "\n\n".join([menu_title(title), *body])
 
 
 def render_version_block(version_text: str | None) -> str:
