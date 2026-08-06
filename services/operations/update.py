@@ -186,7 +186,11 @@ async def update_key_on_cluster(
                 logger.warning(f"{PANEL_XUI} INBOUND_ID отсутствует для сервера {server_name}. Пропуск.")
                 continue
 
-            xui = await get_xui_instance(server_info["api_url"])
+            try:
+                xui = await get_xui_instance(server_info["api_url"])
+            except Exception as e:
+                logger.warning(f"{PANEL_XUI} [{server_name}] недоступна панель 3x-ui при перевыпуске: {e}")
+                continue
 
             sub_id = email
             unique_email = f"{email}_{server_name.lower()}" if SUPERNODE else email
@@ -242,6 +246,7 @@ async def update_subscription(
     expiry_time = record.expiry_time
     client_id = record.client_id
     old_cluster_id = record.server_id
+    old_key_link = record.key
     tariff_id = record.tariff_id
     alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
@@ -273,6 +278,26 @@ async def update_subscription(
     await release_session_early(session)
     await delete_key_from_cluster(old_cluster_id, email, client_id, session=session)
     await delete_key_by_user_and_email(session, uid, email)
+
+    async def restore_previous_key(reason: str) -> None:
+        logger.warning(f"[Update] Перевыпуск {email} не завершён ({reason}), восстанавливаем прежнюю запись")
+        await store_key(
+            session=session,
+            legacy_user_ref=tg_id,
+            client_id=client_id,
+            email=email,
+            expiry_time=expiry_time,
+            key=old_key_link,
+            remnawave_link=remnawave_link,
+            server_id=old_cluster_id,
+            tariff_id=tariff_id,
+            alias=alias,
+            selected_device_limit=selected_device_limit,
+            selected_traffic_limit=selected_traffic_limit,
+            selected_price_rub=selected_price_rub,
+            current_device_limit=current_device_limit_db,
+            current_traffic_limit=current_traffic_limit_db,
+        )
 
     if country_override or cluster_override:
         new_cluster_id = country_override or cluster_override
@@ -312,7 +337,7 @@ async def update_subscription(
         )
 
     if not cluster_servers:
-        logger.warning(f"[Update] Пересоздание пропущено: нет серверов после фильтрации в {new_cluster_id}.")
+        await restore_previous_key(f"нет серверов после фильтрации в {new_cluster_id}")
         return
 
     if tariff:
@@ -325,9 +350,7 @@ async def update_subscription(
                 logger.info(f"[Update] Нет серверов со спецгруппой '{gc}' в {new_cluster_id}")
 
     if not cluster_servers:
-        logger.warning(
-            f"[Update] Пересоздание пропущено: нет серверов после фильтрации по спецгруппам в {new_cluster_id}."
-        )
+        await restore_previous_key(f"нет серверов после фильтрации по спецгруппам в {new_cluster_id}")
         return
 
     traffic_limit_gb = None
@@ -351,32 +374,36 @@ async def update_subscription(
     if current_traffic_limit_db is not None:
         traffic_limit_gb = int(current_traffic_limit_db)
 
-    new_client_id, remnawave_link_value = await update_key_on_cluster(
-        tg_id=tg_id,
-        client_id=client_id,
-        email=email,
-        expiry_time=expiry_time,
-        cluster_id=new_cluster_id,
-        session=session,
-        traffic_limit=traffic_limit_gb,
-        device_limit=device_limit,
-        remnawave_link=remnawave_link,
-        subgroup_code=subgroup_code,
-        tariff_id=tariff_id,
-        external_squad_uuid=external_squad_uuid,
-    )
+    try:
+        new_client_id, remnawave_link_value = await update_key_on_cluster(
+            tg_id=tg_id,
+            client_id=client_id,
+            email=email,
+            expiry_time=expiry_time,
+            cluster_id=new_cluster_id,
+            session=session,
+            traffic_limit=traffic_limit_gb,
+            device_limit=device_limit,
+            remnawave_link=remnawave_link,
+            subgroup_code=subgroup_code,
+            tariff_id=tariff_id,
+            external_squad_uuid=external_squad_uuid,
+        )
 
-    aggregated = await make_aggregated_link(
-        session=session,
-        cluster_all=cluster_servers,
-        cluster_id=new_cluster_id,
-        email=email,
-        client_id=new_client_id,
-        tg_id=tg_id,
-        subgroup_code=subgroup_code,
-        remna_link_override=None,
-        plan=tariff_id,
-    )
+        aggregated = await make_aggregated_link(
+            session=session,
+            cluster_all=cluster_servers,
+            cluster_id=new_cluster_id,
+            email=email,
+            client_id=new_client_id,
+            tg_id=tg_id,
+            subgroup_code=subgroup_code,
+            remna_link_override=None,
+            plan=tariff_id,
+        )
+    except Exception as e:
+        await restore_previous_key(f"ошибка пересоздания: {e}")
+        raise
 
     final_key_link = aggregated or public_link
 
