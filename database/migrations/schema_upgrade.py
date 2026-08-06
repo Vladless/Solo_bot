@@ -8,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from logger import logger
 
 
-def _mig_out(msg: str) -> None:
+def _mig_out(msg: str, color: str | None = None) -> None:
+    """Вывод миграций схемы: успешное завершение подсвечиваем зелёным."""
+    if color:
+        try:
+            from rich.console import Console
+
+            Console().print(msg, style=color, markup=False, highlight=False)
+            return
+        except Exception:
+            pass
     print(msg, flush=True)
 from settings.config import DATABASE_URL
 
@@ -1859,7 +1868,10 @@ async def apply_all_migrations(conn: AsyncConnection) -> None:
             logger.error(f"[schema_upgrade] Ошибка при применении миграции v{version}: {e}")
             raise
 
-    _mig_out(f"[schema_upgrade] Все миграции применены, текущая версия: {await _get_current_version(conn)}")
+    _mig_out(
+        f"[schema_upgrade] Все миграции применены, текущая версия: {await _get_current_version(conn)}",
+        "green",
+    )
 
 
 async def apply_account_schema_if_needed(conn: AsyncConnection) -> None:

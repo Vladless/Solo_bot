@@ -36,25 +36,33 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
         super().__init__(**data)
 
 
+# Пары складываются в два столбца; если у админа нет прав на соседа,
+# кнопка сама растянется на всю ширину.
 _ADMIN_MENU: tuple[tuple[tuple[str, str, tuple[str, ...]], ...], ...] = (
-    (("🔍 Поиск", "search_user", (PERM_USERS,)),),
-    (("📦 Массовые действия", "bulk", (PERM_BULK,)),),
-    (("🖥️ Управление серверами", "clusters", (PERM_CLUSTERS,)),),
-    (("💸Управление тарифами", "tariffs", (PERM_TARIFFS,)),),
-    (("🤖 Управление ботом", "management", (PERM_MANAGEMENT, PERM_ADMINS)),),
+    (
+        ("🔍 Поиск", "search_user", (PERM_USERS,)),
+        ("📦 Массовые", "bulk", (PERM_BULK,)),
+    ),
+    (
+        ("🖥️ Серверы", "clusters", (PERM_CLUSTERS,)),
+        ("💸 Тарифы", "tariffs", (PERM_TARIFFS,)),
+    ),
     (
         ("📢 Рассылка", "sender", (PERM_BROADCASTING,)),
         ("🎟️ Купоны", "coupons", (PERM_COUPONS,)),
     ),
     (
         ("🎁 Подарки", "gifts", (PERM_GIFTS,)),
-        ("🧩 Мои модули", "modules", (PERM_MODULES,)),
+        ("🧩 Модули", "modules", (PERM_MODULES,)),
     ),
     (
         ("📊 Статистика", "stats", (PERM_STATS,)),
         ("📈 Аналитика", "ads", (PERM_ADS,)),
     ),
-    (("😀 Эмоджи", "emoji", (PERM_EMOJI,)),),
+    (
+        ("🤖 Бот", "management", (PERM_MANAGEMENT, PERM_ADMINS)),
+        ("😀 Эмоджи", "emoji", (PERM_EMOJI,)),
+    ),
 )
 
 
