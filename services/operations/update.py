@@ -122,8 +122,6 @@ async def update_key_on_cluster(
                 logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
 
             if external_squad_uuid:
-                user_data["activeExternalSquads"] = [external_squad_uuid]
-                user_data["activeExternalSquadUuids"] = [external_squad_uuid]
                 user_data["externalSquadUuid"] = external_squad_uuid
 
             if traffic_limit is not None:
@@ -135,15 +133,15 @@ async def update_key_on_cluster(
                 logger.debug(f"{PANEL_REMNA} Добавлен short_uuid: {short_uuid}")
 
             async def _recreate(api):
-                await api.delete_user(client_id)
+                await api.delete_user(client_id, username=email)
                 created = await api.create_user(user_data)
                 try:
-                    reset_uuid = str((created or {}).get("uuid") or client_id)
-                    devices = await api.get_user_hwid_devices(reset_uuid) or []
+                    reset_uuid = str((created or {}).get("vlessUuid") or (created or {}).get("uuid") or client_id)
+                    devices = await api.get_user_hwid_devices(reset_uuid, username=email) or []
                     removed = 0
                     for d in devices:
                         hwid = d.get("hwid") if isinstance(d, dict) else None
-                        if hwid and await api.delete_user_hwid_device(reset_uuid, hwid):
+                        if hwid and await api.delete_user_hwid_device(reset_uuid, hwid, username=email):
                             removed += 1
                     if removed:
                         logger.info(
@@ -161,7 +159,7 @@ async def update_key_on_cluster(
                 timeout_sec=12.0,
             )
             if remna_result:
-                remnawave_client_id = remna_result.get("uuid")
+                remnawave_client_id = remna_result.get("vlessUuid") or remna_result.get("uuid")
                 remnawave_link_value = remna_result.get("subscriptionUrl")
                 await invalidate_remnawave_profile(
                     session,

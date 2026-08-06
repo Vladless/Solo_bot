@@ -375,7 +375,10 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     hwid_count = 0
     remna_used_gb = None
     if is_full_remnawave and client_id:
-        profile = await get_remnawave_profile(session, str(server_name), client_id)
+        profile = await get_remnawave_profile(
+            session, str(server_name), client_id,
+            username=str(record.get("email") or "") or None,
+        )
         if profile:
             hwid_count = int(profile.get("hwid_count") or 0)
             remna_used_gb = profile.get("used_gb")
@@ -577,7 +580,9 @@ async def _build_single_subscription_text(
     if getattr(key, "client_id", None):
         try:
             if await is_full_remnawave_cluster(key.server_id, session):
-                profile = await get_remnawave_profile(session, str(key.server_id), key.client_id)
+                profile = await get_remnawave_profile(
+                    session, str(key.server_id), key.client_id, username=key.email
+                )
                 if isinstance(profile, dict):
                     hwid_count = int(profile.get("hwid_count") or 0)
                     used_traffic_gb = profile.get("used_gb")
@@ -717,9 +722,10 @@ async def _render_my_devices(
         return
 
     server_id = str(record.get("server_id") or "")
+    key_email = str(record.get("email") or "") or None
 
     async def _fetch(api):
-        return await api.get_user_hwid_devices(client_id)
+        return await api.get_user_hwid_devices(client_id, username=key_email)
 
     devices = await with_remnawave_api(session, server_id, _fetch, fallback_any=True, timeout_sec=10.0)
     if devices is None:
@@ -813,16 +819,17 @@ async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSess
         return
 
     server_id = str(record.get("server_id") or "")
+    key_email = str(record.get("email") or "") or None
 
     async def _delete(api):
-        devices = await api.get_user_hwid_devices(client_id) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
         target_idx = page * DEVICES_PER_PAGE + idx
         if target_idx >= len(devices):
             return None
         target_hwid = devices[target_idx].get("hwid")
         if not target_hwid:
             return False
-        return await api.delete_user_hwid_device(client_id, target_hwid)
+        return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
     result = await with_remnawave_api(session, server_id, _delete, fallback_any=True, timeout_sec=10.0)
     if result is None:

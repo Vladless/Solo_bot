@@ -63,7 +63,7 @@ async def toggle_client_on_cluster(
                     continue
 
                 func = remna.enable_user if enable else remna.disable_user
-                tasks.append(func(client_id))
+                tasks.append(func(client_id, username=email))
 
             else:
                 logger.warning(

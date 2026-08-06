@@ -69,7 +69,8 @@ async def _fetch_all_panel_uuids(remna: RemnawaveAPI) -> set[str]:
             break
 
         for u in users:
-            uid = u.get("uuid")
+            # Remnawave 3.x: у пользователя нет uuid, наш client_id лежит в vlessUuid
+            uid = u.get("vlessUuid") or u.get("uuid")
             if uid:
                 uuids.add(str(uid))
 
@@ -461,6 +462,7 @@ async def handle_sync_server(
                     )
                     success = await remna.update_user(
                         uuid=key["client_id"],
+                        lookup_username=key.get("email"),
                         expire_at=expire_iso,
                         telegram_id=_ptg,
                         email=_pemail or None,
@@ -689,6 +691,7 @@ async def handle_sync_cluster(
                             )
                             success = await remna.update_user(
                                 uuid=key["client_id"],
+                                lookup_username=key.get("email"),
                                 expire_at=expire_iso,
                                 telegram_id=_ptg,
                                 email=_pemail or None,
@@ -757,7 +760,7 @@ async def handle_sync_cluster(
                             if stored_link and "/" in stored_link:
                                 payload["shortUuid"] = stored_link.rstrip("/").split("/")[-1]
 
-                            r = await remna._request("POST", "/users", json=payload)
+                            r = await remna._request("POST", "/users", json=remna._normalize_user_payload(payload))
                             if r.status_code not in (200, 201):
                                 stats["failed"] += 1
                                 logger.warning(

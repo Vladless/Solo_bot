@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.settings.tariffs_config import normalize_tariff_config
+from core.settings.tariffs_config import get_override_value, normalize_tariff_config
 
 from .tariff_display import GB
 
@@ -103,9 +103,9 @@ def calculate_config_price(
 
     if selected_device_limit is not None and base_device_limit is not None:
         selected_device_limit = int(selected_device_limit)
-        override_key = str(selected_device_limit)
-        if override_key in device_overrides:
-            devices_extra_price = int(device_overrides[override_key])
+        device_override = get_override_value(device_overrides, selected_device_limit)
+        if device_override is not None:
+            devices_extra_price = int(device_override)
         else:
             if selected_device_limit <= 0:
                 if positive_device_values:
@@ -118,9 +118,9 @@ def calculate_config_price(
 
     if selected_traffic_gb is not None and base_traffic_gb is not None:
         selected_traffic_gb = int(selected_traffic_gb)
-        override_key = str(selected_traffic_gb)
-        if override_key in traffic_overrides:
-            traffic_extra_price = int(traffic_overrides[override_key])
+        traffic_override = get_override_value(traffic_overrides, selected_traffic_gb)
+        if traffic_override is not None:
+            traffic_extra_price = int(traffic_override)
         else:
             if selected_traffic_gb <= 0:
                 if positive_traffic_values:

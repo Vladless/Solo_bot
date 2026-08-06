@@ -78,6 +78,7 @@ async def renew_on_remnawave(
 
     update_kwargs = {
         "uuid": client_id,
+        "lookup_username": email,
         "expire_at": expire_iso,
         "active_user_inbounds": active_inbounds,
         "traffic_limit_bytes": traffic_limit_bytes,
@@ -100,7 +101,7 @@ async def renew_on_remnawave(
     async def _renew(api):
         if old_device_limit is not None and hwid_device_limit < old_device_limit:
             try:
-                await api.clear_all_hwid_devices(client_id)
+                await api.clear_all_hwid_devices(client_id, username=email)
                 logger.info(
                     f"{PANEL_REMNA} HWID устройства сброшены для {client_id} (лимит {old_device_limit} → {hwid_device_limit})"
                 )
@@ -110,7 +111,7 @@ async def renew_on_remnawave(
         updated_local = await api.update_user(**update_kwargs)
         if updated_local and reset_traffic:
             try:
-                await api.reset_user_traffic(client_id)
+                await api.reset_user_traffic(client_id, username=email)
             except Exception as e:
                 logger.warning(f"{PANEL_REMNA} reset_user_traffic: {e}")
         if updated_local:

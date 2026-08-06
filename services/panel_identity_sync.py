@@ -24,7 +24,7 @@ async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None
         return
     servers_map = await get_servers(session)
 
-    by_api_url: dict[str, set[str]] = {}
+    by_api_url: dict[str, set[tuple[str, str]]] = {}
     for key in keys:
         server_id = getattr(key, "server_id", None)
         client_id = getattr(key, "client_id", None)
@@ -38,7 +38,9 @@ async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None
                 continue
             api_url = s.get("api_url")
             if api_url:
-                by_api_url.setdefault(api_url, set()).add(str(client_id))
+                by_api_url.setdefault(api_url, set()).add(
+                    (str(client_id), str(getattr(key, "email", "") or ""))
+                )
 
     if not by_api_url:
         return
@@ -51,10 +53,11 @@ async def push_identity_to_panel(session: AsyncSession, legacy_ref: int) -> None
             if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
                 logger.warning(f"{PANEL_REMNA} sync identity: не удалось войти ({api_url})")
                 continue
-            for client_id in client_ids:
+            for client_id, key_email in client_ids:
                 try:
                     await remna.update_user(
                         uuid=client_id,
+                        lookup_username=key_email or None,
                         telegram_id=tg,
                         email=email or None,
                         status=None,

@@ -36,7 +36,7 @@ async def delete_key_from_cluster(cluster_id: str, email: str, client_id: str, s
 
         await asyncio.gather(
             delete_on_3xui(xui_servers, email, client_id),
-            delete_on_remnawave(remna_servers, client_id),
+            delete_on_remnawave(remna_servers, client_id, email),
             return_exceptions=True,
         )
 
@@ -70,7 +70,7 @@ async def delete_on_3xui(servers: list, email: str, client_id: str):
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def delete_on_remnawave(servers: list, client_id: str) -> bool:
+async def delete_on_remnawave(servers: list, client_id: str, username: str | None = None) -> bool:
     servers = unique_by_api_url(servers)
     for s in servers:
         name = s.get("server_name", "remna")
@@ -81,7 +81,7 @@ async def delete_on_remnawave(servers: list, client_id: str) -> bool:
                 logger.warning(f"{PANEL_REMNA} [{name}] Авторизация не удалась")
                 continue
         try:
-            done = await api.delete_user(client_id)
+            done = await api.delete_user(client_id, username=username)
             if done:
                 logger.info(f"{PANEL_REMNA} [{name}] Клиент {client_id} удалён")
                 return True

@@ -65,7 +65,7 @@ async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tupl
                 try:
                     if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                         await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-                    user_data = await api.revoke_user_subscription(client_id)
+                    user_data = await api.revoke_user_subscription(client_id, username=email)
                 finally:
                     await api.aclose()
                 new_link = (user_data or {}).get("subscriptionUrl")

@@ -81,6 +81,7 @@ async def ensure_on_remnawave(
         try:
             updated = await api.update_user(
                 uuid=client_id,
+                lookup_username=email,
                 expire_at=expire_iso,
                 active_user_inbounds=inbounds,
                 traffic_limit_bytes=traffic_bytes,
@@ -92,7 +93,7 @@ async def ensure_on_remnawave(
 
             if reset_traffic:
                 try:
-                    await api.reset_user_traffic(client_id)
+                    await api.reset_user_traffic(client_id, username=email)
                 except Exception:
                     pass
 
@@ -136,7 +137,7 @@ async def ensure_on_remnawave(
                 return None, None
 
             user = created.get("user") or {}
-            new_uuid = user.get("uuid") or client_id
+            new_uuid = user.get("vlessUuid") or user.get("uuid") or client_id
 
             sub_url = created.get("subscriptionUrl")
             remna_link = await _build_link_from_subscription(sub_url)

@@ -119,7 +119,10 @@ async def user_key_connection(
         try:
             from panels.remnawave_runtime import get_remnawave_profile
 
-            profile = await get_remnawave_profile(session, server_name, client_id, fallback_any=True)
+            profile = await get_remnawave_profile(
+                session, server_name, client_id, fallback_any=True,
+                username=str(getattr(key, "email", "") or "") or None,
+            )
             if profile:
                 is_online = bool(profile.get("is_online"))
                 raw_online_at = profile.get("online_at")
@@ -234,6 +237,7 @@ async def user_key_details(
             str(getattr(db_key, "server_id", "") or ""),
             client_id,
             fallback_any=True,
+            username=str(getattr(db_key, "email", "") or "") or None,
         )
         if profile:
             connected_devices = int(profile.get("hwid_count") or 0)

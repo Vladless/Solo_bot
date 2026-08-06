@@ -135,7 +135,7 @@ async def finalize_key_creation(
                         elif old_server_info.panel_type.lower() == "remnawave":
                             remna_del = RemnawaveAPI(old_server_info.api_url)
                             if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                                await remna_del.delete_user(client_id)
+                                await remna_del.delete_user(client_id, username=email)
                                 await session.execute(
                                     update(Key)
                                     .where(Key.user_id == uid, Key.email == email)
@@ -178,7 +178,7 @@ async def finalize_key_creation(
             if not result:
                 raise ValueError("❌ Ошибка при создании пользователя в Remnawave")
 
-            client_id = result.get("uuid") or result.get("id") or client_id
+            client_id = result.get("vlessUuid") or result.get("uuid") or client_id
 
             remnawave_link = None
             if need_vless_key:

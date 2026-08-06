@@ -90,7 +90,7 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
 
     if remnawave_client_id and remnawave_server_ref:
         profile = await get_remnawave_profile(
-            session, str(remnawave_server_ref), remnawave_client_id, fallback_any=True
+            session, str(remnawave_server_ref), remnawave_client_id, fallback_any=True, username=email
         )
         if not profile:
             user_traffic_data["Remnawave (общий)"] = "Данные недоступны"
@@ -133,7 +133,7 @@ async def reset_traffic_in_cluster(cluster_id: str, email: str, session: AsyncSe
                     continue
 
                 async def _reset(api):
-                    done = await api.reset_user_traffic(client_id)
+                    done = await api.reset_user_traffic(client_id, username=email)
                     if done:
                         await invalidate_remnawave_profile(
                             session,

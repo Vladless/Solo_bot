@@ -35,6 +35,7 @@ async def user_key_reset_hwid(
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     server_id = str(getattr(db_key, "server_id", "") or "")
+    key_email = str(getattr(db_key, "email", "") or "") or None
     if not server_id:
         raise HTTPException(status_code=400, detail="У подписки не указан сервер")
 
@@ -48,13 +49,13 @@ async def user_key_reset_hwid(
         )
 
     async def _reset_devices(api):
-        devices = await api.get_user_hwid_devices(client_id)
+        devices = await api.get_user_hwid_devices(client_id, username=key_email)
         if not devices:
             return 0, 0
         reset_local = 0
         for device in devices:
             hwid = device.get("hwid")
-            if hwid and await api.delete_user_hwid_device(client_id, hwid):
+            if hwid and await api.delete_user_hwid_device(client_id, hwid, username=key_email):
                 reset_local += 1
         return len(devices), reset_local
 
@@ -105,6 +106,7 @@ async def user_key_devices(
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     server_id = str(getattr(db_key, "server_id", "") or "")
+    key_email = str(getattr(db_key, "email", "") or "") or None
     if not server_id:
         return {"devices": [], "total": 0}
 
@@ -114,7 +116,7 @@ async def user_key_devices(
         return cached
 
     async def _list(api):
-        return await api.get_user_hwid_devices(client_id)
+        return await api.get_user_hwid_devices(client_id, username=key_email)
 
     devices = await with_remnawave_api(
         session,
@@ -165,6 +167,7 @@ async def user_key_delete_device(
     if db_key is None:
         raise HTTPException(status_code=404, detail="Подписка не найдена")
     server_id = str(getattr(db_key, "server_id", "") or "")
+    key_email = str(getattr(db_key, "email", "") or "") or None
     if not server_id:
         raise HTTPException(status_code=400, detail="У подписки не указан сервер")
 
@@ -178,7 +181,7 @@ async def user_key_delete_device(
         )
 
     async def _delete(api):
-        return await api.delete_user_hwid_device(client_id, hwid)
+        return await api.delete_user_hwid_device(client_id, hwid, username=key_email)
 
     ok = await with_remnawave_api(
         session,

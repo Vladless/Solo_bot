@@ -198,7 +198,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                     continue
                 new_expiry = key.expiry_time + add_ms
                 expire_iso = datetime.utcfromtimestamp(new_expiry // 1000).isoformat() + "Z"
-                items.append((key.client_id, expire_iso))
+                items.append((key.client_id, expire_iso, key.email))
                 client_ids.append(key.client_id)
 
             if not items:

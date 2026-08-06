@@ -24,6 +24,13 @@ from handlers.utils import edit_or_send_message, get_plural_form
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import process_addon_purchase_complete, process_addons_menu
 from logger import logger
+from services.addons import (
+    calc_pack_devices_price_rub,
+    calc_pack_full_price_rub,
+    calc_pack_traffic_price_rub,
+    get_override_value,
+    get_pack_flags,
+)
 from middlewares.session import release_session_early
 from services.payments.currency_rates import format_for_user
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
@@ -49,88 +56,6 @@ from .utils import (
 
 
 router = Router()
-
-
-def get_pack_flags() -> tuple[bool, bool, str]:
-    mode = TARIFFS_CONFIG.get("KEY_ADDONS_PACK_MODE") or ""
-    if not mode:
-        return False, False, ""
-    if mode == "traffic":
-        return False, True, mode
-    if mode == "devices":
-        return True, False, mode
-    if mode == "all":
-        return True, True, mode
-
-    logger.warning(f"Некорректный KEY_ADDONS_PACK_MODE: {mode!r}")
-    return False, False, mode
-
-
-def get_override_value(overrides: Any, key: int) -> Any:
-    if not isinstance(overrides, dict):
-        return None
-    if key in overrides:
-        return overrides.get(key)
-    return overrides.get(str(key))
-
-
-def calc_pack_devices_price_rub(tariff: dict[str, Any], pack_devices: int | None) -> int:
-    if pack_devices is None:
-        return 0
-
-    pack_devices = int(pack_devices)
-    overrides = tariff.get("device_overrides") or {}
-
-    if pack_devices == 0:
-        override = get_override_value(overrides, 0)
-        return int(ceil(float(override))) if override is not None else 0
-
-    if pack_devices < 0:
-        return 0
-
-    override = get_override_value(overrides, pack_devices)
-    if override is not None:
-        return int(ceil(float(override)))
-
-    step_price = int(tariff.get("device_step_rub") or 0)
-    return int(ceil(pack_devices * step_price))
-
-
-def calc_pack_traffic_price_rub(tariff: dict[str, Any], pack_traffic_gb: int | None) -> int:
-    if pack_traffic_gb is None:
-        return 0
-
-    pack_traffic_gb = int(pack_traffic_gb)
-    overrides = tariff.get("traffic_overrides") or {}
-
-    if pack_traffic_gb == 0:
-        override = get_override_value(overrides, 0)
-        return int(ceil(float(override))) if override is not None else 0
-
-    if pack_traffic_gb < 0:
-        return 0
-
-    override = get_override_value(overrides, pack_traffic_gb)
-    if override is not None:
-        return int(ceil(float(override)))
-
-    step_price = int(tariff.get("traffic_step_rub") or 0)
-    return int(ceil(pack_traffic_gb * step_price))
-
-
-def calc_pack_full_price_rub(
-    tariff: dict[str, Any],
-    has_device_option: bool,
-    has_traffic_option: bool,
-    selected_devices: int | None,
-    selected_traffic_gb: int | None,
-) -> int:
-    total = 0
-    if has_device_option:
-        total += calc_pack_devices_price_rub(tariff, selected_devices if selected_devices is not None else None)
-    if has_traffic_option:
-        total += calc_pack_traffic_price_rub(tariff, selected_traffic_gb if selected_traffic_gb is not None else None)
-    return int(total)
 
 
 async def render_addons_screen(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
@@ -215,6 +140,11 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
         selected_devices = None
     if not has_traffic_option:
         selected_traffic_gb = None
+
+    if selected_devices is None and has_device_option and device_int_options:
+        selected_devices = device_int_options[0]
+    if selected_traffic_gb is None and has_traffic_option and traffic_int_options:
+        selected_traffic_gb = traffic_int_options[0]
 
     await state.update_data(
         addon_selected_device_limit=selected_devices,

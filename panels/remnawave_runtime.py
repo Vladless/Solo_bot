@@ -55,7 +55,9 @@ def _breaker_record(api_url: str, kind: str, ok: bool) -> None:
         )
 
 
-async def _fetch_profile_http_only(api_url: str, client_id: str) -> dict[str, Any] | None | object:
+async def _fetch_profile_http_only(
+    api_url: str, client_id: str, username: str | None = None
+) -> dict[str, Any] | None | object:
     """Только HTTP к панели: логин + устройства + юзер. Без кэша и без resolve. Вызывается из потока."""
     api = RemnawaveAPI(api_url)
     try:
@@ -68,11 +70,11 @@ async def _fetch_profile_http_only(api_url: str, client_id: str) -> dict[str, An
         if not logged_in:
             return _PANEL_ERROR
         devices = await asyncio.wait_for(
-            api.get_user_hwid_devices(client_id),
+            api.get_user_hwid_devices(client_id, username=username),
             timeout=REMNAWAVE_PROFILE_TIMEOUT_SEC,
         )
         user_data = await asyncio.wait_for(
-            api.get_user_by_uuid(client_id),
+            api.get_user_by_uuid(client_id, username=username),
             timeout=REMNAWAVE_PROFILE_TIMEOUT_SEC,
         )
         hwid_count = len(devices or [])
@@ -111,12 +113,12 @@ async def _fetch_profile_http_only(api_url: str, client_id: str) -> dict[str, An
                 pass
 
 
-def _run_profile_http_in_thread(api_url: str, client_id: str) -> dict[str, Any] | None:
+def _run_profile_http_in_thread(api_url: str, client_id: str, username: str | None = None) -> dict[str, Any] | None:
     """Синхронная обёртка: свой event loop в потоке, чтобы не блокировать основной цикл бота."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(_fetch_profile_http_only(api_url, client_id))
+        return loop.run_until_complete(_fetch_profile_http_only(api_url, client_id, username))
     finally:
         loop.close()
 
@@ -209,6 +211,7 @@ async def get_remnawave_profile(
     client_id: str,
     *,
     fallback_any: bool = False,
+    username: str | None = None,
 ) -> dict[str, Any] | None:
     api_url = await resolve_remnawave_api_url(session, server_ref, fallback_any=fallback_any)
     if not api_url:
@@ -224,7 +227,7 @@ async def get_remnawave_profile(
         return None
 
     async with _remnawave_semaphore:
-        profile = await run_io(_run_profile_http_in_thread, api_url, client_id)
+        profile = await run_io(_run_profile_http_in_thread, api_url, client_id, username)
         _breaker_record(api_url, "profile", profile is not _PANEL_ERROR)
         if profile is _PANEL_ERROR:
             logger.warning(f"[Remnawave] Таймаут или ошибка профиля для client_id={client_id}")
@@ -288,7 +291,8 @@ async def fetch_all_remnawave_traffic(
 
     result: dict[str, int] = {}
     for user in all_users:
-        uuid = user.get("uuid")
+        # в Remnawave 3.x поля uuid нет, наш client_id лежит в vlessUuid
+        uuid = user.get("vlessUuid") or user.get("uuid")
         if not uuid:
             continue
         if needed_uuids and uuid not in needed_uuids:

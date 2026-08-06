@@ -94,7 +94,10 @@ async def user_key_change_location(
             elif old_panel_type == "remnawave":
                 remna_del = RemnawaveAPI(str(getattr(old_server_info, "api_url", "") or ""))
                 if await remna_del.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                    await remna_del.delete_user(str(getattr(db_key, "client_id", "") or ""))
+                    await remna_del.delete_user(
+                        str(getattr(db_key, "client_id", "") or ""),
+                        username=str(getattr(db_key, "email", "") or "") or None,
+                    )
         except Exception as exc:
             logger.warning(
                 f"[location] не удалось удалить клиента {getattr(db_key, 'client_id', '')} "
@@ -156,7 +159,7 @@ async def user_key_change_location(
         result = await remna.create_user(user_data)
         if not result:
             raise HTTPException(status_code=502, detail="Не удалось создать подписку в новой локации")
-        key_client_id = str(result.get("uuid") or result.get("id") or key_client_id)
+        key_client_id = str(result.get("vlessUuid") or result.get("uuid") or key_client_id)
         if need_vless_key:
             try:
                 remnawave_link = await get_vless_link_for_remnawave_by_username(remna, email, email)

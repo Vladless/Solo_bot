@@ -5,7 +5,7 @@ from math import ceil
 from typing import TYPE_CHECKING, Any
 
 from core.bootstrap import TARIFFS_CONFIG
-from core.settings.tariffs_config import normalize_tariff_config
+from core.settings.tariffs_config import get_override_value, normalize_tariff_config
 from database import get_balance, get_key_details, get_tariff_by_id, save_key_config_with_mode
 from database.coupons import mark_coupon_used
 from database.users import update_balance
@@ -30,15 +30,9 @@ def get_pack_flags() -> tuple[bool, bool, str]:
         return True, False, mode
     if mode == "all":
         return True, True, mode
+
+    logger.warning(f"Некорректный KEY_ADDONS_PACK_MODE: {mode!r}")
     return False, False, mode
-
-
-def get_override_value(overrides: Any, key: int) -> Any:
-    if not isinstance(overrides, dict):
-        return None
-    if key in overrides:
-        return overrides.get(key)
-    return overrides.get(str(key))
 
 
 def calc_pack_devices_price_rub(tariff: dict[str, Any], pack_devices: int | None) -> int:

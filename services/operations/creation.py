@@ -200,7 +200,7 @@ async def create_key_on_cluster(
                     result = await remna.create_user(user_data)
                     if result:
                         remnawave_created = True
-                        remnawave_client_id = result.get("uuid")
+                        remnawave_client_id = result.get("vlessUuid") or result.get("uuid")
                         remnawave_link_value = result.get("subscriptionUrl")
 
                         remnawave_key = None

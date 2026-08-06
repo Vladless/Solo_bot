@@ -52,6 +52,7 @@ async def _render_admin_devices(
         await callback_query.message.edit_text("🚫 Не удалось найти ключ.", reply_markup=build_editor_kb(tg_id))
         return
     client_id = key_obj.client_id
+    key_email = key_obj.email
 
     remna_api_url = await resolve_remnawave_api_url(session, "", fallback_any=True)
     if not remna_api_url:
@@ -62,8 +63,8 @@ async def _render_admin_devices(
         return
 
     async def _fetch(api):
-        user_info = await api.get_user_by_uuid(client_id)
-        devices = await api.get_user_hwid_devices(client_id)
+        user_info = await api.get_user_by_uuid(client_id, username=key_email)
+        devices = await api.get_user_hwid_devices(client_id, username=key_email)
         return user_info, devices
 
     result = await with_remnawave_api(session, "", _fetch, fallback_any=True, timeout_sec=8.0)
@@ -190,16 +191,17 @@ async def handle_hwid_unbind(
         await callback_query.answer("🚫 Не удалось найти ключ.", show_alert=True)
         return
     client_id = key_obj.client_id
+    key_email = key_obj.email
 
     async def _delete(api):
-        devices = await api.get_user_hwid_devices(client_id) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
         target_idx = page * DEVICES_PER_PAGE + idx
         if target_idx >= len(devices):
             return None
         target_hwid = devices[target_idx].get("hwid")
         if not target_hwid:
             return False
-        return await api.delete_user_hwid_device(client_id, target_hwid)
+        return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
 
     result = await with_remnawave_api(session, "", _delete, fallback_any=True, timeout_sec=10.0)
     if result is None:

@@ -18,6 +18,7 @@ from hooks.processors import process_check_discount_validity
 from logger import logger
 from services.payments.currency_rates import format_for_user
 from services.tariffs.cooldown import format_cooldown_left, get_tariff_cooldown_remaining
+from services.tariffs.pricing import calculate_config_price
 from services.tariffs.tariff_display import GB
 from settings.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU, PAYMENT
 from settings.config import USE_NEW_PAYMENT_FLOW
@@ -43,112 +44,6 @@ class TariffUserConfigState(StatesGroup):
     """Состояния конфигуратора тарифа для пользователя."""
 
     configuring = State()
-
-
-def calculate_config_price(
-    tariff: dict,
-    selected_device_limit: int | None = None,
-    selected_traffic_gb: int | None = None,
-) -> int:
-    """Рассчитывает цену тарифа с учётом выбранных лимитов."""
-    cfg = normalize_tariff_config(tariff)
-
-    base_price = int(tariff.get("price_rub") or 0)
-
-    raw_device_options = tariff.get("device_options")
-    raw_traffic_options = tariff.get("traffic_options_gb")
-
-    raw_device_options = raw_device_options if isinstance(raw_device_options, list) else []
-    raw_traffic_options = raw_traffic_options if isinstance(raw_traffic_options, list) else []
-
-    device_values: list[int] = []
-    for value in raw_device_options:
-        try:
-            device_values.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    traffic_values: list[int] = []
-    for value in raw_traffic_options:
-        try:
-            traffic_values.append(int(value))
-        except (TypeError, ValueError):
-            continue
-
-    positive_device_values = [v for v in device_values if v > 0]
-    positive_traffic_values = [v for v in traffic_values if v > 0]
-
-    base_device_limit = cfg.get("base_device_limit")
-    if base_device_limit is None:
-        base_device_limit = tariff.get("device_limit")
-    if base_device_limit is None:
-        if positive_device_values:
-            base_device_limit = min(positive_device_values)
-        elif device_values:
-            base_device_limit = device_values[0]
-    base_device_limit = int(base_device_limit) if base_device_limit is not None else None
-
-    base_traffic_gb = cfg.get("base_traffic_gb")
-    if base_traffic_gb is None:
-        traffic_limit_raw = tariff.get("traffic_limit")
-        if traffic_limit_raw:
-            traffic_limit_raw = int(traffic_limit_raw)
-            if traffic_limit_raw >= GB:
-                base_traffic_gb = int(traffic_limit_raw / GB)
-            else:
-                base_traffic_gb = traffic_limit_raw
-        else:
-            if positive_traffic_values:
-                base_traffic_gb = min(positive_traffic_values)
-            elif traffic_values:
-                base_traffic_gb = traffic_values[0]
-    base_traffic_gb = int(base_traffic_gb) if base_traffic_gb is not None else None
-
-    device_overrides = cfg.get("device_price_overrides") or tariff.get("device_overrides") or {}
-    traffic_overrides = cfg.get("traffic_price_overrides") or tariff.get("traffic_overrides") or {}
-
-    extra_device_step_price = int(cfg.get("extra_device_base_price_rub") or tariff.get("device_step_rub") or 0)
-    extra_traffic_step_price = int(
-        cfg.get("extra_traffic_base_price_per_gb_rub") or tariff.get("traffic_step_rub") or 0
-    )
-
-    devices_extra_price = 0
-    traffic_extra_price = 0
-
-    if selected_device_limit is not None and base_device_limit is not None:
-        selected_device_limit = int(selected_device_limit)
-        override_key = str(selected_device_limit)
-
-        if override_key in device_overrides:
-            devices_extra_price = int(device_overrides[override_key])
-        else:
-            if selected_device_limit <= 0:
-                if positive_device_values:
-                    effective_devices = max(positive_device_values)
-                    extra_devices = max(0, effective_devices - base_device_limit)
-                    devices_extra_price = extra_devices * extra_device_step_price
-            else:
-                extra_devices = max(0, selected_device_limit - base_device_limit)
-                devices_extra_price = extra_devices * extra_device_step_price
-
-    if selected_traffic_gb is not None and base_traffic_gb is not None:
-        selected_traffic_gb = int(selected_traffic_gb)
-        override_key = str(selected_traffic_gb)
-
-        if override_key in traffic_overrides:
-            traffic_extra_price = int(traffic_overrides[override_key])
-        else:
-            if selected_traffic_gb <= 0:
-                if positive_traffic_values:
-                    effective_gb = max(positive_traffic_values)
-                    extra_traffic = max(0, effective_gb - base_traffic_gb)
-                    traffic_extra_price = extra_traffic * extra_traffic_step_price
-            else:
-                extra_traffic = max(0, selected_traffic_gb - base_traffic_gb)
-                traffic_extra_price = extra_traffic * extra_traffic_step_price
-
-    total_price = int(base_price + devices_extra_price + traffic_extra_price)
-    return total_price
 
 
 async def start_tariff_config(

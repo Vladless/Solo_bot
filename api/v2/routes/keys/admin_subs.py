@@ -414,7 +414,7 @@ async def sub_hwid_devices(
         api = RemnawaveAPI(remna_node["api_url"])
         if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
             raise HTTPException(status_code=502, detail="Remnawave недоступен")
-        devices = await api.get_user_hwid_devices(client_id) or []
+        devices = await api.get_user_hwid_devices(client_id, username=key.email) or []
         return {"devices": devices, "supported": True}
     except HTTPException:
         raise
@@ -449,7 +449,7 @@ async def sub_hwid_unbind(
     api = RemnawaveAPI(remna_node["api_url"])
     if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         raise HTTPException(status_code=502, detail="Remnawave недоступен")
-    await api.delete_user_hwid_device(client_id, hwid)
+    await api.delete_user_hwid_device(client_id, hwid, username=key.email)
     return {"message": "Устройство отвязано"}
 
 
@@ -475,10 +475,10 @@ async def sub_hwid_reset(
     api = RemnawaveAPI(remna_node["api_url"])
     if not await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
         raise HTTPException(status_code=502, detail="Remnawave недоступен")
-    devices = await api.get_user_hwid_devices(client_id) or []
+    devices = await api.get_user_hwid_devices(client_id, username=key.email) or []
     removed = 0
     for d in devices:
         h = d.get("hwid") if isinstance(d, dict) else None
-        if h and await api.delete_user_hwid_device(client_id, h):
+        if h and await api.delete_user_hwid_device(client_id, h, username=key.email):
             removed += 1
     return {"message": f"Сброшено устройств: {removed}", "removed": removed}

@@ -333,7 +333,7 @@ async def handle_recreate_key_confirm(
                 if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
                     await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
 
-                user_data = await api.revoke_user_subscription(client_id)
+                user_data = await api.revoke_user_subscription(client_id, username=old_email)
             finally:
                 await api.aclose()
 

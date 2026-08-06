@@ -185,7 +185,7 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
     for user in users:
         tg_id = extract_tg_id_from_user_payload(user)
 
-        client_id = user.get("uuid")
+        client_id = user.get("vlessUuid") or user.get("uuid")
         email = user.get("email") or user.get("username")
         remnawave_link = user.get("subscriptionUrl")
         expire_at = user.get("expireAt")
