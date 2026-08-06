@@ -31,6 +31,7 @@ from settings.config import (
 )
 from utils.backup import create_backup_and_send_to_admins
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import build_admin_back_kb
 from .base import router
 from .keyboard import AdminClusterCallback, build_availability_kb, build_sync_cluster_kb
@@ -158,18 +159,23 @@ async def handle_cluster_availability(
     cluster_servers = servers.get(cluster_name, [])
 
     if not cluster_servers:
-        await callback_query.message.edit_text(text=f"Кластер '{cluster_name}' не содержит серверов.")
+        await callback_query.message.edit_text(
+            text=menu_text("Синхронизация", f"Кластер '{cluster_name}' не содержит серверов.")
+        )
         return
 
     await callback_query.message.edit_text(
         text=(
-            f"🖥️ Проверка доступности серверов для кластера {cluster_name}.\n\n"
-            "Это может занять до 1 минуты, пожалуйста, подождите..."
+            menu_text(
+                "Синхронизация",
+                f"🖥️ Проверка доступности серверов для кластера {cluster_name}.",
+                quote("Это может занять до 1 минуты, пожалуйста, подождите..."),
+            )
         )
     )
 
     total_online_users = 0
-    result_text = f"<b>🖥️ Проверка доступности серверов</b>\n\n⚙️ Кластер: <b>{cluster_name}</b>\n\n"
+    lines: list[str] = []
 
     for server in cluster_servers:
         server_name = server["server_name"]
@@ -195,7 +201,7 @@ async def handle_cluster_availability(
                         online_inbound_users += 1
 
                 total_online_users += online_inbound_users
-                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_inbound_users} онлайн\n"
+                lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_inbound_users} онлайн")
 
             elif panel_type == "remnawave":
                 server_inbound_id = server.get("inbound_id")
@@ -216,7 +222,7 @@ async def handle_cluster_availability(
                 total_online_users += online_remna_users
 
                 nodes_info = nodes_data["nodes"]
-                result_text += f"🌍 <b>{prefix} {server_name}</b> - {online_remna_users} онлайн\n"
+                lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_remna_users} онлайн")
                 seen = set()
                 unique_nodes = []
                 for node_info in nodes_info:
@@ -239,13 +245,18 @@ async def handle_cluster_availability(
                         else country_code
                     )
                     status = "🔴 " if not node_info.get("is_online", True) else ""
-                    result_text += f"  ↳ {status}{flag} ({node_name}): {online_users} онлайн\n"
+                    lines.append(f"  ↳ {status}{flag} ({node_name}): {online_users} онлайн")
 
         except Exception as e:
             error_text = str(e) or "Сервер недоступен"
-            result_text += f"❌ <b>{prefix} {server_name}</b> - ошибка: {error_text}\n"
+            lines.append(f"❌ <b>{prefix} {server_name}</b> — {error_text}")
 
-    result_text += f"\n👥 Всего пользователей онлайн: {total_online_users}"
+    result_text = menu_text(
+        "Доступность серверов",
+        f"Кластер <b>{cluster_name}</b>",
+        quote("\n".join(lines)),
+        quote(f"Всего онлайн: <b>{total_online_users}</b>"),
+    )
     await callback_query.message.edit_text(
         text=result_text,
         reply_markup=build_availability_kb(cluster_name),
@@ -275,9 +286,10 @@ async def handle_clusters_backup(
         )
         await create_backup_and_send_to_admins(xui)
 
-    text = (
-        f"<b>Бэкап для кластера {cluster_name} был успешно создан и отправлен администраторам!</b>\n\n"
-        f"🔔 <i>Бэкапы отправлены в боты панелей (3x-ui).</i>"
+    text = menu_text(
+        "Бэкап кластера",
+        f"Готово: <b>{cluster_name}</b>",
+        quote("Копии отправлены администраторам через боты панелей 3x-ui."),
     )
 
     await callback_query.message.edit_text(
@@ -298,7 +310,11 @@ async def handle_sync(
     cluster_servers = servers.get(cluster_name, [])
 
     await callback_query.message.edit_text(
-        text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>",
+        text=menu_text(
+            "Синхронизация",
+            f"Кластер <b>{cluster_name}</b>",
+            markup=build_sync_cluster_kb(cluster_servers, cluster_name),
+        ),
         reply_markup=build_sync_cluster_kb(cluster_servers, cluster_name),
     )
 
@@ -319,7 +335,9 @@ async def handle_sync_server(
 
         if not cluster_name:
             await callback_query.message.edit_text(
-                text=f"❌ Сервер {server_name} не найден.",
+                text=menu_text(
+                    "Синхронизация", f"❌ Сервер {server_name} не найден.", markup=build_admin_back_kb("clusters")
+                ),
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
@@ -378,13 +396,21 @@ async def handle_sync_server(
 
         if not keys_to_sync:
             await callback_query.message.edit_text(
-                text=f"❌ Нет ключей для синхронизации в сервере {server_name}.",
+                text=menu_text(
+                    "Синхронизация",
+                    f"❌ Нет ключей для синхронизации в сервере {server_name}.",
+                    markup=build_admin_back_kb("clusters"),
+                ),
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
 
         await callback_query.message.edit_text(
-            text=f"<b>🔄 Синхронизация сервера {server_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
+            text=menu_text(
+                "Синхронизация",
+                f"Сервер <b>{server_name}</b>",
+                quote(f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"),
+            )
         )
 
         all_servers = await get_servers(session)
@@ -540,13 +566,19 @@ async def handle_sync_server(
                 logger.error(f"Ошибка при синхронизации ключа {key['client_id']} в сервер {server_name}: {e}")
 
         await callback_query.message.edit_text(
-            text=f"✅ Ключи успешно синхронизированы для сервера {server_name}",
+            text=menu_text(
+                "Синхронизация",
+                f"✅ Ключи синхронизированы для сервера {server_name}",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
         logger.error(f"Ошибка синхронизации ключей для сервера {server_name}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при синхронизации: {e}",
+            text=menu_text(
+                "Синхронизация", f"❌ Не удалось синхронизировать: {e}", markup=build_admin_back_kb("clusters")
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
 
@@ -569,7 +601,11 @@ async def handle_sync_cluster(
             server_names = [s.get("server_name") for s in cluster_servers if s.get("server_name")]
             if not server_names:
                 await callback_query.message.edit_text(
-                    text=f"❌ В кластере {cluster_name} нет серверов.",
+                    text=menu_text(
+                        "Синхронизация",
+                        f"❌ В кластере {cluster_name} нет серверов.",
+                        markup=build_admin_back_kb("clusters"),
+                    ),
                     reply_markup=build_admin_back_kb("clusters"),
                 )
                 return
@@ -615,14 +651,22 @@ async def handle_sync_cluster(
 
         if not keys_to_sync:
             await callback_query.message.edit_text(
-                text=f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
+                text=menu_text(
+                    "Синхронизация",
+                    f"❌ Нет ключей для синхронизации в кластере {cluster_name}.",
+                    markup=build_admin_back_kb("clusters"),
+                ),
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
         only_remnawave = all(s.get("panel_type") == "remnawave" for s in cluster_servers)
 
         await callback_query.message.edit_text(
-            text=f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"
+            text=menu_text(
+                "Синхронизация",
+                f"Кластер <b>{cluster_name}</b>",
+                quote(f"🔑 Количество ключей: <b>{len(keys_to_sync)}</b>"),
+            )
         )
 
         tariff_ids = {key["tariff_id"] for key in keys_to_sync if key["tariff_id"]}
@@ -640,7 +684,11 @@ async def handle_sync_cluster(
             login_ok = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
             if not login_ok:
                 await callback_query.message.edit_text(
-                    text=f"❌ Не удалось авторизоваться в Remnawave для кластера {cluster_name}.",
+                    text=menu_text(
+                        "Синхронизация",
+                        f"❌ Не удалось авторизоваться в Remnawave для кластера {cluster_name}.",
+                        markup=build_admin_back_kb("clusters"),
+                    ),
                     reply_markup=build_admin_back_kb("clusters"),
                 )
                 return
@@ -648,9 +696,12 @@ async def handle_sync_cluster(
             try:
                 await callback_query.message.edit_text(
                     text=(
-                        f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n"
-                        f"🔑 Ключей в БД: <b>{total_keys}</b>\n\n"
-                        "📥 Получение списка пользователей с панели..."
+                        menu_text(
+                            "Синхронизация",
+                            f"Кластер <b>{cluster_name}</b>",
+                            quote(f"🔑 Ключей в БД: <b>{total_keys}</b>"),
+                            quote("Забираю список клиентов с панели…"),
+                        )
                     )
                 )
                 panel_uuids = await _fetch_all_panel_uuids(remna)
@@ -796,14 +847,25 @@ async def handle_sync_cluster(
                         try:
                             await callback_query.message.edit_text(
                                 text=(
-                                    f"<b>🔄 Синхронизация кластера {cluster_name}</b>\n\n"
-                                    f"🔑 Всего: <b>{total_keys}</b> "
-                                    f"(update: {len(to_update)}, create: {len(to_create)})\n\n"
-                                    f"Готово: <b>{done}/{total_keys}</b> ({percent}%)\n"
-                                    f"<code>{bar}</code>\n\n"
-                                    f"✏️ Обновлено: {stats['updated']}\n"
-                                    f"➕ Создано: {stats['created']}\n"
-                                    f"❌ Ошибок: {stats['failed']}"
+                                    menu_text(
+                                        "Синхронизация",
+                                        f"Кластер <b>{cluster_name}</b>",
+                                        section(
+                                            "🔑 План",
+                                            f"Всего: {total_keys}",
+                                            f"Обновить: {len(to_update)}",
+                                            f"Создать: {len(to_create)}",
+                                        ),
+                                        section(
+                                            "⏳ Прогресс", f"Готово: {done}/{total_keys}", f"Доля: {percent}%", bar
+                                        ),
+                                        section(
+                                            "📊 Итог",
+                                            f"Обновлено: {stats['updated']}",
+                                            f"Создано: {stats['created']}",
+                                            f"Ошибок: {stats['failed']}",
+                                        ),
+                                    )
                                 )
                             )
                         except Exception:
@@ -942,9 +1004,12 @@ async def handle_sync_cluster(
 
         await callback_query.message.edit_text(
             text=(
-                f"✅ <b>Синхронизация завершена</b>\n\n"
-                f"📊 Кластер: <b>{cluster_name}</b>\n"
-                f"🔑 Обработано ключей: <b>{len(keys_to_sync)}</b>"
+                menu_text(
+                    "Синхронизация",
+                    "✅ Готово.",
+                    section("📊 Итог", f"Кластер: {cluster_name}", f"Ключей: {len(keys_to_sync)}"),
+                    markup=build_admin_back_kb("clusters"),
+                )
             ),
             reply_markup=build_admin_back_kb("clusters"),
         )
@@ -952,6 +1017,8 @@ async def handle_sync_cluster(
     except Exception as e:
         logger.error(f"[Sync] Ошибка синхронизации кластера {cluster_name}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при синхронизации: {e}",
+            text=menu_text(
+                "Синхронизация", f"❌ Не удалось синхронизировать: {e}", markup=build_admin_back_kb("clusters")
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )

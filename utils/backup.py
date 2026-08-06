@@ -382,45 +382,46 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
             targets = [chat_id] if chat_id else list(ADMIN_ID)
 
             db_path, db_err = _create_database_backup()
-            db_sent = False
+            db_doc = None
             if db_path and not db_err and os.path.getsize(db_path) <= TELEGRAM_SEND_LIMIT:
                 try:
                     async with aiofiles.open(db_path, "rb") as f:
                         db_bytes = await f.read()
                     db_doc = BufferedInputFile(file=db_bytes, filename=os.path.basename(db_path))
-                    for target in targets:
-                        kw: dict = {
-                            "chat_id": target,
-                            "document": db_doc,
-                            "caption": "💾 Дамп БД (полный бэкап с медиа сохранён на сервере)",
-                        }
-                        if chat_id and thread_id:
-                            kw["message_thread_id"] = thread_id
-                        await active_bot.send_document(**kw)
-                    db_sent = True
                 except Exception as e:
-                    logger.error("[Backup] Не удалось отправить дамп БД: {}", e)
+                    logger.error("[Backup] Не удалось прочитать дамп БД: {}", e)
                 finally:
                     try:
                         os.unlink(db_path)
                     except Exception:
                         pass
 
-            notice = (
-                f"⚠️ Полный бэкап <code>{filename}</code> ({size_mb:.1f} МБ) превышает лимит Telegram (50 МБ).\n"
-                + ("В чат отправлен только дамп БД. " if db_sent else "")
-                + f"Полный архив с медиа сохранён на сервере:\n<code>{backup_file_path}</code>\n\n"
-                "Восстановить: админ-панель → «Управление ботом» → «Управление БД» → «🖥 Восстановить с сервера»."
+            from handlers.admin.panel.headers import card, menu_text, section
+
+            caption = menu_text(
+                "Бэкап",
+                "💾 В чат ушёл дамп базы." if db_doc else "⚠️ Архив в чат не влез.",
+                card(
+                    section("📦 Архив", f"Размер: {size_mb:.0f} МБ", "Лимит: 50 МБ"),
+                    section("🖥 Лежит на сервере", f"<code>{backup_file_path}</code>"),
+                    section("♻️ Вернуть", "Бот → Управление БД"),
+                ),
             )
+
             for target in targets:
                 try:
-                    kw = {"chat_id": target, "text": notice, "parse_mode": "HTML"}
+                    kw: dict = {"chat_id": target, "parse_mode": "HTML"}
                     if chat_id and thread_id:
                         kw["message_thread_id"] = thread_id
-                    await active_bot.send_message(**kw)
+                    if db_doc is not None:
+                        await active_bot.send_document(document=db_doc, caption=caption, **kw)
+                    else:
+                        await active_bot.send_message(text=caption, **kw)
                 except Exception as e:
                     logger.error("[Backup] Не отправлено уведомление о большом бэкапе {}: {}", target, e)
-            logger.warning("[Backup] Полный архив {:.1f} МБ > лимита Telegram; дамп БД отправлен={}", size_mb, db_sent)
+            logger.warning(
+                "[Backup] Полный архив {:.1f} МБ > лимита Telegram; дамп БД отправлен={}", size_mb, db_doc is not None
+            )
             return
 
         async with aiofiles.open(backup_file_path, "rb") as f:

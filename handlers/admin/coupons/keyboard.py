@@ -5,6 +5,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from handlers.utils import format_days
 from settings.buttons import BACK
 
+from ..panel.headers import card, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -62,35 +63,35 @@ def build_coupons_list_kb(coupons: list, current_page: int, total_pages: int) ->
         builder.row(*pagination_buttons)
 
     builder.row(build_admin_back_btn("coupons"))
-    builder.adjust(2)
+    builder.adjust(1)
     return builder.as_markup()
 
 
 def format_coupons_list(coupons: list, username_bot: str) -> str:
-    text = "📜 <b>Список купонов</b>\n\n"
-
-    for i, coupon in enumerate(coupons, start=1):
+    """Возвращает секции с купонами страницы."""
+    blocks = []
+    for coupon in coupons:
         percent_value = coupon.get("percent")
         days_value = coupon.get("days")
         amount_value = coupon.get("amount") or 0
 
         if percent_value is not None and int(percent_value) > 0:
-            value_line = f"📉 <b>Скидка:</b> {int(percent_value)}%"
+            value_line = f"Скидка: {int(percent_value)}%"
         elif days_value is not None and int(days_value) > 0:
-            value_line = f"⏳ <b>Продление:</b> {format_days(int(days_value))}"
+            value_line = f"Продление: {format_days(int(days_value))}"
         elif int(amount_value) > 0:
-            value_line = f"💰 <b>Баланс:</b> {int(amount_value)} ₽"
+            value_line = f"Баланс: {int(amount_value)} ₽"
         else:
-            value_line = "—"
+            value_line = "Награда: —"
 
-        text += (
-            f"<blockquote>"
-            f"<b>{i}. {coupon['code']}</b>\n"
-            f"{value_line}\n"
-            f"🔢 <b>Лимит:</b> {coupon['usage_limit']} | "
-            f"✅ <b>Использовано:</b> {coupon['usage_count']}\n"
-            f"<code>https://telegram.me/{username_bot}?start=coupons_{coupon['code']}</code>"
-            f"</blockquote>\n\n"
+        blocks.append(
+            section(
+                f"🎟 {coupon['code']}",
+                value_line,
+                f"Лимит: {coupon['usage_limit']}",
+                f"Выдано: {coupon['usage_count']}",
+                f"https://telegram.me/{username_bot}?start=coupons_{coupon['code']}",
+            )
         )
 
-    return text
+    return card(*blocks)

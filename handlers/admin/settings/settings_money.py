@@ -8,6 +8,7 @@ from core.bootstrap import MONEY_CONFIG, update_money_config
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import MONEY_FIELDS, build_settings_money_kb
 
@@ -23,14 +24,17 @@ class MoneySettingsState(StatesGroup):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_money"))
 async def open_settings_money(callback: CallbackQuery) -> None:
-    text = (
-        "Настройки денег и мультивалютности.\n\n"
-        "Здесь можно:\n"
-        "• выбрать режим валют: RUB, USD или RUB+USD;\n"
-        "• задать наценку на конвертацию (FX);\n"
-        "• задать фиксированный курс USD/RUB или использовать курс ЦБ РФ;\n"
-        "• включить кэшбэк и задать процент от платежа.\n\n"
-        "Кэшбэк считается, если указан положительный процент."
+    text = menu_text(
+        "Деньги",
+        "Валюты, курс и кэшбэк.",
+        section(
+            "⚙️ Что здесь",
+            "Валюты: RUB и USD",
+            "Наценка: на конвертацию",
+            "Курс: свой или ЦБ РФ",
+            "Кэшбэк: процент выплаты",
+        ),
+        quote("Кэшбэк начисляется, пока процент больше нуля."),
     )
     await callback.message.edit_text(
         text=text,
@@ -57,13 +61,15 @@ async def edit_money_field_start(
     await state.update_data(money_field_key=key)
 
     if key == "FX_MARKUP":
-        text = "Введите наценку на валютные операции в процентах (например 0, 3.5, 10):"
+        text = menu_text("Наценка FX", "Пришлите процент.", quote("Например: 0, 3.5, 10"))
     elif key == "RUB_TO_USD":
-        text = "Введите курс USD/RUB (число, например 100).\nУкажите 0, чтобы использовать курс ЦБ РФ."
+        text = menu_text("Курс USD/RUB", "Пришлите число.", quote("Например: 100\n<code>0</code> — брать курс ЦБ РФ."))
     elif key == "CASHBACK":
-        text = "Введите размер кэшбэка в процентах (например 0, 5, 10).\n0 или отрицательное значение выключит кэшбэк."
+        text = menu_text(
+            "Кэшбэк", "Пришлите процент.", quote("Например: 5\n<code>0</code> или меньше — кэшбэк выключен.")
+        )
     else:
-        text = "Введите новое значение:"
+        text = menu_text("Новое значение", "Пришлите значение.")
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -92,7 +98,7 @@ async def edit_money_field_save(
     if not key:
         await state.clear()
         await message.answer(
-            "Ошибка состояния, попробуйте ещё раз.",
+            menu_text("Деньги", "Ошибка состояния, попробуйте ещё раз.", markup=build_settings_money_kb(MONEY_CONFIG)),
             reply_markup=build_settings_money_kb(MONEY_CONFIG),
         )
         return
@@ -103,7 +109,7 @@ async def edit_money_field_save(
         try:
             value_float = float(raw)
         except ValueError:
-            await message.answer("Некорректное число. Введите, например, 0, 3.5 или 10.")
+            await message.answer(menu_text("Деньги", "Некорректное число. Введите, например, 0, 3.5 или 10."))
             return
 
         if key == "CASHBACK" and value_float <= 0:
@@ -114,7 +120,7 @@ async def edit_money_field_save(
         try:
             value_float = float(raw)
         except ValueError:
-            await message.answer("Некорректное число. Введите, например, 90 или 100.")
+            await message.answer(menu_text("Деньги", "Некорректное число. Введите, например, 90 или 100."))
             return
 
         if value_float <= 0:
@@ -131,7 +137,7 @@ async def edit_money_field_save(
     await state.clear()
 
     await message.answer(
-        "Настройки денег обновлены.",
+        menu_text("Деньги", "Настройки денег обновлены.", markup=build_settings_money_kb(MONEY_CONFIG)),
         reply_markup=build_settings_money_kb(MONEY_CONFIG),
     )
 
@@ -144,12 +150,16 @@ async def open_currency_mode_menu(callback: CallbackQuery) -> None:
     if mode not in ("RUB", "USD", "RUB+USD", "RUB+USD_ONE_SCREEN"):
         mode = "RUB"
 
-    text = (
-        "Выберите режим валют:\n\n"
-        "• RUB — все цены только в рублях;\n"
-        "• USD — все цены только в долларах;\n"
-        "• RUB+USD — мультивалюта, выбор валюты перед оплатой;\n"
-        "• RUB+USD (одним экраном) — мультивалюта, все кассы на одном экране."
+    text = menu_text(
+        "Режим валют",
+        "В какой валюте клиент видит цены.",
+        section(
+            "💱 Режимы",
+            "RUB: только рубли",
+            "USD: только доллары",
+            "RUB+USD: выбор валюты",
+            "Экран: все кассы сразу",
+        ),
     )
 
     rub_checked = mode == "RUB"

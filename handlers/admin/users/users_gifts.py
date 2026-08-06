@@ -9,6 +9,7 @@ from filters.admin import IsAdminFilter
 from services.gifts import format_gift_limits_display, format_gift_recipient_display
 from settings.texts import get_site_gift_link
 
+from ..panel.headers import card, menu_text, quote, section
 from .keyboard import (
     AdminUserEditorCallback,
     build_gift_delete_confirm_kb,
@@ -36,7 +37,11 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
     gifts = await get_user_gifts(session, tg_id)
 
     if not gifts:
-        text = f"🎁 <b>Подарки пользователя</b> <code>{tg_id}</code>\n\nУ пользователя нет созданных подарков."
+        text = menu_text(
+            "Подарки клиента",
+            f"<code>{tg_id}</code>",
+            quote("Клиент ещё не создавал подарков."),
+        )
         await message.edit_text(
             text=text,
             reply_markup=build_user_gifts_kb(tg_id, [], page),
@@ -63,7 +68,7 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
         tariffs_result = await session.execute(select(Tariff).where(Tariff.id.in_(tariff_ids)))
         tariffs_by_id = {t.id: t for t in tariffs_result.scalars().all()}
 
-    lines = [f"🎁 <b>Подарки пользователя</b> <code>{tg_id}</code>\n"]
+    blocks = []
 
     for i, gift in enumerate(page_gifts, start=start_idx + 1):
         gift_usages = usages_by_gift.get(gift.gift_id, [])
@@ -74,11 +79,11 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
                 gift_usages,
                 detailed=True,
             )
-            status = f"✅ Использован: {recipient}"
+            status = f"Активирован: {recipient}"
         else:
-            status = "⏳ Не использован"
+            status = "Статус: не активирован"
 
-        created_str = gift.created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
+        created_str = gift.created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%y %H:%M")
         site_link = get_site_gift_link(gift.gift_id)
         tg_link = gift.gift_link or site_link
 
@@ -91,18 +96,24 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
             }
         limits = await format_gift_limits_display(session, gift, tariff_dict)
 
-        lines.append(
-            f"\n<b>{i}.🎁 </b> {gift.selected_months} мес.\n"
-            f"   📅 Создан: {created_str}\n"
-            f"   {status}\n"
-            f"   📱 Лимиты: {limits}\n"
-            f'   🌐 <a href="{site_link}">Сайт</a> • 🤖 <a href="{tg_link}">Telegram</a>'
+        blocks.append(
+            section(
+                f"🎁 {i}. {gift.selected_months} мес",
+                f"Создан: {created_str}",
+                status,
+                f"Лимиты: {limits}",
+                f"Сайт: {site_link}",
+                f"Бот: {tg_link}",
+            )
         )
 
-    lines.append("\n\n<i>Нажмите кнопку для удаления:</i>")
-
     await message.edit_text(
-        text="".join(lines),
+        text=menu_text(
+            "Подарки клиента",
+            f"Клиент <code>{tg_id}</code>",
+            card(*blocks),
+            markup=build_user_gifts_kb(tg_id, gifts, page),
+        ),
         reply_markup=build_user_gifts_kb(tg_id, gifts, page),
     )
 
@@ -148,7 +159,7 @@ async def handle_gift_delete(
     gift = result.scalar_one_or_none()
 
     if not gift:
-        await callback.answer("❌ Подарок не найден", show_alert=True)
+        await callback.answer("Подарок не найден", show_alert=True)
         return
 
     created_str = gift.created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
@@ -156,11 +167,13 @@ async def handle_gift_delete(
 
     await callback.message.edit_text(
         text=(
-            f"❓ <b>Удалить подарок?</b>\n\n"
-            f"📆 Длительность: {gift.selected_months} мес.\n"
-            f"📅 Создан: {created_str}\n"
-            f"📊 Статус: {status}\n\n"
-            f"⚠️ Это действие необратимо!"
+            menu_text(
+                "Подарки клиента",
+                "❓ <b>Удалить подарок?</b>",
+                quote(f"📆 Длительность: {gift.selected_months} мес.\n📅 Создан: {created_str}\n📊 Статус: {status}"),
+                quote("⚠️ Отменить будет нельзя."),
+                markup=build_gift_delete_confirm_kb(tg_id, gift_id, page),
+            )
         ),
         reply_markup=build_gift_delete_confirm_kb(tg_id, gift_id, page),
     )
@@ -181,5 +194,5 @@ async def handle_gift_delete_confirm(
     await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
     await session.execute(delete(Gift).where(Gift.gift_id == gift_id))
 
-    await callback.answer("✅ Подарок удалён", show_alert=True)
+    await callback.answer("Подарок удалён", show_alert=True)
     await show_gifts_list(callback.message, session, tg_id, page=0)

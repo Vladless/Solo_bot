@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import NOTIFICATIONS_CONFIG, update_notifications_config
 from filters.admin import IsAdminFilter
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     NOTIFICATION_TIME_FIELDS,
@@ -31,7 +32,11 @@ async def load_notification_settings() -> dict[str, object]:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications"))
 async def open_settings_notifications_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     notifications_state = await load_notification_settings()
-    text = "Настройки уведомлений: включение и выключение."
+    text = menu_text(
+        "Уведомления",
+        "Что бот шлёт клиентам и админам.",
+        quote("Нажмите на уведомление, чтобы включить или выключить его."),
+    )
     await callback.message.edit_text(text=text, reply_markup=build_settings_notifications_kb(notifications_state))
     await callback.answer()
 
@@ -39,7 +44,11 @@ async def open_settings_notifications_menu(callback: CallbackQuery, session: Asy
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications_intervals"))
 async def open_settings_notifications_intervals_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     notifications_state = await load_notification_settings()
-    text = "Настройки интервалов и задержек уведомлений."
+    text = menu_text(
+        "Интервалы",
+        "Задержки и периоды фоновых задач.",
+        quote("Нажмите на параметр, чтобы задать новое значение."),
+    )
     await callback.message.edit_text(
         text=text,
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
@@ -72,7 +81,7 @@ async def toggle_notification_setting(
     await callback.message.edit_reply_markup(
         reply_markup=build_settings_notifications_kb(notifications_state),
     )
-    await callback.answer("Настройка обновлена")
+    await callback.answer(menu_text("Уведомления", "Настройка обновлена"))
 
 
 @router.callback_query(
@@ -98,9 +107,10 @@ async def edit_notification_interval_setting(
     await state.set_state(NotificationIntervalEditState.waiting_for_value)
     await state.update_data(setting_key=key)
 
-    text = (
-        f'Введите новое значение для "{title}" (целое число).\n'
-        f"Текущее значение: {current_value if current_value is not None else 'не задано'}"
+    text = menu_text(
+        title,
+        f"Сейчас: <b>{current_value if current_value is not None else 'не задано'}</b>",
+        "Введите новое значение целым числом.",
     )
     await callback.message.edit_text(text=text)
     await callback.answer()
@@ -113,14 +123,14 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
     try:
         new_value = int(text_value)
     except ValueError:
-        await message.answer("Введите целое число.")
+        await message.answer(menu_text("Уведомления", "Введите целое число."))
         return
 
     data = await state.get_data()
     key = data.get("setting_key")
     if not key:
         await state.clear()
-        await message.answer("Ошибка состояния. Попробуйте снова.")
+        await message.answer(menu_text("Уведомления", "Ошибка состояния. Попробуйте ещё раз."))
         return
 
     config = dict(NOTIFICATIONS_CONFIG or {})
@@ -131,6 +141,8 @@ async def notification_interval_value_input(message: Message, state: FSMContext,
 
     notifications_state = await load_notification_settings()
     await message.answer(
-        "Интервал обновлён.",
+        menu_text(
+            "Уведомления", "Интервал обновлён.", markup=build_settings_notifications_intervals_kb(notifications_state)
+        ),
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
     )

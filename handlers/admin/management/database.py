@@ -20,8 +20,11 @@ from core.executor import run_io
 from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
+from settings.buttons import BACK
 from settings.config import BACK_DIR, DB_NAME, DB_PASSWORD, DB_USER, PG_HOST, PG_IN_DOCKER, PG_PORT
 from utils.backup import _find_docker_postgres_container
+
+from ..panel.headers import menu_text, quote, section, wrap_text
 
 
 _PG_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -308,7 +311,12 @@ class DatabaseState(StatesGroup):
 @router.callback_query(AdminPanelCallback.filter(F.action == "database"), HasPermission(PERM_MANAGEMENT))
 async def handle_database_menu(callback: CallbackQuery):
     await callback.message.edit_text(
-        text="🗄 <b>Управление базой данных</b>",
+        text=menu_text(
+            "База данных",
+            "Копии, восстановление и импорт.",
+            quote("Бэкап можно забрать в чат, а восстановить — из файла или с сервера."),
+            markup=build_database_kb(),
+        ),
         reply_markup=build_database_kb(),
     )
 
@@ -316,8 +324,12 @@ async def handle_database_menu(callback: CallbackQuery):
 @router.callback_query(AdminPanelCallback.filter(F.action == "restore_db"), HasPermission(PERM_MANAGEMENT))
 async def prompt_restore_db(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📂 Отправьте файл резервной копии (.sql), чтобы восстановить базу данных.\n"
-        "⚠️ Все текущие данные будут перезаписаны.",
+        menu_text(
+            "Восстановление из файла",
+            "Пришлите файл резервной копии (.sql).",
+            quote("⚠️ Все текущие данные будут перезаписаны."),
+            markup=build_back_to_db_menu(),
+        ),
         reply_markup=build_back_to_db_menu(),
     )
     await state.set_state(DatabaseState.waiting_for_backup_file)
@@ -328,19 +340,20 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
     document = message.document
 
     if not document or not document.file_name.endswith(".sql"):
-        await message.answer("❌ Пожалуйста, отправьте файл с расширением .sql.")
+        await message.answer(menu_text("База данных", "❌ отправьте файл с расширением .sql."))
         return
 
     if document.file_size and document.file_size > TELEGRAM_DOWNLOAD_LIMIT:
         size_mb = document.file_size / (1024 * 1024)
         await message.answer(
-            "❌ Файл слишком большой для восстановления через бота: "
-            f"{size_mb:.1f} МБ при лимите Telegram 20 МБ.\n\n"
-            "Telegram не отдаёт ботам файлы больше 20 МБ. Варианты:\n"
-            "• «🖥 Восстановить с сервера» в меню БД — если копия уже лежит на сервере "
-            f"(<code>{BACK_DIR}</code>), лимита нет;\n"
-            "• загрузить файл бэкапа на сервер в эту папку любым способом (scp/панель) и выбрать его там;\n"
-            "• выгрузить дамп в сжатом формате (custom/gzip) — он меньше.",
+            menu_text(
+                "База данных",
+                f"❌ Файл {size_mb:.1f} МБ, а Telegram отдаёт ботам не больше 20 МБ.",
+                quote(
+                    f"Копии из папки {BACK_DIR} восстанавливаются без лимита — кнопка «Восстановить с сервера».",
+                    "Залейте бэкап в эту папку любым способом или выгрузите дамп в сжатом виде.",
+                ),
+            ),
         )
         return
 
@@ -364,13 +377,13 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
         if not success:
             logger.error("[Restore] Ошибка: {}", err_msg)
             await message.answer(
-                f"❌ Ошибка при восстановлении базы данных:\n<pre>{err_msg}</pre>",
+                menu_text("База данных", "❌ Не удалось восстановить.") + f"\n<pre>{err_msg}</pre>",
             )
             return
 
         logger.info("[Restore] База восстановлена")
         await message.answer(
-            "✅ База данных восстановлена.",
+            menu_text("База данных", "✅ База данных восстановлена.", markup=build_back_to_db_menu()),
             reply_markup=build_back_to_db_menu(),
         )
         logger.info("[Restore] Завершение для перезапуска")
@@ -381,13 +394,15 @@ async def restore_database(message: Message, state: FSMContext, bot: Bot):
         if "file is too big" in str(e).lower():
             logger.error("[Restore] Файл превышает лимит Telegram 20 МБ")
             await message.answer(
-                "❌ Telegram не отдаёт боту файлы больше 20 МБ. "
-                "Выгрузите дамп в сжатом формате или восстановите базу на сервере напрямую.",
+                menu_text(
+                    "База данных",
+                    "❌ Telegram не отдаёт боту файлы больше 20 МБ. Выгрузите дамп в сжатом формате или восстановите базу на сервере напрямую.",
+                ),
             )
             return
         logger.exception(f"[Restore] Непредвиденная ошибка: {e}")
         await message.answer(
-            f"❌ Произошла ошибка:\n<pre>{traceback.format_exc()}</pre>",
+            menu_text("База данных", "❌ Ошибка восстановления.") + f"\n<pre>{traceback.format_exc()}</pre>",
         )
     finally:
         try:
@@ -403,7 +418,12 @@ async def prompt_restore_db_local(callback: CallbackQuery):
     backups = list_local_backups()
     if not backups:
         await callback.message.edit_text(
-            f"📂 На сервере нет резервных копий.\nОни появляются здесь: <code>{BACK_DIR}</code>",
+            menu_text(
+                "База данных",
+                "На сервере нет резервных копий.",
+                section("📂 Папка копий", BACK_DIR),
+                markup=build_back_to_db_menu(),
+            ),
             reply_markup=build_back_to_db_menu(),
         )
         return
@@ -415,16 +435,22 @@ async def prompt_restore_db_local(callback: CallbackQuery):
         except Exception:
             size_mb = 0.0
         builder.button(
-            text=f"📦 {path.name[:48]} · {size_mb:.1f} МБ",
+            text=f"📦 {path.stem[:24]} · {size_mb:.1f} МБ",
             callback_data=AdminPanelCallback(action=f"restore_local|{idx}").pack(),
         )
     builder.button(text=BACK, callback_data=AdminPanelCallback(action="back_to_db_menu").pack())
     builder.adjust(1)
     await callback.message.edit_text(
-        "🖥 <b>Восстановление с сервера</b>\n\n"
-        "Выберите копию из тех, что уже лежат на сервере — это обходит лимит Telegram 20 МБ.\n"
-        "Поддерживаются <code>.tar.gz</code> (БД + медиа), <code>.sql</code>, <code>.sql.gz</code>.\n"
-        "⚠️ Все текущие данные будут перезаписаны, бот перезапустится.",
+        menu_text(
+            "Восстановление с сервера",
+            "Копии, которые уже лежат на сервере.",
+            quote(
+                "Лимит Telegram в 20 МБ здесь не действует.",
+                "Форматы: <code>.tar.gz</code> (БД и медиа), <code>.sql</code>, <code>.sql.gz</code>.",
+            ),
+            quote("⚠️ Данные будут перезаписаны, бот перезапустится."),
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -447,7 +473,7 @@ async def restore_db_local(callback: CallbackQuery):
         return
 
     source = backups[idx]
-    await callback.message.edit_text(f"⏳ Восстановление из <code>{source.name}</code>…")
+    await callback.message.edit_text(menu_text("База данных", f"⏳ Восстановление из <code>{source.name}</code>…"))
 
     success, note = await run_io(
         sync_restore_from_path,
@@ -462,25 +488,38 @@ async def restore_db_local(callback: CallbackQuery):
     if not success:
         logger.error("[Restore] Локальное восстановление не удалось: {}", note)
         await callback.message.edit_text(
-            f"❌ Ошибка при восстановлении:\n<pre>{note}</pre>",
+            menu_text("База данных", "❌ Восстановить не удалось.", section("⚠️ Причина", note)),
             reply_markup=build_back_to_db_menu(),
         )
         return
 
     logger.info("[Restore] База восстановлена из локального файла {}", source.name)
-    await callback.message.edit_text(f"✅ Восстановлено из <code>{source.name}</code>.{note}\n♻️ Перезапуск…")
+    await callback.message.edit_text(
+        menu_text(
+            "База данных",
+            "✅ База восстановлена, перезапускаюсь…",
+            section("📦 Файл", source.name, note.strip() or "медиа не восстанавливались"),
+        )
+    )
     sys.exit(0)
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_db"), HasPermission(PERM_MANAGEMENT))
 async def handle_export_db(callback: CallbackQuery):
     await callback.message.edit_text(
-        "📤 Выберите панель, с которой требуется получить данные:\n\n"
-        "<i>Подтянутся подписки с панели и будут сохранены в базу данных бота.</i>",
+        menu_text(
+            "Импорт с панели",
+            "Выберите панель.",
+            quote("Бот подтянет с неё подписки и сохранит их в свою базу."),
+            markup=build_export_db_sources_kb(),
+        ),
         reply_markup=build_export_db_sources_kb(),
     )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "back_to_db_menu"), HasPermission(PERM_MANAGEMENT))
 async def back_to_database_menu(callback: CallbackQuery):
-    await callback.message.edit_text("📦 Управление базой данных:", reply_markup=build_database_kb())
+    await callback.message.edit_text(
+        menu_text("База данных", "📦 Управление базой данных:", markup=build_database_kb()),
+        reply_markup=build_database_kb(),
+    )

@@ -30,71 +30,19 @@ class AdminPollCallback(CallbackData, prefix="admin_poll"):
 def build_sender_kb(include_scheduled: bool = True) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text="👥 Все пользователи",
-            callback_data=AdminSenderCallback(type="all").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ С подпиской",
-            callback_data=AdminSenderCallback(type="subscribed").pack(),
-        ),
-        InlineKeyboardButton(
-            text="❌ Без подписки",
-            callback_data=AdminSenderCallback(type="unsubscribed").pack(),
-        ),
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📍 Не использовавшие триал",
-            callback_data=AdminSenderCallback(type="untrial").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📭 Без почты в ЛК",
-            callback_data=AdminSenderCallback(type="no_email").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🧪 Триал",
-            callback_data=AdminSenderCallback(type="trial").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔥 Горячие лиды",
-            callback_data=AdminSenderCallback(type="hotleads").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📢 Кластер",
-            callback_data=AdminSenderCallback(type="cluster-select").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔗 По UTM-источнику",
-            callback_data=AdminSenderCallback(type="source-select").pack(),
-        )
-    )
+    builder.button(text="👥 Все", callback_data=AdminSenderCallback(type="all").pack())
+    builder.button(text="✅ С подпиской", callback_data=AdminSenderCallback(type="subscribed").pack())
+    builder.button(text="❌ Без подписки", callback_data=AdminSenderCallback(type="unsubscribed").pack())
+    builder.button(text="📍 Без пробного", callback_data=AdminSenderCallback(type="untrial").pack())
+    builder.button(text="🧪 Триал", callback_data=AdminSenderCallback(type="trial").pack())
+    builder.button(text="📭 Без почты", callback_data=AdminSenderCallback(type="no_email").pack())
+    builder.button(text="🔥 Горячие лиды", callback_data=AdminSenderCallback(type="hotleads").pack())
+    builder.button(text="📢 Кластер", callback_data=AdminSenderCallback(type="cluster-select").pack())
+    builder.button(text="🔗 UTM-источник", callback_data=AdminSenderCallback(type="source-select").pack())
+    builder.button(text="📊 Опросы", callback_data=AdminPollCallback(action="menu").pack())
     if include_scheduled:
-        builder.row(
-            InlineKeyboardButton(
-                text="🗓 Запланированные",
-                callback_data=ScheduledBroadcastCallback(action="list").pack(),
-            )
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="📊 Опросы",
-            callback_data=AdminPollCallback(action="menu").pack(),
-        )
-    )
+        builder.button(text="🗓 Запланированные", callback_data=ScheduledBroadcastCallback(action="list").pack())
+    builder.adjust(2)
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()
@@ -111,7 +59,7 @@ def build_polls_menu_kb(polls: list) -> InlineKeyboardMarkup:
     for poll in polls:
         status_icon = "🟢" if poll.status == "open" else "🔒"
         question = (poll.question or "").strip().replace("\n", " ")
-        title = question[:40] + "…" if len(question) > 40 else question
+        title = question[:24] + "…" if len(question) > 24 else question
         builder.row(
             InlineKeyboardButton(
                 text=f"{status_icon} {title or 'без вопроса'}",
@@ -131,7 +79,7 @@ POLL_AUDIENCES = [
     ("all", "👥 Все пользователи"),
     ("subscribed", "✅ С подпиской"),
     ("unsubscribed", "❌ Без подписки"),
-    ("untrial", "📍 Не использовавшие триал"),
+    ("untrial", "📍 Без пробного периода"),
     ("trial", "🧪 Триал"),
     ("hotleads", "🔥 Горячие лиды"),
     ("no_email", "📭 Без почты в ЛК"),
@@ -167,27 +115,12 @@ def build_poll_audience_kb() -> InlineKeyboardMarkup:
 
 def build_poll_detail_kb(poll_id: str, is_open: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Обновить", callback_data=AdminPollCallback(action="view", poll_id=poll_id).pack()
-        ),
-    )
+    builder.button(text="🔄 Обновить", callback_data=AdminPollCallback(action="view", poll_id=poll_id).pack())
     if is_open:
-        builder.row(
-            InlineKeyboardButton(
-                text="🔒 Закрыть опрос",
-                callback_data=AdminPollCallback(action="close", poll_id=poll_id).pack(),
-            )
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="🗑 Удалить опрос",
-            callback_data=AdminPollCallback(action="del_ask", poll_id=poll_id).pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="◀️ К опросам", callback_data=AdminPollCallback(action="menu").pack()),
-    )
+        builder.button(text="🔒 Закрыть", callback_data=AdminPollCallback(action="close", poll_id=poll_id).pack())
+    builder.button(text="🗑 Удалить", callback_data=AdminPollCallback(action="del_ask", poll_id=poll_id).pack())
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="◀️ К опросам", callback_data=AdminPollCallback(action="menu").pack()))
     return builder.as_markup()
 
 
@@ -218,7 +151,7 @@ def build_clusters_kb(clusters: list) -> InlineKeyboardMarkup:
             callback_data=AdminSenderCallback(type="cluster", data=name).pack(),
         )
 
-    builder.adjust(2)
+    builder.adjust(1)
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()

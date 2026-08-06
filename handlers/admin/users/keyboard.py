@@ -11,7 +11,7 @@ from handlers.utils import format_days
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.hooks import run_hooks
 from services.users_utils import build_admin_key_ref
-from settings.buttons import BACK, FREEZE, UNFREEZE
+from settings.buttons import BACK
 from settings.config import HWID_RESET_BUTTON
 
 from ..panel.keyboard import build_admin_back_btn
@@ -43,106 +43,44 @@ async def build_user_edit_kb(
     builder = InlineKeyboardBuilder()
     current_time = datetime.now(tz=timezone.utc)
 
-    builder.row(
-        InlineKeyboardButton(
-            text="➕ Создать подписку",
-            callback_data=AdminUserEditorCallback(action="users_create_key", tg_id=tg_id).pack(),
+    def button(label: str, action: str, data: str = "") -> InlineKeyboardButton:
+        return InlineKeyboardButton(
+            text=label,
+            callback_data=AdminUserEditorCallback(action=action, tg_id=tg_id, data=data).pack(),
         )
-    )
 
     for record in key_records:
-        email = record.email
-        key_ref = build_admin_key_ref(record.client_id, email)
         expiry = datetime.fromtimestamp(record.expiry_time / 1000, tz=timezone.utc)
         days = (expiry - current_time).days
         builder.row(
-            InlineKeyboardButton(
-                text=f"🔑 {email} ({'<1' if days < 1 else days} дн.)",
-                callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=key_ref).pack(),
+            button(
+                f"🔑 {record.email} ({'<1' if days < 1 else days} дн.)",
+                "users_key_edit",
+                build_admin_key_ref(record.client_id, record.email),
             )
         )
+    builder.row(button("➕ Новая подписка", "users_create_key"))
 
-    builder.row(
-        InlineKeyboardButton(
-            text="✉️ Сообщение",
-            callback_data=AdminUserEditorCallback(action="users_send_message", tg_id=tg_id).pack(),
-        ),
-        InlineKeyboardButton(
-            text="💸 Баланс",
-            callback_data=AdminUserEditorCallback(action="users_balance_edit", tg_id=tg_id).pack(),
-        ),
-    )
+    builder.row(button("💸 Баланс", "users_balance_edit"), button("✉️ Написать", "users_send_message"))
+    builder.row(button("🕘 Действия", "users_audit", "all|all|0"), button("🧾 Подписки", "users_sub_history"))
+    builder.row(button("🤝 Рефералы", "users_export_referrals"), button("🎁 Подарки", "users_gifts"))
+    builder.row(button("🌐 Кабинет", "users_site"), button("♻️ Вернуть пробный", "users_trial_restore"))
 
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 Сайт",
-            callback_data=AdminUserEditorCallback(action="users_site", tg_id=tg_id).pack(),
-        )
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🤝 Выгрузить рефералов",
-            callback_data=AdminUserEditorCallback(action="users_export_referrals", tg_id=tg_id).pack(),
-        ),
-        InlineKeyboardButton(
-            text="🎁 Подарки",
-            callback_data=AdminUserEditorCallback(action="users_gifts", tg_id=tg_id).pack(),
-        ),
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🕘 История действий",
-            callback_data=AdminUserEditorCallback(action="users_audit", tg_id=tg_id, data="all|all|0").pack(),
-        ),
-        InlineKeyboardButton(
-            text="🧾 История подписок",
-            callback_data=AdminUserEditorCallback(action="users_sub_history", tg_id=tg_id).pack(),
-        ),
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="♻️ Восстановить триал",
-            callback_data=AdminUserEditorCallback(action="users_trial_restore", tg_id=tg_id).pack(),
-        )
-    )
-
-    unlink_buttons = []
     if has_email and has_tg:
-        unlink_buttons.append(
-            InlineKeyboardButton(
-                text="📧 Отвязать email",
-                callback_data=AdminUserEditorCallback(action="users_unlink_email", tg_id=tg_id).pack(),
-            )
+        builder.row(
+            button("📧 Отвязать почту", "users_unlink_email"),
+            button("✈️ Отвязать TG", "users_unlink_tg"),
         )
-        unlink_buttons.append(
-            InlineKeyboardButton(
-                text="✈️ Отвязать TG",
-                callback_data=AdminUserEditorCallback(action="users_unlink_tg", tg_id=tg_id).pack(),
-            )
-        )
-    if unlink_buttons:
-        builder.row(*unlink_buttons)
 
     builder.row(
-        InlineKeyboardButton(
-            text="❌ Удалить",
-            callback_data=AdminUserEditorCallback(action="users_delete_user", tg_id=tg_id).pack(),
-        ),
-        InlineKeyboardButton(
-            text="✅ Разблокировать" if is_banned else "🚫 Заблокировать",
-            callback_data=AdminUserEditorCallback(
-                action="users_unban" if is_banned else "users_ban", tg_id=tg_id
-            ).pack(),
-        ),
+        button("✅ Разблокировать" if is_banned else "🚫 Заблокировать", "users_unban" if is_banned else "users_ban"),
+        button("❌ Удалить", "users_delete_user"),
     )
 
     hook_buttons = await run_hooks("admin_user_edit", tg_id=tg_id, is_banned=is_banned, admin_role=admin_role)
     builder = insert_hook_buttons(builder, hook_buttons)
 
-    builder.row(build_editor_btn("🔄 Обновить данные", tg_id, edit=True))
+    builder.row(build_editor_btn("🔄 Обновить", tg_id, edit=True))
     builder.row(build_admin_back_btn())
 
     return builder.as_markup()
@@ -283,7 +221,7 @@ async def build_users_key_expiry_kb(
 
     builder.row(
         InlineKeyboardButton(
-            text="⏳ Установить дату истечения",
+            text="⏳ Дата истечения",
             callback_data=AdminUserKeyEditorCallback(action="set", tg_id=tg_id, data=resolved_key_ref).pack(),
         )
     )
@@ -327,89 +265,39 @@ def build_key_edit_kb(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     resolved_key_ref = key_ref or build_admin_key_ref(key_details.get("client_id"), email)
+    tg_id = key_details["tg_id"]
 
     is_frozen = (
         key_details.get("is_frozen") if isinstance(key_details, dict) else getattr(key_details, "is_frozen", False)
     )
 
-    builder.button(
-        text="⏳ Время истечения",
-        callback_data=AdminUserEditorCallback(
-            action="users_expiry_edit", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
-    builder.button(
-        text="🔄 Перевыпуск подписки",
-        callback_data=AdminUserEditorCallback(
-            action="users_reissue_menu", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
-    builder.button(
-        text="📦 Тариф",
-        callback_data=AdminUserEditorCallback(
-            action="users_renew", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
+    def button(label: str, action: str) -> InlineKeyboardButton:
+        return InlineKeyboardButton(
+            text=label,
+            callback_data=AdminUserEditorCallback(action=action, data=resolved_key_ref, tg_id=tg_id).pack(),
+        )
+
+    builder.row(button("⏳ Срок", "users_expiry_edit"), button("📦 Тариф", "users_renew"))
+
+    limits = [button("📊 Трафик", "users_traffic")]
     if is_configurable:
-        builder.button(
-            text="📱 Конфигурация",
-            callback_data=AdminUserEditorCallback(
-                action="users_edit_config", data=resolved_key_ref, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
-    builder.button(
-        text="❌ Удалить",
-        callback_data=AdminUserEditorCallback(
-            action="users_delete_key", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
-
-    if show_subscription_keys:
-        builder.button(
-            text="🔑 Ключи",
-            callback_data=AdminUserEditorCallback(
-                action="users_keys_list", data=resolved_key_ref, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
-
-    builder.button(
-        text="📊 Трафик",
-        callback_data=AdminUserEditorCallback(
-            action="users_traffic", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
-    builder.button(
-        text="♻️ Сбросить трафик",
-        callback_data=AdminUserEditorCallback(
-            action="users_reset_traffic", data=resolved_key_ref, tg_id=key_details["tg_id"]
-        ).pack(),
-    )
-
-    if is_frozen:
-        builder.button(
-            text=UNFREEZE,
-            callback_data=AdminUserEditorCallback(
-                action="users_unfreeze", data=resolved_key_ref, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
-    else:
-        builder.button(
-            text=FREEZE,
-            callback_data=AdminUserEditorCallback(
-                action="users_freeze", data=resolved_key_ref, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
-
+        limits.insert(0, button("⚙️ Конфигурация", "users_edit_config"))
     if bool(BUTTONS_CONFIG.get("HWID_RESET_BUTTON_ENABLE", HWID_RESET_BUTTON)):
-        builder.button(
-            text="💻 HWID",
-            callback_data=AdminUserEditorCallback(
-                action="users_hwid_menu", data=resolved_key_ref, tg_id=key_details["tg_id"]
-            ).pack(),
-        )
+        limits.append(button("💻 Устройства", "users_hwid_menu"))
+    for i in range(0, len(limits), 2):
+        builder.row(*limits[i : i + 2])
 
-    builder.row(build_editor_back_btn(key_details["tg_id"], True))
-    builder.adjust(1)
+    service = [button("🔄 Перевыпустить", "users_reissue_menu"), button("♻️ Сбросить трафик", "users_reset_traffic")]
+    if show_subscription_keys:
+        service.append(button("🔑 Ключи", "users_keys_list"))
+    for i in range(0, len(service), 2):
+        builder.row(*service[i : i + 2])
+
+    builder.row(
+        button("▶️ Включить" if is_frozen else "⛔ Отключить", "users_unfreeze" if is_frozen else "users_freeze"),
+        button("❌ Удалить", "users_delete_key"),
+    )
+    builder.row(build_editor_back_btn(tg_id, True))
     return builder.as_markup()
 
 

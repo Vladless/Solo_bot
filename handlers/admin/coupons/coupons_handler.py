@@ -21,6 +21,7 @@ from logger import logger
 from settings.buttons import BACK
 from settings.config import INLINE_MODE, USERNAME_BOT
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminCouponDeleteCallback,
@@ -48,7 +49,12 @@ class AdminCouponsState(StatesGroup):
     IsAdminFilter(),
 )
 async def handle_coupons(callback_query: CallbackQuery):
-    await callback_query.message.edit_text(text="🛠 Меню управления купонами:", reply_markup=build_coupons_kb())
+    text = menu_text(
+        "Купоны",
+        "Промокоды для клиентов.",
+        quote("Дают баланс, дни подписки или скидку на покупку."),
+    )
+    await callback_query.message.edit_text(text=text, reply_markup=build_coupons_kb())
 
 
 @router.callback_query(
@@ -56,7 +62,11 @@ async def handle_coupons(callback_query: CallbackQuery):
     IsAdminFilter(),
 )
 async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext):
-    text = "🎫 <b>Выберите тип купона:</b>"
+    text = menu_text(
+        "Новый купон",
+        "Выберите тип.",
+        quote("Баланс — деньги на счёт.\nВремя — дни подписки.\nПроцент — скидка на покупку."),
+    )
     kb = InlineKeyboardBuilder()
     kb.button(text="💰 Баланс", callback_data="coupon_type_balance")
     kb.button(text="⏳ Время", callback_data="coupon_type_days")
@@ -69,7 +79,11 @@ async def handle_coupons_create(callback_query: CallbackQuery, state: FSMContext
 
 
 async def show_coupon_audience_step(callback_query: CallbackQuery, state: FSMContext):
-    text = "🎯 <b>Кому доступен купон?</b>"
+    text = menu_text(
+        "Аудитория купона",
+        "Кому он доступен?",
+        quote("Всем — любому клиенту.\nТолько новым — тем, у кого ещё не было подписки."),
+    )
     kb = InlineKeyboardBuilder()
     kb.button(text="👤 Всем", callback_data="coupon_audience_all")
     kb.button(text="🆕 Только новым", callback_data="coupon_audience_new")
@@ -94,10 +108,10 @@ async def handle_days_coupon_selection(callback_query: CallbackQuery, state: FSM
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
     kb.adjust(1)
 
-    text = (
-        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-        "📝 <i>код</i> ⏳ <i>дни</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'DAYS10 10 50'</b>\n\n"
+    text = menu_text(
+        "Купон на дни",
+        "Пришлите данные одной строкой.",
+        quote("Формат: код, дни, лимит.\nНапример: <code>DAYS10 10 50</code>"),
     )
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_days_data)
@@ -111,11 +125,10 @@ async def handle_percent_coupon_selection(callback_query: CallbackQuery, state: 
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
     kb.adjust(1)
 
-    text = (
-        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-        "📝 <i>код</i> 📉 <i>процент</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'SALE20 20 10'</b>\n"
-        "Где 20 — это скидка 20%\n\n"
+    text = menu_text(
+        "Купон на скидку",
+        "Пришлите данные одной строкой.",
+        quote("Формат: код, процент, лимит.\nНапример: <code>SALE20 20 10</code> — скидка 20%."),
     )
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_percent_data)
@@ -128,7 +141,7 @@ async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContex
     data = await state.get_data()
     coupon_type = data.get("coupon_type")
     if coupon_type != "balance":
-        await callback_query.answer("Ошибка: режим доступен только для купонов на баланс", show_alert=True)
+        await callback_query.answer("Режим доступен только купонам на баланс", show_alert=True)
         return
 
     await state.update_data(new_users_only=callback_query.data == "coupon_audience_new")
@@ -137,10 +150,10 @@ async def handle_coupon_audience(callback_query: CallbackQuery, state: FSMContex
     kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
     kb.adjust(1)
 
-    text = (
-        "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
-        "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'COUPON1 50 5'</b>\n\n"
+    text = menu_text(
+        "Купон на баланс",
+        "Пришлите данные одной строкой.",
+        quote("Формат: код, сумма, лимит.\nНапример: <code>COUPON1 50 5</code>"),
     )
     await callback_query.message.edit_text(text=text, reply_markup=kb.as_markup())
     await state.set_state(AdminCouponsState.waiting_for_balance_data)
@@ -156,10 +169,10 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
     kb.adjust(1)
 
     if len(parts) != 3:
-        text = (
-            "❌ <b>Некорректный формат!</b>\n"
-            "🏷️ <b>код</b> 💰 <b>сумма</b> 🔢 <b>лимит</b>\n"
-            "Пример: <b>'COUPON1 50 5'</b>"
+        text = menu_text(
+            "Некорректный формат",
+            "Нужны три значения через пробел.",
+            quote("Код, сумма, лимит.\nНапример: <code>COUPON1 50 5</code>"),
         )
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
@@ -173,7 +186,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         if usage_limit <= 0:
             raise ValueError
     except ValueError:
-        text = "⚠️ <b>Проверьте данные!</b>\nСумма и лимит должны быть целыми числами больше 0."
+        text = menu_text("Купоны", "❌ Сумма и лимит — целые числа больше нуля.")
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
@@ -191,18 +204,20 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
             percent=None,
         )
         if not ok:
-            await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
+            await message.answer(
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                reply_markup=kb.as_markup(),
+            )
             return
 
         coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
-        audience_txt = "🆕 Только новым" if new_users_only else "👤 Всем"
+        audience_txt = "только новым" if new_users_only else "всем"
 
-        text = (
-            f"✅ Купон <b>{coupon_code}</b> создан!\n"
-            f"💰 Сумма: <b>{coupon_amount} рублей</b>\n"
-            f"🔢 Лимит: <b>{usage_limit} раз</b>\n"
-            f"🎯 Доступ: <b>{audience_txt}</b>\n"
-            f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
+        text = menu_text(
+            "Купоны",
+            f"✅ Купон <b>{coupon_code}</b> создан.",
+            quote(f"Сумма: {coupon_amount} ₽\nЛимит: {usage_limit} раз\nДоступ: {audience_txt}"),
+            quote(f"<code>{coupon_link}</code>"),
         )
 
         kb = InlineKeyboardBuilder()
@@ -215,7 +230,10 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
+        await message.answer(
+            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            reply_markup=kb.as_markup(),
+        )
 
 
 @router.message(AdminCouponsState.waiting_for_days_data, IsAdminFilter())
@@ -228,8 +246,9 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
     kb.adjust(1)
 
     if len(parts) != 3:
-        text = (
-            "❌ <b>Некорректный формат!</b>\n🏷️ <b>код</b> ⏳ <b>дни</b> 🔢 <b>лимит</b>\nПример: <b>'DAYS10 10 50'</b>"
+        text = menu_text(
+            "Купоны",
+            "❌ Нужны три значения через пробел.",
         )
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
@@ -243,7 +262,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         if usage_limit <= 0:
             raise ValueError
     except ValueError:
-        text = "⚠️ <b>Проверьте данные!</b>\nДни и лимит должны быть целыми числами больше 0."
+        text = menu_text("Купоны", "❌ Дни и лимит — целые числа больше нуля.")
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
@@ -258,16 +277,19 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
             percent=None,
         )
         if not ok:
-            await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
+            await message.answer(
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                reply_markup=kb.as_markup(),
+            )
             return
 
         coupon_link = f"https://telegram.me/{USERNAME_BOT}?start=coupons_{coupon_code}"
 
-        text = (
-            f"✅ Купон <b>{coupon_code}</b> создан!\n"
-            f"⏳ <b>{format_days(days)}</b>\n"
-            f"🔢 Лимит: <b>{usage_limit} раз</b>\n"
-            f"🔗 <b>Ссылка:</b> <code>{coupon_link}</code>\n"
+        text = menu_text(
+            "Купоны",
+            f"✅ Купон <b>{coupon_code}</b> создан.",
+            quote(f"Даёт: {format_days(days)}\nЛимит: {usage_limit} раз"),
+            quote(f"<code>{coupon_link}</code>"),
         )
 
         kb = InlineKeyboardBuilder()
@@ -280,7 +302,10 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
+        await message.answer(
+            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            reply_markup=kb.as_markup(),
+        )
 
 
 @router.message(AdminCouponsState.waiting_for_percent_data, IsAdminFilter())
@@ -293,10 +318,9 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
     kb.adjust(1)
 
     if len(parts) != 3:
-        text = (
-            "❌ <b>Некорректный формат!</b>\n"
-            "🏷️ <b>код</b> 📉 <b>процент</b> 🔢 <b>лимит</b>\n"
-            "Пример: <b>'SALE20 20 10'</b>"
+        text = menu_text(
+            "Купоны",
+            "❌ Нужны три значения через пробел.",
         )
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
@@ -310,7 +334,7 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         if usage_limit <= 0:
             raise ValueError
     except ValueError:
-        text = "⚠️ <b>Проверьте данные!</b>\nПроцент должен быть 1..100, лимит — целое число больше 0."
+        text = menu_text("Купоны", "❌ Процент от 1 до 100, лимит — число больше нуля.")
         await message.answer(text=text, reply_markup=kb.as_markup())
         return
 
@@ -325,11 +349,16 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
             percent=percent,
         )
         if not ok:
-            await message.answer("❌ Купон с таким кодом уже существует.", reply_markup=kb.as_markup())
+            await message.answer(
+                menu_text("Купоны", "❌ Купон с таким кодом уже существует.", markup=kb.as_markup()),
+                reply_markup=kb.as_markup(),
+            )
             return
 
-        text = (
-            f"✅ Купон <b>{coupon_code}</b> создан!\n📉 Скидка: <b>{percent}%</b>\n🔢 Лимит: <b>{usage_limit} раз</b>\n"
+        text = menu_text(
+            "Купоны",
+            f"✅ Купон <b>{coupon_code}</b> создан.",
+            quote(f"Скидка: {percent}%\nЛимит: {usage_limit} раз"),
         )
 
         kb = InlineKeyboardBuilder()
@@ -340,7 +369,10 @@ async def handle_percent_coupon_input(message: Message, state: FSMContext, sessi
         await state.clear()
     except Exception as e:
         logger.error(f"Ошибка при создании купона: {e}")
-        await message.answer("❌ Произошла ошибка при создании купона.", reply_markup=kb.as_markup())
+        await message.answer(
+            menu_text("Купоны", "❌ Не удалось создать купон.", markup=kb.as_markup()),
+            reply_markup=kb.as_markup(),
+        )
 
 
 @router.callback_query(
@@ -354,7 +386,7 @@ async def handle_coupons_list(callback_query: CallbackQuery, session: Any):
         await update_coupons_list(callback_query.message, session, page)
     except Exception as e:
         logger.error(f"Ошибка при получении списка купонов: {e}")
-        await callback_query.message.edit_text("Произошла ошибка при получении списка купонов.")
+        await callback_query.message.edit_text(menu_text("Купоны", "Не удалось получить список купонов."))
 
 
 @router.callback_query(AdminCouponDeleteCallback.filter(F.confirm.is_(None)), IsAdminFilter())
@@ -376,7 +408,7 @@ async def handle_coupon_delete(
     kb.adjust(1)
 
     await callback_query.message.edit_text(
-        f"Вы уверены, что хотите удалить купон <b>{coupon_code}</b>?",
+        menu_text("Купоны", f"Удалить купон <b>{coupon_code}</b>?", markup=kb.as_markup()),
         reply_markup=kb.as_markup(),
     )
 
@@ -395,14 +427,16 @@ async def confirm_coupon_delete(
             result = await delete_coupon(session, coupon_code)
             if not result:
                 await callback_query.message.edit_text(
-                    f"❌ Купон с кодом {coupon_code} не найден.",
+                    menu_text(
+                        "Купоны", f"❌ Купон с кодом {coupon_code} не найден.", markup=build_admin_back_kb("coupons")
+                    ),
                     reply_markup=build_admin_back_kb("coupons"),
                 )
                 return
         except Exception as e:
             logger.error(f"Ошибка при удалении купона: {e}")
             await callback_query.message.edit_text(
-                "Произошла ошибка при удалении купона.",
+                menu_text("Купоны", "Не удалось удалить купон.", markup=build_admin_back_kb("coupons")),
                 reply_markup=build_admin_back_kb("coupons"),
             )
             return
@@ -417,14 +451,16 @@ async def update_coupons_list(message, session: Any, page: int = 1):
 
     if not coupons:
         await message.edit_text(
-            text="❌ На данный момент нет доступных купонов!",
+            text=menu_text("Купоны", "Купонов пока нет.", markup=build_admin_back_kb("coupons")),
             reply_markup=build_admin_back_kb("coupons"),
         )
         return
 
     kb = build_coupons_list_kb(coupons, result["current_page"], result["pages"])
-    text = format_coupons_list(coupons, USERNAME_BOT)
-    await message.edit_text(text=text, reply_markup=kb)
+    body = format_coupons_list(coupons, USERNAME_BOT)
+    await message.edit_text(
+        text=menu_text("Купоны", f"На странице: <b>{len(coupons)}</b>", body, markup=kb), reply_markup=kb
+    )
 
 
 @router.inline_query(F.query.startswith("coupon_"))

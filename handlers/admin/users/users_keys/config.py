@@ -1,5 +1,6 @@
 """Key config editor (base/addon devices + traffic limits)."""
 
+from ...panel.headers import card, menu_text, quote, section
 from ._common import *  # noqa: F401,F403
 from .edit import handle_key_edit
 
@@ -20,14 +21,17 @@ async def handle_edit_config_start(
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
 
     if not key_obj:
-        await callback_query.message.edit_text("❌ Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
 
     email = key_obj.email
 
     if not key_obj.tariff_id:
         await callback_query.message.edit_text(
-            "❌ У ключа не назначен тариф.",
+            menu_text("Подписка", "❌ У ключа не назначен тариф.", markup=build_key_edit_kb(key_obj.__dict__, email)),
             reply_markup=build_key_edit_kb(key_obj.__dict__, email),
         )
         return
@@ -35,7 +39,9 @@ async def handle_edit_config_start(
     tariff = await get_tariff_by_id(session, key_obj.tariff_id)
     if not tariff or not tariff.get("configurable"):
         await callback_query.message.edit_text(
-            "❌ Тариф не поддерживает конфигурацию.",
+            menu_text(
+                "Подписка", "❌ Тариф не поддерживает конфигурацию.", markup=build_key_edit_kb(key_obj.__dict__, email)
+            ),
             reply_markup=build_key_edit_kb(key_obj.__dict__, email),
         )
         return
@@ -72,7 +78,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
 
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
-        await callback_query.message.edit_text("❌ Тариф не найден.")
+        await callback_query.message.edit_text(menu_text("Подписка", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -96,22 +102,20 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
             except (TypeError, ValueError):
                 pass
 
-    text = (
-        f"<b>⚙️ Конфигурация ключа</b>\n\n"
-        f"🔑 <b>Ключ:</b> <code>{email}</code>\n"
-        f"📦 <b>Тариф:</b> {tariff.get('name')}\n\n"
+    devices_line = f"{base_devices}" + (f" + {extra_devices} докуплено" if extra_devices > 0 else "")
+    traffic_line = (
+        f"{traffic_to_show} ГБ" + (f" + {extra_traffic} ГБ докуплено" if extra_traffic > 0 else "")
+        if traffic_to_show
+        else "безлимит"
     )
-
-    extra_dev_str = f" + {extra_devices} (докуплено)" if extra_devices > 0 else ""
-    text += f"📱 <b>Устройства:</b> {base_devices}{extra_dev_str}\n"
-
-    if traffic_to_show:
-        extra_traf_str = f" + {extra_traffic} ГБ (докуплено)" if extra_traffic > 0 else ""
-        text += f"📊 <b>Трафик:</b> {traffic_to_show} ГБ{extra_traf_str}\n"
-    else:
-        text += "📊 <b>Трафик:</b> безлимит\n"
-
-    text += "\n<i>Выберите что редактировать:</i>"
+    text = menu_text(
+        "Конфигурация",
+        f"<code>{email}</code>",
+        card(
+            section("📦 Тариф", f"Название: {tariff.get('name')}"),
+            section("⚙️ Лимиты", f"Устройства: {devices_line}", f"Трафик: {traffic_line}"),
+        ),
+    )
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -145,7 +149,7 @@ async def handle_cfg_edit_base(callback_query: CallbackQuery, state: FSMContext,
     builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
-        "<b>📦 Редактирование базы тарифа</b>\n\nВыберите параметр:",
+        menu_text("База тарифа", "Что меняем?", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -165,7 +169,7 @@ async def handle_cfg_edit_addon(callback_query: CallbackQuery, state: FSMContext
     builder.row(InlineKeyboardButton(text=BACK, callback_data="cfg_back_menu"))
 
     await callback_query.message.edit_text(
-        "<b>➕ Редактирование докупки</b>\n\nВыберите параметр:",
+        menu_text("Докупка", "Что меняем?", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -192,7 +196,7 @@ async def handle_cfg_base_devices(callback_query: CallbackQuery, state: FSMConte
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="devices")
     await callback_query.message.edit_text(
-        "<b>📱 Выберите базу устройств:</b>",
+        menu_text("База устройств", "Выберите значение.", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -216,7 +220,7 @@ async def handle_cfg_base_traffic(callback_query: CallbackQuery, state: FSMConte
     await state.set_state(UserEditorState.config_select_base)
     await state.update_data(cfg_param="traffic")
     await callback_query.message.edit_text(
-        "<b>📊 Выберите базу трафика:</b>",
+        menu_text("База трафика", "Выберите значение.", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -225,7 +229,7 @@ async def handle_cfg_base_traffic(callback_query: CallbackQuery, state: FSMConte
 async def handle_cfg_set_base_dev(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     base_devices = int(callback_query.data.split(":")[1])
     await state.update_data(cfg_base_devices=base_devices)
-    await callback_query.answer(f"✅ База устройств: {base_devices}")
+    await callback_query.answer(menu_text("Подписка", f"✅ База устройств: {base_devices}"))
     await state.set_state(UserEditorState.config_menu)
     await render_config_menu(callback_query, state, session)
 
@@ -235,7 +239,7 @@ async def handle_cfg_set_base_traf(callback_query: CallbackQuery, state: FSMCont
     traffic_gb = int(callback_query.data.split(":")[1])
     await state.update_data(cfg_base_traffic=traffic_gb if traffic_gb > 0 else None)
     label = "безлимит" if traffic_gb == 0 else f"{traffic_gb} ГБ"
-    await callback_query.answer(f"✅ База трафика: {label}")
+    await callback_query.answer(menu_text("Подписка", f"✅ База трафика: {label}"))
     await state.set_state(UserEditorState.config_menu)
     await render_config_menu(callback_query, state, session)
 
@@ -252,9 +256,12 @@ async def handle_cfg_addon_devices(callback_query: CallbackQuery, state: FSMCont
     builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="cfg_cancel_input"))
 
     await callback_query.message.edit_text(
-        f"<b>📱 Докупка устройств</b>\n\n"
-        f"Текущее значение: <b>{extra_devices}</b>\n\n"
-        f"Введите новое количество докупленных устройств (число):",
+        menu_text(
+            "Докупка устройств",
+            "Сколько устройств докуплено сверх тарифа?",
+            quote(f"Сейчас: {extra_devices}"),
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -271,9 +278,12 @@ async def handle_cfg_addon_traffic(callback_query: CallbackQuery, state: FSMCont
     builder.row(InlineKeyboardButton(text="🔙 Отмена", callback_data="cfg_cancel_input"))
 
     await callback_query.message.edit_text(
-        f"<b>📊 Докупка трафика</b>\n\n"
-        f"Текущее значение: <b>{extra_traffic} ГБ</b>\n\n"
-        f"Введите новое количество докупленного трафика в ГБ (число):",
+        menu_text(
+            "Докупка трафика",
+            "Сколько ГБ докуплено сверх тарифа?",
+            quote(f"Сейчас: {extra_traffic} ГБ"),
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -294,12 +304,12 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     tariff_id = data.get("tariff_id")
 
     if not message.text or not message.text.isdigit():
-        await message.answer("❌ Введите корректное число.")
+        await message.answer(menu_text("Подписка", "❌ Введите корректное число."))
         return
 
     value = int(message.text)
     if value < 0:
-        await message.answer("❌ Значение не может быть отрицательным.")
+        await message.answer(menu_text("Подписка", "❌ Значение не может быть отрицательным."))
         return
 
     if param == "devices":
@@ -317,22 +327,20 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     base_traffic = data.get("cfg_base_traffic")
     extra_traffic = data.get("cfg_extra_traffic") or 0
 
-    text = (
-        f"<b>⚙️ Конфигурация ключа</b>\n\n"
-        f"🔑 <b>Ключ:</b> <code>{email}</code>\n"
-        f"📦 <b>Тариф:</b> {tariff.get('name') if tariff else '—'}\n\n"
+    devices_line = f"{base_devices}" + (f" + {extra_devices} докуплено" if extra_devices > 0 else "")
+    traffic_line = (
+        f"{base_traffic} ГБ" + (f" + {extra_traffic} ГБ докуплено" if extra_traffic > 0 else "")
+        if base_traffic
+        else "безлимит"
     )
-
-    extra_dev_str = f" + {extra_devices} (докуплено)" if extra_devices > 0 else ""
-    text += f"📱 <b>Устройства:</b> {base_devices}{extra_dev_str}\n"
-
-    if base_traffic:
-        extra_traf_str = f" + {extra_traffic} ГБ (докуплено)" if extra_traffic > 0 else ""
-        text += f"📊 <b>Трафик:</b> {base_traffic} ГБ{extra_traf_str}\n"
-    else:
-        text += "📊 <b>Трафик:</b> безлимит\n"
-
-    text += "\n<i>Выберите что редактировать:</i>"
+    text = menu_text(
+        "Конфигурация",
+        f"<code>{email}</code>",
+        card(
+            section("📦 Тариф", f"Название: {tariff.get('name') if tariff else '—'}"),
+            section("⚙️ Лимиты", f"Устройства: {devices_line}", f"Трафик: {traffic_line}"),
+        ),
+    )
 
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -385,7 +393,10 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
     key_obj = await get_key_by_email(session, email)
 
     if not key_obj:
-        await callback_query.message.edit_text("❌ Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         await state.clear()
         return
 
@@ -414,7 +425,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
         )
 
         await state.clear()
-        await callback_query.answer("✅ Конфигурация сохранена", show_alert=True)
+        await callback_query.answer("Конфигурация сохранена", show_alert=True)
 
         callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
         await handle_key_edit(
@@ -427,7 +438,9 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
     except Exception as e:
         logger.error(f"[EditConfig] Ошибка при сохранении конфигурации: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось сохранить конфигурацию. Попробуйте позже.",
+            menu_text(
+                "Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже.", markup=build_editor_kb(tg_id)
+            ),
             reply_markup=build_editor_kb(tg_id),
         )
         await state.clear()

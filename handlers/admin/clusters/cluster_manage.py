@@ -15,6 +15,7 @@ from panels.remnawave import RemnawaveAPI
 from services.operations import renew_key_in_cluster
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
+from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import build_admin_back_kb
 from .base import AdminClusterStates, router
 from .keyboard import (
@@ -82,11 +83,15 @@ async def handle_clusters_manage(
     )
     subscription_count = result.scalar() or 0
 
-    text = (
-        f"<b>🔧 Управление кластером <code>{cluster_name}</code></b>\n\n"
-        f"📁 <b>Тарифная группа:</b> <code>{tariff_group}</code>\n"
-        f"👥 <b>Пользователей на кластере:</b> <code>{user_count}</code>\n"
-        f"🔑 <b>Всего подписок:</b> <code>{subscription_count}</code>"
+    text = menu_text(
+        "Кластер",
+        f"<code>{cluster_name}</code>",
+        section(
+            "📊 Сводка",
+            f"Группа: {tariff_group}",
+            f"Клиентов: {user_count}",
+            f"Подписок: {subscription_count}",
+        ),
     )
 
     await callback_query.message.edit_text(
@@ -119,14 +124,16 @@ async def handle_cluster_servers(callback: CallbackQuery, session: AsyncSession)
         grps = [g for g in grps if g in allowed]
         grps_str = ", ".join(sorted(grps)) if grps else "—"
 
-        lines.append(f"• {s.get('server_name', '?')} — {subs_str} | {grps_str}")
-
-    details = "\n".join(lines) if lines else "нет серверов"
+        lines.append(section(f"🖥 {s.get('server_name', '?')}", f"Подгруппы: {subs_str}", f"Спецгруппы: {grps_str}"))
 
     await callback.message.edit_text(
         text=(
-            f"<b>📡 Серверы в кластере {cluster_name}</b>\n<i>подгруппы | спецгруппы:</i>\n"
-            f"<blockquote>{details}</blockquote>"
+            menu_text(
+                "Серверы кластера",
+                f"Кластер <b>{cluster_name}</b>",
+                card(*lines) if lines else quote("Серверов пока нет"),
+                markup=build_manage_cluster_kb(cluster_servers, cluster_name),
+            )
         ),
         reply_markup=build_manage_cluster_kb(cluster_servers, cluster_name),
     )
@@ -143,7 +150,11 @@ async def handle_add_time(
     await state.update_data(cluster_name=cluster_name)
 
     await callback_query.message.edit_text(
-        f"⏳ Введите количество дней, на которое хотите продлить все подписки в кластере <b>{cluster_name}</b>:",
+        menu_text(
+            "Кластер",
+            f"⏳ На сколько дней продлить все подписки кластера <b>{cluster_name}</b>:",
+            markup=build_admin_back_kb("clusters"),
+        ),
         reply_markup=build_admin_back_kb("clusters"),
     )
 
@@ -170,7 +181,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
         cluster_servers = servers.get(cluster_name, [])
 
         if not cluster_servers:
-            await message.answer("❌ Не найдены серверы в кластере.")
+            await message.answer(menu_text("Кластер", "❌ Не найдены серверы в кластере."))
             await state.clear()
             return
 
@@ -178,7 +189,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
         keys = result.scalars().all()
 
         if not keys:
-            await message.answer("❌ Нет подписок в этом кластере или сервере.")
+            await message.answer(menu_text("Кластер", "❌ Нет подписок в этом кластере или сервере."))
             await state.clear()
             return
 
@@ -187,7 +198,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
         if is_full_remnawave:
             api_url = cluster_servers[0].get("api_url", "")
             if not api_url:
-                await message.answer("❌ Не найден URL панели для кластера.")
+                await message.answer(menu_text("Кластер", "❌ Не найден URL панели для кластера."))
                 await state.clear()
                 return
 
@@ -202,7 +213,7 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 client_ids.append(key.client_id)
 
             if not items:
-                await message.answer("❌ Нет валидных подписок для продления.")
+                await message.answer(menu_text("Кластер", "❌ Нет валидных подписок для продления."))
                 await state.clear()
                 return
 
@@ -218,8 +229,11 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
             logger.info(f"[Cluster Extend] Remnawave fast: панель={affected}, БД={db_updated}")
 
             await message.answer(
-                f"✅ Время подписки продлено на <b>{days} дней</b> в кластере <b>{cluster_name}</b>.\n"
-                f"Панель: <b>{affected}</b> • БД: <b>{db_updated}</b>"
+                menu_text(
+                    "Кластер",
+                    f"✅ Подписки в кластере <b>{cluster_name}</b> продлены на {days} дн.",
+                    section("📊 Обновлено", f"Панель: {affected}", f"База: {db_updated}"),
+                )
             )
             await state.clear()
             return
@@ -275,19 +289,20 @@ async def handle_days_input(message: Message, state: FSMContext, session: AsyncS
                 failed += 1
                 logger.error(f"[Cluster Extend] {key.email}: {type(renew_err).__name__}: {renew_err!r}")
 
-        summary = (
-            f"✅ Время подписки продлено на <b>{days} дней</b> в кластере <b>{cluster_name}</b>.\n"
-            f"Обновлено: <b>{renewed}</b>"
+        stats = f"Обновлено: <b>{renewed}</b>" + (f"\nОшибок: <b>{failed}</b>" if failed else "")
+        await message.answer(
+            menu_text(
+                "Продление кластера",
+                f"Плюс <b>{days} дн.</b> в кластере <b>{cluster_name}</b>",
+                quote(stats),
+            )
         )
-        if failed:
-            summary += f" • ошибок: <b>{failed}</b>"
-        await message.answer(summary)
 
     except ValueError:
-        await message.answer("❌ Введите корректное число дней.")
+        await message.answer(menu_text("Кластер", "❌ Введите корректное число дней."))
     except Exception as e:
         logger.exception(f"[Cluster Extend] Ошибка при добавлении дней: {type(e).__name__}: {e!r}")
-        await message.answer("❌ Произошла ошибка при продлении времени.")
+        await message.answer(menu_text("Кластер", "❌ Не удалось продлить."))
     finally:
         await state.clear()
 
@@ -301,11 +316,11 @@ async def handle_rename_cluster(
     cluster_name = callback_data.data
     await state.update_data(old_cluster_name=cluster_name)
 
-    text = (
-        f"✏️ <b>Введите новое имя для кластера '{cluster_name}':</b>\n\n"
-        "▸ Имя должно быть уникальным.\n"
-        "▸ Имя не должно превышать 12 символов.\n\n"
-        "📌 <i>Пример:</i> <code>new_cluster</code>"
+    text = menu_text(
+        "Кластер",
+        f"✏️ <b>Введите новое имя для кластера '{cluster_name}':</b>",
+        quote("▸ Имя должно быть уникальным.\n▸ Имя не должно превышать 12 символов."),
+        quote("📌 <i>Пример:</i> <code>new_cluster</code>"),
     )
 
     await callback_query.message.edit_text(
@@ -319,7 +334,11 @@ async def handle_rename_cluster(
 async def handle_new_cluster_name_input(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text:
         await message.answer(
-            text="❌ Имя кластера не может быть пустым! Попробуйте снова.",
+            text=menu_text(
+                "Кластер",
+                "❌ Имя не может быть пустым.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -327,7 +346,11 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
     new_cluster_name = message.text.strip()
     if len(new_cluster_name) > 12:
         await message.answer(
-            text="❌ Имя кластера не должно превышать 12 символов! Попробуйте снова.",
+            text=menu_text(
+                "Кластер",
+                "❌ Максимум 12 символов.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -343,7 +366,11 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
 
         if existing_cluster:
             await message.answer(
-                text=f"❌ Кластер с именем '{new_cluster_name}' уже существует. Введите другое имя.",
+                text=menu_text(
+                    "Кластер",
+                    f"❌ Кластер с именем '{new_cluster_name}' уже существует. Введите другое имя.",
+                    markup=build_admin_back_kb("clusters"),
+                ),
                 reply_markup=build_admin_back_kb("clusters"),
             )
             return
@@ -363,14 +390,20 @@ async def handle_new_cluster_name_input(message: Message, state: FSMContext, ses
             )
 
         await message.answer(
-            text=f"✅ Название кластера успешно изменено с '{old_cluster_name}' на '{new_cluster_name}'!",
+            text=menu_text(
+                "Кластер",
+                f"✅ Кластер <b>{old_cluster_name}</b> теперь <b>{new_cluster_name}</b>.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     except Exception as e:
         await session.rollback()
         logger.error(f"Ошибка при смене имени кластера {old_cluster_name} на {new_cluster_name}: {e}")
         await message.answer(
-            text=f"❌ Произошла ошибка при смене имени кластера: {e}",
+            text=menu_text(
+                "Кластер", f"❌ Не удалось переименовать кластер: {e}", markup=build_admin_back_kb("clusters")
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:
@@ -398,18 +431,22 @@ async def handle_rename_server(
 
     if not cluster_name:
         await callback_query.message.edit_text(
-            text=f"❌ Не удалось найти кластер для сервера '{old_server_name}'.",
+            text=menu_text(
+                "Кластер",
+                f"❌ Кластер сервера не найден: '{old_server_name}'.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
     await state.update_data(old_server_name=old_server_name, cluster_name=cluster_name)
 
-    text = (
-        f"✏️ <b>Введите новое имя для сервера '{old_server_name}' в кластере '{cluster_name}':</b>\n\n"
-        "▸ Имя должно быть уникальным в пределах кластера.\n"
-        "▸ Имя не должно превышать 12 символов.\n\n"
-        "📌 <i>Пример:</i> <code>new_server</code>"
+    text = menu_text(
+        "Кластер",
+        f"✏️ <b>Введите новое имя для сервера '{old_server_name}' в кластере '{cluster_name}':</b>",
+        quote("▸ Имя должно быть уникальным в пределах кластера.\n▸ Имя не должно превышать 12 символов."),
+        quote("📌 <i>Пример:</i> <code>new_server</code>"),
     )
 
     await callback_query.message.edit_text(
@@ -423,7 +460,11 @@ async def handle_rename_server(
 async def handle_new_server_name_input(message: Message, state: FSMContext, session: AsyncSession):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым! Попробуйте снова.",
+            text=menu_text(
+                "Кластер",
+                "❌ Имя не может быть пустым.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -431,7 +472,11 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
     new_server_name = message.text.strip()
     if len(new_server_name) > 12:
         await message.answer(
-            text="❌ Имя сервера не должно превышать 12 символов! Попробуйте снова.",
+            text=menu_text(
+                "Кластер",
+                "❌ Максимум 12 символов.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -453,8 +498,11 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
         if existing_server:
             await message.answer(
                 text=(
-                    f"❌ Сервер с именем '{new_server_name}' уже существует в кластере '{cluster_name}'. "
-                    f"Введите другое имя."
+                    menu_text(
+                        "Кластер",
+                        f"❌ Сервер с именем '{new_server_name}' уже существует в кластере '{cluster_name}'. Введите другое имя.",
+                        markup=build_admin_back_kb("clusters"),
+                    )
                 ),
                 reply_markup=build_admin_back_kb("clusters"),
             )
@@ -477,8 +525,11 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
 
         await message.answer(
             text=(
-                f"✅ Название сервера успешно изменено с '{old_server_name}' на '{new_server_name}' "
-                f"в кластере '{cluster_name}'!"
+                menu_text(
+                    "Кластер",
+                    f"✅ Сервер <b>{old_server_name}</b> теперь <b>{new_server_name}</b>.",
+                    markup=build_admin_back_kb("clusters"),
+                )
             ),
             reply_markup=build_admin_back_kb("clusters"),
         )
@@ -486,7 +537,9 @@ async def handle_new_server_name_input(message: Message, state: FSMContext, sess
         await session.rollback()
         logger.error(f"Ошибка при смене имени сервера {old_server_name} на {new_server_name}: {e}")
         await message.answer(
-            text=f"❌ Произошла ошибка при смене имени сервера: {e}",
+            text=menu_text(
+                "Кластер", f"❌ Не удалось переименовать сервер: {e}", markup=build_admin_back_kb("clusters")
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
     finally:

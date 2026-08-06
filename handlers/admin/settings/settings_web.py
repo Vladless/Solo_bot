@@ -8,6 +8,7 @@ from core.settings.web_config import WEB_CONFIG, update_web_config
 from database import async_session_maker
 from settings.buttons import BACK
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -78,7 +79,7 @@ def build_settings_web_kb() -> InlineKeyboardBuilder:
     )
     builder.row(
         InlineKeyboardButton(
-            text="🔄 Сбросить сайт к исходнику",
+            text="🔄 Сбросить сайт",
             callback_data=AdminPanelCallback(action="settings_web_reset_ask").pack(),
         )
     )
@@ -92,19 +93,21 @@ def _web_settings_text() -> str:
     url = str(WEB_CONFIG.get("SITE_URL") or "не указан")
     email_binding = bool(WEB_CONFIG.get("EMAIL_BINDING_ENABLED", False))
     open_in_browser = bool(WEB_CONFIG.get("WEB_OPEN_IN_BROWSER", False))
-    return (
-        "<b>🌐 Настройки веб-сайта</b>\n\n"
-        f"Статус: {'✅ Включён' if enabled else '❌ Выключен'}\n"
-        f"URL: <code>{url}</code>\n"
-        f"Открытие: {'🔗 в браузере' if open_in_browser else '📱 в веб-аппе'}\n"
-        f"Статус серверов: раз в {_node_status_interval_min()} мин\n"
-        f"Привязка почты: {'✅ Включена' if email_binding else '❌ Выключена'}\n\n"
-        "Сайт может работать на отдельном домене и сервере.\n"
-        "При выключении кнопка «Личный кабинет» скрывается из бота.\n"
-        "Открытие «в веб-аппе» — кабинет открывается внутри Telegram, "
-        "«в браузере» — обычной ссылкой во внешнем браузере.\n"
-        "Привязка почты — кнопка в боте, через которую пользователь указывает email "
-        "для входа на сайт на случай проблем с Telegram."
+    return menu_text(
+        "Веб-сайт",
+        "Личный кабинет и лендинг.",
+        quote(
+            f"Статус: {'✅ включён' if enabled else '❌ выключен'}\n"
+            f"URL: <code>{url}</code>\n"
+            f"Открытие: {'в браузере' if open_in_browser else 'в веб-аппе'}\n"
+            f"Статус серверов: раз в {_node_status_interval_min()} мин\n"
+            f"Привязка почты: {'✅ включена' if email_binding else '❌ выключена'}"
+        ),
+        quote(
+            "Сайт может жить на отдельном домене и сервере. Выключите — кнопка «Личный кабинет» пропадёт из бота.",
+            "«В веб-аппе» кабинет открывается внутри Telegram, «в браузере» — обычной ссылкой.",
+            "Привязка почты даёт клиенту вход на сайт, когда с Telegram проблемы.",
+        ),
     )
 
 
@@ -194,12 +197,11 @@ async def toggle_email_binding(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_url"))
 async def prompt_web_url(callback: CallbackQuery, state: FSMContext) -> None:
     current = str(WEB_CONFIG.get("SITE_URL") or "")
-    text = (
-        "<b>🌐 Введите URL сайта</b>\n\n"
-        f"Текущий: <code>{current or 'не указан'}</code>\n\n"
-        "Отправьте полный URL (с https://).\n"
-        "Пример: <code>https://my-vpn.com</code>\n\n"
-        "Отправьте <code>-</code> чтобы очистить."
+    text = menu_text(
+        "URL сайта",
+        "Отправьте полный адрес сайта или «-», чтобы очистить.",
+        section("🌐 Сейчас", current or "не указан"),
+        section("💡 Пример", "https://my-vpn.com"),
     )
     await callback.message.edit_text(text=text)
     await state.set_state(WebSettingsState.waiting_for_url)
@@ -208,11 +210,11 @@ async def prompt_web_url(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_node_interval"))
 async def prompt_node_status_interval(callback: CallbackQuery, state: FSMContext) -> None:
-    text = (
-        "<b>⏱ Интервал обновления статуса серверов</b>\n\n"
-        f"Текущий: раз в <b>{_node_status_interval_min()} мин</b>\n\n"
-        "Как часто сайт актуализирует список серверов и их состояние из панели.\n"
-        "Отправьте число минут (от 1 до 60)."
+    text = menu_text(
+        "Статус серверов",
+        f"Сейчас: раз в <b>{_node_status_interval_min()} мин</b>",
+        "Как часто сайт обновляет список серверов и их состояние из панели.",
+        "Отправьте число минут от 1 до 60.",
     )
     await callback.message.edit_text(text=text)
     await state.set_state(WebSettingsState.waiting_for_node_status_interval)
@@ -225,10 +227,10 @@ async def set_node_status_interval(message: Message, state: FSMContext) -> None:
     try:
         minutes = int(raw)
     except ValueError:
-        await message.answer("❌ Отправьте целое число минут (от 1 до 60)")
+        await message.answer(menu_text("Веб-сайт", "❌ Нужно число минут от 1 до 60."))
         return
     if not 1 <= minutes <= 60:
-        await message.answer("❌ Интервал должен быть от 1 до 60 минут")
+        await message.answer(menu_text("Веб-сайт", "❌ Диапазон: 1–60 минут."))
         return
 
     new_config = dict(WEB_CONFIG)
@@ -246,16 +248,17 @@ async def set_node_status_interval(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_reset_ask"))
 async def ask_reset_site(callback: CallbackQuery) -> None:
-    text = (
-        "<b>⚠️ Сброс сайта к исходнику</b>\n\n"
-        "Действие удалит:\n"
-        "• все страницы, блоки, темы и варианты\n"
-        "• всех веб-пользователей (включая админа сайта)\n"
-        "• флаг «сайт проинициализирован»\n\n"
-        "Биллинг-данные (пользователи бота, ключи, платежи) не трогаются.\n\n"
-        "После сброса админ сайта пересоздаётся из переменных окружения "
-        "<code>WEB_ADMIN_LOGIN</code> / <code>WEB_ADMIN_PASSWORD</code>.\n\n"
-        "<b>Действие необратимо.</b>"
+    text = menu_text(
+        "Сброс сайта",
+        "Действие необратимо.",
+        section(
+            "🗑 Будет удалено",
+            "страницы, блоки и темы",
+            "веб-аккаунты и админ сайта",
+            "флаг инициализации",
+        ),
+        section("💾 Останется", "клиенты и подписки", "платежи и баланс"),
+        quote("Админ сайта пересоздастся из WEB_ADMIN_LOGIN и WEB_ADMIN_PASSWORD."),
     )
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -277,7 +280,7 @@ async def ask_reset_site(callback: CallbackQuery) -> None:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_web_reset_do"))
 async def do_reset_site(callback: CallbackQuery, session=None) -> None:
     await callback.answer()
-    await callback.message.edit_text(text="<b>⏳ Сбрасываю сайт...</b>")
+    await callback.message.edit_text(text=menu_text("Сброс сайта", "⏳ Сбрасываю…"))
 
     from middlewares.session import release_session_early
     from services.site_reset import reset_site
@@ -294,15 +297,21 @@ async def do_reset_site(callback: CallbackQuery, session=None) -> None:
 
         safe = html_escape(str(exc))[:2000]
         await callback.message.edit_text(
-            text=f"<b>❌ Не удалось сбросить сайт</b>\n\n<code>{safe}</code>",
+            text=menu_text(
+                "Сброс сайта",
+                "❌ Сбросить не удалось.",
+                section("⚠️ Ошибка", safe),
+                markup=build_settings_web_kb().as_markup(),
+            ),
             reply_markup=build_settings_web_kb().as_markup(),
         )
         return
 
-    text = (
-        "<b>✅ Сайт сброшен к исходнику</b>\n\n"
-        "Все веб-страницы, блоки и темы удалены. Админ пересоздан из env.\n"
-        "Откройте сайт и пройдите путь первой установки заново."
+    text = menu_text(
+        "Сброс сайта",
+        "✅ Сайт сброшен к исходному состоянию.",
+        quote("Страницы, блоки и темы удалены, админ пересоздан из env."),
+        quote("Откройте сайт и пройдите первую установку заново."),
     )
     await callback.message.edit_text(
         text=text,
@@ -317,7 +326,7 @@ async def set_web_url(message: Message, state: FSMContext) -> None:
     if url == "-":
         url = ""
     elif url and not url.startswith("http"):
-        await message.answer("❌ URL должен начинаться с http:// или https://")
+        await message.answer(menu_text("Веб-сайт", "❌ URL должен начинаться с http:// или https://"))
         return
 
     url = url.rstrip("/")

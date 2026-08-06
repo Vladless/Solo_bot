@@ -11,6 +11,7 @@ from database.payments import add_payment, count_balance_activity, get_balance_a
 from filters.admin import IsAdminFilter
 from utils.csv_export import export_user_all_payments_csv
 
+from ..panel.headers import card, menu_text, quote, section
 from .keyboard import (
     AdminUserEditorCallback,
     build_users_balance_change_kb,
@@ -22,13 +23,6 @@ from .users_states import UserEditorState
 router = Router()
 
 
-def format_admin_operation(amount: float, created_at: datetime) -> str:
-    date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
-    sign = "+" if amount > 0 else "-" if amount < 0 else ""
-    abs_amount = abs(amount)
-    return f"\n<blockquote>Админ {sign}{abs_amount}Р\n⏳ Дата: {date_str}</blockquote>"
-
-
 def format_user_payment(
     amount: float,
     created_at: datetime,
@@ -36,22 +30,23 @@ def format_user_payment(
     status: str,
     payment_id: str | None = None,
 ) -> str:
-    date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
-    abs_amount = abs(amount)
-    system_name = payment_system or "Неизвестно"
-    pid = f"<code>{payment_id}</code>" if payment_id else "—"
-    return (
-        f"\n<blockquote>💸 Сумма: {abs_amount} | {system_name}\n"
-        f"📌 Статус: {status}\n"
-        f"🆔 ID: {pid}\n"
-        f"⏳ Дата: {date_str}</blockquote>"
-    )
+    """Возвращает секцию платежа для истории баланса."""
+    rows = [
+        f"Способ: {payment_system or 'неизвестно'}",
+        f"Статус: {status}",
+        f"Дата: {created_at.strftime('%d.%m.%y %H:%M')}",
+    ]
+    if payment_id:
+        rows.append(f"ID: {payment_id}")
+    return section(f"💸 Пополнение {abs(amount)} ₽", *rows)
 
 
 def format_gift_purchase(amount: float, created_at: datetime) -> str:
-    date_str = created_at.strftime("%Y-%m-%d %H:%M:%S")
-    abs_amount = abs(int(amount or 0))
-    return f"\n<blockquote>🎁 Покупка подарка: -{abs_amount}Р\n⏳ Дата: {date_str}</blockquote>"
+    """Возвращает секцию покупки подарка для истории баланса."""
+    return section(
+        f"🎁 Подарок −{abs(int(amount or 0))} ₽",
+        f"Дата: {created_at.strftime('%d.%m.%y %H:%M')}",
+    )
 
 
 async def _render_balance_page(
@@ -74,17 +69,19 @@ async def _render_balance_page(
 
     records = await get_balance_activity(session, uid=uid, tg_id=tg_ref, limit=5, offset=page * 5)
 
-    text = f"<b>💵 Изменение баланса</b>\n\n🆔 ID: <b>{tg_id}</b>\n💰 Баланс: <b>{balance}Р</b>"
-    text += f"\n\n<b>📊 Все операции ({total}), стр. {page + 1}/{total_pages}:</b>"
+    history = card(*[
+        format_gift_purchase(row.amount, row.created_at)
+        if row.kind == "gift"
+        else format_user_payment(row.amount, row.created_at, row.system, row.status, row.ref)
+        for row in records
+    ])
 
-    if records:
-        for row in records:
-            if row.kind == "gift":
-                text += format_gift_purchase(row.amount, row.created_at)
-            else:
-                text += format_user_payment(row.amount, row.created_at, row.system, row.status, row.ref)
-    else:
-        text += "\n<i>🚫 Операции отсутствуют</i>"
+    text = menu_text(
+        "Баланс",
+        f"Клиент <code>{tg_id}</code>",
+        quote(f"Баланс: {balance} ₽\nОпераций: {total}\nСтраница: {page + 1}/{total_pages}"),
+        history or quote("Операций пока нет"),
+    )
 
     kb = await build_users_balance_kb(session, tg_id, page=page, total_pages=total_pages)
     await callback_query.message.edit_text(text=text, reply_markup=kb)
@@ -180,7 +177,11 @@ async def handle_balance_add(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите добавить на баланс пользователя:",
+        text=menu_text(
+            "Баланс",
+            "✍️ Сколько добавить на баланс?",
+            markup=build_users_balance_change_kb(tg_id),
+        ),
         reply_markup=build_users_balance_change_kb(tg_id),
     )
 
@@ -200,7 +201,11 @@ async def handle_balance_take(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text="✍️ Введите сумму, которую хотите вычесть из баланса пользователя:",
+        text=menu_text(
+            "Баланс",
+            "✍️ Сколько списать с баланса?",
+            markup=build_users_balance_change_kb(tg_id),
+        ),
         reply_markup=build_users_balance_change_kb(tg_id),
     )
 
@@ -220,7 +225,11 @@ async def handle_balance_set(
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
-        text="✍️ Введите баланс, который хотите установить пользователю:",
+        text=menu_text(
+            "Баланс",
+            "✍️ Новый баланс клиента.",
+            markup=build_users_balance_change_kb(tg_id),
+        ),
         reply_markup=build_users_balance_change_kb(tg_id),
     )
 
@@ -233,7 +242,7 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
 
     if not message.text.isdigit() or int(message.text) < 0:
         await message.answer(
-            text="🚫 Пожалуйста, введите корректную сумму!",
+            text=menu_text("Баланс", "❌ Нужна сумма числом.", markup=build_users_balance_change_kb(tg_id)),
             reply_markup=build_users_balance_change_kb(tg_id),
         )
         return
@@ -241,7 +250,7 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
     amount = int(message.text)
 
     if op_type == "add":
-        text = f"✅ К балансу пользователя добавлено <b>{amount}Р</b>"
+        text = menu_text("Баланс", f"✅ Баланс пополнен на <b>{amount}Р</b>")
         await update_balance(session, tg_id, amount)
         if amount != 0:
             await add_payment(
@@ -255,7 +264,7 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
         current_balance = await get_balance(session, tg_id)
         new_balance = max(0, current_balance - amount)
         deducted = current_balance if amount > current_balance else amount
-        text = f"✅ Из баланса пользователя было вычтено <b>{deducted}Р</b>"
+        text = menu_text("Баланс", f"✅ С баланса списано <b>{deducted}Р</b>")
         await set_user_balance(session, tg_id, new_balance)
         if deducted > 0:
             await add_payment(
@@ -267,7 +276,7 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
             )
     else:
         current_balance = await get_balance(session, tg_id)
-        text = f"✅ Баланс пользователя изменён на <b>{amount}Р</b>"
+        text = menu_text("Баланс", f"✅ Баланс теперь <b>{amount}Р</b>")
         await set_user_balance(session, tg_id, amount)
         delta = amount - current_balance
         if delta != 0:

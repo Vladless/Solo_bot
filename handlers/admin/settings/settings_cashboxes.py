@@ -7,6 +7,7 @@ from core.settings.providers_order_config import PROVIDERS_ORDER, update_provide
 from filters.admin import IsAdminFilter
 from services.payments.providers import PROVIDERS_BASE, _get_effective_order
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import PAYMENT_PROVIDER_TITLES, build_providers_order_kb, build_settings_cashboxes_kb
 
@@ -32,7 +33,11 @@ def _get_sorted_provider_names() -> list[str]:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_cashboxes"))
 async def open_settings_cashboxes_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     providers_state = await load_payment_providers_settings()
-    text = "Здесь можно включать и отключать платёжные провайдеры."
+    text = menu_text(
+        "Кассы",
+        "Чем клиент может платить.",
+        quote("Нажмите на кассу, чтобы включить или выключить её в боте и на сайте."),
+    )
     await callback.message.edit_text(text=text, reply_markup=build_settings_cashboxes_kb(providers_state))
     await callback.answer()
 
@@ -65,22 +70,20 @@ async def toggle_cashbox_setting(
     await callback.message.edit_reply_markup(
         reply_markup=build_settings_cashboxes_kb(updated_state),
     )
-    await callback.answer("Настройка обновлена")
+    await callback.answer(menu_text("Кассы", "Настройка обновлена"))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_providers_order"))
 async def open_providers_order_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     sorted_names = _get_sorted_provider_names()
-    text = (
-        "📋 <b>Порядок отображения касс</b>\n\n"
-        "⬆️ — поднять выше\n"
-        "⬇️ — опустить ниже\n\n"
-        "Порядок влияет на меню оплаты и fast flow."
+    markup = build_providers_order_kb(sorted_names)
+    text = menu_text(
+        "Порядок касс",
+        "⬆️ поднять выше, ⬇️ опустить ниже.",
+        "Порядок виден в меню оплаты и в быстром сценарии.",
+        markup=markup,
     )
-    await callback.message.edit_text(
-        text=text,
-        reply_markup=build_providers_order_kb(sorted_names),
-    )
+    await callback.message.edit_text(text=text, reply_markup=markup)
     await callback.answer()
 
 
@@ -109,7 +112,7 @@ async def move_provider_up(
     await callback.message.edit_reply_markup(
         reply_markup=build_providers_order_kb(sorted_names),
     )
-    await callback.answer("✅ Перемещено выше")
+    await callback.answer(menu_text("Кассы", "✅ Перемещено выше"))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_down"), flags={"popup": True})
@@ -137,7 +140,7 @@ async def move_provider_down(
     await callback.message.edit_reply_markup(
         reply_markup=build_providers_order_kb(sorted_names),
     )
-    await callback.answer("✅ Перемещено ниже")
+    await callback.answer(menu_text("Кассы", "✅ Перемещено ниже"))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_order_reset"))
@@ -148,4 +151,4 @@ async def reset_providers_order(callback: CallbackQuery, session: AsyncSession) 
     await callback.message.edit_reply_markup(
         reply_markup=build_providers_order_kb(sorted_names),
     )
-    await callback.answer("✅ Порядок сброшен на дефолтный")
+    await callback.answer(menu_text("Кассы", "✅ Порядок сброшен на дефолтный"))

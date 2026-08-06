@@ -93,15 +93,11 @@ def build_created_dir_kb() -> InlineKeyboardMarkup:
 def build_expiry_kind_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="Уже истекли", callback_data=BulkCallback(step="expiry", value="expired").pack())
+        InlineKeyboardButton(text="Уже истекли", callback_data=BulkCallback(step="expiry", value="expired").pack()),
+        InlineKeyboardButton(text="Ещё активны", callback_data=BulkCallback(step="expiry", value="active").pack()),
     )
     builder.row(
-        InlineKeyboardButton(text="Ещё активны", callback_data=BulkCallback(step="expiry", value="active").pack())
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="Истекают в течение N дней", callback_data=BulkCallback(step="expiry", value="soon").pack()
-        )
+        InlineKeyboardButton(text="Истекают скоро", callback_data=BulkCallback(step="expiry", value="soon").pack())
     )
     builder.row(InlineKeyboardButton(text="◀️ Назад", callback_data=BulkCallback(step="back_filters").pack()))
     return builder.as_markup()
@@ -110,9 +106,9 @@ def build_expiry_kind_kb() -> InlineKeyboardMarkup:
 def build_confirm_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="✅ Подтвердить", callback_data=BulkCallback(step="confirm", value="go").pack())
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=BulkCallback(step="confirm", value="go").pack()),
+        InlineKeyboardButton(text="❌ Отмена", callback_data=AdminPanelCallback(action="admin").pack()),
     )
-    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data=AdminPanelCallback(action="admin").pack()))
     return builder.as_markup()
 
 

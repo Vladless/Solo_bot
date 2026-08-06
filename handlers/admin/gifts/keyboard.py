@@ -40,7 +40,7 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
         days = (gift.expiry_time.date() - gift.created_at.date()).days
         duration_text = format_days(days)
 
-        button_text = f"{gift.gift_id[:6]}... — {duration_text}"
+        button_text = f"{gift.gift_id[:6]} · {duration_text}"
 
         row.append(
             InlineKeyboardButton(
@@ -49,9 +49,8 @@ def build_gifts_list_kb(gifts: list[Gift], page: int, total: int) -> InlineKeybo
             )
         )
 
-        if len(row) == 2 or i == len(gifts) - 1:
-            builder.row(*row)
-            row = []
+        builder.row(*row)
+        row = []
 
     nav = []
     if page > 1:

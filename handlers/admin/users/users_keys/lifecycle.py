@@ -1,3 +1,4 @@
+from ...panel.headers import card, menu_text, quote, section
 from ._common import *  # noqa: F401,F403
 from .edit import handle_key_edit
 
@@ -15,17 +16,20 @@ async def handle_reissue_menu(
     key_ref = str(callback_data.data)
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.message.edit_text("🚫 Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
 
-    text = (
-        "<b>🔄 Перевыпуск подписки</b>\n\n"
-        "<b>📦 Полный перевыпуск</b>\n"
-        "<i>Пересоздаёт подписку на сервере с возможностью выбора кластера. "
-        "Используйте для переноса на другой сервер или обновления данных.</i>\n\n"
-        "<b>🔗 Сменить ссылку</b>\n"
-        "<i>Генерирует новую ссылку подписки. Старая ссылка перестанет работать. "
-        "Все данные подписки сохранятся.</i>"
+    text = menu_text(
+        "Перевыпуск подписки",
+        "Что делаем?",
+        quote(
+            "<b>Полный перевыпуск</b> — пересоздаёт подписку на сервере с выбором кластера. "
+            "Нужен для переноса на другой сервер."
+        ),
+        quote("<b>Сменить ссылку</b> — выдаёт новую ссылку, старая перестанет работать. Данные подписки сохранятся."),
     )
 
     await callback_query.message.edit_text(
@@ -47,12 +51,15 @@ async def handle_update_key(
     key_ref = str(callback_data.data)
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.message.edit_text("🚫 Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
     email = key_obj.email
 
     await callback_query.message.edit_text(
-        text=f"📡 Выберите кластер, на котором пересоздать ключ <b>{email}</b>:",
+        text=menu_text("Подписка", f"📡 Выберите кластер, на котором пересоздать ключ <b>{email}</b>:"),
         reply_markup=await build_cluster_selection_kb(
             session,
             tg_id,
@@ -68,7 +75,10 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
     tg_id = int(tg_id)
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.message.edit_text("🚫 Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
     email = key_obj.email
 
@@ -96,11 +106,13 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
                 )
             )
             await callback_query.message.edit_text(
-                f"🚫 <b>Невозможно пересоздать подписку</b>\n\n"
-                f"📊 <b>Информация о кластере:</b>\n<blockquote>"
-                f"🌐 <b>Кластер:</b> <code>{cluster_id}</code>\n"
-                f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
-                f"💡 <b>Привяжите тариф к кластеру</b>",
+                menu_text(
+                    "Перевыпуск невозможен",
+                    "У кластера нет привязанного тарифа.",
+                    quote(f"Кластер: <code>{cluster_id}</code>"),
+                    quote("Привяжите тариф к кластеру и повторите."),
+                    markup=builder.as_markup(),
+                ),
                 reply_markup=builder.as_markup(),
             )
             return
@@ -127,7 +139,9 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
                 )
             )
             await callback_query.message.edit_text(
-                "🌍 Выберите сервер (страну) для пересоздания подписки:",
+                menu_text(
+                    "Подписка", "🌍 Выберите сервер (страну) для пересоздания подписки:", markup=builder.as_markup()
+                ),
                 reply_markup=builder.as_markup(),
             )
             return
@@ -151,7 +165,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
         )
     except Exception as e:
         logger.error(f"Ошибка при перевыпуске ключа {email}: {e}")
-        await callback_query.message.answer(f"❗ Ошибка: {e}")
+        await callback_query.message.answer(menu_text("Подписка", f"❌ Ошибка: {e}"))
 
 
 @router.callback_query(F.data.startswith("admin_reissue_country|"), IsAdminFilter())
@@ -160,7 +174,10 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
     tg_id = int(tg_id)
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.message.edit_text("🚫 Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
     email = key_obj.email
 
@@ -189,11 +206,13 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
                     )
                 )
                 await callback_query.message.edit_text(
-                    f"🚫 <b>Невозможно пересоздать подписку</b>\n\n"
-                    f"📊 <b>Информация о кластере:</b>\n<blockquote>"
-                    f"🌐 <b>Кластер:</b> <code>{cluster_id}</code>\n"
-                    f"⚠️ <b>Статус:</b> Нет привязанного тарифа\n</blockquote>"
-                    f"💡 <b>Привяжите тариф к кластеру</b>",
+                    menu_text(
+                        "Перевыпуск невозможен",
+                        "У кластера нет привязанного тарифа.",
+                        quote(f"Кластер: <code>{cluster_id}</code>"),
+                        quote("Привяжите тариф к кластеру и повторите."),
+                        markup=builder.as_markup(),
+                    ),
                     reply_markup=builder.as_markup(),
                 )
                 return
@@ -217,7 +236,7 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
         )
     except Exception as e:
         logger.error(f"Ошибка при перевыпуске ключа для страны {country}: {e}")
-        await callback_query.message.answer(f"❗ Ошибка: {e}")
+        await callback_query.message.answer(menu_text("Подписка", f"❌ Ошибка: {e}"))
 
 
 @router.callback_query(
@@ -235,7 +254,7 @@ async def handle_recreate_key_start(
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Ключ не найден.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -246,12 +265,11 @@ async def handle_recreate_key_start(
         if tariff:
             tariff_name = tariff.get("name", "—")
 
-    text = (
-        "<b>🔁 Пересоздание ссылки подписки</b>\n\n"
-        f"📦 <b>Тариф:</b> {tariff_name}\n\n"
-        "⚠️ <b>Будет сгенерирована новая ссылка подписки.</b>\n"
-        "Старая ссылка перестанет работать.\n\n"
-        "✅ <i>Все данные подписки сохранятся.</i>"
+    text = menu_text(
+        "Пересоздание ссылки",
+        "Клиент получит новую ссылку, старая перестанет работать.",
+        section("📦 Тариф", f"Название: {tariff_name}"),
+        quote("Срок, лимиты и трафик подписки сохранятся."),
     )
 
     builder = InlineKeyboardBuilder()
@@ -284,14 +302,14 @@ async def handle_recreate_key_confirm(
 
         if not key_obj:
             await callback_query.message.edit_text(
-                text="🚫 Ключ не найден.",
+                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
                 reply_markup=build_editor_kb(tg_id),
             )
             return
 
         old_email = key_obj.email
 
-        await callback_query.message.edit_text("⏳ Пересоздание ссылки подписки...")
+        await callback_query.message.edit_text(menu_text("Подписка", "⏳ Пересоздание ссылки подписки..."))
 
         client_id = key_obj.client_id
         cluster_id = key_obj.server_id
@@ -311,7 +329,7 @@ async def handle_recreate_key_confirm(
 
         if not cluster:
             await callback_query.message.edit_text(
-                text=f"❗ Кластер {cluster_id} не найден.",
+                text=menu_text("Подписка", f"❌ Кластер {cluster_id} не найден.", markup=build_editor_kb(tg_id)),
                 reply_markup=build_editor_kb(tg_id),
             )
             return
@@ -323,7 +341,9 @@ async def handle_recreate_key_confirm(
             api_url = remnawave_servers[0].get("api_url")
             if not api_url:
                 await callback_query.message.edit_text(
-                    text="❗ У Remnawave сервера не задан api_url.",
+                    text=menu_text(
+                        "Подписка", "❌ У Remnawave сервера не задан api_url.", markup=build_editor_kb(tg_id)
+                    ),
                     reply_markup=build_editor_kb(tg_id),
                 )
                 return
@@ -339,7 +359,9 @@ async def handle_recreate_key_confirm(
 
             if not user_data:
                 await callback_query.message.edit_text(
-                    text="❗ Не удалось выполнить revoke. Проверьте логи.",
+                    text=menu_text(
+                        "Подписка", "❌ Не удалось выполнить revoke. Проверьте логи.", markup=build_editor_kb(tg_id)
+                    ),
                     reply_markup=build_editor_kb(tg_id),
                 )
                 return
@@ -348,7 +370,9 @@ async def handle_recreate_key_confirm(
 
             if not new_link:
                 await callback_query.message.edit_text(
-                    text="❗ Revoke выполнен, но новая ссылка не получена.",
+                    text=menu_text(
+                        "Подписка", "❌ Revoke выполнен, но новая ссылка не получена.", markup=build_editor_kb(tg_id)
+                    ),
                     reply_markup=build_editor_kb(tg_id),
                 )
                 return
@@ -379,7 +403,11 @@ async def handle_recreate_key_confirm(
 
             if not changed_any:
                 await callback_query.message.edit_text(
-                    text="❗ Не удалось сменить ссылку ни на одном 3x-ui сервере. Проверьте логи.",
+                    text=menu_text(
+                        "Подписка",
+                        "❌ Не удалось сменить ссылку ни на одном 3x-ui сервере. Проверьте логи.",
+                        markup=build_editor_kb(tg_id),
+                    ),
                     reply_markup=build_editor_kb(tg_id),
                 )
                 return
@@ -389,7 +417,9 @@ async def handle_recreate_key_confirm(
 
         else:
             await callback_query.message.edit_text(
-                text="❗ В кластере нет серверов Remnawave или 3x-ui.",
+                text=menu_text(
+                    "Подписка", "❌ В кластере нет серверов Remnawave или 3x-ui.", markup=build_editor_kb(tg_id)
+                ),
                 reply_markup=build_editor_kb(tg_id),
             )
             return
@@ -424,15 +454,14 @@ async def handle_recreate_key_confirm(
             logger.warning(f"Не удалось отправить уведомление клиенту {tg_id}: {e}")
             notification_sent = False
 
-        text = (
-            "✅ <b>Ссылка подписки пересоздана</b>\n\n"
-            f"🔗 <b>Старая ссылка:</b>\n<code>{old_link}</code>\n\n"
-            f"🔗 <b>Новая ссылка:</b>\n<code>{new_link}</code>\n\n"
+        text = menu_text(
+            "Ссылка пересоздана",
+            "Клиент уведомлён о новой ссылке." if notification_sent else "⚠️ Уведомить клиента не удалось.",
+            card(
+                section("🔗 Новая", new_link),
+                section("🗑 Старая", old_link),
+            ),
         )
-        if notification_sent:
-            text += "📨 <i>Клиент уведомлён о новой ссылке.</i>"
-        else:
-            text += "⚠️ <i>Не удалось уведомить клиента.</i>"
 
         builder = InlineKeyboardBuilder()
         builder.row(
@@ -454,7 +483,7 @@ async def handle_recreate_key_confirm(
     except Exception as e:
         logger.error(f"Ошибка при revoke ключа {old_email}: {e}")
         await callback_query.message.edit_text(
-            text=f"❗ Ошибка при пересоздании: {e}",
+            text=menu_text("Подписка", f"❌ Ошибка при пересоздании: {e}", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
 
@@ -472,7 +501,7 @@ async def handle_delete_key(
     key_obj = await resolve_callback_key(session, callback_data.tg_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Ключ не найден!",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
@@ -482,7 +511,7 @@ async def handle_delete_key(
 
     if client_id is None:
         await callback_query.message.edit_text(
-            text="🚫 Ключ не найден!",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
@@ -495,7 +524,7 @@ async def handle_delete_key(
     )
 
     await callback_query.message.edit_text(
-        text="❓ Вы уверены, что хотите удалить ключ?",
+        text=menu_text("Подписка", "⚠️ Удалить подписку?", markup=build_key_delete_kb(callback_data.tg_id)),
         reply_markup=build_key_delete_kb(callback_data.tg_id),
     )
 
@@ -542,10 +571,12 @@ async def handle_delete_key_confirm(
         await delete_key_from_servers()
         await delete_key(session, client_id)
 
-        await callback_query.message.edit_text(text="✅ Ключ успешно удален.", reply_markup=kb)
+        await callback_query.message.edit_text(
+            text=menu_text("Подписка", "✅ Ключ удалён.", markup=kb), reply_markup=kb
+        )
     else:
         await callback_query.message.edit_text(
-            text="🚫 Ключ не найден или уже удален.",
+            text=menu_text("Подписка", "❌ Подписка не найдена — возможно, уже удалена.", markup=kb),
             reply_markup=kb,
         )
 
@@ -560,7 +591,11 @@ async def handle_delete_user(
 ):
     tg_id = callback_data.tg_id
     await callback_query.message.edit_text(
-        text=f"❗️ Вы уверены, что хотите удалить пользователя с ID {tg_id}?",
+        text=menu_text(
+            "Подписка",
+            f"⚠️ Удалить клиента {tg_id}?",
+            markup=build_user_delete_kb(tg_id),
+        ),
         reply_markup=build_user_delete_kb(tg_id),
     )
 
@@ -595,13 +630,17 @@ async def handle_delete_user_confirm(
     try:
         await delete_user_data(session, tg_id)
         await callback_query.message.edit_text(
-            text=f"🗑️ Пользователь с ID {tg_id} был удален.",
+            text=menu_text("Подписка", f"🗑️ Клиент {tg_id} был удален.", markup=build_admin_back_kb()),
             reply_markup=build_admin_back_kb(),
         )
     except Exception as e:
         logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
         await callback_query.message.edit_text(
-            text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова.",
+            text=menu_text(
+                "Подписка",
+                f"❌ Не удалось удалить клиента {tg_id}. Попробуйте ещё раз.",
+                markup=build_admin_back_kb(),
+            ),
             reply_markup=build_admin_back_kb(),
         )
 
@@ -628,7 +667,7 @@ async def handle_create_key_start(
 
         if not countries:
             await callback_query.message.edit_text(
-                "❌ Нет доступных стран для создания ключа.",
+                menu_text("Подписка", "❌ Нет доступных стран для создания ключа.", markup=build_editor_kb(tg_id)),
                 reply_markup=build_editor_kb(tg_id),
             )
             return
@@ -640,7 +679,7 @@ async def handle_create_key_start(
         builder.row(build_admin_back_btn())
 
         await callback_query.message.edit_text(
-            "🌍 <b>Выберите страну для создания ключа:</b>",
+            menu_text("Новая подписка", "Выберите страну.", markup=builder.as_markup()),
             reply_markup=builder.as_markup(),
         )
         return
@@ -652,7 +691,7 @@ async def handle_create_key_start(
 
     if not cluster_names:
         await callback_query.message.edit_text(
-            "❌ Нет доступных кластеров для создания ключа.",
+            menu_text("Подписка", "❌ Нет доступных кластеров для создания ключа.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -660,11 +699,11 @@ async def handle_create_key_start(
     builder = InlineKeyboardBuilder()
     for cluster in cluster_names:
         builder.button(text=f"🌐 {cluster}", callback_data=cluster)
-    builder.adjust(2)
+    builder.adjust(1)
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        "🌐 <b>Выберите кластер для создания ключа:</b>",
+        menu_text("Новая подписка", "Выберите кластер.", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -680,7 +719,7 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
     cluster_info = await check_server_name_by_cluster(session, country)
 
     if not cluster_info:
-        await callback_query.message.edit_text("❌ Сервер не найден.")
+        await callback_query.message.edit_text(menu_text("Подписка", "❌ Сервер не найден."))
         return
 
     cluster_name = cluster_info["cluster_name"]
@@ -700,7 +739,11 @@ async def handle_create_key_country(callback_query: CallbackQuery, state: FSMCon
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"🕒 <b>Выберите срок действия ключа для страны <code>{country}</code>:</b>",
+        text=menu_text(
+            "Подписка",
+            f"Срок для страны <b>{country}</b>.",
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -713,7 +756,7 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
     tg_id = data.get("tg_id")
 
     if not tg_id:
-        await callback_query.message.edit_text("❌ Ошибка: tg_id клиента не найден.")
+        await callback_query.message.edit_text(menu_text("Подписка", "❌ Ошибка: tg_id клиента не найден."))
         return
 
     await state.update_data(cluster_name=cluster_name)
@@ -734,7 +777,11 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"🕒 <b>Выберите срок действия ключа для кластера <code>{cluster_name}</code>:</b>",
+        text=menu_text(
+            "Подписка",
+            f"Срок для кластера <b>{cluster_name}</b>.",
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -775,7 +822,11 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
             await state.clear()
             await callback_query.message.edit_text(
-                f"✅ Ключ успешно создан для страны <b>{country}</b> на {duration_days} дней.",
+                menu_text(
+                    "Подписка",
+                    f"✅ Ключ создан для страны <b>{country}</b> на {duration_days} дней.",
+                    markup=build_editor_kb(tg_id),
+                ),
                 reply_markup=build_editor_kb(tg_id),
             )
         elif "cluster_name" in data:
@@ -792,14 +843,20 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
 
             await state.clear()
             await callback_query.message.edit_text(
-                f"✅ Ключ успешно создан в кластере <b>{cluster_name}</b> на {duration_days} дней.",
+                menu_text(
+                    "Подписка",
+                    f"✅ Ключ создан в кластере <b>{cluster_name}</b> на {duration_days} дней.",
+                    markup=build_editor_kb(tg_id),
+                ),
                 reply_markup=build_editor_kb(tg_id),
             )
         else:
-            await callback_query.message.edit_text("❌ Не удалось определить источник — страна или кластер.")
+            await callback_query.message.edit_text(
+                menu_text("Подписка", "❌ Не удалось определить источник — страна или кластер.")
+            )
     except Exception as e:
         logger.error(f"[CreateKey] Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            "❌ Не удалось создать ключ. Попробуйте позже.",
+            menu_text("Подписка", "❌ Не удалось создать ключ. Попробуйте позже.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )

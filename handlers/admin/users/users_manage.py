@@ -31,6 +31,7 @@ from logger import logger
 from settings.config import USERNAME_BOT
 from utils.csv_export import export_referrals_csv
 
+from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import (
     AdminPanelCallback,
     build_admin_back_btn,
@@ -215,7 +216,11 @@ async def _render_search_results(target: types.Message, results: list[dict], que
     start = (page - 1) * SEARCH_PAGE_SIZE
     chunk = results[start : start + SEARCH_PAGE_SIZE]
 
-    text = f"🔍 Найдено: <b>{len(results)}</b> по запросу «<code>{html.escape(query)}</code>»\nВыберите нужного:"
+    text = menu_text(
+        "Результаты поиска",
+        "Выберите нужного клиента.",
+        section("🔍 Поиск", f"Запрос: {html.escape(query)}", f"Найдено: {len(results)}"),
+    )
     builder = InlineKeyboardBuilder()
     for c in chunk:
         builder.row(
@@ -255,15 +260,20 @@ async def _render_search_results(target: types.Message, results: list[dict], que
     IsAdminFilter(),
 )
 async def handle_search_user(callback_query: CallbackQuery, state: FSMContext):
-    text = (
-        "<b>🔍 Поиск</b>\n\n"
-        "Введите любые данные клиента — бот сам найдет подходящие карточки:\n"
-        "🆔 ID / Username / имя\n"
-        "📧 Email веб-кабинета\n"
-        "🧬 UUID веб-аккаунта\n"
-        "🔗 ID или ссылка подписки, имя подписки\n"
-        "💳 ID платежа\n\n"
-        "<i>✉️ Либо просто перешлите сообщение пользователя.</i>"
+    text = menu_text(
+        "Поиск клиента",
+        "Пришлите любые данные — бот найдёт карточку.",
+        card(
+            section(
+                "🔎 Что подойдёт",
+                "ID, username или имя",
+                "почта веб-кабинета",
+                "UUID веб-аккаунта",
+                "ID, ссылка или имя подписки",
+                "ID платежа",
+            ),
+            section("✉️ Или так", "перешлите сообщение клиента"),
+        ),
     )
 
     await state.set_state(UserEditorState.waiting_for_user_data)
@@ -289,11 +299,14 @@ async def handle_user_data_input(message: Message, state: FSMContext, session: A
         raw = message.text.strip()
         results = await smart_user_search(session, raw)
     else:
-        await message.answer(text="🚫 Отправьте текст или перешлите сообщение пользователя.", reply_markup=kb)
+        await message.answer(
+            text=menu_text("Клиент", "Пришлите текст или перешлите сообщение клиента.", markup=kb),
+            reply_markup=kb,
+        )
         return
 
     if not results:
-        await message.answer(text="🚫 Ничего не найдено.", reply_markup=kb)
+        await message.answer(text=menu_text("Клиент", "Ничего не найдено.", markup=kb), reply_markup=kb)
         return
 
     if len(results) == 1:
@@ -318,7 +331,7 @@ async def handle_search_page(
     results = data.get("search_results")
     query = data.get("search_query", "")
     if not results:
-        await callback_query.answer("Список устарел, повторите поиск.", show_alert=True)
+        await callback_query.answer("Список устарел, повторите поиск", show_alert=True)
         return
     await _render_search_results(callback_query.message, results, query, page=callback_data.page, edit=True)
     await callback_query.answer()
@@ -337,12 +350,13 @@ async def handle_send_message(
 
     await callback_query.message.edit_text(
         text=(
-            "✉️ Введите текст сообщения, которое вы хотите отправить пользователю:\n\n"
-            "Поддерживается только Telegram-форматирование — <b>жирный</b>, <i>курсив</i> и другие стили через редактор Telegram.\n\n"
-            "Вы можете отправить:\n"
-            "• Только <b>текст</b>\n"
-            "• Только <b>картинку</b>\n"
-            "• <b>Текст + картинку</b>"
+            menu_text(
+                "Сообщение клиенту",
+                "Пришлите то, что нужно отправить.",
+                section("📨 Подойдёт", "текст", "картинка", "текст с картинкой"),
+                quote("Форматирование штатное телеграмное: жирный, курсив и прочее."),
+                markup=build_editor_kb(tg_id),
+            )
         ),
         reply_markup=build_editor_kb(tg_id),
     )
@@ -361,7 +375,12 @@ async def handle_message_text_input(message: Message, state: FSMContext):
     max_len = 1024 if photo else 4096
     if len(text_message) > max_len:
         await message.answer(
-            f"⚠️ Сообщение слишком длинное.\nМаксимум: <b>{max_len}</b> символов, сейчас: <b>{len(text_message)}</b>.",
+            menu_text(
+                "Сообщение клиенту",
+                "⚠️ Сообщение слишком длинное.",
+                section("📏 Длина", f"Максимум: {max_len}", f"Сейчас: {len(text_message)}"),
+                markup=build_editor_kb(tg_id),
+            ),
             reply_markup=build_editor_kb(tg_id),
         )
         await state.clear()
@@ -376,7 +395,7 @@ async def handle_message_text_input(message: Message, state: FSMContext):
         await message.answer(text=text_message, parse_mode="HTML")
 
     await message.answer(
-        "👀 Это предпросмотр сообщения. Отправить?",
+        menu_text("Клиент", "👀 Это предпросмотр сообщения. Отправить?"),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -430,12 +449,12 @@ async def handle_send_user_message(callback_query: CallbackQuery, state: FSMCont
             logger.warning("[UserManage] Ошибка web-уведомления для tg_id={}: {}", tg_id, e)
 
         await callback_query.message.edit_text(
-            text="✅ Сообщение успешно отправлено.",
+            text=menu_text("Клиент", "✅ Сообщение отправлено.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
     except Exception as e:
         await callback_query.message.edit_text(
-            text=f"❌ Не удалось отправить сообщение: {e}",
+            text=menu_text("Клиент", f"❌ Не удалось отправить сообщение: {e}", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
     await state.clear()
@@ -450,7 +469,7 @@ async def handle_cancel_user_message(callback_query: CallbackQuery, state: FSMCo
     data = await state.get_data()
     tg_id = data.get("tg_id")
     await callback_query.message.edit_text(
-        text="🚫 Отправка сообщения отменена.",
+        text=menu_text("Клиент", "Отправка отменена.", markup=build_editor_kb(tg_id)),
         reply_markup=build_editor_kb(tg_id),
     )
     await state.clear()
@@ -469,7 +488,7 @@ async def handle_trial_restore(
 
     await update_trial(session, tg_id, 0)
     await callback_query.message.edit_text(
-        text="✅ Триал успешно восстановлен!",
+        text=menu_text("Клиент", "✅ Триал восстановлен.", markup=build_editor_kb(tg_id)),
         reply_markup=build_editor_kb(tg_id),
     )
 
@@ -488,8 +507,12 @@ async def confirm_restore_trials(callback_query: types.CallbackQuery):
 
     await callback_query.message.edit_text(
         text=(
-            "⚠ Вы уверены, что хотите восстановить пробники для пользователей? \n\n"
-            "Только для тех, у кого нет подписок (активных или истекших)!"
+            menu_text(
+                "Клиент",
+                "⚠️ Вернуть клиентам пробный период?",
+                quote("Только тем, у кого нет подписок — ни активных, ни истёкших."),
+                markup=builder.as_markup(),
+            )
         ),
         reply_markup=builder.as_markup(),
     )
@@ -514,7 +537,11 @@ async def restore_trials(callback_query: types.CallbackQuery, session: AsyncSess
     builder.row(build_admin_back_btn())
 
     await callback_query.message.edit_text(
-        text=f"✅ Пробники восстановлены для {result.rowcount} пользователей без подписок.",
+        text=menu_text(
+            "Клиент",
+            f"✅ Пробный период вернули {result.rowcount} клиентам без подписок.",
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -533,7 +560,7 @@ async def handle_users_export_referrals(
     csv_file = await export_referrals_csv(referrer_tg_id, session)
 
     if csv_file is None:
-        await callback_query.message.answer("У пользователя нет рефералов.")
+        await callback_query.message.answer(menu_text("Клиент", "У клиента нет рефералов."))
         return
 
     await callback_query.message.answer_document(
@@ -555,7 +582,7 @@ async def process_user_search(
     u = await resolve_user_optional(session, tg_id)
     if u is None:
         await message.answer(
-            text="🚫 Пользователь с указанным ID не найден!",
+            text=menu_text("Клиент", "❌ Клиент с таким ID не найден.", markup=build_admin_back_kb()),
             reply_markup=build_admin_back_kb(),
         )
         return
@@ -571,15 +598,15 @@ async def process_user_search(
 
     if not user_data:
         await message.answer(
-            text="🚫 Пользователь с указанным ID не найден!",
+            text=menu_text("Клиент", "❌ Клиент с таким ID не найден.", markup=build_admin_back_kb()),
             reply_markup=build_admin_back_kb(),
         )
         return
 
     username, balance, created_at, updated_at, trial = user_data
     balance = int(balance or 0)
-    created_at_str = created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
-    updated_at_str = updated_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%H:%M:%S %d.%m.%Y")
+    created_at_str = created_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%y")
+    updated_at_str = updated_at.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%y %H:%M")
 
     trial_status = "использован" if trial == 1 else "доступен"
 
@@ -600,9 +627,9 @@ async def process_user_search(
         ref_tg = ref_row[1] if ref_row else None
         ref_label = int(ref_tg) if ref_tg is not None else int(referrer_uid)
         if ref_username:
-            referrer_text = f"🤝 Пригласил: @{ref_username} ({ref_label})"
+            referrer_text = f"Пригласил: @{ref_username} ({ref_label})"
         else:
-            referrer_text = f"🤝 Пригласил: {ref_label}"
+            referrer_text = f"Пригласил: {ref_label}"
 
     stmt = select(
         func.count(Payment.id),
@@ -628,45 +655,43 @@ async def process_user_search(
     is_banned = ban_record is not None
     if ban_record:
         if ban_record.reason == "shadow":
-            ban_info = "🚫 Блокировка: 👻 Теневой бан"
+            ban_info = "Теневой бан"
         elif ban_record.until:
             until_str = ban_record.until.replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y %H:%M")
-            ban_info = f"🚫 Блокировка: до {until_str}"
+            ban_info = f"До {until_str}"
             if ban_record.reason:
                 ban_reason = ban_record.reason
         else:
-            ban_info = "🚫 Блокировка: навсегда"
+            ban_info = "Навсегда"
             if ban_record.reason:
                 ban_reason = ban_record.reason
 
-    body = Text(
-        f"🆔 TG ID: {real_tg_id if real_tg_id is not None else '—'}\n",
-        f"📧 Email: {identity_email if identity_email else '—'}\n",
-        f"📄 Логин: @{username}\n" if username else "📄 Логин: —\n",
-        f"📅 Дата регистрации: {created_at_str}\n",
-        f"🏃 Дата активности: {updated_at_str}\n",
-        f"💰 Баланс: {balance} Р.\n",
-        f"💳 Пополнения: {topups_sum} Р. ({topups_amount} шт.)\n",
-        f"👥 Количество рефералов: {referral_count}\n",
-        f"🎁 Триал: {trial_status}\n",
-    )
-
     from core.settings.web_config import get_site_url, is_web_enabled
 
-    if is_web_enabled() and get_site_url():
-        body += Text("🌐 Кабинет: ", Code(f"https://telegram.me/{USERNAME_BOT}?start=tab_keys"), "\n")
+    who = [
+        f"TG ID: {real_tg_id if real_tg_id is not None else '—'}",
+        f"Логин: @{username}" if username else "Логин: —",
+        f"Почта: {identity_email if identity_email else '—'}",
+    ]
 
+    money = [f"Баланс: {balance} ₽"]
+    if topups_amount:
+        money.append(f"Пополнил: {topups_sum} ₽ ({topups_amount})")
+
+    activity = [f"Пришёл: {created_at_str}", f"Активен: {updated_at_str}"]
+    if referral_count:
+        activity.append(f"Привёл: {referral_count}")
     if referrer_text:
-        body += Text(referrer_text, "\n")
+        activity.append(referrer_text)
+    activity.append(f"Пробный: {trial_status}")
 
+    blocks = [section("👤 Данные", *who), section("💰 Деньги", *money), section("📈 Активность", *activity)]
     if ban_info:
-        body += Text(ban_info, "\n")
-        if ban_reason:
-            body += Text(f"📝 Причина: {ban_reason}\n")
+        blocks.append(section("🚫 Блокировка", ban_info, f"Причина: {ban_reason}" if ban_reason else ""))
+    if is_web_enabled() and get_site_url():
+        blocks.append(section("🌐 Кабинет", f"<code>https://telegram.me/{USERNAME_BOT}?start=tab_keys</code>"))
 
-    text_builder = Text(Bold("📊 Информация о пользователе"), "\n\n", BlockQuote(body))
-
-    text = text_builder.as_html()
+    text = card(*blocks)
 
     effective_actor_tg_id = actor_tg_id or (message.from_user.id if message.from_user else None)
     admin_role = None
@@ -684,13 +709,15 @@ async def process_user_search(
         has_tg=has_tg,
     )
 
+    screen = menu_text("Клиент", f"@{username}" if username else f"<code>{tg_id}</code>", text, markup=kb)
+
     if edit:
         try:
-            await message.edit_text(text=text, reply_markup=kb, disable_web_page_preview=True)
+            await message.edit_text(text=screen, reply_markup=kb, disable_web_page_preview=True)
         except TelegramBadRequest:
             pass
     else:
-        await message.answer(text=text, reply_markup=kb, disable_web_page_preview=True)
+        await message.answer(text=screen, reply_markup=kb, disable_web_page_preview=True)
 
 
 @router.callback_query(
@@ -718,10 +745,10 @@ async def handle_users_editor(
     IsAdminFilter(),
 )
 async def handle_users_site(callback: CallbackQuery, callback_data: AdminUserEditorCallback):
-    text = (
-        "🌐 <b>Ссылки на кабинет</b>\n\n"
-        "Выберите вкладку — бот покажет ссылку, которую можно отправить клиенту. "
-        "По ней откроется его личный кабинет на нужной вкладке."
+    text = menu_text(
+        "Ссылки на кабинет",
+        "Выберите вкладку.",
+        quote("Бот покажет ссылку для клиента — она откроет его кабинет сразу на этой вкладке."),
     )
     try:
         await callback.message.edit_text(
@@ -745,12 +772,11 @@ async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUse
     if not label:
         await callback.answer("Неизвестная вкладка", show_alert=True)
         return
-    text = Text(
-        "🌐 Вкладка: ",
-        Bold(label),
-        "\n\n",
-        f"Нажмите «Отправить» — клиент получит в чате с ботом кнопку, открывающую личный кабинет на вкладке «{label}».",
-    ).as_html()
+    text = menu_text(
+        "Ссылка на кабинет",
+        f"Вкладка: <b>{label}</b>",
+        quote("Нажмите «Отправить» — клиент получит в чате кнопку, открывающую эту вкладку кабинета."),
+    )
     try:
         await callback.message.edit_text(
             text=text,
@@ -777,7 +803,7 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
     from core.settings.web_config import get_site_url, is_web_enabled, is_web_open_in_browser
 
     if not is_web_enabled():
-        await callback.answer("Веб-кабинет отключен", show_alert=True)
+        await callback.answer("Веб-кабинет выключен", show_alert=True)
         return
     site_url = get_site_url()
     if not site_url:
@@ -804,7 +830,7 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
         )
     except Exception as e:
         logger.warning(f"[users_site_send] send to {callback_data.tg_id} failed: {e}")
-        await callback.answer("❌ Не удалось отправить (клиент не запускал бота?)", show_alert=True)
+        await callback.answer("Клиент не запускал бота", show_alert=True)
         return
     await callback.answer(f"✅ Отправлено клиенту: {label}", show_alert=True)
 
@@ -824,7 +850,7 @@ async def handle_user_sub_history(
 ):
     u = await resolve_user_optional(session, callback_data.tg_id)
     if u is None:
-        await callback.answer("Пользователь не найден", show_alert=True)
+        await callback.answer("Клиент не найден", show_alert=True)
         return
 
     history = await get_user_subscription_history(session, user_id=u.id, tg_id=u.tg_id)
@@ -844,7 +870,12 @@ async def handle_user_sub_history(
 
     if not history:
         await callback.message.edit_text(
-            "🧾 <b>История подписок</b>\n\n📭 У пользователя не было подписок (в журнале нет записей).",
+            menu_text(
+                "История подписок",
+                "Все подписки клиента, от свежих к старым.",
+                quote("Подписок пока не было"),
+                markup=back_kb,
+            ),
             reply_markup=back_kb,
         )
         return
@@ -866,46 +897,49 @@ async def handle_user_sub_history(
     active_count = sum(1 for g in history if g["client_id"] in active_expiry)
     shown = history[:SUB_HISTORY_LIMIT]
 
-    lines = [
-        "🧾 <b>История подписок</b>",
-        "",
-        f"Всего: <b>{len(history)}</b> · активных сейчас: <b>{active_count}</b>",
-        "",
-    ]
+    blocks = [section("🧾 Итого", f"Всего: {len(history)}", f"Активных: {active_count}")]
 
     for i, g in enumerate(shown, 1):
         cid = g["client_id"]
         short = f"{cid[:8]}…" if cid and len(cid) > 8 else (cid or "—")
         tariff = tariff_names.get(g["tariff_id"]) or (f"тариф #{g['tariff_id']}" if g["tariff_id"] else "—")
-        created_str = g["first_at"].replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y")
+        created_str = g["first_at"].replace(tzinfo=pytz.UTC).astimezone(MOSCOW_TZ).strftime("%d.%m.%y")
 
         if cid in active_expiry:
-            status = "🟢 активна"
+            status = "🟢 Активна"
             exp_ms = active_expiry[cid]
         else:
             exp_ms = g["max_expiry"]
             if g["last_event"] == "deleted":
-                status = "⚪️ удалена"
+                status = "⚪️ Удалена"
             elif g["last_event"] == "expired":
-                status = "🔴 истекла"
+                status = "🔴 Истекла"
             else:
-                status = "⚪️ завершена"
+                status = "⚪️ Завершена"
 
         if exp_ms:
-            exp_str = datetime.fromtimestamp(exp_ms / 1000, tz=timezone.utc).astimezone(MOSCOW_TZ).strftime("%d.%m.%Y")
+            exp_str = datetime.fromtimestamp(exp_ms / 1000, tz=timezone.utc).astimezone(MOSCOW_TZ).strftime("%d.%m.%y")
         else:
             exp_str = "—"
 
-        renew = f" · продлений: {g['renewals']}" if g["renewals"] else ""
-        lines.append(f"{i}. {status} · <code>{short}</code> · {tariff}")
-        lines.append(f"     с {created_str} → до {exp_str}{renew}")
+        blocks.append(
+            section(
+                f"{status} · {i}",
+                f"Тариф: {tariff}",
+                f"Начало: {created_str}",
+                f"Конец: {exp_str}",
+                f"Продлений: {g['renewals'] or 0}",
+                f"ID: {short}",
+            )
+        )
 
     if len(history) > len(shown):
-        lines.append("")
-        lines.append(f"…показаны последние {len(shown)} из {len(history)}")
+        blocks.append(quote(f"Показаны последние {len(shown)} из {len(history)}"))
 
     try:
-        await callback.message.edit_text("\n".join(lines), reply_markup=back_kb)
+        await callback.message.edit_text(
+            menu_text("История подписок", card(*blocks), markup=back_kb), reply_markup=back_kb
+        )
     except TelegramBadRequest:
         pass
 
@@ -932,7 +966,7 @@ async def handle_unlink_email(
 
     identity = await _resolve_identity_for_user(session, callback_data.tg_id)
     if identity is None:
-        await callback.answer("Нет привязанной identity", show_alert=True)
+        await callback.answer("Веб-аккаунт не привязан", show_alert=True)
         return
     if identity.email is None:
         await callback.answer("Email уже не привязан", show_alert=True)
@@ -970,7 +1004,7 @@ async def handle_unlink_tg(
 
     identity = await _resolve_identity_for_user(session, callback_data.tg_id)
     if identity is None:
-        await callback.answer("Нет привязанной identity", show_alert=True)
+        await callback.answer("Веб-аккаунт не привязан", show_alert=True)
         return
     if identity.tg_id is None:
         await callback.answer("Telegram уже не привязан", show_alert=True)

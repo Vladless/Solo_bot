@@ -9,6 +9,7 @@ from core.settings.tariffs_config import normalize_tariff_config
 from database.models import Tariff
 from filters.admin import IsAdminFilter
 
+from ...panel.headers import card, menu_text, quote, section
 from .. import router
 from ..keyboard import AdminTariffCallback
 
@@ -40,25 +41,25 @@ def build_config_menu_kb(tariff_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="💰 Шаг доплаты за устройства",
+                    text="💰 Шаг за устройство",
                     callback_data=f"cfg_edit_device_step|{tariff_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📊 Доплаты по вариантам устройств",
+                    text="📊 Доплаты за устройства",
                     callback_data=f"cfg_edit_device_over|{tariff_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="💰 Шаг доплаты за трафик (ГБ)",
+                    text="💰 Шаг за 1 ГБ",
                     callback_data=f"cfg_edit_traffic_step|{tariff_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📊 Доплаты по вариантам трафика",
+                    text="📊 Доплаты за трафик",
                     callback_data=f"cfg_edit_traffic_over|{tariff_id}",
                 )
             ],
@@ -109,16 +110,19 @@ def build_device_overrides_screen(tariff: Tariff) -> tuple[str, InlineKeyboardMa
     device_options = tariff.device_options or []
     overrides = getattr(tariff, "device_overrides", None) or {}
 
-    lines: list[str] = []
-    lines.append("📊 Доплаты по вариантам устройств.")
-    lines.append("")
-    lines.append(f"Базовая цена тарифа: <b>{base_price}₽</b>")
-    lines.append("Ниже показаны варианты устройств и текущая доплата.")
-    lines.append("Значение <code>0</code> можно использовать как безлимит по устройствам.")
-    lines.append("Нажмите на вариант, чтобы задать доплату в рублях.")
-    lines.append("Отправьте <code>0</code>, чтобы вернуть расчёт по базовому шагу.")
-    lines.append("")
-    lines.append("Текущие значения:")
+    lines: list[str] = [
+        menu_text(
+            "Доплаты за устройства",
+            "Нажмите на вариант, чтобы задать доплату.",
+            quote(f"Базовая цена тарифа: <b>{base_price}₽</b>"),
+            quote(
+                "<code>0</code> среди вариантов — безлимит по устройствам.",
+                "Доплата <code>0</code> возвращает расчёт по базовому шагу.",
+            ),
+        ),
+        "",
+        "Текущие значения:",
+    ]
 
     for devices in sorted(device_options):
         key = str(devices)
@@ -167,13 +171,13 @@ def build_device_overrides_screen(tariff: Tariff) -> tuple[str, InlineKeyboardMa
 
     rows.append([
         InlineKeyboardButton(
-            text="🧹 Сбросить все индивидуальные доплаты",
+            text="🧹 Сбросить свои доплаты",
             callback_data=f"cfg_dev_over_clear|{tariff_id}",
         )
     ])
     rows.append([
         InlineKeyboardButton(
-            text="⬅️ Назад к конфигуратору",
+            text="⬅️ К конфигуратору",
             callback_data=f"edit_config|{tariff_id}",
         )
     ])
@@ -190,16 +194,19 @@ def build_traffic_overrides_screen(tariff: Tariff) -> tuple[str, InlineKeyboardM
 
     all_options = sorted(set(traffic_options + [0]))
 
-    lines: list[str] = []
-    lines.append("📊 Доплаты по вариантам трафика.")
-    lines.append("")
-    lines.append(f"Базовая цена тарифа: <b>{base_price}₽</b>")
-    lines.append("Ниже показаны варианты лимитов и текущая доплата.")
-    lines.append("Значение <code>0</code> — безлимитный трафик.")
-    lines.append("Нажмите на вариант, чтобы задать доплату в рублях.")
-    lines.append("Отправьте <code>0</code>, чтобы вернуть расчёт по базовому шагу.")
-    lines.append("")
-    lines.append("Текущие значения:")
+    lines: list[str] = [
+        menu_text(
+            "Доплаты за трафик",
+            "Нажмите на вариант, чтобы задать доплату.",
+            quote(f"Базовая цена тарифа: <b>{base_price}₽</b>"),
+            quote(
+                "<code>0</code> среди вариантов — безлимитный трафик.",
+                "Доплата <code>0</code> возвращает расчёт по базовому шагу.",
+            ),
+        ),
+        "",
+        "Текущие значения:",
+    ]
 
     for gb in all_options:
         key = str(gb)
@@ -248,13 +255,13 @@ def build_traffic_overrides_screen(tariff: Tariff) -> tuple[str, InlineKeyboardM
 
     rows.append([
         InlineKeyboardButton(
-            text="🧹 Сбросить все индивидуальные доплаты",
+            text="🧹 Сбросить свои доплаты",
             callback_data=f"cfg_trf_over_clear|{tariff_id}",
         )
     ])
     rows.append([
         InlineKeyboardButton(
-            text="⬅️ Назад к конфигуратору",
+            text="⬅️ К конфигуратору",
             callback_data=f"edit_config|{tariff_id}",
         )
     ])
@@ -264,110 +271,60 @@ def build_traffic_overrides_screen(tariff: Tariff) -> tuple[str, InlineKeyboardM
 
 
 def build_config_summary_text(tariff: Tariff) -> str:
+    """Возвращает экран конфигуратора тарифа."""
     cfg = normalize_tariff_config(tariff.to_dict())
-    configurable_text = "включен" if getattr(tariff, "configurable", False) else "выключен"
 
-    base_duration = tariff.duration_days
     base_devices = tariff.device_limit if tariff.device_limit is not None else "—"
-    if tariff.traffic_limit is None:
-        base_traffic_text = "безлимит"
-    else:
-        base_traffic_text = f"{tariff.traffic_limit} ГБ"
-    base_price = tariff.price_rub or 0
+    base_traffic = "безлимит" if tariff.traffic_limit is None else f"{tariff.traffic_limit} ГБ"
 
     device_options = cfg.get("device_options") or []
     traffic_options_gb = cfg.get("traffic_options_gb")
 
-    duration_line = f"📅 Длительность: фиксированная, {base_duration} дн."
-
     if device_options:
-        devices_parts = []
-        for d in device_options:
-            if d == 0:
-                devices_parts.append("безлимит")
-            else:
-                devices_parts.append(str(d))
-        devices_str = ", ".join(devices_parts)
-        devices_line = f"📱 Устройства: варианты — {devices_str}"
+        devices_choice = ", ".join("безлимит" if d == 0 else str(d) for d in device_options)
     else:
-        devices_line = f"📱 Устройства: выбор отключён, по умолчанию {base_devices}"
+        devices_choice = f"выкл, {base_devices}"
 
     if traffic_options_gb is None:
-        traffic_line = "📦 Трафик: выбор трафика отключён"
+        traffic_choice = "выкл"
     else:
-        traffic_parts = []
-        for g in traffic_options_gb:
-            if g == 0:
-                traffic_parts.append("безлимит")
-            else:
-                traffic_parts.append(f"{g} ГБ")
-        traffic_str = ", ".join(traffic_parts)
-        traffic_line = f"📦 Трафик: варианты — {traffic_str}"
+        traffic_choice = ", ".join("безлимит" if g == 0 else f"{g} ГБ" for g in traffic_options_gb)
 
     device_step = getattr(tariff, "device_step_rub", None) or 0
     traffic_step = getattr(tariff, "traffic_step_rub", None) or 0
-
     device_overrides = getattr(tariff, "device_overrides", None) or {}
     traffic_overrides = getattr(tariff, "traffic_overrides", None) or {}
 
-    base_block = (
-        "<blockquote>"
-        "🎯 База тарифа:\n"
-        f"• Длительность: <b>{base_duration} дней</b>\n"
-        f"• Устройства: <b>{base_devices}</b>\n"
-        f"• Трафик: <b>{base_traffic_text}</b>\n"
-        f"• Цена: <b>{base_price}₽</b>\n"
-        "</blockquote>\n"
+    device_rows = [f"Шаг: {device_step} ₽ за устройство"]
+    for key, value in sorted(device_overrides.items(), key=lambda item: int(item[0])):
+        label = "безлимит" if int(key) == 0 else f"{int(key)} шт"
+        device_rows.append(f"{label}: {int(value)} ₽")
+
+    traffic_rows = [f"Шаг: {traffic_step} ₽ за 1 ГБ"]
+    for key, value in sorted(traffic_overrides.items(), key=lambda item: int(item[0])):
+        label = "безлимит" if int(key) == 0 else f"{int(key)} ГБ"
+        traffic_rows.append(f"{label}: {int(value)} ₽")
+
+    body = card(
+        section(
+            "🎯 База",
+            f"Срок: {tariff.duration_days} дн",
+            f"Устройства: {base_devices}",
+            f"Трафик: {base_traffic}",
+            f"Цена: {tariff.price_rub or 0} ₽",
+        ),
+        section(
+            "⚙️ Выбор клиента",
+            "Срок: фиксированный",
+            f"Устройства: {devices_choice}",
+            f"Трафик: {traffic_choice}",
+        ),
+        section("📱 Доплата за устройства", *device_rows),
+        section("📦 Доплата за трафик", *traffic_rows),
     )
 
-    config_block = f"<blockquote>\n{duration_line}\n{devices_line}\n{traffic_line}\n</blockquote>\n"
-
-    device_step_line = (
-        f"💰 Устройства, базовый шаг: {device_step}₽ за каждое устройство сверх базового лимита ({base_devices})"
-    )
-
-    if device_overrides:
-        parts = []
-        for k, v in sorted(device_overrides.items(), key=lambda x: int(x[0])):
-            devices_count = int(k)
-            extra = int(v)
-            if devices_count == 0:
-                label = "безлимит устройств"
-            else:
-                label = f"{devices_count} устройств"
-            parts.append(f"при {label}: индивидуальная доплата {extra}₽")
-        device_over_line = "📊 Устройства, индивидуальные доплаты:\n" + "\n".join(f"• {p}" for p in parts)
-    else:
-        device_over_line = "📊 Устройства, индивидуальные доплаты: не заданы"
-
-    device_block = f"<blockquote>{device_step_line}\n{device_over_line}\n</blockquote>\n"
-
-    traffic_step_line = f"💰 Трафик, базовый шаг: {traffic_step}₽ за 1 ГБ сверх базового лимита ({base_traffic_text})"
-
-    if traffic_overrides:
-        parts = []
-        for k, v in sorted(traffic_overrides.items(), key=lambda x: int(x[0])):
-            gb_value = int(k)
-            extra = int(v)
-            if gb_value == 0:
-                label = "безлимитный трафик"
-            else:
-                label = f"лимит {gb_value} ГБ"
-            parts.append(f"при {label}: индивидуальная доплата {extra}₽")
-        traffic_over_line = "📊 Трафик, индивидуальные доплаты:\n" + "\n".join(f"• {p}" for p in parts)
-    else:
-        traffic_over_line = "📊 Трафик, индивидуальные доплаты: не заданы"
-
-    traffic_block = f"<blockquote>\n{traffic_step_line}\n{traffic_over_line}\n</blockquote>"
-
-    return (
-        f"<b>⚙️ Конфигуратор тарифа: {tariff.name}</b>\n\n"
-        f"Статус: <b>{configurable_text}</b>\n\n"
-        f"{base_block}"
-        f"{config_block}"
-        f"{device_block}"
-        f"{traffic_block}"
-    )
+    status = "включён" if getattr(tariff, "configurable", False) else "выключен"
+    return menu_text("Конфигуратор", f"<b>{tariff.name}</b>", quote(f"Конфигуратор: {status}"), body)
 
 
 @router.callback_query(F.data.startswith("edit_config|"), IsAdminFilter())
@@ -377,7 +334,7 @@ async def open_config_menu(callback: CallbackQuery, state: FSMContext, session: 
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await callback.message.edit_text("❌ Тариф не найден.")
+        await callback.message.edit_text(menu_text("Конфигуратор", "❌ Тариф не найден."))
         return
 
     await state.set_state(TariffConfigState.choosing_section)

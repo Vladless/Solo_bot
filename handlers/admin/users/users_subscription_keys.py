@@ -17,32 +17,20 @@ from services.subscription_keys import (
 from services.users_utils import resolve_admin_key
 from settings.buttons import BACK
 
+from ..panel.headers import menu_text, quote, section
 from .keyboard import AdminUserEditorCallback
 
 
 router = Router()
 
 
-TITLE_HOSTS = "<b>🔑 Ключи подписки</b>"
-
-TEXT_HOSTS_INFO = (
-    "<blockquote>"
-    "📧 <b>Username:</b> <code>{username}</code>\n"
-    "🖥️ <b>Всего ключей:</b> {total}\n"
-    "📄 <b>Страница:</b> {page}/{total_pages}"
-    "</blockquote>\n\n"
-    "Выберите ключ, чтобы получить ссылку для подключения."
-)
-
-TEXT_KEY_FOR_HOST = "🌐 <b>Ключ:</b> {label}\n<blockquote><code>{link}</code></blockquote>"
-
-ERR_KEY_NOT_FOUND = "🚫 Подписка не найдена."
-ERR_NO_USERNAME = "🚫 У подписки не указан Email."
-ERR_API_FAIL = "⚠️ Не удалось получить данные с панели Remnawave. Попробуйте позже."
-ERR_NO_HOSTS = "ℹ️ У клиента нет доступных ключей."
-ERR_HOST_NOT_FOUND = "🚫 Ключ не найден (возможно, список изменился). Откройте список заново."
-ERR_NOT_REMNAWAVE = "ℹ️ Список ключей доступен только для Remnawave-подписок."
-ERR_BAD_REQUEST = "🚫 Некорректный запрос."
+ERR_KEY_NOT_FOUND = menu_text("Ключи", "❌ Подписка не найдена.")
+ERR_NO_USERNAME = menu_text("Ключи", "🚫 У подписки не указан Email.")
+ERR_API_FAIL = menu_text("Ключи", "Панель Remnawave не ответила.", quote("Попробуйте позже."))
+ERR_NO_HOSTS = menu_text("Ключи", "ℹ️ У клиента нет доступных ключей.")
+ERR_HOST_NOT_FOUND = menu_text("Ключи", "Ключ не найден.", quote("Похоже, список изменился — откройте его заново."))
+ERR_NOT_REMNAWAVE = menu_text("Ключи", "Доступно только для Remnawave.")
+ERR_BAD_REQUEST = menu_text("Ключи", "❌ Некорректный запрос.")
 
 
 def _back_to_key_edit_kb(tg_id: int, key_ref: str) -> InlineKeyboardMarkup:
@@ -90,11 +78,8 @@ def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> In
                 ).pack(),
             )
         )
-        if len(row_buttons) == 2:
-            builder.row(*row_buttons)
-            row_buttons = []
-    if row_buttons:
         builder.row(*row_buttons)
+        row_buttons = []
 
     if total_pages > 1:
         nav: list[InlineKeyboardButton] = []
@@ -199,11 +184,15 @@ async def handle_hosts_list(
     total_pages = max(1, (total + HOSTS_PER_PAGE - 1) // HOSTS_PER_PAGE)
     page = max(0, min(page, total_pages - 1))
 
-    text = f"{TITLE_HOSTS}\n" + TEXT_HOSTS_INFO.format(
-        username=html_escape(key_obj.email),
-        total=total,
-        page=page + 1,
-        total_pages=total_pages,
+    text = menu_text(
+        "Ключи подписки",
+        "Выберите ключ — бот выдаст ссылку для подключения.",
+        section(
+            "🔑 Подписка",
+            f"Почта: {html_escape(key_obj.email)}",
+            f"Ключей: {total}",
+            f"Страница: {page + 1}/{total_pages}",
+        ),
     )
 
     await _safe_edit(callback_query, text, _build_hosts_kb(tg_id, key_ref, links, page))
@@ -244,9 +233,10 @@ async def handle_host_show(
     link = links[idx]
     label = host_label(link, idx)
 
-    text = TEXT_KEY_FOR_HOST.format(
-        label=html_escape(label),
-        link=html_escape(link),
+    text = menu_text(
+        "Ключ подключения",
+        f"🌐 {html_escape(label)}",
+        quote(f"<code>{html_escape(link)}</code>"),
     )
 
     await _safe_edit(callback_query, text, _back_to_list_kb(tg_id, key_ref, page))

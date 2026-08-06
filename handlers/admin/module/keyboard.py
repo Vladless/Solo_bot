@@ -18,11 +18,8 @@ def build_modules_kb(page: int, total_pages: int, items: list[tuple[str, str | N
                 callback_data=AdminPanelCallback(action=f"module__{name}", page=page).pack(),
             )
         )
-        if len(row_buf) == 2:
-            builder.row(*row_buf)
-            row_buf = []
-    if row_buf:
         builder.row(*row_buf)
+        row_buf = []
 
     if total_pages > 1:
         nav = []
@@ -84,20 +81,19 @@ def build_module_menu_kb(name: str, page: int) -> InlineKeyboardMarkup:
     )
 
     builder.button(
-        text="⬆️ Загрузить settings.py",
+        text="⬆️ settings.py",
         callback_data=AdminPanelCallback(action="module_upload_settings", page=page).pack(),
     )
     builder.button(
-        text="⬆️ Загрузить texts.py",
+        text="⬆️ texts.py",
         callback_data=AdminPanelCallback(action="module_upload_texts", page=page).pack(),
     )
 
+    builder.adjust(2)
     builder.row(
         InlineKeyboardButton(
             text="⬅️ К списку",
             callback_data=AdminPanelCallback(action="modules", page=page).pack(),
         )
     )
-
-    builder.adjust(1)
     return builder.as_markup()

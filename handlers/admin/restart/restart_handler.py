@@ -12,6 +12,7 @@ from core.executor import run_io
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_MANAGEMENT
 
+from ..panel.headers import menu_text
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 
@@ -23,7 +24,9 @@ router.message.filter(HasPermission(PERM_MANAGEMENT))
 @router.callback_query(AdminPanelCallback.filter(F.action == "restart"), IsAdminFilter())
 async def handle_restart_confirm(callback_query: CallbackQuery, callback_data: AdminPanelCallback):
     kb = build_admin_back_kb()
-    await callback_query.message.edit_text("🔄 Перезапускаем бота...", reply_markup=kb)
+    await callback_query.message.edit_text(
+        menu_text("Перезапуск", "🔄 Перезапускаем бота...", markup=kb), reply_markup=kb
+    )
 
     asyncio.create_task(restart_bot())
 

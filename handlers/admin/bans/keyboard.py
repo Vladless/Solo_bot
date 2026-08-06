@@ -1,3 +1,4 @@
+from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from settings.buttons import BACK
@@ -9,7 +10,7 @@ def build_bans_kb():
     builder = InlineKeyboardBuilder()
 
     builder.button(
-        text="📛 Забанившие бота",
+        text="📛 Забанившие",
         callback_data=AdminPanelCallback(action="bans_blocked_menu").pack(),
     )
     builder.button(
@@ -20,12 +21,8 @@ def build_bans_kb():
         text="🔒 Ручные баны",
         callback_data=AdminPanelCallback(action="bans_manual_menu").pack(),
     )
-    builder.button(
-        text=BACK,
-        callback_data=AdminPanelCallback(action="management").pack(),
-    )
-
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="management").pack()))
     return builder.as_markup()
 
 
@@ -37,19 +34,15 @@ def build_blocked_users_kb():
         callback_data=AdminPanelCallback(action="bans_export").pack(),
     )
     builder.button(
-        text="🗑️ Удалить забанивших",
+        text="🗑 Удалить клиентов",
         callback_data=AdminPanelCallback(action="bans_delete_banned").pack(),
     )
     builder.button(
-        text="🗑️ Очистить забанивших",
+        text="🧹 Очистить список",
         callback_data=AdminPanelCallback(action="bans_clear_blocked").pack(),
     )
-    builder.button(
-        text=BACK,
-        callback_data=AdminPanelCallback(action="bans").pack(),
-    )
-
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="bans").pack()))
     return builder.as_markup()
 
 
@@ -65,15 +58,11 @@ def build_shadow_bans_kb():
         callback_data=AdminPanelCallback(action="bans_preemptive").pack(),
     )
     builder.button(
-        text="🗑️ Очистить теневые баны",
+        text="🧹 Очистить список",
         callback_data=AdminPanelCallback(action="bans_clear_shadow").pack(),
     )
-    builder.button(
-        text=BACK,
-        callback_data=AdminPanelCallback(action="bans").pack(),
-    )
-
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="bans").pack()))
     return builder.as_markup()
 
 
@@ -85,13 +74,9 @@ def build_manual_bans_kb():
         callback_data=AdminPanelCallback(action="manual_bans_export").pack(),
     )
     builder.button(
-        text="🗑️ Очистить ручные баны",
+        text="🧹 Очистить список",
         callback_data=AdminPanelCallback(action="bans_clear_manual").pack(),
     )
-    builder.button(
-        text=BACK,
-        callback_data=AdminPanelCallback(action="bans").pack(),
-    )
-
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="bans").pack()))
     return builder.as_markup()

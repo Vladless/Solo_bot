@@ -28,6 +28,7 @@ from logger import logger
 from middlewares.session import release_session_early
 from settings.config import API_TOKEN
 
+from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     AdminSenderCallback,
@@ -75,21 +76,18 @@ def _broadcast_progress_text(completed: int, total: int, sent: int, failed: int,
 
 
 def _compose_message_text() -> str:
-    return (
-        "✍️ Введите текст сообщения для рассылки\n\n"
-        "Поддерживается только Telegram-форматирование — <b>жирный</b>, <i>курсив</i> и другие стили через редактор Telegram.\n\n"
-        "Вы можете отправить:\n"
-        "• Только <b>текст</b>\n"
-        "• Только <b>картинку</b>\n"
-        "• <b>Текст + картинку</b>\n"
-        "• <b>Сообщение + кнопки</b> (см. формат ниже)\n\n"
-        "<b>📋 Пример формата кнопок:</b>\n"
-        "<code>Ваше сообщение</code>\n\n"
-        "<code>BUTTONS:</code>\n"
-        '<code>{"text": "👤 Личный кабинет", "callback": "profile"}</code>\n'
-        '<code>{"text": "➕ Купить подписку", "callback": "buy"}</code>\n'
-        '<code>{"text": "🎁 Забрать купон", "url": "https://telegram.me/cupons"}</code>\n'
-        '<code>{"text": "📢 Канал", "url": "https://telegram.me/channel"}</code>'
+    return menu_text(
+        "Текст рассылки",
+        "Пришлите сообщение.",
+        section("📨 Подойдёт", "текст", "картинка", "текст с картинкой", "сообщение с кнопками"),
+        quote("Форматирование штатное телеграмное: жирный, курсив и прочее."),
+        section(
+            "⌨️ Кнопки",
+            "Ваше сообщение",
+            "BUTTONS:",
+            '{"text": "Кабинет", "callback": "profile"}',
+            '{"text": "Канал", "url": "https://t.me/channel"}',
+        ),
     )
 
 
@@ -113,69 +111,72 @@ def _truncate_text(value: str, limit: int = 500) -> str:
 
 
 def _scheduled_broadcast_text(item) -> str:
-    target = item.send_to
-    if item.cluster_name:
-        target = f"{target} ({item.cluster_name})"
-    lines = [
-        "🗓 <b>Запланированная рассылка</b>",
-        "",
-        f"🆔 <code>{item.id}</code>",
-        f"📌 <b>Статус:</b> {_scheduled_status_label(item.status)}",
-        f"🕒 <b>Время:</b> {format_moscow_datetime(item.scheduled_for) or '-'}",
-        f"👥 <b>Аудитория:</b> {target}",
-        f"📢 <b>Канал:</b> {channel_label(item.channel or 'both')}",
-        f"🖼 <b>Фото:</b> {'Да' if item.photo else 'Нет'}",
-        f"⌨️ <b>Кнопки:</b> {'Да' if item.keyboard_json else 'Нет'}",
-        "",
-        "<b>Текст:</b>",
-        _truncate_text(item.text or "—"),
+    """Возвращает карточку запланированной рассылки."""
+    target = f"{item.send_to} ({item.cluster_name})" if item.cluster_name else item.send_to
+    blocks = [
+        section(
+            "🗓 Рассылка",
+            f"Статус: {_scheduled_status_label(item.status)}",
+            f"Время: {format_moscow_datetime(item.scheduled_for) or '—'}",
+            f"Кому: {target}",
+            f"Канал: {channel_label(item.channel or 'both')}",
+            f"Фото: {'да' if item.photo else 'нет'}",
+            f"Кнопки: {'да' if item.keyboard_json else 'нет'}",
+        ),
+        section("✏️ Текст", _truncate_text(item.text or "—")),
     ]
     if item.error_text:
-        lines.extend(["", f"⚠️ <b>Ошибка:</b> {_truncate_text(item.error_text, 250)}"])
+        blocks.append(section("⚠️ Ошибка", _truncate_text(item.error_text, 250)))
     if item.stats_json:
         stats = item.stats_json.get("stats") or {}
-        lines.extend([
-            "",
-            f"✅ <b>Доставлено:</b> {stats.get('success_count', 0)}",
-            f"❌ <b>Не доставлено:</b> {stats.get('failed_count', 0)}",
-        ])
-    return "\n".join(lines)
+        blocks.append(
+            section(
+                "📊 Итог",
+                f"Доставлено: {stats.get('success_count', 0)}",
+                f"Не дошло: {stats.get('failed_count', 0)}",
+            )
+        )
+    return card(*blocks)
 
 
 def _scheduled_broadcasts_list_text(items: list, page: int) -> str:
+    """Возвращает страницу списка запланированных рассылок."""
     if not items:
-        return "🗓 <b>Запланированных рассылок пока нет.</b>"
-    lines = ["🗓 <b>Запланированные рассылки</b>\n", f"Страница: <b>{page + 1}</b>\n"]
+        return quote("Запланированных рассылок пока нет")
+    blocks = []
     for item in items:
         target = item.send_to if not item.cluster_name else f"{item.send_to}/{item.cluster_name}"
-        lines.append(
-            f"• <code>{item.id[:8]}</code> | {format_moscow_datetime(item.scheduled_for) or '-'} | "
-            f"{_scheduled_status_label(item.status)} | {target}"
+        blocks.append(
+            section(
+                f"🗓 {format_moscow_datetime(item.scheduled_for) or '—'}",
+                f"Статус: {_scheduled_status_label(item.status)}",
+                f"Кому: {target}",
+                f"ID: {item.id[:8]}",
+            )
         )
-    return "\n".join(lines)
+    return card(f"Страница: <b>{page + 1}</b>", *blocks)
 
 
 def _broadcast_result_text(recipients: int, stats: dict) -> str:
-    duration_minutes = int(stats["total_duration"] // 60)
-    duration_seconds = int(stats["total_duration"] % 60)
-    duration_str = (
-        f"{duration_minutes} мин {duration_seconds} сек" if duration_minutes > 0 else f"{duration_seconds} сек"
-    )
-    email_line = ""
+    """Возвращает итог завершённой рассылки."""
+    minutes = int(stats["total_duration"] // 60)
+    seconds = int(stats["total_duration"] % 60)
+    duration = f"{minutes} мин {seconds} сек" if minutes else f"{seconds} сек"
+
+    rows = [
+        f"Получателей: {recipients}",
+        f"Доставлено: {stats['success_count']}",
+        f"Не дошло: {stats['failed_count']}",
+        f"Заблокировали: {stats['blocked_users']}",
+    ]
     if "email_sent" in stats:
-        email_line = f"📧 <b>Писем отправлено:</b> {stats['email_sent']}"
+        rows.append(f"Писем: {stats['email_sent']}")
         if stats.get("email_failed"):
-            email_line += f" (ошибок {stats['email_failed']})"
-        email_line += "\n"
-    return (
-        f"📤 <b>Рассылка завершена!</b>\n\n"
-        f"👥 <b>Количество получателей:</b> {recipients}\n"
-        f"✅ <b>Доставлено:</b> {stats['success_count']}\n"
-        f"❌ <b>Не доставлено:</b> {stats['failed_count']}\n"
-        f"🚫 <b>Заблокировавших бота:</b> {stats['blocked_users']}\n"
-        f"{email_line}\n"
-        f"⏱️ <b>Время выполнения:</b> {duration_str}\n"
-        f"⚡ <b>Средняя скорость:</b> {stats['avg_speed']:.1f} сообщений/сек"
+            rows.append(f"Ошибок почты: {stats['email_failed']}")
+
+    return card(
+        section("📤 Доставка", *rows),
+        section("⚡ Скорость", f"Время: {duration}", f"В секунду: {stats['avg_speed']:.1f}"),
     )
 
 
@@ -196,7 +197,12 @@ async def handle_sender(callback_query: CallbackQuery, state: FSMContext):
     await state.clear()
     try:
         await callback_query.message.edit_text(
-            text="✍️ Выберите группу пользователей для рассылки:",
+            text=menu_text(
+                "Рассылка",
+                "Сообщение сразу всем или по расписанию.",
+                quote("Сначала выберите, кому отправляем."),
+                markup=build_sender_kb(),
+            ),
             reply_markup=build_sender_kb(),
         )
     except TelegramBadRequest as e:
@@ -214,9 +220,9 @@ async def handle_cluster_select(callback_query: CallbackQuery, session: AsyncSes
     result = await session.execute(select(Server.cluster_name).distinct())
     clusters = result.mappings().all()
     data = await state.get_data()
-    text = "✍️ Выберите кластер для рассылки сообщений:"
+    text = menu_text("Рассылка", "✍️ Выберите кластер для рассылки сообщений:")
     if data.get("edit_action") == "audience":
-        text = "✍️ Выберите новый кластер для запланированной рассылки:"
+        text = menu_text("Рассылка", "✍️ Выберите новый кластер для запланированной рассылки:")
 
     await callback_query.message.answer(
         text,
@@ -232,15 +238,19 @@ async def handle_source_select(callback_query: CallbackQuery, session: AsyncSess
     sources = await get_all_tracking_sources(session)
     if not sources:
         await callback_query.message.answer(
-            "❌ Нет UTM-источников. Создайте источник трафика, чтобы делать рассылку по метке.",
+            menu_text(
+                "Рассылка",
+                "❌ Нет UTM-источников. Создайте источник трафика, чтобы делать рассылку по метке.",
+                markup=build_admin_back_kb("sender"),
+            ),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
 
     data = await state.get_data()
-    text = "✍️ Выберите UTM-источник для рассылки:"
+    text = menu_text("Рассылка", "✍️ Выберите UTM-источник для рассылки:")
     if data.get("edit_action") == "audience":
-        text = "✍️ Выберите новый UTM-источник для запланированной рассылки:"
+        text = menu_text("Рассылка", "✍️ Выберите новый UTM-источник для запланированной рассылки:")
 
     await callback_query.message.answer(
         text,
@@ -266,7 +276,7 @@ async def handle_broadcast_type(
         if item is None:
             await state.clear()
             await callback_query.message.edit_text(
-                "❌ Запланированная рассылка не найдена.",
+                menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
                 reply_markup=build_admin_back_kb("sender"),
             )
             return
@@ -281,7 +291,10 @@ async def handle_broadcast_type(
                 channel=item.channel,
             )
         except ValueError as exc:
-            await callback_query.message.edit_text(str(exc), reply_markup=build_admin_back_kb("sender"))
+            await callback_query.message.edit_text(
+                menu_text("Рассылка", str(exc), markup=build_admin_back_kb("sender")),
+                reply_markup=build_admin_back_kb("sender"),
+            )
             return
         updated = await update_scheduled_broadcast(
             session,
@@ -293,19 +306,23 @@ async def handle_broadcast_type(
         await state.clear()
         if updated is None:
             await callback_query.message.edit_text(
-                "❌ Эту рассылку уже нельзя изменить.",
+                menu_text("Рассылка", "❌ Эту рассылку уже нельзя изменить.", markup=build_admin_back_kb("sender")),
                 reply_markup=build_admin_back_kb("sender"),
             )
             return
         await callback_query.message.edit_text(
-            _scheduled_broadcast_text(updated),
+            menu_text(
+                "Рассылка",
+                _scheduled_broadcast_text(updated),
+                markup=build_scheduled_broadcast_detail_kb(updated, page=page),
+            ),
             reply_markup=build_scheduled_broadcast_detail_kb(updated, page=page),
         )
         return
     await state.update_data(type=callback_data.type, cluster_name=callback_data.data, channels=["bot", "site"])
     await state.set_state(AdminSender.waiting_for_channel)
     await callback_query.message.edit_text(
-        text="📢 Куда отправить рассылку?\nОтметьте каналы и нажмите «Продолжить».",
+        text=menu_text("Рассылка", "📢 Куда отправить рассылку?", quote("Отметьте каналы и нажмите «Продолжить».")),
         reply_markup=build_channel_kb(["bot", "site"]),
     )
 
@@ -361,7 +378,12 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
     max_len = 1024 if photo else 4096
     if len(clean_text) > max_len:
         await message.answer(
-            f"⚠️ Сообщение слишком длинное.\nМаксимум: <b>{max_len}</b> символов, сейчас: <b>{len(clean_text)}</b>.",
+            menu_text(
+                "Рассылка",
+                "⚠️ Сообщение слишком длинное.",
+                section("📏 Длина", f"Максимум: {max_len}", f"Сейчас: {len(clean_text)}"),
+                markup=build_admin_back_kb("sender"),
+            ),
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
@@ -379,10 +401,13 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
             InlineKeyboardMarkup.model_validate(keyboard_dict)
         except Exception as e:
             await message.answer(
-                f"❌ <b>Ошибка в клавиатуре!</b>\n\n"
-                f"Не удалось сохранить клавиатуру из указанных кнопок.\n"
-                f"Ошибка: {str(e)}\n\n"
-                f"Пожалуйста, проверьте формат кнопок и попробуйте снова.",
+                menu_text(
+                    "Рассылка",
+                    "❌ Клавиатура не собралась.",
+                    quote(f"Проверьте формат кнопок.\nОшибка: {str(e)}"),
+                    quote("Проверьте формат кнопок."),
+                    markup=build_admin_back_kb("sender"),
+                ),
                 reply_markup=build_admin_back_kb("sender"),
             )
             await state.clear()
@@ -397,9 +422,12 @@ async def handle_message_input(message: Message, state: FSMContext, session: Asy
         await message.answer(text=clean_text, parse_mode="HTML", reply_markup=keyboard)
 
     await message.answer(
-        f"👀 Это предпросмотр рассылки.\n"
-        f"👥 Количество получателей: <b>{user_count}</b>\n"
-        f"📢 Канал: <b>{channel_label(channel)}</b>\n\nОтправить?",
+        menu_text(
+            "Предпросмотр",
+            "Отправить рассылку?",
+            section("📊 Отправка", f"Получателей: {user_count}", f"Канал: {channel_label(channel)}"),
+            markup=build_broadcast_preview_kb(),
+        ),
         reply_markup=build_broadcast_preview_kb(),
     )
 
@@ -421,10 +449,13 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
         except Exception as e:
             logger.error(f"[Sender] Ошибка восстановления клавиатуры: {e}")
             await callback_query.message.edit_text(
-                f"❌ <b>Ошибка восстановления клавиатуры!</b>\n\n"
-                f"Не удалось восстановить клавиатуру из сохраненных данных.\n"
-                f"Ошибка: {str(e)}\n\n"
-                f"Пожалуйста, создайте рассылку заново.",
+                menu_text(
+                    "Рассылка",
+                    "❌ Клавиатура не восстановилась.",
+                    quote(f"Данные кнопок повреждены.\nОшибка: {str(e)}"),
+                    quote("Создайте рассылку заново."),
+                    markup=build_admin_back_kb("sender"),
+                ),
                 reply_markup=build_admin_back_kb("sender"),
             )
             await state.clear()
@@ -439,7 +470,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
 
     if not tg_ids:
         await callback_query.message.edit_text(
-            "⚠️ Не найдено получателей для рассылки.",
+            menu_text("Рассылка", "⚠️ Не найдено получателей для рассылки.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
@@ -451,7 +482,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
     else:
         total_users_for_bar = 0
     await status_message.edit_text(
-        _broadcast_progress_text(0, total_users_for_bar, 0, 0),
+        menu_text("Рассылка", _broadcast_progress_text(0, total_users_for_bar, 0, 0)),
     )
 
     bot = callback_query.bot
@@ -529,7 +560,7 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
             logger.error(f"❌ Ошибка при сохранении заблокированных пользователей: {e}")
 
     await callback_query.message.answer(
-        text=_broadcast_result_text(total_users, stats),
+        text=menu_text("Рассылка", _broadcast_result_text(total_users, stats), markup=build_admin_back_kb("sender")),
         reply_markup=build_admin_back_kb("sender"),
     )
     await state.clear()
@@ -540,13 +571,19 @@ async def handle_schedule_broadcast(callback_query: CallbackQuery, state: FSMCon
     data = await state.get_data()
     if not data.get("text"):
         await callback_query.message.edit_text(
-            "⚠️ Не найден черновик рассылки. Создайте его заново.",
+            menu_text(
+                "Рассылка", "⚠️ Не найден черновик рассылки. Создайте его заново.", markup=build_admin_back_kb("sender")
+            ),
             reply_markup=build_admin_back_kb("sender"),
         )
         await state.clear()
         return
     await callback_query.message.edit_text(
-        "🕒 Введите дату и время отправки по Москве в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>.",
+        menu_text(
+            "Рассылка",
+            "🕒 Дата и время по Москве в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>.",
+            markup=build_admin_back_kb("sender"),
+        ),
         reply_markup=build_admin_back_kb("sender"),
     )
     await state.set_state(AdminSender.waiting_for_schedule_datetime)
@@ -558,10 +595,10 @@ async def handle_schedule_datetime_input(message: Message, state: FSMContext, se
     try:
         scheduled_for = parse_moscow_datetime_input(message.text or "")
     except ValueError as exc:
-        await message.answer(str(exc))
+        await message.answer(menu_text("Рассылка", str(exc)))
         return
     if scheduled_for <= datetime.now(timezone.utc):
-        await message.answer("⚠️ Время отправки должно быть в будущем.")
+        await message.answer(menu_text("Рассылка", "⚠️ Время отправки должно быть в будущем."))
         return
     created = await create_scheduled_broadcast(
         session,
@@ -578,7 +615,9 @@ async def handle_schedule_datetime_input(message: Message, state: FSMContext, se
     )
     await state.clear()
     await message.answer(
-        _scheduled_broadcast_text(created),
+        menu_text(
+            "Рассылка", _scheduled_broadcast_text(created), markup=build_scheduled_broadcast_detail_kb(created, page=0)
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(created, page=0),
     )
 
@@ -594,7 +633,11 @@ async def handle_scheduled_broadcasts_list(
     page = max(0, int(callback_data.page or 0))
     items = await list_scheduled_broadcasts(session, limit=5, offset=page * 5)
     await callback_query.message.edit_text(
-        _scheduled_broadcasts_list_text(items, page),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcasts_list_text(items, page),
+            markup=build_scheduled_broadcasts_list_kb(items, page=page),
+        ),
         reply_markup=build_scheduled_broadcasts_list_kb(items, page=page),
     )
 
@@ -608,12 +651,16 @@ async def handle_scheduled_broadcast_view(
     item = await get_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Запланированная рассылка не найдена.",
+            menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
     await callback_query.message.edit_text(
-        _scheduled_broadcast_text(item),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcast_text(item),
+            markup=build_scheduled_broadcast_detail_kb(item, page=callback_data.page),
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(item, page=callback_data.page),
     )
 
@@ -628,14 +675,14 @@ async def handle_scheduled_broadcast_edit_message(
     item = await get_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Запланированная рассылка не найдена.",
+            menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
     await state.update_data(edit_broadcast_id=item.id, edit_page=callback_data.page)
     await state.set_state(AdminSender.waiting_for_edit_message)
     await callback_query.message.edit_text(
-        "✏️ Отправьте новое сообщение для этой рассылки.",
+        menu_text("Рассылка", "✏️ Пришлите новое сообщение рассылки.", markup=build_admin_back_kb("sender")),
         reply_markup=build_admin_back_kb("sender"),
     )
 
@@ -652,7 +699,10 @@ async def handle_scheduled_broadcast_edit_message_input(
     item = await get_scheduled_broadcast(session, broadcast_id)
     if item is None:
         await state.clear()
-        await message.answer("❌ Запланированная рассылка не найдена.", reply_markup=build_admin_back_kb("sender"))
+        await message.answer(
+            menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
+            reply_markup=build_admin_back_kb("sender"),
+        )
         return
     original_text = message.html_text or message.text or message.caption or ""
     photo = message.photo[-1].file_id if message.photo else item.photo
@@ -666,7 +716,7 @@ async def handle_scheduled_broadcast_edit_message_input(
             messages_per_second=item.messages_per_second,
         )
     except ValueError as exc:
-        await message.answer(str(exc))
+        await message.answer(menu_text("Рассылка", str(exc)))
         return
     updated = await update_scheduled_broadcast(
         session,
@@ -678,10 +728,17 @@ async def handle_scheduled_broadcast_edit_message_input(
     )
     await state.clear()
     if updated is None:
-        await message.answer("❌ Эту рассылку уже нельзя изменить.", reply_markup=build_admin_back_kb("sender"))
+        await message.answer(
+            menu_text("Рассылка", "❌ Эту рассылку уже нельзя изменить.", markup=build_admin_back_kb("sender")),
+            reply_markup=build_admin_back_kb("sender"),
+        )
         return
     await message.answer(
-        _scheduled_broadcast_text(updated),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcast_text(updated),
+            markup=build_scheduled_broadcast_detail_kb(updated, page=page),
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(updated, page=page),
     )
 
@@ -696,14 +753,18 @@ async def handle_scheduled_broadcast_edit_time(
     item = await get_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Запланированная рассылка не найдена.",
+            menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
     await state.update_data(edit_broadcast_id=item.id, edit_page=callback_data.page)
     await state.set_state(AdminSender.waiting_for_edit_schedule_datetime)
     await callback_query.message.edit_text(
-        "🕒 Введите новое время отправки по Москве в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>.",
+        menu_text(
+            "Рассылка",
+            "🕒 Новое время по Москве в формате <code>ДД.ММ.ГГГГ ЧЧ:ММ</code>.",
+            markup=build_admin_back_kb("sender"),
+        ),
         reply_markup=build_admin_back_kb("sender"),
     )
 
@@ -720,10 +781,10 @@ async def handle_scheduled_broadcast_edit_time_input(
     try:
         scheduled_for = parse_moscow_datetime_input(message.text or "")
     except ValueError as exc:
-        await message.answer(str(exc))
+        await message.answer(menu_text("Рассылка", str(exc)))
         return
     if scheduled_for <= datetime.now(timezone.utc):
-        await message.answer("⚠️ Время отправки должно быть в будущем.")
+        await message.answer(menu_text("Рассылка", "⚠️ Время отправки должно быть в будущем."))
         return
     updated = await update_scheduled_broadcast(
         session,
@@ -734,10 +795,17 @@ async def handle_scheduled_broadcast_edit_time_input(
     )
     await state.clear()
     if updated is None:
-        await message.answer("❌ Эту рассылку уже нельзя изменить.", reply_markup=build_admin_back_kb("sender"))
+        await message.answer(
+            menu_text("Рассылка", "❌ Эту рассылку уже нельзя изменить.", markup=build_admin_back_kb("sender")),
+            reply_markup=build_admin_back_kb("sender"),
+        )
         return
     await message.answer(
-        _scheduled_broadcast_text(updated),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcast_text(updated),
+            markup=build_scheduled_broadcast_detail_kb(updated, page=page),
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(updated, page=page),
     )
 
@@ -752,13 +820,15 @@ async def handle_scheduled_broadcast_edit_audience(
     item = await get_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Запланированная рассылка не найдена.",
+            menu_text("Рассылка", "❌ Запланированная рассылка не найдена.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
     await state.update_data(edit_broadcast_id=item.id, edit_page=callback_data.page, edit_action="audience")
     await callback_query.message.edit_text(
-        "👥 Выберите новую аудиторию для рассылки:",
+        menu_text(
+            "Рассылка", "👥 Выберите новую аудиторию для рассылки:", markup=build_sender_kb(include_scheduled=False)
+        ),
         reply_markup=build_sender_kb(include_scheduled=False),
     )
 
@@ -774,12 +844,16 @@ async def handle_scheduled_broadcast_cancel(
     item = await cancel_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Эту рассылку уже нельзя отменить.",
+            menu_text("Рассылка", "❌ Эту рассылку уже нельзя отменить.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
     await callback_query.message.edit_text(
-        _scheduled_broadcast_text(item),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcast_text(item),
+            markup=build_scheduled_broadcast_detail_kb(item, page=callback_data.page),
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(item, page=callback_data.page),
     )
 
@@ -795,25 +869,33 @@ async def handle_scheduled_broadcast_send_now(
     item = await start_scheduled_broadcast(session, callback_data.broadcast_id)
     if item is None:
         await callback_query.message.edit_text(
-            "❌ Эту рассылку уже нельзя отправить сейчас.",
+            menu_text("Рассылка", "❌ Эту рассылку уже нельзя отправить сейчас.", markup=build_admin_back_kb("sender")),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
-    await callback_query.message.edit_text("⏳ Запускаю рассылку...")
+    await callback_query.message.edit_text(menu_text("Рассылка", "⏳ Запускаю рассылку..."))
     await release_session_early(session)
     try:
         result = await execute_scheduled_broadcast(item, bot=callback_query.bot)
     except Exception as exc:
         failed_item = await mark_scheduled_broadcast_failed(session, callback_data.broadcast_id, str(exc))
         await callback_query.message.edit_text(
-            _scheduled_broadcast_text(failed_item),
+            menu_text(
+                "Рассылка",
+                _scheduled_broadcast_text(failed_item),
+                markup=build_scheduled_broadcast_detail_kb(failed_item, page=callback_data.page),
+            ),
             reply_markup=build_scheduled_broadcast_detail_kb(failed_item, page=callback_data.page),
         )
         return
     if result.get("success"):
         updated = await mark_scheduled_broadcast_sent(session, callback_data.broadcast_id, result)
         await callback_query.message.edit_text(
-            _scheduled_broadcast_text(updated),
+            menu_text(
+                "Рассылка",
+                _scheduled_broadcast_text(updated),
+                markup=build_scheduled_broadcast_detail_kb(updated, page=callback_data.page),
+            ),
             reply_markup=build_scheduled_broadcast_detail_kb(updated, page=callback_data.page),
         )
         stats = result.get("stats") or {
@@ -824,7 +906,11 @@ async def handle_scheduled_broadcast_send_now(
             "avg_speed": 0,
         }
         await callback_query.message.answer(
-            _broadcast_result_text(result.get("recipients", 0), stats),
+            menu_text(
+                "Рассылка",
+                _broadcast_result_text(result.get("recipients", 0), stats),
+                markup=build_admin_back_kb("sender"),
+            ),
             reply_markup=build_admin_back_kb("sender"),
         )
         return
@@ -834,7 +920,11 @@ async def handle_scheduled_broadcast_send_now(
         result.get("message", "Broadcast failed"),
     )
     await callback_query.message.edit_text(
-        _scheduled_broadcast_text(failed_item),
+        menu_text(
+            "Рассылка",
+            _scheduled_broadcast_text(failed_item),
+            markup=build_scheduled_broadcast_detail_kb(failed_item, page=callback_data.page),
+        ),
         reply_markup=build_scheduled_broadcast_detail_kb(failed_item, page=callback_data.page),
     )
 
@@ -842,7 +932,7 @@ async def handle_scheduled_broadcast_send_now(
 @router.callback_query(F.data == "cancel_broadcast", IsAdminFilter())
 async def handle_broadcast_cancel(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.edit_text(
-        "🚫 Рассылка отменена.",
+        menu_text("Рассылка", "🚫 Рассылка отменена.", markup=build_admin_back_kb("sender")),
         reply_markup=build_admin_back_kb("sender"),
     )
     await state.clear()

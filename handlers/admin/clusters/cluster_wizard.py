@@ -10,6 +10,7 @@ from database import check_unique_server_name, get_servers
 from database.models import Server
 from filters.admin import IsAdminFilter
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .base import AdminClusterStates, router
 from .keyboard import (
@@ -27,13 +28,13 @@ from .keyboard import (
 async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
     servers = await get_servers(session, include_enabled=True)
 
-    text = (
-        "<b>🔧 Управление кластерами</b>\n\n"
-        "<blockquote>"
-        "🌐 <b>Кластеры</b> — это пространство серверов, в пределах которого создается подписка.\n"
-        "💡 Если вы хотите выдавать по 1 серверу, то добавьте всего 1 сервер в кластер."
-        "</blockquote>\n\n"
-        "<i>⚠️ <b>Важно:</b> Кластеры удаляются автоматически, если удалить все серверы внутри них.</i>\n\n"
+    text = menu_text(
+        "Кластеры",
+        "Пространство серверов, в котором создаётся подписка.",
+        quote(
+            "Нужен один сервер на клиента — держите в кластере ровно один сервер.",
+            "Кластер удаляется сам, когда из него убран последний сервер.",
+        ),
     )
 
     message = callback_query.message
@@ -51,11 +52,13 @@ async def handle_servers(callback_query: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(AdminClusterCallback.filter(F.action == "add"), IsAdminFilter())
 async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
-    text = (
-        "🔧 <b>Введите имя нового кластера:</b>\n\n"
-        "<b>Имя должно быть уникальным!</b>\n"
-        "<b>Имя не должно превышать 12 символов!</b>\n\n"
-        "<i>Пример:</i> <code>cluster1</code> или <code>us_east_1</code>"
+    text = menu_text(
+        "Новый кластер",
+        "Введите имя кластера.",
+        quote(
+            "Имя уникальное, не длиннее 12 символов.",
+            "Например: <code>cluster1</code>, <code>us_east_1</code>",
+        ),
     )
 
     await callback_query.message.edit_text(text=text, reply_markup=build_admin_back_kb("clusters"))
@@ -67,14 +70,22 @@ async def handle_clusters_add(callback_query: CallbackQuery, state: FSMContext):
 async def handle_cluster_name_input(message: Message, state: FSMContext):
     if not message.text:
         await message.answer(
-            text="❌ Имя кластера не может быть пустым! Попробуйте снова.",
+            text=menu_text(
+                "Кластеры",
+                "❌ Имя не может быть пустым.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
     if len(message.text) > 12:
         await message.answer(
-            text="❌ Имя кластера не должно превышать 12 символов! Попробуйте снова.",
+            text=menu_text(
+                "Кластеры",
+                "❌ Максимум 12 символов.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -82,10 +93,13 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
     cluster_name = message.text.strip()
     await state.update_data(cluster_name=cluster_name)
 
-    text = (
-        f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
-        "Рекомендуется указать локацию и номер сервера в имени.\n\n"
-        "<i>Пример:</i> <code>de1</code>, <code>fra1</code>, <code>fi2</code>"
+    text = menu_text(
+        "Имя сервера",
+        f"Сервер для кластера <b>{cluster_name}</b>.",
+        quote(
+            "Удобно указывать локацию и номер.",
+            "Например: <code>de1</code>, <code>fra1</code>, <code>fi2</code>",
+        ),
     )
 
     await message.answer(
@@ -100,7 +114,11 @@ async def handle_cluster_name_input(message: Message, state: FSMContext):
 async def handle_server_name_input(message: Message, state: FSMContext, session: Any):
     if not message.text:
         await message.answer(
-            text="❌ Имя сервера не может быть пустым. Попробуйте снова.",
+            text=menu_text(
+                "Кластеры",
+                "❌ Имя не может быть пустым.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -109,7 +127,11 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     if len(server_name) > 12:
         await message.answer(
-            text="❌ Имя сервера не должно превышать 12 символов. Попробуйте снова.",
+            text=menu_text(
+                "Кластеры",
+                "❌ Максимум 12 символов.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -119,20 +141,25 @@ async def handle_server_name_input(message: Message, state: FSMContext, session:
 
     if not await check_unique_server_name(session, server_name, cluster_name):
         await message.answer(
-            text="❌ Сервер с таким именем уже существует. Пожалуйста, выберите другое имя.",
+            text=menu_text(
+                "Кластеры",
+                "❌ Сервер с таким именем уже существует. Выберите другое имя.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
 
     await state.update_data(server_name=server_name)
 
-    text = (
-        f"<b>Введите API URL для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "🔍 Ссылку можно найти в адресной строке браузера при входе в панель управления сервером.\n\n"
-        "ℹ️ <b>Формат для 3X-UI:</b>\n"
-        "<code>https://your-domain.com:port/panel_path/</code>\n\n"
-        "ℹ️ <b>Формат для Remnawave:</b>\n"
-        "<code>https://your-domain.com/api</code>"
+    text = menu_text(
+        "API URL",
+        f"Для сервера <b>{server_name}</b> в кластере <b>{cluster_name}</b>.",
+        quote("Ссылку видно в адресной строке браузера при входе в панель."),
+        quote(
+            "3X-UI:\n<code>https://your-domain.com:port/panel_path/</code>",
+            "Remnawave:\n<code>https://your-domain.com/api</code>",
+        ),
     )
 
     await message.answer(
@@ -153,10 +180,13 @@ async def handle_api_url_input(message: Message, state: FSMContext):
 
     await state.update_data(api_url=api_url)
 
-    text = (
-        f"<b>Введите subscription_url для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        "Если вы используете Remnawave — введите <code>0</code>\n\n"
-        "<i>Формат:</i> <code>https://your_domain:port/sub_path</code>"
+    text = menu_text(
+        "Subscription URL",
+        f"Для сервера <b>{server_name}</b> в кластере <b>{cluster_name}</b>.",
+        quote(
+            "Формат: <code>https://your_domain:port/sub_path</code>",
+            "На Remnawave введите <code>0</code>.",
+        ),
     )
 
     await message.answer(text=text, reply_markup=build_admin_back_kb("clusters"))
@@ -175,8 +205,15 @@ async def handle_subscription_url_input(message: Message, state: FSMContext):
     await state.update_data(subscription_url=subscription_url)
 
     await message.answer(
-        text=f"<b>Введите inbound_id/Squads для сервера {server_name} в кластере {cluster_name}:</b>\n\n"
-        f"Для Remnawave это UUID Squads, для 3x-ui — просто ID (например, <code>1</code>).",
+        text=menu_text(
+            "Inbound ID / Squads",
+            f"Для сервера <b>{server_name}</b> в кластере <b>{cluster_name}</b>.",
+            quote(
+                "Remnawave — UUID сквада.",
+                "3x-ui — числовой ID, например <code>1</code>.",
+            ),
+            markup=build_admin_back_kb("clusters"),
+        ),
         reply_markup=build_admin_back_kb("clusters"),
     )
     await state.set_state(AdminClusterStates.waiting_for_inbound_id)
@@ -188,10 +225,11 @@ async def handle_inbound_id_input(message: Message, state: FSMContext):
     await state.update_data(inbound_id=inbound_id)
 
     await message.answer(
-        text=(
-            "🧩 <b>Выберите тип панели для этого сервера:</b>\n\n"
-            "⚠️ <b>Внимание:</b> Некоторые функции <b>Remnawave</b> находятся в разработке.\n"
-            "Поддержка режима выбора стран — <b>ограничена</b>."
+        text=menu_text(
+            "Тип панели",
+            "Выберите панель этого сервера.",
+            quote("⚠️ Часть функций Remnawave ещё в разработке, режим выбора стран поддержан ограниченно."),
+            markup=build_panel_type_kb(),
         ),
         reply_markup=build_panel_type_kb(),
     )
@@ -233,7 +271,12 @@ async def handle_panel_type_selection(
     session.add(new_server)
 
     await callback_query.message.edit_text(
-        text=f"✅ Сервер <b>{server_name}</b> с панелью <b>{panel_type}</b> успешно добавлен в кластер <b>{cluster_name}</b>!",
+        text=menu_text(
+            "Кластеры",
+            f"✅ Сервер <b>{server_name}</b> добавлен в кластер <b>{cluster_name}</b>.",
+            quote(f"Панель: {panel_type}"),
+            markup=build_admin_back_kb("clusters"),
+        ),
         reply_markup=build_admin_back_kb("clusters"),
     )
     await state.clear()
@@ -245,10 +288,11 @@ async def handle_add_server(callback_query: CallbackQuery, callback_data: AdminS
 
     await state.update_data(cluster_name=cluster_name)
 
-    text = (
-        f"<b>Введите имя сервера для кластера {cluster_name}:</b>\n\n"
-        "Рекомендуется указать локацию и номер сервера в имени.\n\n"
-        "<i>Пример:</i> <code>de1</code>, <code>fra1</code>, <code>fi2</code>"
+    text = menu_text(
+        "Кластеры",
+        f"Придумайте имя сервера для кластера <b>{cluster_name}</b>.",
+        quote("В имени удобно указывать локацию и номер сервера."),
+        section("💡 Пример", "de1, fra1, fi2"),
     )
 
     await callback_query.message.edit_text(

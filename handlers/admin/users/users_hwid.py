@@ -12,6 +12,7 @@ from panels.remnawave_runtime import (
 )
 from services.users_utils import resolve_admin_key
 
+from ..panel.headers import card, menu_text, quote, section
 from .keyboard import AdminUserEditorCallback, build_editor_kb, build_hwid_menu_kb
 
 
@@ -30,13 +31,13 @@ def _format_device_block(idx: int, device: dict) -> str:
     updated_raw = str(device.get("updatedAt") or "")[:19].replace("T", " ")
     created = html.escape(created_raw or "—")
     updated = html.escape(updated_raw or "—")
-    return (
-        f"<blockquote expandable><b>#{idx} · {model}</b>\n"
-        f"📟 <code>{hwid}</code>\n"
-        f"🧠 {platform} · {os_version}\n"
-        f"🌐 <i>{user_agent}</i>\n"
-        f"🕓 Создано: {created}\n"
-        f"🔄 Обновлено: {updated}</blockquote>"
+    return section(
+        f"📟 {idx}. {model}",
+        f"Система: {platform} {os_version}",
+        f"Клиент: {user_agent}",
+        f"HWID: {hwid}",
+        f"Создано: {created}",
+        f"Обновлено: {updated}",
     )
 
 
@@ -49,7 +50,10 @@ async def _render_admin_devices(
 ) -> None:
     key_obj = await resolve_admin_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.message.edit_text("🚫 Не удалось найти ключ.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Устройства", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
     client_id = key_obj.client_id
     key_email = key_obj.email
@@ -57,7 +61,7 @@ async def _render_admin_devices(
     remna_api_url = await resolve_remnawave_api_url(session, "", fallback_any=True)
     if not remna_api_url:
         await callback_query.message.edit_text(
-            "🚫 Нет доступного сервера Remnawave.",
+            menu_text("Устройства", "❌ Нет доступного сервера Remnawave.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -69,7 +73,7 @@ async def _render_admin_devices(
 
     result = await with_remnawave_api(session, "", _fetch, fallback_any=True, timeout_sec=8.0)
     if result is None:
-        await callback_query.message.edit_text("❌ Ошибка авторизации в Remnawave.")
+        await callback_query.message.edit_text(menu_text("Устройства", "❌ Ошибка авторизации в Remnawave."))
         return
 
     user_info, devices = result
@@ -99,18 +103,20 @@ async def _render_admin_devices(
             last_node_uuid = last_node_uuid_val
 
     total = len(devices)
-    header = (
-        "💻 <b>HWID устройства</b>\n\n"
-        f"{status_emoji} <b>Статус:</b> {status_text}\n"
-        f"└ 🕓 <b>Онлайн был:</b> {html.escape(online_at_str)}\n"
-        f"└ 🚀 <b>Первое подключение:</b> {html.escape(first_connected_str)}\n"
-        f"└ 🛰 <b>Нода:</b> <code>{html.escape(last_node_uuid)}</code>\n\n"
+    header = section(
+        f"{status_emoji} {status_text}",
+        f"Онлайн: {html.escape(online_at_str)}",
+        f"Первый вход: {html.escape(first_connected_str)}",
+        f"Нода: {html.escape(last_node_uuid)}",
+        f"Устройств: {total}",
     )
 
     if total == 0:
-        text = header + "🔌 Нет привязанных устройств."
+        text = card(header, quote("Привязанных устройств нет"))
         await callback_query.message.edit_text(
-            text,
+            menu_text(
+                "Устройства", text, markup=build_hwid_menu_kb(key_ref, tg_id, page=0, total_pages=0, devices_on_page=0)
+            ),
             reply_markup=build_hwid_menu_kb(key_ref, tg_id, page=0, total_pages=0, devices_on_page=0),
         )
         return
@@ -120,11 +126,10 @@ async def _render_admin_devices(
     start = page * DEVICES_PER_PAGE
     page_devices = devices[start : start + DEVICES_PER_PAGE]
 
-    body = "\n".join(_format_device_block(start + i + 1, dev) for i, dev in enumerate(page_devices))
-    text = header + f"🔗 Привязано устройств: <b>{total}</b>\n\n" + body
+    text = card(header, *[_format_device_block(start + i + 1, dev) for i, dev in enumerate(page_devices)])
 
     await callback_query.message.edit_text(
-        text,
+        menu_text("Устройства", text),
         reply_markup=build_hwid_menu_kb(
             key_ref,
             tg_id,
@@ -188,7 +193,7 @@ async def handle_hwid_unbind(
     tg_id = callback_data.tg_id
     key_obj = await resolve_admin_key(session, tg_id, key_ref)
     if not key_obj:
-        await callback_query.answer("🚫 Не удалось найти ключ.", show_alert=True)
+        await callback_query.answer("❌ Подписка не найдена.", show_alert=True)
         return
     client_id = key_obj.client_id
     key_email = key_obj.email
@@ -205,11 +210,11 @@ async def handle_hwid_unbind(
 
     result = await with_remnawave_api(session, "", _delete, fallback_any=True, timeout_sec=10.0)
     if result is None:
-        await callback_query.answer("❌ Устройство не найдено.", show_alert=True)
+        await callback_query.answer("Устройство не найдено", show_alert=True)
     elif result is False:
-        await callback_query.answer("❌ Не удалось отвязать устройство.", show_alert=True)
+        await callback_query.answer("Не удалось отвязать устройство", show_alert=True)
     else:
         await invalidate_remnawave_profile(session, "", str(client_id), fallback_any=True)
-        await callback_query.answer("✅ Устройство отвязано.")
+        await callback_query.answer(menu_text("Устройства", "✅ Устройство отвязано."))
 
     await _render_admin_devices(callback_query, session, key_ref, tg_id, page)

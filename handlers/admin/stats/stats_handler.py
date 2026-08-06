@@ -52,6 +52,7 @@ from utils.csv_export import (
     export_users_csv,
 )
 
+from ..panel.headers import card, content_width, keyboard_width, menu_text, menu_title, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
     build_audit_refresh_kb,
@@ -104,19 +105,6 @@ def _previous_moscow_day_window(now: datetime | None = None) -> tuple[datetime, 
 def _audit_success_event_counts(by_path: list[dict]) -> dict[str, int]:
     """Успешные события по шагам для бизнес-метрик в отчёте."""
     return {row["step"]: int(row.get("success", 0) or 0) for row in by_path}
-
-
-def _append_key_audit_steps(lines: list[str], by_path: list[dict]) -> None:
-    """Добавляет фиксированный список ключевых шагов клиента, включая нулевые значения."""
-    totals_by_step = {row["step"]: row for row in by_path}
-    lines.append("<b>Ключевые шаги клиента:</b>")
-    for step in KEY_AUDIT_STEPS_ORDER:
-        row = totals_by_step.get(step)
-        total = row["total"] if row else 0
-        success = row["success"] if row else 0
-        fail = row["fail"] if row else 0
-        label = AUDIT_STEP_LABELS.get(step, step)
-        lines.append(f"  • {label}: {total} (ок: {success}, ошибок: {fail})")
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats"), IsAdminFilter(), flags={"popup": True})
@@ -214,43 +202,27 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         sorted_buckets = sorted(duration_buckets.items(), key=lambda x: bucket_order.get(x[0], 999))
 
         for name, count in sorted_buckets:
-            tariff_stats_text += f"├ {name}: <b>{count}</b>\n"
+            tariff_stats_text += f"{name}: {count}\n"
 
         for _group_idx, (group, subgroups_dict) in enumerate(grouped_tariffs.items()):
             group_total = 0
             for tariffs_list in subgroups_dict.values():
                 group_total += sum(count for _, count in tariffs_list)
 
-            tariff_stats_text += f"Тариф <b>{group}</b> (<b>{group_total}</b>)\n"
+            tariff_stats_text += f"{group}: {group_total}\n"
             sorted_subgroups = sorted(subgroups_dict.items(), key=lambda x: (x[0] is None, x[0] or ""))
-            for subgroup_idx, (subgroup, tariffs) in enumerate(sorted_subgroups):
+            for subgroup, tariffs in sorted_subgroups:
                 sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
                 subgroup_total = sum(count for _, count in sorted_tariffs)
-                is_last_subgroup = subgroup_idx == len(sorted_subgroups) - 1
 
                 if subgroup:
-                    prefix = "└─" if is_last_subgroup else "├─"
-                    tariff_stats_text += f" {prefix} Подгруппа: <b>{subgroup}</b> (<b>{subgroup_total}</b>)\n"
+                    tariff_stats_text += f"  {subgroup}: {subgroup_total}\n"
 
-                for tariff_idx, (tid, count) in enumerate(sorted_tariffs):
+                for tid, count in sorted_tariffs:
                     name = tariff_names.get(tid, f"ID {tid}")
-                    is_last_tariff = tariff_idx == len(sorted_tariffs) - 1
+                    tariff_stats_text += f"{'  ' if subgroup else ''}{name}: {count}\n"
 
-                    if subgroup:
-                        if is_last_tariff and is_last_subgroup:
-                            prefix = "    └─"
-                        else:
-                            prefix = "    ├─"
-                    else:
-                        if is_last_tariff and is_last_subgroup:
-                            prefix = " └─"
-                        else:
-                            prefix = " ├─"
-                    tariff_stats_text += f"{prefix} {name}: <b>{count}</b>\n"
-
-        tariff_stats_text = (
-            "└ По тарифам и срокам:\n" + tariff_stats_text if tariff_stats_text else "└ Нет данных по тарифам\n"
-        )
+        tariff_rows = [row for row in tariff_stats_text.split("\n") if row.strip()]
 
         total_referrals = await count_total_referrals(session)
 
@@ -268,53 +240,51 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
 
         update_time = now.strftime("%d.%m.%y %H:%M:%S")
 
-        stats_message = (
-            f"📊 <b>Статистика проекта</b>\n\n"
-            f"👤 <b>Пользователи:</b>\n"
-            f"<blockquote>"
-            f"├ 🗓️ За день: <b>{registrations_today}</b>\n"
-            f"├ 🗓️ Вчера: <b>{registrations_yesterday}</b>\n"
-            f"├ 📆 За неделю: <b>{registrations_week}</b>\n"
-            f"├ 🗓️ За месяц: <b>{registrations_month}</b>\n"
-            f"├ 📅 За прошлый месяц: <b>{registrations_last_month}</b>\n"
-            f"└ 🌐 Всего: <b>{total_users}</b>\n"
-            f"</blockquote>\n"
-            f"🔗 <b>Связанные данные:</b>\n"
-            f"<blockquote>"
-            f"├ 📨 Учёток с e-mail: <b>{identities_with_email}</b>\n"
-            f"└ 💬 Привязанных Telegram: <b>{users_with_tg}</b>\n"
-            f"</blockquote>\n"
-            f"💡 <b>Активность:</b>\n"
-            f"└ 👥 Сегодня были активны: <b>{users_updated_today}</b>\n\n"
-            f"🤝 <b>Реферальная система:</b>\n"
-            f"└ 👥 Всего привлечено: <b>{total_referrals}</b>\n\n"
-            f"🔐 <b>Подписки:</b>\n"
-            f"<blockquote>"
-            f"├ 📦 Всего сгенерировано: <b>{total_keys}</b>\n"
-            f"├ ✅ Активных: <b>{active_keys}</b>\n"
-            f"│  ├ 💰 Платных: <b>{active_paid_keys}</b>\n"
-            f"│  └ 🧪 Триальных: <b>{active_trial_keys}</b>\n"
-            f"├ ❌ Просроченных: <b>{expired_keys}</b>\n"
-            f"{tariff_stats_text}"
-            f"</blockquote>\n"
-            f"💰 <b>Финансы:</b>\n"
-            f"<blockquote>"
-            f"├ 📅 За день: <b>{total_payments_today} ₽</b>\n"
-            f"├ 📆 Вчера: <b>{total_payments_yesterday} ₽</b>\n"
-            f"├ 📆 За неделю: <b>{total_payments_week} ₽</b>\n"
-            f"├ 📆 За месяц: <b>{total_payments_month} ₽</b>\n"
-            f"├ 📆 Прошлый месяц: <b>{total_payments_last_month} ₽</b>\n"
-            f"└ 🏦 Всего: <b>{total_payments_all_time} ₽</b>\n"
-            f"</blockquote>\n"
-            f"🔥 <b>Горячие лиды: {hot_leads_count}</b>\n"
-            f"⏱️ <i>Последнее обновление:</i> <code>{update_time}</code>"
+        stats_body = card(
+            section(
+                "👤 Клиенты",
+                f"Сегодня: {registrations_today}",
+                f"Вчера: {registrations_yesterday}",
+                f"Неделя: {registrations_week}",
+                f"Месяц: {registrations_month}",
+                f"Прошлый: {registrations_last_month}",
+                f"Всего: {total_users}",
+            ),
+            section(
+                "🔗 Аккаунты",
+                f"С почтой: {identities_with_email}",
+                f"С Telegram: {users_with_tg}",
+                f"Активны сегодня: {users_updated_today}",
+                f"Привлечено: {total_referrals}",
+            ),
+            section(
+                "🔐 Подписки",
+                f"Всего: {total_keys}",
+                f"Активных: {active_keys}",
+                f"Платных: {active_paid_keys}",
+                f"Пробных: {active_trial_keys}",
+                f"Просрочено: {expired_keys}",
+            ),
+            section(
+                "💰 Деньги",
+                f"Сегодня: {total_payments_today} ₽",
+                f"Вчера: {total_payments_yesterday} ₽",
+                f"Неделя: {total_payments_week} ₽",
+                f"Месяц: {total_payments_month} ₽",
+                f"Прошлый: {total_payments_last_month} ₽",
+                f"Всего: {total_payments_all_time} ₽",
+            ),
+            section("🔥 Горячие лиды", str(hot_leads_count)),
+            section("📦 По тарифам", *tariff_rows) if tariff_rows else "",
+            section("⏱ Обновлено", update_time),
         )
-
         extra_blocks = await run_hooks("admin_stats", session=session, now=now)
         if extra_blocks:
-            stats_message += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
+            stats_body += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
 
         new_kb = build_stats_kb()
+        width = max(content_width(stats_body), keyboard_width(new_kb))
+        stats_message = menu_title("Статистика проекта", width) + "\n\n" + stats_body
         current_text = callback_query.message.html_text or callback_query.message.text or ""
         cur_kb = callback_query.message.reply_markup
         cur_kb_json = cur_kb.model_dump_json() if cur_kb else None
@@ -333,7 +303,7 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
             logger.error(f"Error in user_stats_menu: {e}")
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
-        await callback_query.answer("Произошла ошибка при получении статистики", show_alert=True)
+        await callback_query.answer("Не удалось собрать статистику", show_alert=True)
 
 
 async def _build_stats_chart(session: AsyncSession, period: int):
@@ -401,7 +371,7 @@ async def handle_stats_charts(callback_query: CallbackQuery, callback_data: Admi
     try:
         chart, legend = await _build_stats_chart(session, period)
         if chart is None:
-            await callback_query.message.answer("❗ Не удалось построить график.")
+            await callback_query.message.answer(menu_text("Статистика", "❌ Не удалось построить график."))
             return
 
         photo = BufferedInputFile(chart.getvalue(), filename="stats.png")
@@ -431,7 +401,7 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
                 return (None, "Буфер Redis для аудита выключен.")
             summary = stats["summary"]
             by_path = stats["by_path"]
-            header = "📊 <b>Аудит</b> (Redis raw, без добора из БД)"
+            source_note = "Redis, без добора из БД"
         else:
             start_utc, end_utc, report_date = _previous_moscow_day_window(now)
             reset_at = await get_audit_db_reset_at(session)
@@ -441,33 +411,37 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
             funnel = await get_audit_funnel(session, date_from=effective_start_utc, date_to=end_utc)
             stats = await get_audit_stats(session, date_from=effective_start_utc, date_to=end_utc)
             if effective_start_utc != start_utc:
-                reset_note = f"🧹 Сброс БД: <b>{reset_at.astimezone(moscow_tz).strftime('%d.%m.%Y %H:%M')}</b>"
+                reset_note = reset_at.astimezone(moscow_tz).strftime("%d.%m.%y %H:%M")
             summary = stats["summary"]
             by_path = stats["by_path"]
-            header = f"📊 <b>Аудит</b> (БД за {report_date.strftime('%d.%m.%Y')} МСК)"
-        lines = [
-            header,
-            "",
-            (
-                f"📎 Сырых событий: <b>{summary.get('raw_total_events', summary['total_events'])}</b> │ "
-                f"Аналитических шагов: <b>{summary.get('analytics_total_events', summary['total_events'])}</b> │ "
-                f"Уникальных пользователей: <b>{summary['unique_users']}</b>"
+            source_note = f"БД за {report_date.strftime('%d.%m.%y')} МСК"
+        blocks = [
+            section("🗂 Источник", source_note),
+            section(
+                "📊 Событий",
+                f"Сырых: {summary.get('raw_total_events', summary['total_events'])}",
+                f"Шагов: {summary.get('analytics_total_events', summary['total_events'])}",
+                f"Клиентов: {summary['unique_users']}",
             ),
-            "",
         ]
         if reset_note:
-            lines.extend([reset_note, ""])
-        lines.extend([
-            "<b>По шагам (топ по объёму):</b>",
-        ])
+            blocks.append(section("🧹 Сброс БД", reset_note))
+
+        top_rows = []
         for row in by_path[:8]:
-            fail_mark = "⚠️" if row["fail_rate_pct"] > 10 else "✅"
-            lines.append(
-                f"{fail_mark} {row['label']}: {row['total']} (ок: {row['success']}, ошибок: {row['fail']}, {row['fail_rate_pct']}% ошибок)"
-            )
-        lines.append("")
-        _append_key_audit_steps(lines, by_path)
-        lines.append("")
+            mark = "⚠️" if row["fail_rate_pct"] > 10 else "✅"
+            top_rows.append(f"{mark} {row['label']}: {row['total']}")
+            top_rows.append(f"ок {row['success']}, ошибок {row['fail']} ({row['fail_rate_pct']}%)")
+        blocks.append(section("🔥 Топ шагов", *top_rows))
+
+        totals_by_step = {row["step"]: row for row in by_path}
+        step_rows = []
+        for step in KEY_AUDIT_STEPS_ORDER:
+            row = totals_by_step.get(step)
+            label = AUDIT_STEP_LABELS.get(step, step)
+            step_rows.append(f"{label}: {row['total'] if row else 0}")
+        blocks.append(section("🧭 Ключевые шаги", *step_rows))
+
         success_by_step = _audit_success_event_counts(by_path)
         pay_start = success_by_step.get("pay_start", 0)
         pay_ok = success_by_step.get("pay", 0)
@@ -475,16 +449,23 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
         connect_opened = success_by_step.get("connect", 0)
         pct_pay = round(100.0 * pay_ok / pay_start, 1) if pay_start else 0
         pct_connect = round(100.0 * connect_opened / key_created, 1) if key_created else 0
-        lines.append(f"<b>Оплата:</b> начало {pay_start}, успешная {pay_ok}, % успешных от созданных: {pct_pay}%")
-        lines.append(
-            f"<b>Подписка:</b> оформлена {key_created}, открыто подключение {connect_opened}, % от оформленных: {pct_connect}%"
+        blocks.append(section("💳 Оплата", f"Начато: {pay_start}", f"Оплачено: {pay_ok}", f"Доходит: {pct_pay}%"))
+        blocks.append(
+            section(
+                "🔐 Подписка",
+                f"Оформлено: {key_created}",
+                f"Подключено: {connect_opened}",
+                f"Доходит: {pct_connect}%",
+            )
         )
-        lines.append("")
-        lines.append("<b>Воронка (уник. пользователей по точным шагам):</b>")
+
+        funnel_rows = []
         for step in funnel:
             conv = f" → {step['conversion_from_prev_pct']}%" if step["conversion_from_prev_pct"] is not None else ""
-            lines.append(f"  • {step['label']}: {step['count']} польз.{conv}")
-        return ("\n".join(lines), None)
+            funnel_rows.append(f"{step['label']}: {step['count']}{conv}")
+        blocks.append(section("🪜 Воронка", *funnel_rows))
+
+        return (card(*blocks), None)
     except Exception as e:
         logger.exception("Ошибка при получении аудита: {}", e)
         return (None, str(e))
@@ -493,12 +474,14 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
 @router.message(F.text.in_(["Аудит", "аудит"]), IsAdminFilter())
 async def handle_audit_command(message: Message, session: AsyncSession):
     """По команде «Аудит» — предложить выбрать источник данных для отчёта."""
-    help_text = (
-        "📊 <b>Аудит</b>\n\n"
-        "Выберите источник данных:\n"
-        "• <b>Redis raw</b> — сырые последние события из буфера Redis, без добора успешных оплат из БД.\n"
-        "• <b>БД вчера</b> — агрегированный отчёт из базы за прошлые сутки: с 00:00 до 00:00 по Москве.\n\n"
-        "Сброс Redis очищает кэш аудита. Сброс БД применяется отдельно только при явном выборе в режиме БД."
+    help_text = menu_text(
+        "Аудит",
+        "Выберите источник данных.",
+        quote(
+            "<b>Redis raw</b> — сырые последние события из буфера, без добора успешных оплат из базы.",
+            "<b>БД вчера</b> — сводка из базы за прошлые сутки, с 00:00 до 00:00 по Москве.",
+        ),
+        quote("Сброс Redis чистит кэш аудита. Сброс базы применяется отдельно и только при явном выборе в режиме БД."),
     )
     await message.answer(help_text, reply_markup=build_audit_source_kb())
 
@@ -510,10 +493,13 @@ async def handle_audit_refresh(callback_query: CallbackQuery, session: AsyncSess
     source = "db"
     text, err = await _build_audit_report(session, source=source)
     if err:
-        await callback_query.message.edit_text(f"❗ Ошибка: {escape(err)}")
+        await callback_query.message.edit_text(menu_text("Статистика", f"❌ Ошибка: {escape(err)}"))
         return
     try:
-        await callback_query.message.edit_text(text, reply_markup=build_audit_refresh_kb(source))
+        await callback_query.message.edit_text(
+            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            reply_markup=build_audit_refresh_kb(source),
+        )
     except TelegramBadRequest:
         pass
 
@@ -525,10 +511,16 @@ async def handle_audit_refresh_redis(callback_query: CallbackQuery, session: Asy
     source = "redis"
     text, err = await _build_audit_report(session, source=source)
     if err:
-        await callback_query.message.edit_text(f"❗ Ошибка: {escape(err)}", reply_markup=build_audit_refresh_kb(source))
+        await callback_query.message.edit_text(
+            menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+            reply_markup=build_audit_refresh_kb(source),
+        )
         return
     try:
-        await callback_query.message.edit_text(text, reply_markup=build_audit_refresh_kb(source))
+        await callback_query.message.edit_text(
+            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            reply_markup=build_audit_refresh_kb(source),
+        )
     except TelegramBadRequest:
         pass
 
@@ -540,10 +532,16 @@ async def handle_audit_refresh_db(callback_query: CallbackQuery, session: AsyncS
     source = "db"
     text, err = await _build_audit_report(session, source=source)
     if err:
-        await callback_query.message.edit_text(f"❗ Ошибка: {escape(err)}", reply_markup=build_audit_refresh_kb(source))
+        await callback_query.message.edit_text(
+            menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+            reply_markup=build_audit_refresh_kb(source),
+        )
         return
     try:
-        await callback_query.message.edit_text(text, reply_markup=build_audit_refresh_kb(source))
+        await callback_query.message.edit_text(
+            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            reply_markup=build_audit_refresh_kb(source),
+        )
     except TelegramBadRequest:
         pass
 
@@ -555,11 +553,16 @@ async def handle_audit_reset_ask(callback_query: CallbackQuery):
     await callback_query.answer()
     source = "redis" if callback_query.data and "redis" in callback_query.data else "db"
     source_label = "Redis raw" if source == "redis" else "БД вчера"
-    text = f"🧹 <b>Сброс аудита</b>\n\nИсточник: <b>{source_label}</b>\nПодтвердите действие."
-    if source == "redis":
-        text += "\n\nБудет очищен только Redis-буфер отчёта аудита. История по пользователям останется."
-    else:
-        text += "\n\nВ БД будет записан отдельный сброс, который применится к DB-отчёту."
+    text = menu_text(
+        "Сброс аудита",
+        "Подтвердите действие.",
+        section("🗂 Источник", source_label),
+        quote(
+            "Очистится только Redis-буфер отчёта. История по клиентам останется."
+            if source == "redis"
+            else "В базу запишется отметка сброса, она применится к отчёту из БД."
+        ),
+    )
     try:
         await callback_query.message.edit_text(text, reply_markup=build_audit_reset_confirm_kb(source))
     except TelegramBadRequest:
@@ -578,15 +581,19 @@ async def handle_audit_reset_do(callback_query: CallbackQuery, session: AsyncSes
             await clear_audit_redis_buffers()
         else:
             await set_audit_db_reset_at(session)
-        await callback_query.answer("Аудит сброшен")
+        await callback_query.answer(menu_text("Статистика", "Аудит сброшен"))
         text, err = await _build_audit_report(session, source=source)
         if err:
             await callback_query.message.edit_text(
-                f"❗ Ошибка: {escape(err)}", reply_markup=build_audit_refresh_kb(source)
+                menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+                reply_markup=build_audit_refresh_kb(source),
             )
             return
         try:
-            await callback_query.message.edit_text(text, reply_markup=build_audit_refresh_kb(source))
+            await callback_query.message.edit_text(
+                menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+                reply_markup=build_audit_refresh_kb(source),
+            )
         except TelegramBadRequest:
             pass
     except Exception as e:
@@ -602,7 +609,9 @@ async def handle_export_users_csv(callback_query: CallbackQuery, session: AsyncS
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт пользователей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей: {e}")
-        await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
+        await callback_query.message.edit_text(
+            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
+        )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_payments_csv"), IsAdminFilter())
@@ -613,7 +622,9 @@ async def handle_export_payments_csv(callback_query: CallbackQuery, session: Asy
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт платежей в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей: {e}")
-        await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
+        await callback_query.message.edit_text(
+            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
+        )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_hot_leads_csv"), IsAdminFilter())
@@ -624,7 +635,9 @@ async def handle_export_hot_leads_csv(callback_query: CallbackQuery, session: As
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт горящих лидов")
     except Exception as e:
         logger.error(f"Ошибка при экспорте горящих лидов: {e}")
-        await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
+        await callback_query.message.edit_text(
+            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
+        )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats_export_keys_csv"), IsAdminFilter())
@@ -635,7 +648,9 @@ async def handle_export_keys_csv(callback_query: CallbackQuery, session: AsyncSe
         await callback_query.message.answer_document(document=export, caption="📅 Экспорт подписок в CSV")
     except Exception as e:
         logger.error(f"Ошибка при экспорте подписок: {e}")
-        await callback_query.message.edit_text(text=f"❗ Ошибка: {e}", reply_markup=kb)
+        await callback_query.message.edit_text(
+            text=menu_text("Статистика", f"❌ Ошибка: {e}", markup=kb), reply_markup=kb
+        )
 
 
 def _moscow_day_window(report_date: date, moscow_tz) -> tuple[datetime, datetime]:
@@ -648,13 +663,13 @@ def _fmt_num(value: float) -> str:
     return f"{round(float(value)):,}".replace(",", " ")
 
 
-def _format_trend(current: float, previous: float, suffix: str = "", label: str = " к пред. дню") -> str:
+def _format_trend(current: float, previous: float, suffix: str = "", label: str = "") -> str:
+    """Возвращает изменение к прошлому периоду одной короткой пометкой."""
     diff = round(current - previous, 2)
     if diff == 0:
-        return " <i>→ без изм.</i>"
-    arrow = "📈" if diff > 0 else "📉"
+        return ""
     sign = "+" if diff > 0 else "−"
-    return f" <i>{arrow} {sign}{_fmt_num(abs(diff))}{suffix}{label}</i>"
+    return f" ({sign}{_fmt_num(abs(diff))}{suffix}{label})"
 
 
 async def _day_users_revenue(session, moscow_tz, day: date) -> tuple[int, float]:
@@ -755,34 +770,42 @@ async def send_daily_stats_report(session: AsyncSession):
         week_users = int(sum(users_series[-7:]))
         week_revenue = sum(revenue_series[-7:])
 
-        text = (
-            f"🌙 <b>Ежедневная сводка</b>\n"
-            f"📅 <i>{report_date.strftime('%d.%m.%Y')} · 00:00–23:59 МСК</i>\n\n"
-            f"💰 <b>За день</b>\n"
-            f"<blockquote>"
-            f"Доход: <b>{_fmt_num(revenue)} ₽</b>{_format_trend(revenue, revenue_prev, ' ₽', '')}\n"
-            f"Платежей: <b>{pay_count}</b> · ср. чек <b>{_fmt_num(avg_check)} ₽</b>\n"
-            f"Новых польз.: <b>{new_users}</b>{_format_trend(new_users, new_users_prev, '', '')}"
-            f"</blockquote>\n"
-            f"📦 <b>Подписки</b>\n"
-            f"<blockquote>"
-            f"Новые: <b>{created}</b> · продления: <b>{renewed}</b>\n"
-            f"Отток: <b>{expired}</b> · прирост: <b>{net_str}</b>\n"
-            f"Активных сейчас: <b>{_fmt_num(active_total)}</b> · база: <b>{_fmt_num(total_users)}</b>"
-            f"</blockquote>\n"
-            f"📊 <b>Динамика за 14 дней</b>\n"
-            f"<blockquote>"
-            f"Среднее/день: <b>{avg_users}</b> польз. · <b>{_fmt_num(avg_revenue)} ₽</b>\n"
-            f"Лучший день: <b>{best_label}</b> — <b>{_fmt_num(best_revenue)} ₽</b>\n"
-            f"Последние 7 дней: <b>{_fmt_num(week_users)}</b> польз. · <b>{_fmt_num(week_revenue)} ₽</b>"
-            f"</blockquote>\n"
-            f"🔮 <b>Прогноз по темпу дня</b>\n"
-            f"<blockquote>"
-            f"Неделя: <b>~{_fmt_num(new_users * 7)}</b> польз. · <b>~{_fmt_num(revenue * 7)} ₽</b>\n"
-            f"Месяц: <b>~{_fmt_num(new_users * 30)}</b> польз. · <b>~{_fmt_num(revenue * 30)} ₽</b>"
-            f"</blockquote>\n"
-            f"📉 <i>{chart_legend(panels)}</i>\n"
-            f"⏱️ <i>Сформировано: {update_time} МСК</i>"
+        text = menu_text(
+            "Сводка за день",
+            f"{report_date.strftime('%d.%m.%Y')}",
+            card(
+                section(
+                    "💰 Деньги",
+                    f"Доход: {_fmt_num(revenue)} ₽{_format_trend(revenue, revenue_prev)}",
+                    f"Платежей: {pay_count}",
+                    f"Средний чек: {_fmt_num(avg_check)} ₽",
+                ),
+                section(
+                    "👤 Клиенты",
+                    f"Новых: {new_users}{_format_trend(new_users, new_users_prev)}",
+                    f"Всего: {_fmt_num(total_users)}",
+                ),
+                section(
+                    "📦 Подписки",
+                    f"Новые: {created}",
+                    f"Продления: {renewed}",
+                    f"Отток: {expired}",
+                    f"Прирост: {net_str}",
+                    f"Активных: {_fmt_num(active_total)}",
+                ),
+                section(
+                    "📊 За 14 дней",
+                    f"В день: {avg_users} и {_fmt_num(avg_revenue)} ₽",
+                    f"Лучший: {best_label} — {_fmt_num(best_revenue)} ₽",
+                    f"Неделя: {_fmt_num(week_users)} и {_fmt_num(week_revenue)} ₽",
+                ),
+                section(
+                    "🔮 Прогноз",
+                    f"Неделя: {_fmt_num(revenue * 7)} ₽",
+                    f"Месяц: {_fmt_num(revenue * 30)} ₽",
+                ),
+                section("⏱ Собрано", f"{update_time} МСК"),
+            ),
         )
 
         await _send_report_to_admins(session, text, chart)
@@ -863,23 +886,24 @@ async def send_monthly_stats_report(session: AsyncSession):
         avg_revenue = round(revenue_total / days_in_month, 1) if days_in_month else 0
 
         month_title = f"{_MONTH_NAMES_RU.get(last_day.month, '')} {last_day.year}"
-        prev_label = " к пред. месяцу"
-        text = (
-            f"📊 <b>Ежемесячный отчёт</b>\n"
-            f"🗓️ <i>{month_title}</i>\n\n"
-            f"👥 <b>Итоги месяца</b>\n"
-            f"<blockquote>"
-            f"Новых польз.: <b>{_fmt_num(users_total)}</b>{_format_trend(users_total, users_prev, '', prev_label)}\n"
-            f"Доход: <b>{_fmt_num(revenue_total)} ₽</b>{_format_trend(revenue_total, revenue_prev, ' ₽', prev_label)}"
-            f"</blockquote>\n"
-            f"📈 <b>Среднее и рекорды</b>\n"
-            f"<blockquote>"
-            f"Среднее/день: <b>{avg_users}</b> польз. · <b>{_fmt_num(avg_revenue)} ₽</b>\n"
-            f"Лучший день: <b>{best_day_label}</b> — <b>{_fmt_num(best_day_value)} ₽</b>\n"
-            f"Дней в месяце: <b>{days_in_month}</b>"
-            f"</blockquote>\n"
-            f"📉 <i>{chart_legend(panels)}</i>\n"
-            f"⏱️ <i>Сформировано: {update_time} МСК</i>"
+        text = menu_text(
+            "Отчёт за месяц",
+            month_title,
+            card(
+                section(
+                    "👤 Итоги",
+                    f"Новых клиентов: {_fmt_num(users_total)}{_format_trend(users_total, users_prev)}",
+                    f"Доход: {_fmt_num(revenue_total)} ₽{_format_trend(revenue_total, revenue_prev)}",
+                ),
+                section(
+                    "📈 В среднем",
+                    f"Клиентов в день: {avg_users}",
+                    f"Дохода в день: {_fmt_num(avg_revenue)} ₽",
+                    f"Дней в месяце: {days_in_month}",
+                ),
+                section("🏆 Лучший день", f"{best_day_label}: {_fmt_num(best_day_value)} ₽"),
+                section("⏱ Собрано", f"{update_time} МСК"),
+            ),
         )
 
         await _send_report_to_admins(session, text, chart)

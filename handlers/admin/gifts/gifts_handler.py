@@ -17,6 +17,7 @@ from logger import logger
 from settings.buttons import BACK
 from settings.texts import get_site_gift_link
 
+from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import build_admin_gifts_kb, build_gifts_list_kb
 
@@ -33,9 +34,12 @@ class GiftCreationState(StatesGroup):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "gifts"), IsAdminFilter())
 async def admin_gift_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        text="🎁 <b>Подарки</b>\nВыберите, что хотите сделать:", reply_markup=build_admin_gifts_kb()
+    text = menu_text(
+        "Подарки",
+        "Подписка в подарок по ссылке.",
+        quote("Клиент открывает ссылку и забирает подписку из группы тарифов «gifts»."),
     )
+    await callback.message.edit_text(text=text, reply_markup=build_admin_gifts_kb())
 
 
 @router.callback_query(F.data == "admin_gift_create", IsAdminFilter())
@@ -47,7 +51,10 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
     if not tariffs:
         builder = InlineKeyboardBuilder()
         builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
-        await callback.message.edit_text("❌ Нет активных тарифов в группе 'gifts'.", reply_markup=builder.as_markup())
+        await callback.message.edit_text(
+            menu_text("Подарки", "❌ Нет активных тарифов в группе 'gifts'.", markup=builder.as_markup()),
+            reply_markup=builder.as_markup(),
+        )
         return
 
     grouped_tariffs = defaultdict(list)
@@ -81,7 +88,10 @@ async def admin_create_gift_step1(callback: CallbackQuery, session: AsyncSession
 
     builder.row(types.InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack()))
 
-    await callback.message.edit_text("🎁 Выберите тариф для подарка:", reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        menu_text("Подарки", "🎁 Выберите тариф для подарка:", markup=builder.as_markup()),
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.callback_query(F.data.startswith("admin_gift_subgroup|"), IsAdminFilter())
@@ -91,13 +101,13 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
 
         subgroup = await find_subgroup_by_hash(session, subgroup_hash, "gifts")
         if not subgroup:
-            await callback.message.edit_text("❌ Подгруппа не найдена.")
+            await callback.message.edit_text(menu_text("Подарки", "❌ Подгруппа не найдена."))
             return
 
         tariffs = await get_tariffs(session, group_code="gifts")
         filtered = [t for t in tariffs if t.get("subgroup_title") == subgroup and t.get("is_active")]
         if not filtered:
-            await callback.message.edit_text("❌ В этой подгруппе пока нет тарифов.")
+            await callback.message.edit_text(menu_text("Подарки", "❌ В этой подгруппе пока нет тарифов."))
             return
 
         builder = InlineKeyboardBuilder()
@@ -118,13 +128,13 @@ async def admin_gift_show_tariffs_in_subgroup(callback: CallbackQuery, session: 
 
         await edit_or_send_message(
             target_message=callback.message,
-            text=f"<b>{subgroup}</b>\n\nВыберите тариф:",
+            text=menu_text("Подарки", f"<b>{subgroup}</b>", quote("Выберите тариф:"), markup=builder.as_markup()),
             reply_markup=builder.as_markup(),
         )
 
     except Exception as e:
         logger.error(f"[ADMIN_GIFT_SUBGROUP] Ошибка при отображении подгруппы: {e}")
-        await callback.message.answer("❌ Произошла ошибка при отображении тарифов.")
+        await callback.message.answer(menu_text("Подарки", "❌ Не удалось показать тарифы."))
 
 
 @router.callback_query(F.data.startswith("admin_gift_select|"), IsAdminFilter())
@@ -136,7 +146,8 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardBuilder()
     kb.button(text=BACK, callback_data="admin_gift_create")
     await callback.message.edit_text(
-        "🔢 Введите максимальное количество активаций подарка:", reply_markup=kb.as_markup()
+        menu_text("Подарки", "🔢 Сколько раз подарок можно активировать?", markup=kb.as_markup()),
+        reply_markup=kb.as_markup(),
     )
 
 
@@ -159,7 +170,7 @@ async def handle_limited_gift_input(message: types.Message, session: AsyncSessio
         if max_usages <= 0:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введите корректное положительное число.")
+        await message.answer(menu_text("Подарки", "❌ Введите корректное положительное число."))
         return
 
     data = await state.get_data()
@@ -190,13 +201,15 @@ async def show_gift_list(callback: CallbackQuery, session: AsyncSession, page: i
     if not gifts:
         builder = InlineKeyboardBuilder()
         builder.button(text=BACK, callback_data=AdminPanelCallback(action="gifts").pack())
-        await callback.message.edit_text("❌ Подарки не найдены.", reply_markup=builder.as_markup())
+        await callback.message.edit_text(
+            menu_text("Подарки", "❌ Подарки не найдены.", markup=builder.as_markup()), reply_markup=builder.as_markup()
+        )
         return
 
     keyboard = build_gifts_list_kb(gifts, page, total=len(gifts))
 
     await callback.message.edit_text(
-        f"🎁 <b>Список подарков</b>\nСтраница {page}:",
+        menu_text("Подарки", f"Страница {page}.", markup=keyboard),
         reply_markup=keyboard,
     )
 
@@ -209,7 +222,7 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
     gift = result.scalar_one_or_none()
 
     if not gift:
-        await callback.message.edit_text("❌ Подарок не найден.")
+        await callback.message.edit_text(menu_text("Подарки", "❌ Подарок не найден."))
         return
 
     usage_result = await session.execute(
@@ -224,20 +237,18 @@ async def view_gift(callback: CallbackQuery, session: AsyncSession):
     else:
         duration_text = format_days(duration_days)
 
-    text = (
-        f"🎁 <b>Подарок</b>\n"
-        f"ID: <code>{gift.gift_id}</code>\n"
-        f"Срок: <b>{duration_text}</b>\n"
-        f"Активаций: <b>{usage_text}</b>\n"
-        f"<b>Ссылки для активации:</b>\n"
-        f"<blockquote>🌐 {get_site_gift_link(gift.gift_id)}\n🤖 {gift.gift_link}</blockquote>"
+    text = card(
+        section("🎁 Подарок", f"ID: {gift.gift_id}", f"Срок: {duration_text}", f"Активаций: {usage_text}"),
+        section("🔗 Ссылки", f"Сайт: {get_site_gift_link(gift.gift_id)}", f"Бот: {gift.gift_link}"),
     )
 
     builder = InlineKeyboardBuilder()
     builder.button(text="🗑 Удалить", callback_data=f"gift_delete|{gift_id}")
     builder.button(text=BACK, callback_data="admin_gifts_all")
 
-    await callback.message.edit_text(text, reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        menu_text("Подарок", text, markup=builder.as_markup()), reply_markup=builder.as_markup()
+    )
 
 
 @router.callback_query(F.data.startswith("gift_delete|"), IsAdminFilter())
@@ -250,4 +261,6 @@ async def delete_gift(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.button(text="🔙 Назад к списку", callback_data="admin_gifts_all")
 
-    await callback.message.edit_text("✅ Подарок удалён.", reply_markup=builder.as_markup())
+    await callback.message.edit_text(
+        menu_text("Подарки", "✅ Подарок удалён.", markup=builder.as_markup()), reply_markup=builder.as_markup()
+    )

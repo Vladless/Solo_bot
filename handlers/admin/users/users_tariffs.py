@@ -24,6 +24,7 @@ from services.operations import renew_key_in_cluster
 from services.users_utils import resolve_admin_key
 from settings.buttons import BACK
 
+from ..panel.headers import menu_text, quote, section
 from .keyboard import AdminUserEditorCallback, build_editor_kb
 from .users_keys import handle_key_edit
 from .users_states import RenewTariffState
@@ -44,7 +45,7 @@ async def handle_back_to_key_menu(
     await state.clear()
 
     if not email or not tg_id:
-        await callback_query.message.edit_text("❌ Не найдены данные сессии.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         return
 
     callback_data = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
@@ -70,7 +71,10 @@ async def handle_user_choose_tariff_group(
     tg_id = callback_data.tg_id
     key_obj = await resolve_admin_key(session, tg_id, callback_data.data)
     if not key_obj:
-        await callback_query.message.edit_text("❌ Ключ не найден.", reply_markup=build_editor_kb(tg_id))
+        await callback_query.message.edit_text(
+            menu_text("Тариф клиента", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
+            reply_markup=build_editor_kb(tg_id),
+        )
         return
     email = key_obj.email
 
@@ -86,7 +90,7 @@ async def handle_user_choose_tariff_group(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text="📁 <b>Выберите тарифную группу:</b>",
+        text=menu_text("Тариф клиента", "Выберите группу.", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
 
@@ -104,7 +108,7 @@ async def handle_user_choose_tariff(
     tariffs = await get_active_tariffs_by_group_code(session, group_code)
 
     if not tariffs:
-        await callback_query.message.edit_text("❌ Нет активных тарифов в группе.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Нет активных тарифов в группе."))
         return
 
     builder = InlineKeyboardBuilder()
@@ -114,7 +118,11 @@ async def handle_user_choose_tariff(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text=f"📦 <b>Выберите тариф для группы <code>{group_code}</code>:</b>",
+        text=menu_text(
+            "Тариф клиента",
+            f"Тариф из группы <b>{group_code}</b>.",
+            markup=builder.as_markup(),
+        ),
         reply_markup=builder.as_markup(),
     )
 
@@ -131,19 +139,19 @@ async def handle_user_renew_confirm(
     tg_id = data.get("tg_id")
 
     if not email or not tg_id:
-        await callback_query.message.edit_text("❌ Не найдены данные сессии.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         await state.clear()
         return
 
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
-        await callback_query.message.edit_text("❌ Тариф не найден.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Тариф не найден."))
         await state.clear()
         return
 
     key_obj = await get_key_by_email(session, email, tg_id)
     if not key_obj:
-        await callback_query.message.edit_text("❌ Ключ не найден.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Ключ не найден."))
         await state.clear()
         return
 
@@ -180,7 +188,7 @@ async def handle_user_renew_confirm(
 
         if not device_int_options and not traffic_int_options:
             await callback_query.message.edit_text(
-                "❌ Конфигуратор для этого тарифа не настроен. Попробуйте выбрать другой тариф."
+                menu_text("Конфигуратор", "Для этого тарифа он не настроен.", quote("Выберите другой тариф."))
             )
             await state.clear()
             return
@@ -294,11 +302,17 @@ async def handle_user_renew_confirm(
 
         await callback_query.message.edit_text(
             text=(
-                "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
-                f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
-                f"📱 <b>Устройства:</b> {devices_label}\n"
-                f"📊 <b>Трафик:</b> {traffic_label}\n\n"
-                "Выберите параметры и нажмите «✅ Применить»."
+                menu_text(
+                    "Конфигурация тарифа",
+                    "Выберите параметры и нажмите «Применить».",
+                    section(
+                        "📦 Тариф",
+                        f"Название: {tariff.get('name', '—')}",
+                        f"Устройства: {devices_label}",
+                        f"Трафик: {traffic_label}",
+                    ),
+                    markup=builder.as_markup(),
+                )
             ),
             reply_markup=builder.as_markup(),
         )
@@ -351,7 +365,9 @@ async def handle_user_renew_confirm(
     await state.clear()
 
     if not ok:
-        await callback_query.message.answer("❌ Не удалось обновить подписку на серверах (renew).")
+        await callback_query.message.answer(
+            menu_text("Тариф клиента", "❌ Не удалось обновить подписку на серверах (renew).")
+        )
 
     callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
 
@@ -368,14 +384,14 @@ async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMCont
 
     data = await state.get_data()
     if int(data.get("renew_tariff_id") or 0) != tariff_id:
-        await callback_query.answer("⚠️ Сессия устарела", show_alert=True)
+        await callback_query.answer("Сессия устарела", show_alert=True)
         return
 
     await state.update_data(renew_selected_device_limit=value)
 
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
-        await callback_query.message.edit_text("❌ Тариф не найден.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -460,12 +476,15 @@ async def handle_cfg_renew_devices(callback_query: CallbackQuery, state: FSMCont
         else (f"{int(selected_traffic_gb)} ГБ" if selected_traffic_gb is not None else "—")
     )
 
-    text = (
-        "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
-        f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
-        f"📱 <b>Устройства:</b> {devices_label}\n"
-        f"📊 <b>Трафик:</b> {traffic_label}\n\n"
-        "Выберите параметры и нажмите «✅ Применить»."
+    text = menu_text(
+        "Конфигурация тарифа",
+        "Выберите параметры и нажмите «Применить».",
+        section(
+            "📦 Тариф",
+            f"Название: {tariff.get('name', '—')}",
+            f"Устройства: {devices_label}",
+            f"Трафик: {traffic_label}",
+        ),
     )
 
     try:
@@ -485,14 +504,14 @@ async def handle_cfg_renew_traffic(callback_query: CallbackQuery, state: FSMCont
 
     data = await state.get_data()
     if int(data.get("renew_tariff_id") or 0) != tariff_id:
-        await callback_query.answer("⚠️ Сессия устарела", show_alert=True)
+        await callback_query.answer("Сессия устарела", show_alert=True)
         return
 
     await state.update_data(renew_selected_traffic_gb=value)
 
     tariff = await get_tariff_by_id(session, tariff_id)
     if not tariff:
-        await callback_query.message.edit_text("❌ Тариф не найден.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -577,12 +596,15 @@ async def handle_cfg_renew_traffic(callback_query: CallbackQuery, state: FSMCont
     )
     traffic_label = "Безлимит трафика" if selected_traffic_gb <= 0 else f"{selected_traffic_gb} ГБ"
 
-    text = (
-        "🧩 <b>Выбор конфигурации тарифа</b>\n\n"
-        f"📦 <b>Тариф:</b> {tariff.get('name', '—')}\n"
-        f"📱 <b>Устройства:</b> {devices_label}\n"
-        f"📊 <b>Трафик:</b> {traffic_label}\n\n"
-        "Выберите параметры и нажмите «✅ Применить»."
+    text = menu_text(
+        "Конфигурация тарифа",
+        "Выберите параметры и нажмите «Применить».",
+        section(
+            "📦 Тариф",
+            f"Название: {tariff.get('name', '—')}",
+            f"Устройства: {devices_label}",
+            f"Трафик: {traffic_label}",
+        ),
     )
 
     try:
@@ -604,12 +626,12 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
     tg_id = data.get("tg_id")
 
     if not email or not tg_id:
-        await callback_query.message.edit_text("❌ Не найдены данные сессии.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         await state.clear()
         return
 
     if int(data.get("renew_tariff_id") or 0) != tariff_id:
-        await callback_query.message.edit_text("❌ Сессия устарела. Выберите тариф заново.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Сессия устарела. Выберите тариф заново."))
         await state.clear()
         return
 
@@ -617,13 +639,13 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
     selected_traffic_gb = data.get("renew_selected_traffic_gb")
 
     if selected_devices is None and selected_traffic_gb is None:
-        await callback_query.message.edit_text("❌ Не выбраны параметры конфигурации.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не выбраны параметры конфигурации."))
         await state.clear()
         return
 
     key_obj = await get_key_by_email(session, email, tg_id)
     if not key_obj:
-        await callback_query.message.edit_text("❌ Ключ не найден.")
+        await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Ключ не найден."))
         await state.clear()
         return
 
@@ -664,7 +686,9 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
     await state.clear()
 
     if not ok:
-        await callback_query.message.answer("❌ Не удалось обновить подписку на серверах (renew).")
+        await callback_query.message.answer(
+            menu_text("Тариф клиента", "❌ Не удалось обновить подписку на серверах (renew).")
+        )
 
     callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=int(tg_id))
 
@@ -688,7 +712,7 @@ async def handle_back_to_group(
     builder.adjust(1)
 
     await callback_query.message.edit_text(
-        text="📁 <b>Выберите тарифную группу:</b>",
+        text=menu_text("Тариф клиента", "Выберите группу.", markup=builder.as_markup()),
         reply_markup=builder.as_markup(),
     )
     await state.set_state(RenewTariffState.selecting_group)

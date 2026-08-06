@@ -141,7 +141,7 @@ def build_providers_order_kb(sorted_names: list[str]) -> InlineKeyboardMarkup:
                 ).pack(),
             ),
             InlineKeyboardButton(
-                text=f"{pos}. {title}",
+                text=f"{pos}. {title[:15]}",
                 callback_data=AdminPanelCallback(
                     action="settings_providers_order",
                 ).pack(),
@@ -315,43 +315,26 @@ def build_settings_remnawave_node_kb(
     node_enabled: bool, interval_min: int, auto_disable_enabled: bool = False
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ Выключить проверку" if node_enabled else "❌ Включить проверку",
-            callback_data=AdminPanelCallback(action="rw_node_toggle").pack(),
-        )
+    builder.button(
+        text="✅ Проверка вкл" if node_enabled else "❌ Проверка выкл",
+        callback_data=AdminPanelCallback(action="rw_node_toggle").pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text=f"⏱ Интервал: {interval_min} мин.",
-            callback_data=AdminPanelCallback(action="rw_node_interval").pack(),
-        )
+    builder.button(
+        text=f"⏱ Интервал: {interval_min} мин",
+        callback_data=AdminPanelCallback(action="rw_node_interval").pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text=f"{'✅' if auto_disable_enabled else '❌'} Авто-отключение хостов нод",
-            callback_data=AdminPanelCallback(action="rw_autodisable_toggle").pack(),
-        )
+    builder.button(
+        text=f"{'✅' if auto_disable_enabled else '❌'} Авто-отключение",
+        callback_data=AdminPanelCallback(action="rw_autodisable_toggle").pack(),
     )
     if auto_disable_enabled:
-        builder.row(
-            InlineKeyboardButton(
-                text="🔌 Синхронизировать хосты сейчас",
-                callback_data=AdminPanelCallback(action="rw_node_sync_now").pack(),
-            )
+        builder.button(
+            text="🔌 Синхронизировать",
+            callback_data=AdminPanelCallback(action="rw_node_sync_now").pack(),
         )
-    builder.row(
-        InlineKeyboardButton(
-            text="🖧 Выбрать ноды для проверки",
-            callback_data=AdminPanelCallback(action="rw_node_sel").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=BACK,
-            callback_data=AdminPanelCallback(action="settings_remnawave").pack(),
-        )
-    )
+    builder.button(text="🖧 Выбрать ноды", callback_data=AdminPanelCallback(action="rw_node_sel").pack())
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_remnawave").pack()))
     return builder.as_markup()
 
 
@@ -404,11 +387,11 @@ def build_settings_remnawave_health_nodes_kb(
 
     builder.row(
         InlineKeyboardButton(
-            text="✅ Выбрать все на странице",
+            text="✅ Все на странице",
             callback_data=AdminPanelCallback(action="rw_node_sel_all", page=page).pack(),
         ),
         InlineKeyboardButton(
-            text="▫️ Сбросить страницу",
+            text="▫️ Снять все",
             callback_data=AdminPanelCallback(action="rw_node_sel_clear", page=page).pack(),
         ),
     )
@@ -423,36 +406,18 @@ def build_settings_remnawave_health_nodes_kb(
 
 def build_settings_remnawave_rotation_kb(rotation_enabled: bool, interval_min: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ Выключить ротацию" if rotation_enabled else "❌ Включить ротацию",
-            callback_data=AdminPanelCallback(action="rw_rot_toggle").pack(),
-        )
+    builder.button(
+        text="✅ Ротация вкл" if rotation_enabled else "❌ Ротация выкл",
+        callback_data=AdminPanelCallback(action="rw_rot_toggle").pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text=f"⏱ Интервал: {interval_min} мин.",
-            callback_data=AdminPanelCallback(action="rw_rot_interval").pack(),
-        )
+    builder.button(
+        text=f"⏱ Интервал: {interval_min} мин",
+        callback_data=AdminPanelCallback(action="rw_rot_interval").pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="📋 Выбрать хосты",
-            callback_data=AdminPanelCallback(action="rw_rot_hosts", page=1).pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔀 Перемешать сейчас",
-            callback_data=AdminPanelCallback(action="rw_rot_run_now").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text=BACK,
-            callback_data=AdminPanelCallback(action="settings_remnawave").pack(),
-        )
-    )
+    builder.button(text="📋 Выбрать хосты", callback_data=AdminPanelCallback(action="rw_rot_hosts", page=1).pack())
+    builder.button(text="🔀 Перемешать", callback_data=AdminPanelCallback(action="rw_rot_run_now").pack())
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="settings_remnawave").pack()))
     return builder.as_markup()
 
 
@@ -505,7 +470,7 @@ def build_settings_remnawave_hosts_kb(
 
     builder.row(
         InlineKeyboardButton(
-            text="✅ Включить все на странице",
+            text="✅ Все на странице",
             callback_data=AdminPanelCallback(action="rw_rot_select_all", page=page).pack(),
         ),
         InlineKeyboardButton(

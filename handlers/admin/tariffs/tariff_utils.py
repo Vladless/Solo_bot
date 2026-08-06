@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardMarkup
 from database.models import Tariff
 from services.tariffs.visibility import describe_visibility
 
+from ..panel.headers import quote
 from .keyboard import build_single_tariff_kb
 
 
@@ -84,8 +85,9 @@ async def check_tariff_price_monotonicity(session, tariff) -> list[str]:
             )
         elif o_dev >= dev and o_trf >= trf and o_price < price:
             warnings.append(
-                f"«{other.name}» ({o_price} ₽, {_lbl(o_dev)} устр / {_lbl(o_trf)} ГБ) — ресурсов не меньше, "
-                f"чем у «{name}» ({price} ₽, {_lbl(dev)} / {_lbl(trf)}), но цена ниже"
+                f"«{other.name}» — {o_price} ₽ за {_lbl(o_dev)} устр. и {_lbl(o_trf)} ГБ.\n"
+                f"У «{name}» ресурсов не больше, а цена выше: {price} ₽ "
+                f"за {_lbl(dev)} и {_lbl(trf)}."
             )
     return warnings
 
@@ -94,13 +96,11 @@ def format_price_monotonicity_warning(warnings: list[str]) -> str:
     """Блок предупреждения для добавления к карточке тарифа. Пусто — если нет проблем."""
     if not warnings:
         return ""
-    lines = "\n".join(f"• {w}" for w in warnings)
-    return (
-        "\n\n⚠️ <b>Возможная ошибка в прайсе</b>\n"
-        f"{lines}\n\n"
-        "При смене тарифа клиент сможет получить больше ресурсов за меньшие деньги. "
-        "Проверьте цены в группе."
-    )
+    return "\n\n" + "\n\n".join([
+        "⚠️ <b>Возможная ошибка в прайсе</b>",
+        quote("\n\n".join(warnings)),
+        quote("При смене тарифа клиент получит больше ресурсов за меньшие деньги. Проверьте цены в группе."),
+    ])
 
 
 def render_tariff_card(tariff: Tariff) -> tuple[str, InlineKeyboardMarkup]:

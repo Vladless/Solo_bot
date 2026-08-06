@@ -10,6 +10,7 @@ from filters.admin import IsAdminFilter
 from logger import logger
 from middlewares.session import release_session_early
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import (
     AdminPollCallback,
@@ -37,18 +38,14 @@ def _esc(value) -> str:
 
 
 def _preview_text(question: str, options: list[str], is_anonymous: bool) -> str:
-    lines = ["📊 <b>Предпросмотр опроса</b>", "", f"<b>{_esc(question)}</b>", ""]
-    for idx, opt in enumerate(options, 1):
-        lines.append(f"{idx}. {_esc(opt)}")
-    lines.append("")
-    if is_anonymous:
-        lines.append(
-            "⚠️ <b>Анонимный</b> опрос: Telegram не присылает голоса по отдельности, "
-            "поэтому детальной статистики не будет — только число разосланных."
-        )
-    else:
-        lines.append("Опрос <b>неанонимный</b> — голоса собираются в общую статистику.")
-    return "\n".join(lines)
+    body = "\n".join(f"{idx}. {_esc(opt)}" for idx, opt in enumerate(options, 1))
+    note = (
+        "⚠️ Опрос анонимный: Telegram не присылает голоса по отдельности, "
+        "поэтому в статистике будет только число разосланных."
+        if is_anonymous
+        else "Опрос неанонимный — голоса собираются в общую статистику."
+    )
+    return menu_text("Предпросмотр опроса", f"<b>{_esc(question)}</b>", quote(body), quote(note))
 
 
 def _stats_text(poll, stats: dict) -> str:
@@ -82,10 +79,10 @@ def _stats_text(poll, stats: dict) -> str:
 
 async def _render_menu(session: AsyncSession):
     polls = await list_polls(session, limit=10)
-    text = (
-        "📊 <b>Опросы</b>\n\n"
-        "Нативные Telegram-опросы с рассылкой всем пользователям бота и сбором общей статистики.\n\n"
-        f"Опросов в списке: <b>{len(polls)}</b>"
+    text = menu_text(
+        "Опросы",
+        f"В списке: <b>{len(polls)}</b>",
+        quote("Родные опросы Telegram: рассылаются всем клиентам, статистика собирается общая."),
     )
     return text, build_polls_menu_kb(polls)
 
@@ -94,7 +91,7 @@ async def _render_menu(session: AsyncSession):
 async def open_polls_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     await state.clear()
     text, kb = await _render_menu(session)
-    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.message.edit_text(menu_text("Опросы", text, markup=kb), reply_markup=kb)
     await callback.answer()
 
 
@@ -102,7 +99,11 @@ async def open_polls_menu(callback: CallbackQuery, state: FSMContext, session: A
 async def poll_create(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(AdminPoll.waiting_for_question)
     await callback.message.edit_text(
-        f"✍️ Введите <b>вопрос</b> опроса (до {MAX_QUESTION} символов):",
+        menu_text(
+            "Опросы",
+            f"✍️ Введите <b>вопрос</b> опроса (до {MAX_QUESTION} символов):",
+            markup=build_admin_back_kb("sender"),
+        ),
         reply_markup=build_admin_back_kb("sender"),
     )
     await callback.answer()
@@ -112,17 +113,22 @@ async def poll_create(callback: CallbackQuery, state: FSMContext) -> None:
 async def poll_question_input(message: Message, state: FSMContext) -> None:
     question = (message.text or "").strip()
     if not question:
-        await message.answer("❌ Вопрос не может быть пустым. Введите текст вопроса.")
+        await message.answer(menu_text("Опросы", "❌ Вопрос не может быть пустым. Введите текст вопроса."))
         return
     if len(question) > MAX_QUESTION:
-        await message.answer(f"❌ Слишком длинный вопрос ({len(question)}/{MAX_QUESTION}). Сократите.")
+        await message.answer(
+            menu_text("Опросы", f"❌ Слишком длинный вопрос ({len(question)}/{MAX_QUESTION}). Сократите.")
+        )
         return
     await state.update_data(question=question)
     await state.set_state(AdminPoll.waiting_for_options)
     await message.answer(
-        "📝 Теперь введите <b>варианты ответа</b> — по одному на строку.\n\n"
-        f"От {MIN_OPTIONS} до {MAX_OPTIONS} вариантов, каждый до {MAX_OPTION} символов.\n\n"
-        "Пример:\n<code>Да\nНет\nЗатрудняюсь ответить</code>"
+        menu_text(
+            "Варианты ответа",
+            "Пришлите варианты, по одному на строку.",
+            quote(f"От {MIN_OPTIONS} до {MAX_OPTIONS} штук, каждый до {MAX_OPTION} символов."),
+            quote("Например:\n<code>Да\nНет\nЗатрудняюсь ответить</code>"),
+        )
     )
 
 
@@ -131,14 +137,14 @@ async def poll_options_input(message: Message, state: FSMContext) -> None:
     raw = (message.text or "").strip()
     options = [line.strip() for line in raw.splitlines() if line.strip()]
     if len(options) < MIN_OPTIONS:
-        await message.answer(f"❌ Нужно минимум {MIN_OPTIONS} варианта — по одному на строку.")
+        await message.answer(menu_text("Опросы", f"❌ Нужно минимум {MIN_OPTIONS} варианта — по одному на строку."))
         return
     if len(options) > MAX_OPTIONS:
-        await message.answer(f"❌ Максимум {MAX_OPTIONS} вариантов, сейчас {len(options)}.")
+        await message.answer(menu_text("Опросы", f"❌ Максимум {MAX_OPTIONS} вариантов, сейчас {len(options)}."))
         return
     too_long = next((opt for opt in options if len(opt) > MAX_OPTION), None)
     if too_long is not None:
-        await message.answer(f"❌ Вариант длиннее {MAX_OPTION} символов: «{too_long[:50]}…»")
+        await message.answer(menu_text("Опросы", f"❌ Вариант длиннее {MAX_OPTION} символов: «{too_long[:50]}…»"))
         return
     await state.update_data(options=options, is_anonymous=False)
     await state.set_state(AdminPoll.preview)
@@ -174,7 +180,10 @@ async def poll_back_preview(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(AdminPollCallback.filter(F.action == "audience"), AdminPoll.preview, IsAdminFilter())
 async def poll_audience(callback: CallbackQuery) -> None:
-    await callback.message.edit_text("📤 Кому отправить опрос?", reply_markup=build_poll_audience_kb())
+    await callback.message.edit_text(
+        menu_text("Опросы", "📤 Кому отправить опрос?", markup=build_poll_audience_kb()),
+        reply_markup=build_poll_audience_kb(),
+    )
     await callback.answer()
 
 
@@ -190,7 +199,7 @@ async def poll_send(
     options = data.get("options")
     is_anonymous = data.get("is_anonymous", False)
     if not question or not options:
-        await callback.answer("Данные опроса потеряны, создайте заново.", show_alert=True)
+        await callback.answer("Данные опроса потеряны, создайте заново", show_alert=True)
         await state.clear()
         return
 
@@ -207,11 +216,14 @@ async def poll_send(
     await state.clear()
 
     if not tg_ids:
-        await callback.message.edit_text("⚠️ Нет получателей для рассылки.", reply_markup=build_admin_back_kb("sender"))
+        await callback.message.edit_text(
+            menu_text("Опросы", "⚠️ Нет получателей для рассылки.", markup=build_admin_back_kb("sender")),
+            reply_markup=build_admin_back_kb("sender"),
+        )
         await callback.answer()
         return
 
-    await callback.message.edit_text(f"📤 Отправляю опрос… 0/{len(tg_ids)}")
+    await callback.message.edit_text(menu_text("Опросы", f"📤 Отправляю опрос… 0/{len(tg_ids)}"))
     await callback.answer()
     await release_session_early(session)
 
@@ -253,11 +265,10 @@ async def poll_send(
     await bot.edit_message_text(
         chat_id=status_chat,
         message_id=status_mid,
-        text=(
-            "✅ <b>Опрос отправлен</b>\n\n"
-            f"Доставлено: <b>{result['sent']}</b>\n"
-            f"Не доставлено: <b>{result['failed']}</b>\n\n"
-            "Статистика обновляется по мере голосования."
+        text=menu_text(
+            "Опрос отправлен",
+            "Статистика обновляется по мере голосования.",
+            section("📤 Доставка", f"Дошло: {result['sent']}", f"Не дошло: {result['failed']}"),
         ),
         reply_markup=build_poll_detail_kb(poll_id, True),
     )
@@ -271,7 +282,7 @@ async def poll_view(callback: CallbackQuery, callback_data: AdminPollCallback, s
         return
     stats = await get_poll_stats(session, poll.id)
     await callback.message.edit_text(
-        _stats_text(poll, stats),
+        menu_text("Опросы", _stats_text(poll, stats)),
         reply_markup=build_poll_detail_kb(poll.id, poll.status == "open"),
     )
     await callback.answer()
@@ -287,8 +298,11 @@ async def poll_close(callback: CallbackQuery, callback_data: AdminPollCallback, 
     await session.flush()
     poll.status = "closed"
     stats = await get_poll_stats(session, poll.id)
-    await callback.message.edit_text(_stats_text(poll, stats), reply_markup=build_poll_detail_kb(poll.id, False))
-    await callback.answer("Опрос закрыт — новые голоса не учитываются")
+    await callback.message.edit_text(
+        menu_text("Опросы", _stats_text(poll, stats), markup=build_poll_detail_kb(poll.id, False)),
+        reply_markup=build_poll_detail_kb(poll.id, False),
+    )
+    await callback.answer(menu_text("Опросы", "Опрос закрыт — новые голоса не учитываются"))
 
 
 @router.callback_query(AdminPollCallback.filter(F.action == "del_ask"), IsAdminFilter(), flags={"popup": True})
@@ -299,10 +313,15 @@ async def poll_delete_ask(callback: CallbackQuery, callback_data: AdminPollCallb
         return
     question = (poll.question or "").strip()
     await callback.message.edit_text(
-        "🗑 <b>Удалить опрос?</b>\n\n"
-        f"<b>{_esc(question)}</b>\n\n"
-        "Опрос и вся его статистика будут удалены безвозвратно. "
-        "Уже отправленные пользователям сообщения останутся в их чатах.",
+        menu_text(
+            "Удалить опрос?",
+            f"<b>{_esc(question)}</b>",
+            quote(
+                "Опрос и вся статистика удалятся безвозвратно.",
+                "Уже разосланные сообщения останутся в чатах клиентов.",
+            ),
+            markup=build_poll_delete_confirm_kb(poll.id),
+        ),
         reply_markup=build_poll_delete_confirm_kb(poll.id),
     )
     await callback.answer()
@@ -316,6 +335,6 @@ async def poll_delete(callback: CallbackQuery, callback_data: AdminPollCallback,
     else:
         await delete_poll(session, poll.id)
         await session.flush()
-        await callback.answer("Опрос удалён")
+        await callback.answer(menu_text("Опросы", "Опрос удалён"))
     text, kb = await _render_menu(session)
-    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.message.edit_text(menu_text("Опросы", text, markup=kb), reply_markup=kb)

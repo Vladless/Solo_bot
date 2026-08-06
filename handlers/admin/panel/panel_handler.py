@@ -12,16 +12,15 @@ from filters.admin import IsAdminFilter, get_admin_context
 from logger import logger
 from utils.versioning import get_version
 
+from .headers import render_panel_text, wrap_text
 from .keyboard import AdminPanelCallback, build_panel_kb
-from .summary import render_panel_text
 
 
 router = Router()
 
 
 async def _send_panel(message: Message, version_text, markup, *, edit: bool) -> None:
-    """Панель — текстовое сообщение: разделы админки правят его через edit_text,
-    поэтому картинкой её делать нельзя, иначе переходы ломаются."""
+    """Отправляет или обновляет главный экран админки."""
     text = render_panel_text(version_text)
 
     if edit and message.text:

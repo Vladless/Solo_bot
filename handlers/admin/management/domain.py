@@ -12,6 +12,7 @@ from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import build_admin_back_kb
 from . import router
 from .keyboard import AdminPanelCallback
@@ -25,7 +26,7 @@ class AdminManagementStates(StatesGroup):
 async def request_new_domain(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(AdminManagementStates.waiting_for_new_domain)
     await callback_query.message.edit_text(
-        text="🌐 Введите новый домен (без https://):\nПример: solobotdomen.ru",
+        text=menu_text("Домен", "🌐 Введите новый домен (без https://):", quote("Пример: solobotdomen.ru")),
     )
 
 
@@ -36,7 +37,11 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     if not re.fullmatch(r"[a-zA-Z0-9.-]+", new_domain) or " " in new_domain:
         logger.warning("[DomainChange] Некорректный домен")
         await message.answer(
-            "🚫 Некорректный домен! Введите домен без http:// и без пробелов.",
+            menu_text(
+                "Домен",
+                "❌ Домен без http:// и без пробелов.",
+                markup=build_admin_back_kb("admin"),
+            ),
             reply_markup=build_admin_back_kb("admin"),
         )
         return
@@ -60,7 +65,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
     except Exception as e:
         logger.error(f"[DomainChange] Ошибка при выполнении запроса: {e}")
         await message.answer(
-            f"❌ Ошибка при обновлении домена: {e}",
+            menu_text("Домен", f"❌ Ошибка при обновлении домена: {e}", markup=build_admin_back_kb("admin")),
             reply_markup=build_admin_back_kb("admin"),
         )
         return
@@ -73,7 +78,7 @@ async def process_new_domain(message: Message, state: FSMContext, session: Async
         logger.error(f"[DomainChange] Ошибка при выборке обновленной записи: {e}")
 
     await message.answer(
-        f"✅ Домен успешно изменен на {new_domain}!",
+        menu_text("Домен", f"✅ Домен теперь <code>{new_domain}</code>.", markup=build_admin_back_kb("admin")),
         reply_markup=build_admin_back_kb("admin"),
     )
     await state.clear()

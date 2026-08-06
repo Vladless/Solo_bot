@@ -22,7 +22,7 @@ def build_manage_server_kb(server_name: str, cluster_name: str, enabled: bool) -
     )
 
     builder.button(
-        text="📈 Задать лимит",
+        text="📈 Лимит",
         callback_data=AdminServerCallback(action="set_limit", data=server_name).pack(),
     )
 
@@ -32,43 +32,26 @@ def build_manage_server_kb(server_name: str, cluster_name: str, enabled: bool) -
     )
 
     builder.button(
-        text="✏️ Редактировать",
+        text="✏️ Правка",
         callback_data=f"edit_server|{server_name}",
     )
 
-    builder.button(
-        text=BACK,
-        callback_data=f"cluster_servers|{cluster_name}",
-    )
-
-    builder.adjust(1)
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=BACK, callback_data=f"cluster_servers|{cluster_name}"))
     return builder.as_markup()
 
 
 def build_edit_server_fields_kb(server_name: str, server_data: dict) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(text="📝 Имя сервера", callback_data=f"edit_server_field|{server_name}|server_name")
-    )
-
-    builder.row(InlineKeyboardButton(text="🗂 Кластер", callback_data=f"edit_server_field|{server_name}|cluster_name"))
-
-    builder.row(InlineKeyboardButton(text="🌐 API URL", callback_data=f"edit_server_field|{server_name}|api_url"))
-
+    builder.button(text="📝 Имя", callback_data=f"edit_server_field|{server_name}|server_name")
+    builder.button(text="🗂 Кластер", callback_data=f"edit_server_field|{server_name}|cluster_name")
+    builder.button(text="🌐 API URL", callback_data=f"edit_server_field|{server_name}|api_url")
     if server_data.get("subscription_url"):
-        builder.row(
-            InlineKeyboardButton(
-                text="📡 Subscription URL", callback_data=f"edit_server_field|{server_name}|subscription_url"
-            )
-        )
-
-    builder.row(
-        InlineKeyboardButton(text="🔑 Inbound ID/Squads", callback_data=f"edit_server_field|{server_name}|inbound_id")
-    )
-
-    builder.row(InlineKeyboardButton(text="⚙️ Тип панели", callback_data=f"select_panel_type|{server_name}"))
-
+        builder.button(text="📡 Подписка", callback_data=f"edit_server_field|{server_name}|subscription_url")
+    builder.button(text="🔑 Inbound", callback_data=f"edit_server_field|{server_name}|inbound_id")
+    builder.button(text="⚙️ Тип панели", callback_data=f"select_panel_type|{server_name}")
+    builder.adjust(2)
     builder.row(
         InlineKeyboardButton(text=BACK, callback_data=AdminServerCallback(action="manage", data=server_name).pack())
     )
@@ -79,8 +62,10 @@ def build_edit_server_fields_kb(server_name: str, server_data: dict) -> InlineKe
 def build_panel_type_selection_kb(server_name: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🌐 3x-ui", callback_data=f"set_panel_type|{server_name}|3x-ui")],
-            [InlineKeyboardButton(text="🌀 remnawave", callback_data=f"set_panel_type|{server_name}|remnawave")],
+            [
+                InlineKeyboardButton(text="🌐 3x-ui", callback_data=f"set_panel_type|{server_name}|3x-ui"),
+                InlineKeyboardButton(text="🌀 remnawave", callback_data=f"set_panel_type|{server_name}|remnawave"),
+            ],
             [InlineKeyboardButton(text=BACK, callback_data=f"edit_server|{server_name}")],
         ]
     )

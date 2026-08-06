@@ -14,26 +14,18 @@ class AdminTariffCallback(CallbackData, prefix="tariff"):
     action: str
 
 
+def _short(name: str | None, limit: int = 14) -> str:
+    """Возвращает подпись кнопки, обрезанную до limit символов."""
+    value = (name or "").strip()
+    return value if len(value) <= limit else value[: limit - 1] + "…"
+
+
 def build_tariff_menu_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🆕 Новый тариф",
-            callback_data=AdminTariffCallback(action="create").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="📋 Мои тарифы",
-            callback_data=AdminTariffCallback(action="list").pack(),
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔢 Расположение тарифов",
-            callback_data=AdminTariffCallback(action="arrange").pack(),
-        )
-    )
+    builder.button(text="🆕 Новый тариф", callback_data=AdminTariffCallback(action="create").pack())
+    builder.button(text="📋 Мои тарифы", callback_data=AdminTariffCallback(action="list").pack())
+    builder.button(text="🔢 Расположение", callback_data=AdminTariffCallback(action="arrange").pack())
+    builder.adjust(2)
     builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="admin").pack()))
     return builder.as_markup()
 
@@ -55,9 +47,8 @@ def build_tariff_arrangement_groups_kb(groups: list[str]) -> InlineKeyboardMarku
                 callback_data=AdminTariffCallback(action=f"arrange_group|{group}").pack(),
             )
         )
-        if len(row) == 2 or i == len(groups) - 1:
-            builder.row(*row)
-            row = []
+        builder.row(*row)
+        row = []
 
     builder.row(
         InlineKeyboardButton(
@@ -88,7 +79,7 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
                 callback_data=AdminTariffCallback(action=f"quick_move_up|{t.get('id')}|{group_code}").pack(),
             ),
             InlineKeyboardButton(
-                text=f"  {t.get('name')}  ",
+                text=_short(t.get("name")),
                 callback_data=AdminTariffCallback(action=f"view|{t.get('id')}").pack(),
             ),
             InlineKeyboardButton(
@@ -104,7 +95,9 @@ def build_tariffs_arrangement_kb(group_code: str, tariffs: list) -> InlineKeyboa
             subgroup_hash = create_subgroup_hash(payload, group_code)
             builder.row(
                 InlineKeyboardButton(text="⬆️", callback_data=f"submove_up|{subgroup_hash}|{group_code}"),
-                InlineKeyboardButton(text=f"📁 {payload}", callback_data=AdminTariffCallback(action="arrange").pack()),
+                InlineKeyboardButton(
+                    text=f"📁 {_short(payload)}", callback_data=AdminTariffCallback(action="arrange").pack()
+                ),
                 InlineKeyboardButton(text="⬇️", callback_data=f"submove_down|{subgroup_hash}|{group_code}"),
             )
             for t in grouped_tariffs[payload]:
@@ -137,9 +130,8 @@ def build_tariff_groups_kb(groups: list[str]) -> InlineKeyboardMarkup:
                 callback_data=AdminTariffCallback(action=f"group|{group}").pack(),
             )
         )
-        if len(row) == 2 or i == len(groups) - 1:
-            builder.row(*row)
-            row = []
+        builder.row(*row)
+        row = []
     builder.row(
         InlineKeyboardButton(
             text=BACK,
@@ -173,7 +165,7 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
         )
 
     for t in grouped.get(None, []):
-        title = f"#{t['id']} · {t['name']} — {t['price_rub']}₽"
+        title = f"#{t['id']} · {_short(t['name'])} · {t['price_rub']}₽"
         builder.row(
             InlineKeyboardButton(
                 text=title,
@@ -188,7 +180,7 @@ def build_tariff_list_kb(tariffs: list[dict]) -> InlineKeyboardMarkup:
         )
     )
 
-    builder.row(InlineKeyboardButton(text="Сгруппировать в подгруппу", callback_data=f"start_subgrouping|{group_code}"))
+    builder.row(InlineKeyboardButton(text="Объединить в подгруппу", callback_data=f"start_subgrouping|{group_code}"))
 
     builder.row(
         InlineKeyboardButton(
@@ -221,7 +213,7 @@ def build_single_tariff_kb(
             ],
             [
                 InlineKeyboardButton(
-                    text="🔧 Настройки конфигуратора",
+                    text="🔧 Конфигуратор",
                     callback_data=f"edit_config|{tariff_id}",
                 )
             ],
@@ -269,12 +261,12 @@ def build_tariff_visibility_kb(tariff_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👁 Показывать всем", callback_data=f"tvisset|{tariff_id}|all|none")],
             [
                 InlineKeyboardButton(
-                    text="✅ Только: есть активная подписка", callback_data=f"tvisset|{tariff_id}|only|has_active"
+                    text="✅ С активной подпиской", callback_data=f"tvisset|{tariff_id}|only|has_active"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🚫 Кроме: есть активная подписка", callback_data=f"tvisset|{tariff_id}|except|has_active"
+                    text="🚫 Без активной подписки", callback_data=f"tvisset|{tariff_id}|except|has_active"
                 )
             ],
             [InlineKeyboardButton(text="✅ Только: горячий лид", callback_data=f"tvisset|{tariff_id}|only|hot_lead")],
@@ -331,7 +323,7 @@ def build_edit_tariff_fields_kb(tariff_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="⏳ Задержка покупки (дней)",
+                    text="⏳ Задержка покупки",
                     callback_data=f"edit_field|{tariff_id}|cooldown_days",
                 )
             ],

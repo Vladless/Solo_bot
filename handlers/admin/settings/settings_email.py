@@ -13,6 +13,7 @@ from core.settings.web_config import WEB_CONFIG, update_web_config
 from database import async_session_maker
 from settings.config import PROJECT_NAME
 
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
 
 
@@ -129,13 +130,14 @@ def build_email_main_kb() -> InlineKeyboardBuilder:
 
 
 def _email_main_text() -> str:
-    return (
-        "<b>✉️ Шаблоны писем</b>\n\n"
-        "Тексты писем, которые сайт отправляет пользователям на почту, "
-        "и подпись отправителя.\n\n"
-        f"Отправитель: <b>{html_escape(_preview('EMAIL_FROM_NAME'))}</b>\n"
-        f"Reply-To: <code>{html_escape(_preview('EMAIL_REPLY_TO'))}</code>\n\n"
-        "Выберите, что отредактировать."
+    return menu_text(
+        "Шаблоны писем",
+        "Что сайт шлёт клиентам на почту.",
+        section(
+            "✉️ Подпись",
+            f"Отправитель: {html_escape(_preview('EMAIL_FROM_NAME'))}",
+            f"Ответы: {html_escape(_preview('EMAIL_REPLY_TO'))}",
+        ),
     )
 
 
@@ -196,7 +198,7 @@ async def open_category(callback: CallbackQuery, callback_data: EmailFieldCallba
         await callback.answer()
         return
     await callback.message.edit_text(
-        text=_category_text(cat_id),
+        text=menu_text("Письма", _category_text(cat_id), markup=build_category_kb(cat_id).as_markup()),
         reply_markup=build_category_kb(cat_id).as_markup(),
     )
     await callback.answer()
@@ -212,18 +214,16 @@ async def prompt_field(callback: CallbackQuery, callback_data: EmailFieldCallbac
     vars_hint = FIELD_VARS.get(key)
     hint_line = f"Доступные переменные: <code>{html_escape(vars_hint)}</code>\n\n" if vars_hint else ""
     reset_line = (
-        "Отправьте <code>-</code>, чтобы очистить."
-        if key in ("EMAIL_FROM_NAME", "EMAIL_REPLY_TO")
-        else "Отправьте <code>-</code>, чтобы вернуть значение по умолчанию."
+        "«-» — очистить." if key in ("EMAIL_FROM_NAME", "EMAIL_REPLY_TO") else "«-» — вернуть значение по умолчанию."
     )
     current = _preview(key)
     if len(current) > 800:
         current = current[:800] + "…"
-    text = (
-        f"<b>{FIELD_LABELS[key]}</b>\n\n"
-        f"Текущее значение:\n<code>{html_escape(current)}</code>\n\n"
-        f"{hint_line}"
-        f"Отправьте новый текст сообщением.\n{reset_line}"
+    text = menu_text(
+        "Письма",
+        f"<b>{FIELD_LABELS[key]}</b>",
+        quote(f"Текущее значение:\n<code>{html_escape(current)}</code>"),
+        quote(f"{hint_line}Пришлите новый текст.\n{reset_line}"),
     )
     await callback.message.edit_text(text=text)
     await state.set_state(EmailSettingsState.waiting_for_value)
@@ -252,7 +252,7 @@ async def save_field(message: Message, state: FSMContext) -> None:
     cat_id = CATEGORY_BY_FIELD.get(key)
     if cat_id:
         await message.answer(
-            text=_category_text(cat_id),
+            text=menu_text("Письма", _category_text(cat_id), markup=build_category_kb(cat_id).as_markup()),
             reply_markup=build_category_kb(cat_id).as_markup(),
         )
     else:

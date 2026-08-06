@@ -18,6 +18,7 @@ from database.models import User
 from filters.admin import IsAdminFilter
 from settings.cache_config import AUDIT_HISTORY_CACHE_TTL_SEC
 
+from ..panel.headers import card, menu_text, quote, section, strip_tags
 from .keyboard import AdminUserEditorCallback, build_user_audit_kb
 
 
@@ -482,28 +483,16 @@ def _format_event_status(event) -> str:
     return f"<code>{created_at}</code> {result_text}"
 
 
-_FLOW_SEP = "—"
-
-
 def _render_events_as_flow(events: list) -> list[str]:
-    """Флоу: успешные действия (ок) тянутся через ⤷; если не ок — отдельный блок с │. Между блоками — разделитель."""
-    if not events:
-        return []
-    lines = []
-    for i, event in enumerate(events):
-        n = i + 1
-        is_ok = event.result == "success"
-        prefix = "⤷ " if is_ok else "│ "
-        if not is_ok and i > 0:
-            lines.append(_FLOW_SEP)
-        status_line = f"{prefix}<b>{n}.</b> {_format_event_status(event)}"
+    """Возвращает события ленты аудита секциями."""
+    blocks = []
+    for number, event in enumerate(events, start=1):
+        mark = "✅" if event.result == "success" else "❌"
+        title = f"{mark} {number}. {strip_tags(_format_event_status(event))}"
         body = _format_event_line(event, show_request_id=False, inside_block=True, skip_time=True)
-        quoted_body = f"<blockquote>{body}</blockquote>"
-        lines.append(status_line)
-        lines.append(quoted_body)
-        if i < len(events) - 1:
-            lines.append(_FLOW_SEP)
-    return lines
+        rows = [strip_tags(row).strip() for row in body.split("\n")]
+        blocks.append(section(title, *[row for row in rows if row]))
+    return blocks
 
 
 async def _render_user_audit(
@@ -577,34 +566,29 @@ async def _render_user_audit(
                 )
 
     full_flow = channel_filter == "all" and category_filter == "all"
-    lines = [f"🕘 <b>История действий клиента</b> <code>{tg_id}</code>"]
-    if full_flow:
-        lines.append("📋 <i>Вся хронология. Цифра — номер действия, черта — граница между действиями.</i>")
-    lines.append(f"📎 Канал: <b>{html.escape(channel_filter)}</b> | Категория: <b>{html.escape(category_filter)}</b>")
+
+    head = [f"Канал: {channel_filter}", f"Категория: {category_filter}"]
     if user_identity_id:
-        lines.append(f"🆔 Identity: <code>{html.escape(user_identity_id)}</code>")
+        head.append(f"Identity: {user_identity_id}")
+    blocks = [section("🔎 Фильтр", *head)]
 
     if not events:
-        lines.append("\n<i>Событий пока нет.</i>")
+        blocks.append(quote("Событий пока нет"))
     else:
-        lines.append("")
         rev = list(reversed(events))
         if full_flow and not any(getattr(event, "event_type", "") == "balance_changed" for event in rev):
             by_cat: dict[str, list] = {}
-            for e in rev:
-                c = _event_category(e)
-                by_cat.setdefault(c, []).append(e)
-            visible_cats = [c for c in CATEGORY_BLOCK_ORDER if c in by_cat]
-            for idx, cat in enumerate(visible_cats):
-                lines.append(f"<b>▸ {CATEGORY_BLOCK_LABELS[cat]}</b>")
-                lines.extend(_render_events_as_flow(by_cat[cat]))
-                if idx < len(visible_cats) - 1:
-                    lines.append(_FLOW_SEP)
+            for event in rev:
+                by_cat.setdefault(_event_category(event), []).append(event)
+            for cat in CATEGORY_BLOCK_ORDER:
+                if cat in by_cat:
+                    blocks.append(f"<b>▸ {CATEGORY_BLOCK_LABELS[cat]}</b>")
+                    blocks.extend(_render_events_as_flow(by_cat[cat]))
         else:
-            lines.extend(_render_events_as_flow(rev))
+            blocks.extend(_render_events_as_flow(rev))
 
     await message.edit_text(
-        text="\n".join(lines).strip(),
+        text=menu_text("Аудит", f"Клиент <code>{tg_id}</code>", card(*blocks)),
         reply_markup=build_user_audit_kb(
             tg_id=tg_id,
             channel_filter=channel_filter,

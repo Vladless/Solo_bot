@@ -10,6 +10,7 @@ from database.models import Key, Server
 from filters.admin import IsAdminFilter
 from settings.buttons import BACK
 
+from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import build_admin_back_kb
 from .keyboard import AdminServerCallback, build_manage_server_kb
 from .server_states import ServerLimitState, router
@@ -40,33 +41,31 @@ async def handle_server_manage(
         result = await session.execute(select(func.count()).where(Key.server_id == server_name))
         subscription_count = result.scalar() or 0
 
-        text = (
-            f"<b>🔧 Информация о сервере {server_name}:</b>\n"
-            f"<blockquote>"
-            f"🗂 Кластер: <b>{cluster_name}</b>\n"
-            f"📡 API URL: <b>{api_url}</b>\n"
-        )
-
+        addresses = [f"API: {api_url}"]
         if subscription_url:
-            text += f"🌐 Subscription URL: <b>{subscription_url}</b>\n"
+            addresses.append(f"Подписка: {subscription_url}")
 
-        text += (
-            f"🔑 Inbound ID/Squads: <b>{inbound_id}</b>\n"
-            f"⚙️ Тип панели: <b>{panel_type}</b>\n"
-            f"📈 Лимит ключей: <b>{limit_display}</b>\n"
-        )
-
+        params = [f"Inbound: {inbound_id}", f"Лимит: {limit_display}"]
         if subscription_count > 0:
-            text += f"🔑 Подписок на сервере: <b>{subscription_count}</b>\n"
+            params.append(f"Подписок: {subscription_count}")
 
-        text += "</blockquote>"
+        body = card(
+            section("🗂 Размещение", f"Кластер: {cluster_name}", f"Панель: {panel_type}"),
+            section("⚙️ Параметры", *params),
+            section("🔗 Адреса", *addresses),
+        )
 
         await callback_query.message.edit_text(
-            text=text,
+            text=menu_text(
+                "Сервер",
+                server_name,
+                body,
+                markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
+            ),
             reply_markup=build_manage_server_kb(server_name, cluster_name, enabled=server.get("enabled", True)),
         )
     else:
-        await callback_query.message.edit_text(text="❌ Сервер не найден.")
+        await callback_query.message.edit_text(text=menu_text("Сервер", "❌ Сервер не найден."))
 
 
 @router.callback_query(AdminServerCallback.filter(F.action == "delete"), IsAdminFilter())
@@ -97,7 +96,11 @@ async def process_callback_delete_server(
 
     if not cluster_name:
         await callback_query.message.edit_text(
-            text=f"❌ Не удалось найти кластер для сервера '{server_name}'.",
+            text=menu_text(
+                "Сервер",
+                f"❌ Кластер сервера не найден: '{server_name}'.",
+                markup=build_admin_back_kb("clusters"),
+            ),
             reply_markup=build_admin_back_kb("clusters"),
         )
         return
@@ -129,8 +132,12 @@ async def process_callback_delete_server(
                 if len(callback_data.encode("utf-8")) > 64:
                     await callback_query.message.edit_text(
                         text=(
-                            f"❌ Ошибка: название сервера '{s_name}' слишком длинное.\n\n"
-                            f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова."
+                            menu_text(
+                                "Сервер",
+                                f"❌ Ошибка: название сервера '{s_name}' слишком длинное.",
+                                quote("Дайте серверу имя покороче."),
+                                markup=build_admin_back_kb("clusters"),
+                            )
                         ),
                         reply_markup=build_admin_back_kb("clusters"),
                     )
@@ -150,7 +157,11 @@ async def process_callback_delete_server(
             )
 
             await callback_query.message.edit_text(
-                text=f"⚠️ На сервере '{server_name}' есть {keys_count} ключей. Выберите сервер для переноса ключей:",
+                text=menu_text(
+                    "Сервер",
+                    f"⚠️ На сервере '{server_name}' есть {keys_count} ключей. Выберите сервер для переноса ключей:",
+                    markup=builder.as_markup(),
+                ),
                 reply_markup=builder.as_markup(),
             )
             await state.set_state(AdminClusterStates.waiting_for_server_transfer)
@@ -195,8 +206,12 @@ async def process_callback_delete_server(
                     if len(callback_data.encode("utf-8")) > 64:
                         await callback_query.message.edit_text(
                             text=(
-                                f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.\n\n"
-                                f"Пожалуйста, переименуйте сервер в более короткое название и попробуйте снова."
+                                menu_text(
+                                    "Сервер",
+                                    f"❌ Ошибка: название сервера '{server_name}' или кластера '{cl_name}' слишком длинное.",
+                                    quote("Дайте серверу имя покороче."),
+                                    markup=build_admin_back_kb("clusters"),
+                                )
                             ),
                             reply_markup=build_admin_back_kb("clusters"),
                         )
@@ -217,8 +232,11 @@ async def process_callback_delete_server(
 
                 await callback_query.message.edit_text(
                     text=(
-                        f"⚠️ Это последний сервер в кластере '{cluster_name}'. "
-                        f"На кластере есть {cluster_keys_count} ключей. Выберите кластер для переноса ключей:"
+                        menu_text(
+                            "Сервер",
+                            f"⚠️ Это последний сервер в кластере '{cluster_name}'. На кластере есть {cluster_keys_count} ключей. Выберите кластер для переноса ключей:",
+                            markup=builder.as_markup(),
+                        )
                     ),
                     reply_markup=builder.as_markup(),
                 )
@@ -231,8 +249,11 @@ async def process_callback_delete_server(
         await session.execute(stmt_delete)
         await callback_query.message.edit_text(
             text=(
-                f"✅ Сервер '{server_name}' удален. "
-                f"Кластер '{cluster_name}' также удален, так как в нем не осталось серверов."
+                menu_text(
+                    "Сервер",
+                    f"✅ Сервер '{server_name}' удален. Кластер '{cluster_name}' также удален, так как в нем не осталось серверов.",
+                    markup=build_admin_back_kb("clusters"),
+                )
             ),
             reply_markup=build_admin_back_kb("clusters"),
         )
@@ -242,7 +263,7 @@ async def process_callback_delete_server(
         )
         await session.execute(stmt_delete)
         await callback_query.message.edit_text(
-            text=f"✅ Сервер '{server_name}' удален.",
+            text=menu_text("Сервер", f"✅ Сервер '{server_name}' удален.", markup=build_admin_back_kb("clusters")),
             reply_markup=build_admin_back_kb("clusters"),
         )
 
@@ -268,18 +289,18 @@ async def toggle_server_enabled(
     )
 
     if not server:
-        await callback_query.message.edit_text("❌ Сервер не найден.")
+        await callback_query.message.edit_text(menu_text("Сервер", "❌ Сервер не найден."))
         return
 
     max_keys = server.get("max_keys")
     limit_display = f"{max_keys}" if max_keys else "не задан"
 
-    text = (
-        f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
-        f"<b>📡 API URL:</b> {server['api_url']}\n"
-        f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-        f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
-        f"<b>📈 Лимит ключей:</b> {limit_display}"
+    text = menu_text(
+        "Сервер",
+        f"<b>{server_name}</b>",
+        quote(
+            f"API URL: <code>{server['api_url']}</code>\nSubscription: <code>{server['subscription_url']}</code>\nInbound ID: {server['inbound_id']}\nЛимит подписок: {limit_display}"
+        ),
     )
 
     await callback_query.message.edit_text(
@@ -294,7 +315,11 @@ async def ask_server_limit(callback_query: CallbackQuery, callback_data: AdminSe
     await state.set_state(ServerLimitState.waiting_for_limit)
     await state.update_data(server_name=server_name)
     await callback_query.message.edit_text(
-        f"Введите лимит ключей для сервера <b>{server_name}</b> (целое число, 0 — без лимита):",
+        menu_text(
+            "Лимит ключей",
+            f"Сервер <b>{server_name}</b>",
+            quote("Пришлите целое число.\n<code>0</code> — без лимита."),
+        ),
     )
 
 
@@ -319,19 +344,19 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
         )
 
         if not server:
-            await message.answer("❌ Сервер не найден.")
+            await message.answer(menu_text("Сервер", "❌ Сервер не найден."))
             await state.clear()
             return
 
         max_keys = server.get("max_keys")
         limit_display = f"{max_keys}" if max_keys is not None else "не задан"
 
-        text = (
-            f"<b>🔧 Информация о сервере {server_name}:</b>\n\n"
-            f"<b>📡 API URL:</b> {server['api_url']}\n"
-            f"<b>🌐 Subscription URL:</b> {server['subscription_url']}\n"
-            f"<b>🔑 Inbound ID/Squads:</b> {server['inbound_id']}\n"
-            f"<b>📈 Лимит ключей:</b> {limit_display}"
+        text = menu_text(
+            "Сервер",
+            f"<b>{server_name}</b>",
+            quote(
+                f"API URL: <code>{server['api_url']}</code>\nSubscription: <code>{server['subscription_url']}</code>\nInbound ID: {server['inbound_id']}\nЛимит подписок: {limit_display}"
+            ),
         )
 
         await message.answer(
@@ -341,4 +366,4 @@ async def save_server_limit(message: types.Message, state: FSMContext, session: 
         await state.clear()
 
     except ValueError:
-        await message.answer("❌ Введите корректное целое число (0 = без лимита)")
+        await message.answer(menu_text("Сервер", "❌ Введите корректное целое число (0 = без лимита)"))

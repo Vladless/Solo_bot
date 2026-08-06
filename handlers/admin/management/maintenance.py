@@ -8,6 +8,7 @@ from database.models import Admin
 from filters.admin import HasPermission, get_admin_context
 from filters.permissions import PERM_ADMINS, PERM_MANAGEMENT
 
+from ..panel.headers import menu_text, quote
 from . import router
 from .keyboard import AdminPanelCallback, build_management_kb
 
@@ -23,12 +24,19 @@ async def handle_management(callback_query: CallbackQuery, session: AsyncSession
     admin = result.scalar_one_or_none()
 
     if not admin:
-        await callback_query.message.edit_text("❌ Вы не зарегистрированы как администратор.")
+        await callback_query.message.edit_text(
+            menu_text("Управление ботом", "❌ Вы не зарегистрированы как администратор.")
+        )
         return
 
     _, _, perms = await get_admin_context(tg_id)
     await callback_query.message.edit_text(
-        text="🤖 Управление ботом",
+        text=menu_text(
+            "Управление ботом",
+            "Обслуживание и сервисные действия.",
+            quote("База и бэкапы, файлы бота, админы и их права, домен, тех. работы."),
+            markup=build_management_kb(admin.role, permissions=perms),
+        ),
         reply_markup=build_management_kb(admin.role, permissions=perms),
     )
 
@@ -45,7 +53,7 @@ async def toggle_maintenance_mode(callback: CallbackQuery, session: AsyncSession
     admin = result.scalar_one_or_none()
 
     if not admin:
-        await callback.answer("❌ Админ не найден.", show_alert=True)
+        await callback.answer("Админ не найден", show_alert=True)
         return
 
     current_config = dict(MANAGEMENT_CONFIG)

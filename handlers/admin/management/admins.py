@@ -18,6 +18,7 @@ from filters.permissions import (
     normalize_permissions,
 )
 
+from ..panel.headers import menu_text, quote, section
 from . import router
 from .keyboard import (
     AdminPanelCallback,
@@ -39,13 +40,17 @@ class AdminState(StatesGroup):
 async def show_admins(callback: CallbackQuery, session: AsyncSession):
     result = await session.execute(select(Admin.tg_id, Admin.role))
     admins = result.all()
-    await callback.message.edit_text("👑 <b>Список админов</b>", reply_markup=build_admins_kb(admins))
+    await callback.message.edit_text(
+        menu_text("Админы", "Кто имеет доступ к админке.", markup=build_admins_kb(admins)),
+        reply_markup=build_admins_kb(admins),
+    )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "add_admin"), HasPermission(PERM_ADMINS))
 async def prompt_new_admin(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "Введите <code>tg_id</code> нового админа:", reply_markup=build_admin_back_kb_to_admins()
+        menu_text("Админы", "Введите <code>tg_id</code> нового админа:", markup=build_admin_back_kb_to_admins()),
+        reply_markup=build_admin_back_kb_to_admins(),
     )
     await state.set_state(AdminState.waiting_for_tg_id)
 
@@ -55,17 +60,23 @@ async def save_new_admin(message: Message, session: AsyncSession, state: FSMCont
     try:
         tg_id = int(message.text.strip())
     except ValueError:
-        await message.answer("❌ Неверный формат. Введите числовой <code>tg_id</code>.")
+        await message.answer(menu_text("Админы", "❌ Неверный формат. Введите числовой <code>tg_id</code>."))
         return
 
     await state.clear()
 
     result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     if result.scalar_one_or_none():
-        await message.answer("⚠️ Такой админ уже существует.", reply_markup=build_admin_back_kb_to_admins())
+        await message.answer(
+            menu_text("Админы", "⚠️ Такой админ уже существует.", markup=build_admin_back_kb_to_admins()),
+            reply_markup=build_admin_back_kb_to_admins(),
+        )
         return
 
-    await message.answer(f"Выберите роль для <code>{tg_id}</code>:", reply_markup=build_new_admin_role_kb(tg_id))
+    await message.answer(
+        menu_text("Админы", f"Выберите роль для <code>{tg_id}</code>:", markup=build_new_admin_role_kb(tg_id)),
+        reply_markup=build_new_admin_role_kb(tg_id),
+    )
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action.startswith("add_role|")), HasPermission(PERM_ADMINS))
@@ -76,18 +87,28 @@ async def create_admin_with_role(callback: CallbackQuery, callback_data: AdminPa
         if role not in ("moderator", "designer"):
             raise ValueError
     except Exception:
-        await callback.message.edit_text("❌ Неверный формат.", reply_markup=build_admin_back_kb_to_admins())
+        await callback.message.edit_text(
+            menu_text("Админы", "❌ Неверный формат.", markup=build_admin_back_kb_to_admins()),
+            reply_markup=build_admin_back_kb_to_admins(),
+        )
         return
 
     existing = (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none()
     if existing:
-        await callback.message.edit_text("⚠️ Такой админ уже существует.", reply_markup=build_admin_back_kb_to_admins())
+        await callback.message.edit_text(
+            menu_text("Админы", "⚠️ Такой админ уже существует.", markup=build_admin_back_kb_to_admins()),
+            reply_markup=build_admin_back_kb_to_admins(),
+        )
         return
 
     session.add(Admin(tg_id=tg_id, role=role, description="Добавлен вручную", permissions=[]))
     invalidate_admin_cache(tg_id)
     await callback.message.edit_text(
-        f"✅ Админ <code>{tg_id}</code> добавлен с ролью <b>{role}</b>.",
+        menu_text(
+            "Админы",
+            f"✅ Админ <code>{tg_id}</code> добавлен с ролью <b>{role}</b>.",
+            markup=build_admin_back_kb_to_admins(),
+        ),
         reply_markup=build_admin_back_kb_to_admins(),
     )
 
@@ -101,7 +122,8 @@ async def open_admin_menu(callback: CallbackQuery, callback_data: AdminPanelCall
     role = admin or "moderator"
 
     await callback.message.edit_text(
-        f"👤 <b>Управление админом</b> <code>{tg_id}</code>", reply_markup=build_single_admin_menu(tg_id, role)
+        menu_text("Админы", f"<code>{tg_id}</code>", markup=build_single_admin_menu(tg_id, role)),
+        reply_markup=build_single_admin_menu(tg_id, role),
     )
 
 
@@ -112,7 +134,7 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
     result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     admin = result.scalar_one_or_none()
     if not admin:
-        await callback.message.edit_text("❌ Админ не найден.")
+        await callback.message.edit_text(menu_text("Админы", "Админ не найден"))
         return
 
     token = Admin.generate_token()
@@ -120,9 +142,13 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
     admin.token = token_hash
 
     msg = await callback.message.edit_text(
-        f"🎟 <b>Новый токен для</b> <code>{tg_id}</code>:\n\n"
-        f"<code>{token}</code>\n\n"
-        f"⚠️ Это сообщение исчезнет через 5 минут.",
+        menu_text(
+            "Админы",
+            f"Новый токен для <code>{tg_id}</code>.",
+            section("🎟 Токен", token),
+            quote("Сообщение исчезнет через 5 минут."),
+            markup=build_token_result_kb(token),
+        ),
         reply_markup=build_token_result_kb(token),
     )
 
@@ -137,7 +163,8 @@ async def generate_token(callback: CallbackQuery, callback_data: AdminPanelCallb
 async def edit_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallback):
     tg_id = int(callback_data.action.split("|")[1])
     await callback.message.edit_text(
-        f"✏ <b>Выберите новую роль для</b> <code>{tg_id}</code>:", reply_markup=build_role_selection_kb(tg_id)
+        menu_text("Админы", f"Новая роль для <code>{tg_id}</code>.", markup=build_role_selection_kb(tg_id)),
+        reply_markup=build_role_selection_kb(tg_id),
     )
 
 
@@ -149,26 +176,31 @@ async def set_admin_role(callback: CallbackQuery, callback_data: AdminPanelCallb
         if role not in ("superadmin", "moderator", "designer"):
             raise ValueError
     except Exception:
-        await callback.message.edit_text("❌ Неверный формат.")
+        await callback.message.edit_text(menu_text("Админы", "❌ Неверный формат."))
         return
 
     if tg_id == callback.from_user.id:
         await callback.message.edit_text(
-            "🚫 <b>Нельзя изменить свою собственную роль!</b>", reply_markup=build_single_admin_menu(tg_id)
+            menu_text("Админы", "❌ Свою роль изменить нельзя.", markup=build_single_admin_menu(tg_id)),
+            reply_markup=build_single_admin_menu(tg_id),
         )
         return
 
     result = await session.execute(select(Admin).where(Admin.tg_id == tg_id))
     admin = result.scalar_one_or_none()
     if not admin:
-        await callback.message.edit_text("❌ Админ не найден.")
+        await callback.message.edit_text(menu_text("Админы", "Админ не найден"))
         return
 
     admin.role = role
     invalidate_admin_cache(tg_id)
 
     await callback.message.edit_text(
-        f"✅ Роль админа <code>{tg_id}</code> изменена на <b>{role}</b>.",
+        menu_text(
+            "Админы",
+            f"✅ Роль админа <code>{tg_id}</code> изменена на <b>{role}</b>.",
+            markup=build_single_admin_menu(tg_id, role),
+        ),
         reply_markup=build_single_admin_menu(tg_id, role),
     )
 
@@ -179,13 +211,23 @@ async def edit_admin_permissions(callback: CallbackQuery, callback_data: AdminPa
 
     admin = (await session.execute(select(Admin).where(Admin.tg_id == tg_id))).scalar_one_or_none()
     if not admin:
-        await callback.message.edit_text("❌ Админ не найден.", reply_markup=build_admin_back_kb_to_admins())
+        await callback.message.edit_text(
+            menu_text("Админы", "Админ не найден", markup=build_admin_back_kb_to_admins()),
+            reply_markup=build_admin_back_kb_to_admins(),
+        )
         return
 
     current = set(normalize_permissions(admin.permissions))
     await callback.message.edit_text(
-        f"🔐 <b>Права админа</b> <code>{tg_id}</code>\n\nНажмите чтобы переключить. "
-        f"Роль <b>superadmin</b> имеет все права автоматически.",
+        menu_text(
+            "Права админа",
+            f"<code>{tg_id}</code>",
+            quote(
+                "Нажмите на право, чтобы включить или выключить его.",
+                "У роли superadmin права всегда полные.",
+            ),
+            markup=build_admin_permissions_kb(tg_id, current),
+        ),
         reply_markup=build_admin_permissions_kb(tg_id, current),
     )
 
@@ -230,5 +272,6 @@ async def delete_admin(callback: CallbackQuery, callback_data: AdminPanelCallbac
     invalidate_admin_cache(tg_id)
 
     await callback.message.edit_text(
-        f"🗑 Админ <code>{tg_id}</code> удалён.", reply_markup=build_admin_back_kb_to_admins()
+        menu_text("Админы", f"🗑 Админ <code>{tg_id}</code> удалён.", markup=build_admin_back_kb_to_admins()),
+        reply_markup=build_admin_back_kb_to_admins(),
     )

@@ -13,6 +13,7 @@ from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_EMOJI
 from settings.buttons import BACK
 
+from ..panel.headers import content_width, menu_text, menu_title, quote, strip_tags, wrap_text
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 
 
@@ -50,11 +51,8 @@ async def show_emoji_menu(callback_query: CallbackQuery, state: FSMContext):
     example_id = "5201769509345588200"
     marker = f"{{{{emoji:{example_id}}}}}"
     preview_placeholder = "😀"
-    text = (
-        "Отправьте любое кастомное эмоджи — я верну его ID и покажу пример для текстов.\n\n"
-        "Пример:\n"
-        f"{preview_placeholder}"
-    )
+    hint = wrap_text("Пришлите кастомное эмоджи — верну его ID и пример для файла текстов.")
+    text = strip_tags(menu_title("Эмоджи", content_width(hint))) + "\n\n" + hint + "\n\nПример:\n" + preview_placeholder
 
     entities: list[MessageEntity] = []
     start = 0
@@ -104,7 +102,12 @@ async def handle_custom_emoji_id(message: Message, state: FSMContext):
 
     if not emoji_ids:
         await message.answer(
-            "❌ Не вижу кастомных эмоджи. Отправьте именно <b>кастомный эмоджи</b> из набора.",
+            menu_text(
+                "Эмоджи",
+                "❌ Не вижу кастомных эмоджи.",
+                quote("Отправьте именно <b>кастомный эмоджи</b> из набора."),
+                markup=_build_back_to_emoji_menu().as_markup(),
+            ),
             reply_markup=_build_back_to_emoji_menu().as_markup(),
         )
         return
@@ -130,7 +133,7 @@ async def handle_custom_emoji_id(message: Message, state: FSMContext):
             "Пример:\n"
             f"{example_send}\n"
             f"{example_recv}\n\n"
-            "⚠️ Условие: отображение кастомных эмоджи работает, если у владельца бота есть Telegram Premium."
+            + wrap_text("⚠️ Условие: кастомные эмоджи видны, только если у владельца бота есть Telegram Premium.")
         )
         preview_text = example_recv
         preview_ids = [emoji_id]
@@ -149,7 +152,7 @@ async def handle_custom_emoji_id(message: Message, state: FSMContext):
             "Пример:\n"
             f"{example_send}\n"
             f"{example_recv}\n\n"
-            "⚠️ Условие: отображение кастомных эмоджи работает, если у владельца бота есть Telegram Premium."
+            + wrap_text("⚠️ Условие: кастомные эмоджи видны, только если у владельца бота есть Telegram Premium.")
         )
         preview_text = example_recv
         preview_ids = unique_ids

@@ -14,6 +14,7 @@ from filters.admin import IsAdminFilter
 from middlewares.ban_checker import invalidate_ban_cache
 from settings.buttons import BACK
 
+from ..panel.headers import menu_text, quote
 from .keyboard import AdminUserEditorCallback, build_editor_btn, build_editor_kb, build_user_ban_type_kb
 from .users_states import BanUserStates
 
@@ -30,7 +31,7 @@ async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEdito
     await state.update_data(tg_id=callback_data.tg_id)
 
     await callback.message.edit_text(
-        text="🚫 Выберите тип блокировки пользователя:",
+        text=menu_text("Блокировка", "Выберите тип блокировки.", markup=build_user_ban_type_kb(callback_data.tg_id)),
         reply_markup=build_user_ban_type_kb(callback_data.tg_id),
     )
 
@@ -47,7 +48,11 @@ async def handle_ban_forever_start(callback: CallbackQuery, callback_data: Admin
     kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
 
     await callback.message.edit_text(
-        text="✏️ Введите причину <b>постоянной блокировки</b> (или <code>-</code>, чтобы пропустить):",
+        text=menu_text(
+            "Блокировка",
+            "✏️ Введите причину <b>постоянной блокировки</b> (или <code>-</code>, чтобы пропустить):",
+            markup=kb.as_markup(),
+        ),
         reply_markup=kb.as_markup(),
     )
 
@@ -63,7 +68,7 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
 
     u = await resolve_user_optional(session, tg_id)
     if u is None:
-        await message.answer("❌ Пользователь не найден.")
+        await message.answer(menu_text("Блокировка", "❌ Клиент не найден."))
         await state.clear()
         return
 
@@ -95,7 +100,13 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
     await state.clear()
 
     await message.answer(
-        text=(f"✅ Пользователь <code>{tg_id}</code> забанен навсегда.{f'\n📄 Причина: {reason}' if reason else ''}"),
+        text=(
+            menu_text(
+                "Блокировка",
+                f"✅ Клиент <code>{tg_id}</code> забанен навсегда.{(f'\n📄 Причина: {reason}' if reason else '')}",
+                markup=build_editor_kb(tg_id, edit=True),
+            )
+        ),
         reply_markup=build_editor_kb(tg_id, edit=True),
     )
 
@@ -112,7 +123,11 @@ async def handle_ban_temporary(callback: CallbackQuery, callback_data: AdminUser
     kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
 
     await callback.message.edit_text(
-        text="✏️ Введите причину <b>временной блокировки</b> (или <code>-</code>, чтобы пропустить):",
+        text=menu_text(
+            "Блокировка",
+            "✏️ Введите причину <b>временной блокировки</b> (или <code>-</code>, чтобы пропустить):",
+            markup=kb.as_markup(),
+        ),
         reply_markup=kb.as_markup(),
     )
 
@@ -129,7 +144,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     kb.row(build_editor_btn(BACK, tg_id=tg_id, edit=True))
 
     await message.answer(
-        "⏳ Введите срок блокировки в днях (0 — навсегда):",
+        menu_text("Блокировка", "⏳ Срок блокировки в днях. 0 — навсегда.", markup=kb.as_markup()),
         reply_markup=kb.as_markup(),
     )
 
@@ -145,14 +160,14 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
     try:
         days = int(message.text.strip())
         if days < 1:
-            await message.answer("❗ Укажите срок минимум в 1 день.")
+            await message.answer(menu_text("Блокировка", "❌ Укажите срок минимум в 1 день."))
             return
 
         until = datetime.now(timezone.utc) + timedelta(days=days)
 
         u = await resolve_user_optional(session, tg_id)
         if u is None:
-            await message.answer("❌ Пользователь не найден.")
+            await message.answer(menu_text("Блокировка", "❌ Клиент не найден."))
             return
 
         stmt = (
@@ -181,14 +196,15 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
         if u.tg_id is not None:
             await invalidate_ban_cache(u.tg_id)
 
-        text = (
-            f"✅ Пользователь <code>{tg_id}</code> временно забанен до <b>{until:%Y-%m-%d %H:%M}</b> по UTC."
-            f"{f'\n📄 Причина: {reason}' if reason else ''}"
+        text = menu_text(
+            "Клиент забанен",
+            f"<code>{tg_id}</code>",
+            quote(f"До: <b>{until:%Y-%m-%d %H:%M}</b> UTC" + (f"\nПричина: {reason}" if reason else "")),
         )
 
         await message.answer(text=text, reply_markup=build_editor_kb(tg_id, edit=True))
     except ValueError:
-        await message.answer("❗ Введите корректное число дней.")
+        await message.answer(menu_text("Блокировка", "❌ Введите корректное число дней."))
     finally:
         await state.clear()
 
@@ -201,7 +217,7 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
 async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEditorCallback, session: AsyncSession):
     u = await resolve_user_optional(session, callback_data.tg_id)
     if u is None:
-        await callback.answer("Пользователь не найден", show_alert=True)
+        await callback.answer("Клиент не найден", show_alert=True)
         return
 
     stmt = (
@@ -230,7 +246,11 @@ async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEdi
         await invalidate_ban_cache(u.tg_id)
 
     await callback.message.edit_text(
-        text=f"👻 Пользователь <code>{callback_data.tg_id}</code> получил теневой бан.",
+        text=menu_text(
+            "Блокировка",
+            f"👻 Клиент <code>{callback_data.tg_id}</code> получил теневой бан.",
+            markup=build_editor_kb(callback_data.tg_id, edit=True),
+        ),
         reply_markup=build_editor_kb(callback_data.tg_id, edit=True),
     )
 
@@ -247,15 +267,16 @@ async def handle_user_unban(
 ):
     u = await resolve_user_optional(session, callback_data.tg_id)
     if u is None:
-        await callback.answer("Пользователь не найден", show_alert=True)
+        await callback.answer("Клиент не найден", show_alert=True)
         return
 
     await session.execute(delete(ManualBan).where(ManualBan.user_id == u.id))
     if u.tg_id is not None:
         await invalidate_ban_cache(u.tg_id)
 
-    text = (
-        f"✅ Пользователь <code>{callback_data.tg_id}</code> разблокирован. Нажмите кнопку ниже для возврата в профиль."
+    text = menu_text(
+        "Блокировка снята",
+        f"Клиент <code>{callback_data.tg_id}</code> снова может пользоваться ботом.",
     )
 
     await callback.message.edit_text(text=text, reply_markup=build_editor_kb(callback_data.tg_id, edit=True))

@@ -1,6 +1,7 @@
 from database.subscription_events import get_recent_renewals
 from services.subscription_keys import resolve_remnawave_server_ref
 
+from ...panel.headers import card, menu_text, section
 from ._common import *  # noqa: F401,F403
 
 
@@ -19,7 +20,7 @@ async def _build_renewals_block(session, client_id) -> str:
             if ev.get("created_at")
             else "—"
         )
-        parts = [f"📅 {when}"]
+        parts = [when]
         tid = ev.get("tariff_id")
         if tid is not None:
             if tid not in tariff_names:
@@ -34,8 +35,8 @@ async def _build_renewals_block(session, client_id) -> str:
             )
         src = ev.get("source") or ""
         parts.append(_RENEWAL_SOURCE_LABELS.get(src, src) if src else "—")
-        lines.append("• " + " · ".join(parts))
-    return "\n\n🔄 <b>Последние продления:</b>\n" + "\n".join(lines)
+        lines.append(" · ".join(parts))
+    return "\n".join(lines)
 
 
 @router.callback_query(
@@ -53,7 +54,7 @@ async def handle_key_edit(
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о подписке не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
             reply_markup=build_editor_kb(callback_data.tg_id),
         )
         return
@@ -63,11 +64,10 @@ async def handle_key_edit(
     is_frozen = bool(key_details.get("is_frozen")) if key_details else bool(getattr(key_obj, "is_frozen", False))
 
     key_value = key_obj.key or key_obj.remnawave_link or "—"
-    alias_part = f" (<i>{key_obj.alias}</i>)" if key_obj.alias else ""
 
     if key_obj.created_at:
         created_at_dt = datetime.fromtimestamp(int(key_obj.created_at) / 1000, tz=MOSCOW_TZ)
-        created_at = created_at_dt.strftime("%d %B %Y года %H:%M")
+        created_at = created_at_dt.strftime("%d.%m.%y")
     else:
         created_at = "—"
 
@@ -83,14 +83,14 @@ async def handle_key_edit(
             frozen_parts.append(f"{hours} ч.")
         if minutes or not frozen_parts:
             frozen_parts.append(f"{minutes} мин.")
-        expiry_label = "⏳ <b>Остаток:</b>"
+        expiry_label = "Осталось:"
         expiry_date = " ".join(frozen_parts)
     elif key_obj.expiry_time:
         expiry_dt = datetime.fromtimestamp(int(key_obj.expiry_time) / 1000, tz=MOSCOW_TZ)
-        expiry_label = "⏰ <b>Истекает:</b>"
-        expiry_date = expiry_dt.strftime("%d %B %Y года %H:%M")
+        expiry_label = "Истекает:"
+        expiry_date = expiry_dt.strftime("%d.%m.%y %H:%M")
     else:
-        expiry_label = "⏰ <b>Истекает:</b>"
+        expiry_label = "Истекает:"
         expiry_date = "—"
 
     tariff_name = "—"
@@ -120,7 +120,7 @@ async def handle_key_edit(
                 if (base_dev is not None and cur_dev is not None and cur_dev > base_dev)
                 else ""
             )
-            devices_line = f"📱 <b>Устройства:</b> {base_dev}{extra}\n"
+            devices_line = f"Устройства: {base_dev}{extra}"
 
         sel_traf, cur_traf = key_obj.selected_traffic_limit, key_obj.current_traffic_limit
         if sel_traf is not None or cur_traf is not None:
@@ -130,27 +130,29 @@ async def handle_key_edit(
                 if (base_traf is not None and cur_traf is not None and cur_traf > base_traf)
                 else ""
             )
-            traffic_line = f"📊 <b>Трафик:</b> {base_traf} ГБ{extra}\n"
+            traffic_line = f"Трафик: {base_traf} ГБ{extra}"
 
     renewals_block = await _build_renewals_block(session, key_obj.client_id)
 
-    text = (
-        "<b>🔑 Информация о подписке</b>\n\n"
-        "<blockquote>"
-        f"🔗 <b>Ключ{alias_part}:</b> <code>{key_value}</code>\n"
-        f"📆 <b>Создан:</b> {created_at} (МСК)\n"
-        f"{'⛔ <b>Статус:</b> отключена\n' if is_frozen else ''}"
-        f"{expiry_label} {expiry_date}{' (МСК)' if not is_frozen and expiry_date != '—' else ''}\n"
-        f"🌐 <b>Кластер:</b> {key_obj.server_id or '—'}\n"
-        f"🆔 <b>ID клиента:</b> {key_obj.tg_id or '—'}\n"
-        f"🏷️ <b>Тарифная группа:</b> {group_code}\n"
-        f"📁 <b>Подгруппа:</b> {subgroup_title}\n"
-        f"📦 <b>Тариф:</b> {tariff_name}\n"
-        f"{devices_line}"
-        f"{traffic_line}"
-        "</blockquote>"
-        f"{renewals_block}"
-    )
+    term = [f"Создан: {created_at}", f"{expiry_label} {expiry_date}"]
+    if is_frozen:
+        term.insert(0, "⛔ Отключена")
+
+    plan = [f"Тариф: {tariff_name}", f"Группа: {group_code}"]
+    if subgroup_title != "—":
+        plan.append(f"Подгруппа: {subgroup_title}")
+    plan += [line for line in (devices_line, traffic_line) if line]
+
+    blocks = [
+        section("🔗 Ссылка", f"<code>{key_value}</code>"),
+        section("⏳ Срок", *term),
+        section("📦 Тариф", *plan),
+        section("🗺 Размещение", f"Кластер: {key_obj.server_id or '—'}", f"Клиент: {key_obj.tg_id or '—'}"),
+    ]
+    if renewals_block:
+        blocks.append(section("🔄 Продления", *renewals_block.split("\n")))
+
+    text = menu_text("Подписка", key_obj.alias or email, card(*blocks))
 
     if not update or not getattr(callback_data, "edit", False):
         kb_key_details = dict(key_obj.__dict__)
@@ -209,7 +211,7 @@ async def handle_change_expiry(
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -235,7 +237,7 @@ async def handle_expiry_add(
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -246,7 +248,7 @@ async def handle_expiry_add(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -260,7 +262,11 @@ async def handle_expiry_add(
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
-        text="✍️ Введите количество дней, которое хотите добавить к времени действия ключа:",
+        text=menu_text(
+            "Подписка",
+            "✍️ На сколько дней продлить?",
+            markup=build_users_key_show_kb(tg_id, key_ref),
+        ),
         reply_markup=build_users_key_show_kb(tg_id, key_ref),
     )
 
@@ -280,7 +286,7 @@ async def handle_expiry_take(
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -290,7 +296,11 @@ async def handle_expiry_take(
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
-        text="✍️ Введите количество дней, которое хотите вычесть из времени действия ключа:",
+        text=menu_text(
+            "Подписка",
+            "✍️ На сколько дней сократить?",
+            markup=build_users_key_show_kb(tg_id, key_ref),
+        ),
         reply_markup=build_users_key_show_kb(tg_id, key_ref),
     )
 
@@ -310,7 +320,7 @@ async def handle_expiry_set(
     key_obj = await resolve_callback_key(session, tg_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -320,7 +330,7 @@ async def handle_expiry_set(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -328,10 +338,13 @@ async def handle_expiry_set(
     await state.update_data(tg_id=tg_id, email=email, key_ref=key_ref, op_type="set")
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
-    text = (
-        "✍️ Введите новое время действия ключа:"
-        "\n\n📌 Формат: <b>год-месяц-день час:минута</b>"
-        f"\n\n📄 Текущая дата: {datetime.fromtimestamp(key_details['expiry_time'] / 1000, tz=MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')} (МСК)"
+    text = menu_text(
+        "Подписка",
+        "✍️ Введите новое время действия ключа:",
+        quote("📌 Формат: <b>год-месяц-день час:минута</b>"),
+        quote(
+            f"📄 Текущая дата: {datetime.fromtimestamp(key_details['expiry_time'] / 1000, tz=MOSCOW_TZ).strftime('%Y-%m-%d %H:%M')} (МСК)"
+        ),
     )
 
     await callback_query.message.edit_text(
@@ -350,7 +363,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
 
     if op_type != "set" and (not message.text.isdigit() or int(message.text) < 0):
         await message.answer(
-            text="🚫 Пожалуйста, введите корректное количество дней!",
+            text=menu_text("Подписка", "❌ Нужно число дней."),
             reply_markup=build_users_key_show_kb(tg_id, key_ref) if key_ref else build_editor_kb(tg_id),
         )
         return
@@ -359,7 +372,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
 
     if not key_details:
         await message.answer(
-            text="🚫 Информация о ключе не найдена.",
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
             reply_markup=build_editor_kb(tg_id),
         )
         return
@@ -373,22 +386,24 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
         if op_type == "add":
             days = int(message.text)
             new_expiry_time = current_expiry_time + timedelta(days=days)
-            text = f"✅ Ко времени действия ключа добавлено <b>{days} дн.</b>"
+            text = menu_text("Подписка", f"✅ Ко времени действия ключа добавлено <b>{days} дн.</b>")
         elif op_type == "take":
             days = int(message.text)
             new_expiry_time = current_expiry_time - timedelta(days=days)
-            text = f"✅ Из времени действия ключа вычтено <b>{days} дн.</b>"
+            text = menu_text("Подписка", f"✅ Из времени действия ключа вычтено <b>{days} дн.</b>")
         else:
             new_expiry_time = datetime.strptime(message.text, "%Y-%m-%d %H:%M")
             new_expiry_time = MOSCOW_TZ.localize(new_expiry_time)
-            text = f"✅ Время действия ключа изменено на <b>{message.text} (МСК)</b>"
+            text = menu_text("Подписка", f"✅ Время действия ключа изменено на <b>{message.text} (МСК)</b>")
 
         new_expiry_timestamp = int(new_expiry_time.timestamp() * 1000)
         await change_expiry_time(new_expiry_timestamp, email, session)
     except ValueError:
-        text = "🚫 Пожалуйста, используйте корректный формат даты (ГГГГ-ММ-ДД ЧЧ:ММ)!"
+        text = menu_text(
+            "Срок действия", "Некорректный формат даты.", quote("Нужно так: <code>ГГГГ-ММ-ДД ЧЧ:ММ</code>")
+        )
     except Exception as e:
-        text = f"❗ Произошла ошибка во время изменения времени действия ключа: {e}"
+        text = menu_text("Срок действия", "Не удалось изменить.", quote(f"<code>{e}</code>"))
 
     await message.answer(
         text=text,

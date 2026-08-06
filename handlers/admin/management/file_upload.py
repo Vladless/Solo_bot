@@ -11,6 +11,7 @@ from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import build_admin_back_kb
 from . import router
 from .keyboard import AdminPanelCallback
@@ -23,11 +24,13 @@ class FileUploadState(StatesGroup):
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "upload_file"), HasPermission(PERM_MANAGEMENT))
 async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
-    text = (
-        "📤 <b>Загрузка файла</b>\n\n"
-        "Вы можете заменить файл в корневой директории бота или в папке <code>handlers</code>.\n\n"
-        "📁 Выберите директорию, а затем отправьте файл с таким же именем и расширением, "
-        "как у уже существующего файла. Он будет автоматически заменён."
+    text = menu_text(
+        "Загрузка файла",
+        "Выберите директорию.",
+        quote(
+            "Заменить можно файл в корне бота или в папке <code>handlers</code>.",
+            "Дальше пришлите файл с тем же именем и расширением — он заменит существующий.",
+        ),
     )
 
     back_kb = build_admin_back_kb("management")
@@ -50,17 +53,19 @@ async def prompt_for_file_upload(callback: CallbackQuery, state: FSMContext):
 async def select_upload_target(callback: CallbackQuery, state: FSMContext):
     target = callback.data.split(":", 1)[1]
     if target not in {"root", "handlers"}:
-        await callback.answer("Неизвестная директория.")
+        await callback.answer(menu_text("Загрузка файла", "Неизвестная директория."))
         return
 
     await state.update_data(upload_target=target)
 
     target_text = "Корень бота" if target == "root" else "Папка handlers"
     await callback.message.edit_text(
-        "📤 <b>Загрузка файла</b>\n\n"
-        f"Выбрана директория: <b>{target_text}</b>.\n\n"
-        "Теперь отправьте файл с таким же именем и расширением, как у уже существующего файла. "
-        "Он будет автоматически заменён.",
+        menu_text(
+            "Загрузка файла",
+            f"Директория: <b>{target_text}</b>",
+            quote("Пришлите файл с тем же именем и расширением — он заменит существующий."),
+            markup=build_admin_back_kb("management"),
+        ),
         reply_markup=build_admin_back_kb("management"),
     )
     await state.set_state(FileUploadState.waiting_for_file)
@@ -72,7 +77,7 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
     file_name = document.file_name
 
     if not file_name or "." not in file_name:
-        await message.answer("❌ У файла должно быть имя с расширением.")
+        await message.answer(menu_text("Загрузка файла", "❌ У файла должно быть имя с расширением."))
         return
 
     data = await state.get_data()
@@ -87,7 +92,7 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
     safe_name = os.path.basename(file_name)
     dest_path = os.path.join(base_dir, safe_name)
     if not os.path.abspath(dest_path).startswith(base_dir + os.sep):
-        await message.answer("❌ Недопустимое имя файла.")
+        await message.answer(menu_text("Загрузка файла", "❌ Недопустимое имя файла."))
         return
 
     try:
@@ -103,14 +108,18 @@ async def handle_admin_file_upload(message: Message, state: FSMContext):
             kb.row(*row)
 
         await message.answer(
-            f"✅ Файл <code>{file_name}</code> успешно загружен и заменён в директории <code>{target}</code>.\n\n"
-            "🔄 <b>Перезагрузите бота, чтобы изменения вступили в силу.</b>",
+            menu_text(
+                "Загрузка файла",
+                f"✅ Файл <code>{file_name}</code> загружен и заменён в директории <code>{target}</code>.",
+                quote("🔄 <b>Перезагрузите бота, чтобы изменения вступили в силу.</b>"),
+                markup=kb.as_markup(),
+            ),
             reply_markup=kb.as_markup(),
         )
     except Exception as e:
         logger.error(f"[Upload File] Ошибка при загрузке файла {file_name}: {e}")
         await message.answer(
-            f"❌ Не удалось сохранить файл: {e}",
+            menu_text("Загрузка файла", f"❌ Не удалось сохранить файл: {e}", markup=build_admin_back_kb("management")),
             reply_markup=build_admin_back_kb("management"),
         )
     await state.clear()

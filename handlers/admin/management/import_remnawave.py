@@ -18,6 +18,7 @@ from logger import logger
 from panels.remnawave import RemnawaveAPI
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
+from ..panel.headers import card, menu_text, quote, section
 from . import router
 from .keyboard import AdminPanelCallback, build_back_to_db_menu
 
@@ -64,7 +65,7 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
 
     if not servers:
         await callback.message.edit_text(
-            "❌ Нет доступных Remnawave-серверов.",
+            menu_text("Импорт с панели", "❌ Нет доступных Remnawave-серверов.", markup=build_back_to_db_menu()),
             reply_markup=build_back_to_db_menu(),
         )
         return
@@ -80,7 +81,7 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
 
     if not users:
         await callback.message.edit_text(
-            "📭 На панели нет клиентов.",
+            menu_text("Импорт с панели", "📭 На панели нет клиентов.", markup=build_back_to_db_menu()),
             reply_markup=build_back_to_db_menu(),
         )
         return
@@ -93,18 +94,28 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
 
     added_keys, updated_keys = await import_remnawave_keys(session, users, server_id=server_id)
 
-    preview = ""
+    preview: list[str] = []
     for i, user in enumerate(users[:3], 1):
         email = user.get("email") or user.get("username") or "-"
         expire = (user.get("expireAt") or "")[:10]
-        preview += f"{i}. {email} — до {expire}\n"
+        preview.append(f"{i}. {email}: до {expire}")
 
     await callback.message.edit_text(
-        f"📄 Найдено клиентов: <b>{len(users)}</b>\n"
-        f"👤 Импортировано пользователей: <b>{added_users}</b>\n"
-        f"🔐 Импортировано новых ключей: <b>{added_keys}</b>\n"
-        f"🔄 Актуализировано существующих: <b>{updated_keys}</b>\n\n"
-        f"<b>Первые 3:</b>\n{preview}",
+        menu_text(
+            "Импорт с панели",
+            "✅ Импорт завершён.",
+            card(
+                section(
+                    "📊 Итог",
+                    f"Найдено: {len(users)}",
+                    f"Клиентов: {added_users}",
+                    f"Подписок: {added_keys}",
+                    f"Обновлено: {updated_keys}",
+                ),
+                section("👥 Первые три", *preview),
+            ),
+            markup=build_back_to_db_menu(),
+        ),
         reply_markup=build_back_to_db_menu(),
     )
 

@@ -61,7 +61,7 @@ def build_manage_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineK
     )
     builder.row(
         InlineKeyboardButton(
-            text="💸 Тариф(Установить/изменить)",
+            text="💸 Тариф",
             callback_data=AdminClusterCallback(action="attach_tariff_menu", data=cluster_name).pack(),
         )
     )
@@ -176,11 +176,11 @@ def build_tariff_subgroup_selection_kb(cluster_name: str, subgroups: list[str]) 
         )
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад к выбору серверов",
+            text="⬅️ К серверам",
             callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
         )
     )
-    builder.adjust(2, 1)
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -222,7 +222,7 @@ def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[in
     )
     builder.row(
         InlineKeyboardButton(
-            text="⬅️ Назад к выбору серверов",
+            text="⬅️ К серверам",
             callback_data=AdminClusterCallback(action="set_subgroup", data=cluster_name).pack(),
         )
     )
@@ -233,48 +233,32 @@ def build_tariff_selection_kb(cluster_name: str, tariffs: list, selected: set[in
 def build_cluster_management_kb(cluster_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    builder.row(
-        InlineKeyboardButton(
-            text="📡 Серверы",
-            callback_data=f"cluster_servers|{cluster_name}",
-        )
+    builder.button(text="📡 Серверы", callback_data=f"cluster_servers|{cluster_name}")
+    builder.button(
+        text="🌐 Доступность",
+        callback_data=AdminClusterCallback(action="availability", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 Доступность",
-            callback_data=AdminClusterCallback(action="availability", data=cluster_name).pack(),
-        )
+    builder.button(
+        text="🔄 Синхронизация",
+        callback_data=AdminClusterCallback(action="sync", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Синхронизация",
-            callback_data=AdminClusterCallback(action="sync", data=cluster_name).pack(),
-        )
+    builder.button(
+        text="💾 Бэкап",
+        callback_data=AdminClusterCallback(action="backup", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="💾 Создать бэкап",
-            callback_data=AdminClusterCallback(action="backup", data=cluster_name).pack(),
-        )
+    builder.button(
+        text="⏳ Добавить время",
+        callback_data=AdminClusterCallback(action="add_time", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="⏳ Добавить время",
-            callback_data=AdminClusterCallback(action="add_time", data=cluster_name).pack(),
-        )
+    builder.button(
+        text="💸 Тариф",
+        callback_data=AdminClusterCallback(action="set_tariff", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="✏️ Сменить название",
-            callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
-        )
+    builder.button(
+        text="✏️ Переименовать",
+        callback_data=AdminClusterCallback(action="rename", data=cluster_name).pack(),
     )
-    builder.row(
-        InlineKeyboardButton(
-            text="💸 Тариф(Установить/изменить)",
-            callback_data=AdminClusterCallback(action="set_tariff", data=cluster_name).pack(),
-        )
-    )
+    builder.adjust(2)
     builder.row(InlineKeyboardButton(text=BACK, callback_data=AdminPanelCallback(action="clusters").pack()))
 
     return builder.as_markup()
@@ -293,7 +277,7 @@ def build_sync_cluster_kb(cluster_servers: list, cluster_name: str) -> InlineKey
 
     builder.row(
         InlineKeyboardButton(
-            text="📍 Синхронизировать кластер",
+            text="📍 Синхронизировать",
             callback_data=AdminClusterCallback(action="sync-cluster", data=cluster_name).pack(),
         )
     )
@@ -327,7 +311,7 @@ def build_tariff_group_selection_kb(cluster_name: str, groups: list[tuple[int, s
             callback_data=AdminClusterCallback(action="manage", data=cluster_name).pack(),
         )
     )
-    builder.adjust(2, 1)
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -389,7 +373,7 @@ def build_tariff_group_selection_for_servers_kb(
             callback_data=AdminClusterCallback(action="set_group", data=cluster_name).pack(),
         )
     )
-    builder.adjust(2, 1)
+    builder.adjust(1)
     return builder.as_markup()
 
 

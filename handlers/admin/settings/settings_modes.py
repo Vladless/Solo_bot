@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import MODES_CONFIG, update_modes_config
 from filters.admin import IsAdminFilter
 
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import MODES_TITLES, build_settings_modes_kb
 
@@ -21,7 +22,11 @@ async def load_modes_settings() -> dict[str, bool]:
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_modes"))
 async def open_settings_modes_menu(callback: CallbackQuery, session: AsyncSession) -> None:
     modes_state = await load_modes_settings()
-    text = "Здесь вы можете включать и отключать режимы работы бота."
+    text = menu_text(
+        "Режимы",
+        "Как бот себя ведёт.",
+        quote("Нажмите на режим, чтобы включить или выключить его."),
+    )
     await callback.message.edit_text(text=text, reply_markup=build_settings_modes_kb(modes_state))
     await callback.answer()
 
@@ -48,4 +53,4 @@ async def toggle_mode_setting(
 
     modes_state = {k: bool(config.get(k, False)) for k in MODES_TITLES.keys()}
     await callback.message.edit_reply_markup(reply_markup=build_settings_modes_kb(modes_state))
-    await callback.answer("Настройка обновлена")
+    await callback.answer(menu_text("Режимы", "Настройка обновлена"))

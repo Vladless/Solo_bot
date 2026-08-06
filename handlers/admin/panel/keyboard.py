@@ -36,8 +36,6 @@ class AdminPanelCallback(CallbackData, prefix="admin_panel"):
         super().__init__(**data)
 
 
-# Пары складываются в два столбца; если у админа нет прав на соседа,
-# кнопка сама растянется на всю ширину.
 _ADMIN_MENU: tuple[tuple[tuple[str, str, tuple[str, ...]], ...], ...] = (
     (
         ("🔍 Поиск", "search_user", (PERM_USERS,)),

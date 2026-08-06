@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Tariff
 from filters.admin import IsAdminFilter
 
+from ...panel.headers import menu_text, quote
 from .. import router
 from .common import (
     TariffConfigState,
@@ -26,12 +27,14 @@ async def ask_devices_config(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffConfigState.entering_devices)
     await state.update_data(tariff_id=tariff_id)
 
-    text = (
-        "📱 Настройка вариантов устройств.\n\n"
-        "Введите список вариантов количества устройств через пробел или запятую.\n"
-        "Например: <code>1 3 5</code>\n\n"
-        "Число <code>0</code> можно использовать как вариант безлимита.\n"
-        "Чтобы совсем отключить выбор устройств и использовать только базовый лимит тарифа, отправьте единичный <code>0</code>."
+    text = menu_text(
+        "Варианты устройств",
+        "Пришлите список через пробел или запятую.",
+        quote("Например: <code>1 3 5</code>"),
+        quote(
+            "<code>0</code> в списке — вариант «безлимит».",
+            "Один только <code>0</code> — выбор устройств отключён, остаётся базовый лимит тарифа.",
+        ),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -45,7 +48,7 @@ async def save_devices_config(message: Message, state: FSMContext, session: Asyn
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -66,9 +69,12 @@ async def save_devices_config(message: Message, state: FSMContext, session: Asyn
             tariff.device_options = values
         except Exception:
             await message.answer(
-                "❌ Некорректные значения. Введите положительные числа или 0 через пробел или запятую,\n"
-                "например: <code>1 3 5</code>, <code>0 1 3 5</code> (0 как безлимит)\n"
-                "или <code>0</code> для отключения выбора устройств.",
+                menu_text(
+                    "Некорректные значения",
+                    "Нужны числа 0 и больше через пробел или запятую.",
+                    quote("Например: <code>1 3 5</code>"),
+                    markup=build_cancel_config_kb(tariff_id),
+                ),
                 reply_markup=build_cancel_config_kb(tariff_id),
             )
             return
@@ -87,12 +93,14 @@ async def ask_traffic_config(callback: CallbackQuery, state: FSMContext):
     await state.set_state(TariffConfigState.entering_traffic)
     await state.update_data(tariff_id=tariff_id)
 
-    text = (
-        "📦 Настройка вариантов трафика.\n\n"
-        "Введите список лимитов трафика в ГБ через пробел или запятую.\n"
-        "Например: <code>100 200 500</code>\n\n"
-        "Число <code>0</code> можно использовать как вариант безлимита.\n"
-        "Чтобы совсем отключить выбор трафика и использовать только базовый лимит тарифа, отправьте единичный <code>0</code>."
+    text = menu_text(
+        "Варианты трафика",
+        "Пришлите список ГБ через пробел или запятую.",
+        quote("Например: <code>100 200 500</code>"),
+        quote(
+            "<code>0</code> в списке — вариант «безлимит».",
+            "Один только <code>0</code> — выбор трафика отключён, остаётся базовый лимит тарифа.",
+        ),
     )
     await callback.message.edit_text(text=text, reply_markup=build_cancel_config_kb(tariff_id))
 
@@ -106,7 +114,7 @@ async def save_traffic_config(message: Message, state: FSMContext, session: Asyn
     result = await session.execute(select(Tariff).where(Tariff.id == tariff_id))
     tariff = result.scalar_one_or_none()
     if not tariff:
-        await message.answer("❌ Тариф не найден.")
+        await message.answer(menu_text("Конфигуратор", "❌ Тариф не найден."))
         await state.clear()
         return
 
@@ -127,9 +135,12 @@ async def save_traffic_config(message: Message, state: FSMContext, session: Asyn
             tariff.traffic_options_gb = values
         except Exception:
             await message.answer(
-                "❌ Некорректные значения. Введите числа 0 и больше через пробел или запятую,\n"
-                "например: <code>100 200 500</code>.\n"
-                "0 можно использовать как вариант безлимита или отправить единственный 0 для отключения выбора.",
+                menu_text(
+                    "Некорректные значения",
+                    "Нужны числа 0 и больше через пробел или запятую.",
+                    quote("Например: <code>100 200 500</code>"),
+                    markup=build_cancel_config_kb(tariff_id),
+                ),
                 reply_markup=build_cancel_config_kb(tariff_id),
             )
             return
