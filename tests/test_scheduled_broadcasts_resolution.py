@@ -8,7 +8,7 @@ from database.scheduled_broadcasts import create_scheduled_broadcast, list_sched
 
 class ScheduledBroadcastResolutionTests(unittest.IsolatedAsyncioTestCase):
     async def test_create_scheduled_broadcast_resolves_user_and_mirror_tg(self):
-        session = SimpleNamespace(add=Mock(), commit=AsyncMock(), refresh=AsyncMock())
+        session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock())
         creator = SimpleNamespace(id=10, tg_id=555)
 
         with patch("database.scheduled_broadcasts.resolve_user_optional", new=AsyncMock(return_value=creator)):
@@ -27,11 +27,12 @@ class ScheduledBroadcastResolutionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(broadcast.created_by_user_id, 10)
         self.assertEqual(broadcast.created_by_tg_id, 555)
-        session.commit.assert_awaited_once()
+        session.flush.assert_awaited_once()
+        session.commit.assert_not_called()
         session.refresh.assert_awaited_once_with(broadcast)
 
     async def test_create_scheduled_broadcast_keeps_legacy_tg_when_user_missing(self):
-        session = SimpleNamespace(add=Mock(), commit=AsyncMock(), refresh=AsyncMock())
+        session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock(), refresh=AsyncMock())
 
         with patch("database.scheduled_broadcasts.resolve_user_optional", new=AsyncMock(return_value=None)):
             broadcast = await create_scheduled_broadcast(

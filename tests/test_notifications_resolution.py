@@ -22,6 +22,16 @@ class NotificationsResolutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(12, values)
         self.assertIn(1212, values)
         self.assertIn("n1", values)
+        session.commit.assert_awaited_once()
+
+    async def test_add_notification_skips_commit_when_disabled(self):
+        user = SimpleNamespace(id=12, tg_id=1212)
+        session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock())
+
+        with patch("database.notifications.resolve_user_optional", new=AsyncMock(return_value=user)):
+            await add_notification(session, legacy_user_ref=1212, notification_type="n1", commit=False)
+
+        session.execute.assert_awaited_once()
         session.commit.assert_not_called()
 
     async def test_check_notification_time_returns_true_when_user_missing(self):

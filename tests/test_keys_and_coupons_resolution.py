@@ -53,8 +53,8 @@ class KeysLegacyResolutionTests(unittest.IsolatedAsyncioTestCase):
                 tariff_id=3,
             )
 
-        session.add.assert_called_once()
-        added_key = session.add.call_args.args[0]
+        self.assertEqual(session.add.call_count, 2)
+        added_key = session.add.call_args_list[0].args[0]
         self.assertEqual(added_key.user_id, 55)
         self.assertEqual(added_key.tg_id, 5050)
         self.assertEqual(added_key.client_id, "client_2")

@@ -97,7 +97,7 @@ async def get_subscription_urls(
     if include_remnawave_key:
         urls.append(include_remnawave_key)
 
-    if RANDOM_SUBSCRIPTIONS:
+    if bool(MODES_CONFIG.get("RANDOM_SUBSCRIPTIONS_ENABLED", RANDOM_SUBSCRIPTIONS)):
         random.shuffle(urls)
 
     return urls

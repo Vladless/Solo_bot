@@ -99,12 +99,13 @@ class TemporaryDataLegacyResolutionTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PaymentRenewalTimingTests(unittest.IsolatedAsyncioTestCase):
-    async def test_renewal_recomputes_expiry_from_payment_time_when_key_expired(self):
+    async def test_renewal_takes_expiry_from_quote_when_key_expired(self):
         from handlers.payments.utils import _handle_temp_state
 
         fixed_now = datetime(2026, 1, 10, 12, 0, 0)
         expired_at = int((fixed_now - timedelta(days=2)).timestamp() * 1000)
         expected_new_expiry = int((fixed_now + timedelta(days=30)).timestamp() * 1000)
+        quote = SimpleNamespace(net_cost_rub=100, new_expiry_ms=expected_new_expiry)
 
         session = SimpleNamespace()
         data = {
@@ -122,6 +123,7 @@ class PaymentRenewalTimingTests(unittest.IsolatedAsyncioTestCase):
                 "handlers.payments.utils.get_key_by_server",
                 new=AsyncMock(return_value=SimpleNamespace(expiry_time=expired_at)),
             ),
+            patch("services.keys.compute_renewal_quote", new=AsyncMock(return_value=quote)) as quote_mock,
             patch("handlers.keys.renew.flow.complete_key_renewal", new=AsyncMock()) as complete_mock,
             patch("handlers.payments.utils.clear_temporary_data", new=AsyncMock()) as clear_mock,
             patch("handlers.payments.utils.datetime") as datetime_mock,
@@ -137,5 +139,6 @@ class PaymentRenewalTimingTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(handled)
+        self.assertEqual(quote_mock.await_args.kwargs["current_expiry_ms"], expired_at)
         self.assertEqual(complete_mock.await_args.kwargs["new_expiry_time"], expected_new_expiry)
         clear_mock.assert_awaited_once_with(session, 12345)

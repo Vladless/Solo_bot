@@ -18,23 +18,22 @@ class MaintenanceModeMiddleware(BaseMiddleware):
         if not maintenance_enabled:
             return await handler(event, data)
 
-        user_id = None
-        if isinstance(event, Message):
-            if event.from_user:
-                user_id = event.from_user.id
-        elif isinstance(event, CallbackQuery):
-            if event.from_user:
-                user_id = event.from_user.id
+        target = event
+        if isinstance(event, Update):
+            target = event.message or event.callback_query or event.inline_query
+            if target is None:
+                return await handler(event, data)
 
-        if not user_id:
+        from_user = getattr(target, "from_user", None)
+        if not getattr(from_user, "id", None):
             return
 
         if data.get("admin"):
             return await handler(event, data)
 
-        if isinstance(event, CallbackQuery):
-            await event.answer("⚙️ Бот временно недоступен. Ведутся технические работы.", show_alert=True)
-        elif isinstance(event, Message):
-            await event.answer("⚙️ Бот временно недоступен. Ведутся технические работы.")
+        if isinstance(target, CallbackQuery):
+            await target.answer("⚙️ Бот временно недоступен. Ведутся технические работы.", show_alert=True)
+        elif isinstance(target, Message):
+            await target.answer("⚙️ Бот временно недоступен. Ведутся технические работы.")
 
         return

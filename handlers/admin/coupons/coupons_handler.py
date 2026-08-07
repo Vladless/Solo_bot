@@ -13,6 +13,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from core.bootstrap import MODES_CONFIG
 from database import create_coupon, delete_coupon, get_all_coupons
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_COUPONS
@@ -221,7 +222,7 @@ async def handle_balance_coupon_input(message: Message, state: FSMContext, sessi
         )
 
         kb = InlineKeyboardBuilder()
-        if INLINE_MODE:
+        if MODES_CONFIG.get("INLINE_MODE_ENABLED", INLINE_MODE):
             kb.button(text="📤 Поделиться", switch_inline_query=f"coupon_{coupon_code}")
         kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
         kb.adjust(1)
@@ -293,7 +294,7 @@ async def handle_days_coupon_input(message: Message, state: FSMContext, session:
         )
 
         kb = InlineKeyboardBuilder()
-        if INLINE_MODE:
+        if MODES_CONFIG.get("INLINE_MODE_ENABLED", INLINE_MODE):
             kb.button(text="📤 Поделиться", switch_inline_query=f"coupon_{coupon_code}")
         kb.button(text=BACK, callback_data=AdminPanelCallback(action="coupons").pack())
         kb.adjust(1)
@@ -465,7 +466,7 @@ async def update_coupons_list(message, session: Any, page: int = 1):
 
 @router.inline_query(F.query.startswith("coupon_"))
 async def inline_coupon_handler(inline_query: InlineQuery, session: Any):
-    if not INLINE_MODE:
+    if not MODES_CONFIG.get("INLINE_MODE_ENABLED", INLINE_MODE):
         return
 
     coupon_code = inline_query.query.split("coupon_")[1]

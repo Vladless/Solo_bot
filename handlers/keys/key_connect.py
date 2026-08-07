@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.bootstrap import BUTTONS_CONFIG
 from database import get_key_details, get_subscription_link
 from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
 from handlers.utils import edit_or_send_message
@@ -148,7 +149,7 @@ async def process_callback_connect_phone(callback_query: CallbackQuery, session:
             InlineKeyboardButton(text=IMPORT_IOS, url=f"{CONNECT_IOS}{processed_link}"),
             InlineKeyboardButton(text=IMPORT_ANDROID, url=f"{CONNECT_ANDROID}{processed_link}"),
         )
-    if INSTRUCTIONS_BUTTON:
+    if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(
         InlineKeyboardButton(text=BACK, callback_data=build_key_callback("view_key", record.get("client_id"), email))
@@ -195,7 +196,7 @@ async def process_callback_connect_ios(callback_query: CallbackQuery, session: A
         ios_url = f"{CONNECT_IOS}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=IMPORT_IOS, url=ios_url))
-    if INSTRUCTIONS_BUTTON:
+    if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(
         InlineKeyboardButton(
@@ -245,7 +246,7 @@ async def process_callback_connect_android(callback_query: CallbackQuery, sessio
         android_url = f"{CONNECT_ANDROID}{processed_link}"
 
     builder.row(InlineKeyboardButton(text=IMPORT_ANDROID, url=android_url))
-    if INSTRUCTIONS_BUTTON:
+    if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):
         builder.row(InlineKeyboardButton(text=MANUAL_INSTRUCTIONS, callback_data="instructions"))
     builder.row(
         InlineKeyboardButton(

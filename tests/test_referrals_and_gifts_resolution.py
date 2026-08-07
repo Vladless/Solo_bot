@@ -123,9 +123,9 @@ class GiftsResolutionTests(unittest.IsolatedAsyncioTestCase):
             selected_traffic_gb=50,
             selected_price_rub=990,
         )
-        billing_user = SimpleNamespace(id=555, tg_id=None)
+        billing_user = SimpleNamespace(id=555, tg_id=None, created_at=datetime.now(UTC), trial=0)
         tariff_dict = {"id": 5, "name": "Gift tariff", "duration_days": 30, "group_code": "gifts"}
-        session = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock())
+        session = SimpleNamespace(execute=AsyncMock(), flush=AsyncMock(), commit=AsyncMock(), rollback=AsyncMock())
 
         with (
             patch("services.gifts.get_gift_locked", new=AsyncMock(return_value=gift_info)),
@@ -133,6 +133,7 @@ class GiftsResolutionTests(unittest.IsolatedAsyncioTestCase):
             patch("services.gifts.get_gift_usage", new=AsyncMock(return_value=None)),
             patch("services.gifts.count_gift_usages", new=AsyncMock(return_value=0)),
             patch("services.gifts.get_referral_by_referred_id", new=AsyncMock(return_value=None)),
+            patch("hooks.hooks.run_hooks", new=AsyncMock(return_value=[])),
             patch("services.gifts.add_referral", new=AsyncMock()) as add_referral_mock,
             patch("services.gifts.update_trial", new=AsyncMock()),
             patch("services.gifts.get_tariff_by_id", new=AsyncMock(return_value=tariff_dict)),

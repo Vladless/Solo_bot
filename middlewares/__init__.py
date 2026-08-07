@@ -72,18 +72,19 @@ def register_middleware(
         dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
     if sessionmaker and middleware_enabled("session"):
         dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
+    if middleware_enabled("ban_checker"):
+        dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(), "ban_checker"))
     if middleware_enabled("direct_start_blocker"):
         dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
+    if middleware_enabled("admin"):
+        dispatcher.update.outer_middleware(wrap(AdminMiddleware(), "admin"))
+    if middleware_enabled("maintenance"):
+        dispatcher.update.outer_middleware(wrap(MaintenanceModeMiddleware(), "maintenance"))
     if middleware_enabled("subscription"):
         dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
 
-    if middleware_enabled("ban_checker"):
-        dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(), "ban_checker"))
-
     if middlewares is None:
         available_middlewares = {
-            "admin": AdminMiddleware(),
-            "maintenance": MaintenanceModeMiddleware(),
             "logging": LoggingMiddleware(sessionmaker) if sessionmaker else LoggingMiddleware(),
             "throttling": ThrottlingMiddleware(),
             "user": UserMiddleware(),

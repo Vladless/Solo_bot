@@ -5,12 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from starlette.requests import Request
+from starlette.responses import Response
 
 
 asyncio._validate_client_code_ran = True
 
-from api.v2.routes.auth import auth_summary, register_by_email
-from api.v2.routes.keys import user_keys
+from api.v2.routes.auth.password import register_by_email
+from api.v2.routes.auth.session import auth_summary
+from api.v2.routes.keys.user.core import user_keys
 from api.v2.routes.payment_links import create_link as create_payment_link_route
 from api.v2.routes.tariffs import purchase_tariff_with_balance
 from api.v2.schemas.identities import RegisterByEmailRequest
@@ -42,30 +44,54 @@ def _scalar_one_or_none_result(value):
     return SimpleNamespace(scalar_one_or_none=lambda: value)
 
 
+def _empty_result():
+    """Результат execute для запросов, форма которых тесту не важна."""
+    return SimpleNamespace(
+        scalar_one_or_none=lambda: None,
+        scalar_one=lambda: 0,
+        scalar=lambda: None,
+        scalars=lambda: SimpleNamespace(all=lambda: [], first=lambda: None),
+        all=lambda: [],
+    )
+
+
+class _NestedTransaction:
+    """Заглушка session.begin_nested() — асинхронный контекст без транзакции."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+
 class WebEmailRegistrationFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_register_by_email_creates_identity_and_binds_actor(self):
         request = _make_request()
+        response = Response()
         session = object()
-        body = RegisterByEmailRequest(email="User@Test.Com", password="strongpass")
+        body = RegisterByEmailRequest(email="User@Gmail.Com", password="strongpass")
         identity = SimpleNamespace(id="ident-email", tg_id=None)
 
         with (
-            patch("api.v2.routes.auth.idb.get_identity_by_email", new=AsyncMock(return_value=None)),
+            patch("api.v2.routes.auth.password.idb.get_identity_by_email", new=AsyncMock(return_value=None)),
             patch(
-                "api.v2.routes.auth.idb.create_identity_with_token",
+                "api.v2.routes.auth.password.idb.create_identity_with_token",
                 new=AsyncMock(return_value=(identity, "issued-token")),
             ) as create_identity_with_token_mock,
-            patch("api.v2.routes.auth.bind_identity_actor", new=AsyncMock()) as bind_identity_actor_mock,
-            patch("api.v2.routes.auth.idb.ensure_billing_user_for_identity", new=AsyncMock(return_value=777)),
+            patch("api.v2.routes.auth.password.smtp_configured", return_value=False),
+            patch("api.v2.routes.auth.password.bind_identity_actor", new=AsyncMock()) as bind_identity_actor_mock,
+            patch("api.v2.routes.auth.password.idb.ensure_billing_user_for_identity", new=AsyncMock(return_value=777)),
         ):
-            result = await register_by_email(body, request, session=session)
+            result = await register_by_email(body, request, response, session=session)
 
         self.assertEqual(result.identity_id, "ident-email")
-        self.assertEqual(result.token, "issued-token")
+        self.assertIn("issued-token", " ".join(response.headers.getlist("set-cookie")))
         create_identity_with_token_mock.assert_awaited_once_with(
             session,
-            email="user@test.com",
+            email="user@gmail.com",
             password="strongpass",
+            request=request,
         )
         bind_identity_actor_mock.assert_awaited_once_with(request, session, identity)
 
@@ -73,28 +99,29 @@ class WebEmailRegistrationFlowTests(unittest.IsolatedAsyncioTestCase):
         request = _make_request()
         session = object()
         body = RegisterByEmailRequest(
-            email="invite@test.com", password="strongpass", referral_code="https://example.com/referral/321"
+            email="invite@gmail.com", password="strongpass", referral_code="https://example.com/referral/321"
         )
         identity = SimpleNamespace(id="ident-invite", tg_id=None)
         referrer_user = SimpleNamespace(id=321, tg_id=None)
 
         with (
-            patch("api.v2.routes.auth.idb.get_identity_by_email", new=AsyncMock(return_value=None)),
+            patch("api.v2.routes.auth.password.idb.get_identity_by_email", new=AsyncMock(return_value=None)),
             patch(
-                "api.v2.routes.auth.idb.create_identity_with_token",
+                "api.v2.routes.auth.password.idb.create_identity_with_token",
                 new=AsyncMock(return_value=(identity, "issued-token")),
             ),
-            patch("api.v2.routes.auth.bind_identity_actor", new=AsyncMock()),
+            patch("api.v2.routes.auth.password.smtp_configured", return_value=False),
+            patch("api.v2.routes.auth.password.bind_identity_actor", new=AsyncMock()),
             patch(
-                "api.v2.routes.auth.resolve_user_optional", new=AsyncMock(return_value=referrer_user)
+                "api.v2.routes.auth.password.resolve_user_optional", new=AsyncMock(return_value=referrer_user)
             ) as resolve_user_mock,
             patch(
-                "api.v2.routes.auth.idb.ensure_billing_user_for_identity", new=AsyncMock(return_value=555)
+                "api.v2.routes.auth.password.idb.ensure_billing_user_for_identity", new=AsyncMock(return_value=555)
             ) as ensure_billing_user_mock,
-            patch("api.v2.routes.auth.get_referral_by_referred_id", new=AsyncMock(return_value=None)),
-            patch("api.v2.routes.auth.add_referral", new=AsyncMock()) as add_referral_mock,
+            patch("api.v2.routes.auth.password.get_referral_by_referred_id", new=AsyncMock(return_value=None)),
+            patch("api.v2.routes.auth.password.add_referral", new=AsyncMock()) as add_referral_mock,
         ):
-            result = await register_by_email(body, request, session=session)
+            result = await register_by_email(body, request, Response(), session=session)
 
         self.assertEqual(result.identity_id, "ident-invite")
         resolve_user_mock.assert_awaited_once_with(session, 321)
@@ -104,14 +131,21 @@ class WebEmailRegistrationFlowTests(unittest.IsolatedAsyncioTestCase):
 
 class WebTariffPurchaseFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_purchase_tariff_uses_identity_billing_user_and_creates_key(self):
-        session = SimpleNamespace(commit=AsyncMock())
+        session = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=1))
         identity = SimpleNamespace(id="ident-email")
         body = TariffPurchaseRequest(
             tariff_id=7,
             selected_device_limit=5,
             selected_traffic_gb=100,
         )
-        tariff = {"id": 7, "is_active": True, "duration_days": 30, "price_rub": 990}
+        tariff = {
+            "id": 7,
+            "is_active": True,
+            "duration_days": 30,
+            "price_rub": 990,
+            "group_code": "base",
+            "cooldown_days": 0,
+        }
 
         with (
             patch(
@@ -121,7 +155,7 @@ class WebTariffPurchaseFlowTests(unittest.IsolatedAsyncioTestCase):
             patch("api.v2.routes.tariffs.get_tariff_by_id", new=AsyncMock(return_value=tariff)),
             patch("api.v2.routes.tariffs.calculate_config_price", return_value=990),
             patch("api.v2.routes.tariffs.get_balance", new=AsyncMock(return_value=1500.0)),
-            patch("api.v2.routes.tariffs.create_key", new=AsyncMock()) as create_key_mock,
+            patch("api.v2.routes.tariffs.create_vpn_key_headless", new=AsyncMock()) as create_key_mock,
         ):
             result = await purchase_tariff_with_balance(
                 body,
@@ -138,7 +172,6 @@ class WebTariffPurchaseFlowTests(unittest.IsolatedAsyncioTestCase):
         kwargs = create_key_mock.await_args.kwargs
         self.assertEqual(kwargs["tg_id"], 501)
         self.assertEqual(kwargs["plan"], 7)
-        self.assertEqual(kwargs["selected_duration_days"], 30)
         self.assertEqual(kwargs["selected_device_limit"], 5)
         self.assertEqual(kwargs["selected_traffic_gb"], 100)
         self.assertEqual(kwargs["selected_price_rub"], 990)
@@ -178,6 +211,12 @@ class WebTariffPaymentLinkFlowTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ) as create_payment_link_mock,
             patch("api.v2.routes.payment_links.create_temporary_data", new=AsyncMock()) as create_temporary_data_mock,
+            patch(
+                "api.v2.routes.payment_links.get_tariff_by_id",
+                new=AsyncMock(return_value={"id": 9, "is_active": True, "cooldown_days": 0}),
+            ),
+            patch("api.v2.routes.payment_links.is_tariff_visible_for", new=AsyncMock(return_value=True)),
+            patch("api.v2.routes.payment_links.get_tariff_cooldown_remaining", new=AsyncMock(return_value=0)),
         ):
             result = await create_payment_link_route(body, request, session=session, identity=identity)
 
@@ -221,8 +260,8 @@ class WebAccountKeysFlowTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("api.v2.routes.keys._resolve_billing_user_id", new=AsyncMock(return_value=555)),
-            patch("api.v2.routes.keys.get_keys", new=AsyncMock(return_value=[key_obj])) as get_keys_mock,
+            patch("api.v2.routes.keys.user.core._resolve_billing_user_id", new=AsyncMock(return_value=555)),
+            patch("api.v2.routes.keys.user.core.get_keys", new=AsyncMock(return_value=[key_obj])) as get_keys_mock,
         ):
             result = await user_keys(request, session=session, identity=identity)
 
@@ -241,18 +280,25 @@ class WebAccountKeysFlowTests(unittest.IsolatedAsyncioTestCase):
                     SimpleNamespace(scalar_one=lambda: 1),
                     SimpleNamespace(scalar_one=lambda: 0),
                 ]
-            )
+            ),
+            begin_nested=lambda: _NestedTransaction(),
         )
-        identity = SimpleNamespace(id="ident-email", email="web@example.com", tg_id=None)
+        identity = SimpleNamespace(
+            id="ident-email",
+            email="web@example.com",
+            tg_id=None,
+            created_at=None,
+            password_set=True,
+        )
         request = _make_request()
 
         with (
-            patch("api.v2.routes.auth.get_request_actor", return_value=SimpleNamespace(billing_user_id=555)),
-            patch("api.v2.routes.auth.get_balance", new=AsyncMock(return_value=125.0)),
-            patch("api.v2.routes.auth.get_trial", new=AsyncMock(return_value=1)),
-            patch("api.v2.routes.auth.get_keys", new=AsyncMock(return_value=[])),
+            patch("api.v2.routes.auth.session.get_request_actor", return_value=SimpleNamespace(billing_user_id=555)),
+            patch("api.v2.routes.auth.session.get_balance", new=AsyncMock(return_value=125.0)),
+            patch("api.v2.routes.auth.session.get_trial", new=AsyncMock(return_value=1)),
+            patch("api.v2.routes.auth.session.get_keys", new=AsyncMock(return_value=[])),
             patch(
-                "api.v2.routes.auth.get_referral_stats",
+                "api.v2.routes.auth.session.get_referral_stats",
                 new=AsyncMock(return_value={"total_referrals": 4, "active_referrals": 2, "total_referral_bonus": 99.5}),
             ),
         ):
@@ -272,9 +318,10 @@ class TelegramLinkFlowTests(unittest.IsolatedAsyncioTestCase):
             execute=AsyncMock(
                 side_effect=[
                     _scalar_one_or_none_result(None),
-                    SimpleNamespace(),
+                    _empty_result(),
                 ]
             ),
+            flush=AsyncMock(),
             commit=AsyncMock(),
             refresh=AsyncMock(),
         )
@@ -292,7 +339,8 @@ class TelegramLinkFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, identity_after)
         self.assertEqual(identity_after.tg_id, 7007)
         merge_mock.assert_awaited_once_with(session, "ident-email", 7007)
-        session.commit.assert_awaited_once()
+        session.flush.assert_awaited()
+        session.commit.assert_not_called()
         session.refresh.assert_awaited_once_with(identity_after)
         update_stmt = session.execute.await_args_list[1].args[0].compile()
         self.assertEqual(update_stmt.params["identity_id"], "ident-email")
@@ -321,7 +369,7 @@ class TelegramLinkFlowTests(unittest.IsolatedAsyncioTestCase):
         async def execute_side_effect(*args, **kwargs):
             if execute_results:
                 return execute_results.pop(0)
-            return SimpleNamespace()
+            return _empty_result()
 
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=execute_side_effect),
@@ -341,7 +389,7 @@ class TelegramLinkFlowTests(unittest.IsolatedAsyncioTestCase):
 
         update_balance_mock.assert_awaited_once_with(session, 77, 250.0)
         refresh_mirrors_mock.assert_awaited_once_with(session, 77)
-        session.commit.assert_awaited()
+        session.commit.assert_not_called()
 
         compiled_statements = [
             call.args[0].compile()

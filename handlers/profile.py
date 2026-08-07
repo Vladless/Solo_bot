@@ -116,7 +116,7 @@ async def process_callback_view_profile(
         balance=balance_text,
         keys=key_count,
     )
-    if CHANNEL_EXISTS:
+    if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         profile_message = join_blocks(profile_message, PROFILE_CHANNEL_LINK)
     if key_count == 0:
         profile_message += ADD_SUBSCRIPTION_HINT

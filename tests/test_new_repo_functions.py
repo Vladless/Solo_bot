@@ -248,15 +248,17 @@ class ServersRepoTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "https://sub/x")
 
     async def test_get_panel_types_for_cluster(self):
-        scalars_mock = SimpleNamespace(all=lambda: ["remnawave", "remnawave"])
-        result_obj = SimpleNamespace(scalars=lambda: scalars_mock)
-        session = _make_session(execute_return=result_obj)
-        result = await get_panel_types_for_cluster(session, "cluster-a")
+        grouped = {"cluster-a": [{"panel_type": "remnawave"}, {"panel_type": "remnawave"}]}
+        session = _make_session()
+        with patch("database.servers.get_servers", new=AsyncMock(return_value=grouped)):
+            result = await get_panel_types_for_cluster(session, "cluster-a")
         self.assertEqual(result, ["remnawave", "remnawave"])
 
     async def test_get_panel_type_for_server(self):
-        session = _make_session(execute_return=_result_with(scalar_one_or_none="3x-ui"))
-        result = await get_panel_type_for_server(session, "srv1")
+        grouped = {"cluster-a": [{"server_name": "srv1", "panel_type": "3x-ui"}]}
+        session = _make_session()
+        with patch("database.servers.get_servers", new=AsyncMock(return_value=grouped)):
+            result = await get_panel_type_for_server(session, "srv1")
         self.assertEqual(result, "3x-ui")
 
 
