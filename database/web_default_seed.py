@@ -131,10 +131,13 @@ async def _apply_site(
     flows: list,
     force: bool,
     page_themes: dict | None = None,
+    global_theme: dict | None = None,
 ) -> bool:
     """Применяет распакованный сайт (тема, страницы, flow) к БД.
     page_themes[slug] (если задан) переопределяет тему конкретной страницы — нужно
-    для захваченных наборов, где у кабинета свои page-scoped токены."""
+    для захваченных наборов, где у кабинета свои page-scoped токены.
+    global_theme — палитра, которую набор доносит до остальных страниц сайта
+    (лендинг и т.д.), не трогая их блоки."""
     page_themes = page_themes or {}
     _apply_support_links_to_pages(pages)
     seeded = False
@@ -190,6 +193,23 @@ async def _apply_site(
                 )
             )
         seeded = True
+
+    if global_theme:
+        rest = (
+            (
+                await session.execute(
+                    select(WebPageVariant).where(
+                        WebPageVariant.page_slug.notin_(list(pages.keys()) or [""]),
+                        WebPageVariant.variant_key == DEFAULT_VARIANT_KEY,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for variant in rest:
+            variant.theme_tokens = {**dict(variant.theme_tokens or {}), **global_theme}
+            seeded = True
 
     for flow in flows:
         if not isinstance(flow, dict):
@@ -336,7 +356,11 @@ async def _apply_captured_site(session: AsyncSession, site: dict) -> bool:
     theme = _apply_runtime_links(dict(site.get("_theme") or {}))
     page_themes = site.get("_page_themes") if isinstance(site.get("_page_themes"), dict) else {}
     flows = site.get("_flows") or []
-    return await _apply_site(session, theme, pages, flows, force=True, page_themes=page_themes)
+    raw_global = site.get("_global_theme")
+    global_theme = dict(raw_global) if isinstance(raw_global, dict) else None
+    return await _apply_site(
+        session, theme, pages, flows, force=True, page_themes=page_themes, global_theme=global_theme
+    )
 
 
 async def install_pack_design(session: AsyncSession, pack_id: str) -> bool:

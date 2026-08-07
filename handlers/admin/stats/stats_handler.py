@@ -635,10 +635,16 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
             effective_start_utc = start_utc
             if reset_at is not None:
                 effective_start_utc = max(start_utc, reset_at.astimezone(pytz.UTC))
+                if effective_start_utc >= end_utc:
+                    effective_start_utc = end_utc
             funnel = await get_audit_funnel(session, date_from=effective_start_utc, date_to=end_utc)
             stats = await get_audit_stats(session, date_from=effective_start_utc, date_to=end_utc)
             if effective_start_utc != start_utc:
-                reset_note = reset_at.astimezone(moscow_tz).strftime("%d.%m.%y %H:%M")
+                reset_ts = reset_at.astimezone(moscow_tz).strftime("%d.%m.%y %H:%M")
+                if effective_start_utc >= end_utc:
+                    reset_note = f"{reset_ts} — окно до сброса, данные не показаны"
+                else:
+                    reset_note = f"{reset_ts} — учтено только после сброса"
             summary = stats["summary"]
             by_path = stats["by_path"]
             source_note = f"БД за {report_date.strftime('%d.%m.%y')} МСК"
@@ -659,7 +665,7 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
             mark = "⚠️" if row["fail_rate_pct"] > 10 else "✅"
             top_rows.append(f"{mark} {row['label']}: {row['total']}")
             top_rows.append(f"ок {row['success']}, ошибок {row['fail']} ({row['fail_rate_pct']}%)")
-        blocks.append(section("🔥 Топ шагов", *top_rows))
+        blocks.append(section("🔥 Топ шагов (события)", *top_rows))
 
         totals_by_step = {row["step"]: row for row in by_path}
         step_rows = []
@@ -667,7 +673,7 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
             row = totals_by_step.get(step)
             label = AUDIT_STEP_LABELS.get(step, step)
             step_rows.append(f"{label}: {row['total'] if row else 0}")
-        blocks.append(section("🧭 Ключевые шаги", *step_rows))
+        blocks.append(section("🧭 Ключевые шаги (события)", *step_rows))
 
         success_by_step = _audit_success_event_counts(by_path)
         pay_start = success_by_step.get("pay_start", 0)
@@ -690,9 +696,9 @@ async def _build_audit_report(session: AsyncSession, source: str = "db") -> tupl
         for step in funnel:
             conv = f" → {step['conversion_from_prev_pct']}%" if step["conversion_from_prev_pct"] is not None else ""
             funnel_rows.append(f"{step['label']}: {step['count']}{conv}")
-        blocks.append(section("🪜 Воронка", *funnel_rows))
+        blocks.append(section("🪜 Воронка (клиенты)", *funnel_rows))
 
-        return (card(*blocks), None)
+        return (f"{menu_title('Аудит')}\n\n{card(*blocks)}", None)
     except Exception as e:
         logger.exception("Ошибка при получении аудита: {}", e)
         return (None, str(e))
@@ -720,11 +726,11 @@ async def handle_audit_refresh(callback_query: CallbackQuery, session: AsyncSess
     source = "db"
     text, err = await _build_audit_report(session, source=source)
     if err:
-        await callback_query.message.edit_text(menu_text("Статистика", f"❌ Ошибка: {escape(err)}"))
+        await callback_query.message.edit_text(menu_text("Аудит", f"❌ Ошибка: {escape(err)}"))
         return
     try:
         await callback_query.message.edit_text(
-            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            text,
             reply_markup=build_audit_refresh_kb(source),
         )
     except TelegramBadRequest:
@@ -739,13 +745,13 @@ async def handle_audit_refresh_redis(callback_query: CallbackQuery, session: Asy
     text, err = await _build_audit_report(session, source=source)
     if err:
         await callback_query.message.edit_text(
-            menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+            menu_text("Аудит", f"❌ Ошибка: {escape(err)}"),
             reply_markup=build_audit_refresh_kb(source),
         )
         return
     try:
         await callback_query.message.edit_text(
-            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            text,
             reply_markup=build_audit_refresh_kb(source),
         )
     except TelegramBadRequest:
@@ -760,13 +766,13 @@ async def handle_audit_refresh_db(callback_query: CallbackQuery, session: AsyncS
     text, err = await _build_audit_report(session, source=source)
     if err:
         await callback_query.message.edit_text(
-            menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+            menu_text("Аудит", f"❌ Ошибка: {escape(err)}"),
             reply_markup=build_audit_refresh_kb(source),
         )
         return
     try:
         await callback_query.message.edit_text(
-            menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+            text,
             reply_markup=build_audit_refresh_kb(source),
         )
     except TelegramBadRequest:
@@ -808,17 +814,17 @@ async def handle_audit_reset_do(callback_query: CallbackQuery, session: AsyncSes
             await clear_audit_redis_buffers()
         else:
             await set_audit_db_reset_at(session)
-        await callback_query.answer(menu_text("Статистика", "Аудит сброшен"))
+        await callback_query.answer("Аудит сброшен")
         text, err = await _build_audit_report(session, source=source)
         if err:
             await callback_query.message.edit_text(
-                menu_text("Статистика", f"❌ Ошибка: {escape(err)}", markup=build_audit_refresh_kb(source)),
+                menu_text("Аудит", f"❌ Ошибка: {escape(err)}"),
                 reply_markup=build_audit_refresh_kb(source),
             )
             return
         try:
             await callback_query.message.edit_text(
-                menu_text("Статистика", text, markup=build_audit_refresh_kb(source)),
+                text,
                 reply_markup=build_audit_refresh_kb(source),
             )
         except TelegramBadRequest:

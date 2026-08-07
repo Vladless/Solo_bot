@@ -70,12 +70,12 @@ def register_middleware(
         dispatcher.update.outer_middleware(wrap(RuntimeConfigSyncMiddleware(), "runtime_config_sync"))
     if sessionmaker and middleware_enabled("concurrency"):
         dispatcher.update.outer_middleware(wrap(ConcurrencyLimiterMiddleware(), "concurrency"))
-    if middleware_enabled("subscription"):
-        dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
     if sessionmaker and middleware_enabled("session"):
         dispatcher.update.outer_middleware(wrap(SessionMiddleware(sessionmaker), "session"))
     if middleware_enabled("direct_start_blocker"):
         dispatcher.update.outer_middleware(wrap(DirectStartBlockerMiddleware(), "direct_start_blocker"))
+    if middleware_enabled("subscription"):
+        dispatcher.update.outer_middleware(wrap(SubscriptionMiddleware(), "subscription"))
 
     if middleware_enabled("ban_checker"):
         dispatcher.update.outer_middleware(wrap(BanCheckerMiddleware(), "ban_checker"))

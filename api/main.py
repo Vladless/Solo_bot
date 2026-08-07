@@ -154,26 +154,22 @@ async def security_and_cache_middleware(request: Request, call_next):
 async def api_access_log_middleware(request: Request, call_next):
     context = ensure_api_context(request)
     started = perf_counter()
-    if not API_LOGGING:
-        response = await call_next(request)
-        response.headers["X-Request-Id"] = context.request_id
-        response.headers["X-Response-Time"] = f"{int((perf_counter() - started) * 1000)}ms"
-        return response
 
     try:
         response = await call_next(request)
     except Exception as exc:
         duration_ms = int((perf_counter() - started) * 1000)
-        logger.opt(exception=exc).error(
-            f"[API] {request.method} {request.url.path} → 500 ({type(exc).__name__})"
-        )
-        log_api_access(
-            request,
-            status_code=500,
-            duration_ms=duration_ms,
-            result="fail",
-            reason=type(exc).__name__,
-        )
+        if API_LOGGING:
+            logger.opt(exception=exc).error(
+                f"[API] {request.method} {request.url.path} → 500 ({type(exc).__name__})"
+            )
+            log_api_access(
+                request,
+                status_code=500,
+                duration_ms=duration_ms,
+                result="fail",
+                reason=type(exc).__name__,
+            )
         asyncio.create_task(
             record_api_access_event_background(
                 async_session_maker,
@@ -189,12 +185,13 @@ async def api_access_log_middleware(request: Request, call_next):
     response.headers["X-Request-Id"] = context.request_id
     response.headers["X-Response-Time"] = f"{duration_ms}ms"
     result = "success" if response.status_code < 400 else "fail"
-    log_api_access(
-        request,
-        status_code=response.status_code,
-        duration_ms=duration_ms,
-        result=result,
-    )
+    if API_LOGGING:
+        log_api_access(
+            request,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            result=result,
+        )
     asyncio.create_task(
         record_api_access_event_background(
             async_session_maker,
