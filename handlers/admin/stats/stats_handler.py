@@ -1,3 +1,5 @@
+import calendar
+
 from collections import Counter
 from datetime import date, datetime, timedelta
 from html import escape
@@ -27,6 +29,9 @@ from database import (
     count_active_trial_keys,
     count_hot_leads,
     count_identities_with_email,
+    count_keys_created_between,
+    count_keys_expiring_between,
+    count_paying_users,
     count_total_keys,
     count_total_referrals,
     count_total_users,
@@ -34,6 +39,7 @@ from database import (
     count_users_registered_since,
     count_users_updated_today,
     count_users_with_tg_id,
+    get_cold_leads,
     get_tariff_distribution,
     get_tariff_names_groups_subgroups_durations,
     sum_payments_between,
@@ -52,9 +58,10 @@ from utils.csv_export import (
     export_users_csv,
 )
 
-from ..panel.headers import card, menu_text, menu_title, quote, section
+from ..panel.headers import align_screen, card, menu_text, menu_title, note, quote, section
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_kb
 from .keyboard import (
+    STATS_SEGMENTS,
     build_audit_refresh_kb,
     build_audit_reset_confirm_kb,
     build_audit_source_kb,
@@ -119,9 +126,174 @@ def _audit_success_event_counts(by_path: list[dict]) -> dict[str, int]:
     return {row["step"]: int(row.get("success", 0) or 0) for row in by_path}
 
 
+def _stats_forecast(title: str, month_to_date: float, last_month: float, unit: str, now: datetime) -> str:
+    """Прогноз на конец месяца по темпу с начала месяца."""
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_elapsed = now.day
+    projected = month_to_date / days_elapsed * days_in_month if days_elapsed else month_to_date
+    return section(
+        title,
+        f"К концу месяца: ~{_fmt_num(projected)}{unit}",
+        f"Прошлый месяц: {_fmt_num(last_month)}{unit}",
+    )
+
+
+def _render_stats_segment(index: int, ctx: dict) -> str:
+    """Собирает текст одной страницы статистики: секции сегмента + прогноз внизу."""
+    now = ctx["now"]
+    key = STATS_SEGMENTS[index][0]
+    blocks: list[str] = []
+    forecast = ""
+
+    if key == "overview":
+        blocks.append(
+            section(
+                "📊 Обзор",
+                f"Клиентов: {_fmt_num(ctx['total_users'])}",
+                f"Платящих: {_fmt_num(ctx['paying_users'])} ({ctx['conversion']}%)",
+                f"Подписок: {ctx['active_keys']} / {ctx['total_keys']}",
+                f"Активны сегодня: {ctx['users_updated_today']}",
+                f"Оплаты за месяц: {_fmt_num(ctx['total_payments_month'])} ₽",
+                f"Холодные лиды: {ctx['cold_leads_count']}",
+                f"Горячие лиды: {ctx['hot_leads_count']}",
+            )
+        )
+        forecast = _stats_forecast("📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now)
+    elif key == "clients":
+        blocks.append(
+            section(
+                "👤 Регистрации",
+                f"Сегодня: {ctx['registrations_today']}",
+                f"Вчера: {ctx['registrations_yesterday']}",
+                f"Неделя: {ctx['registrations_week']}",
+                f"Месяц: {ctx['registrations_month']}",
+                f"Прошлый: {ctx['registrations_last_month']}",
+                f"Всего: {ctx['total_users']}",
+            )
+        )
+        blocks.append(
+            section(
+                "🔗 Аккаунты",
+                f"С почтой: {ctx['identities_with_email']}",
+                f"С Telegram: {ctx['users_with_tg']}",
+                f"Активны сегодня: {ctx['users_updated_today']}",
+                f"Активны за неделю: {ctx['active_week']}",
+                f"Привлечено: {ctx['total_referrals']}",
+            )
+        )
+        conversion = round(ctx["paying_users"] / ctx["total_users"] * 100, 1) if ctx["total_users"] else 0
+        blocks.append(
+            section(
+                "💚 Конверсия",
+                f"Платящих: {_fmt_num(ctx['paying_users'])}",
+                f"Доля платящих: {conversion}%",
+            )
+        )
+        forecast = _stats_forecast("📈 Прогноз регистраций", ctx["registrations_month"], ctx["registrations_last_month"], "", now)
+    elif key == "subs":
+        blocks.append(
+            section(
+                "🔐 Подписки",
+                f"Всего: {ctx['total_keys']}",
+                f"Активных: {ctx['active_keys']}",
+                f"Платных: {ctx['active_paid_keys']}",
+                f"Пробных: {ctx['active_trial_keys']}",
+                f"Просрочено: {ctx['expired_keys']}",
+            )
+        )
+        blocks.append(
+            section(
+                "⏳ Истекают",
+                f"За 24 часа: {ctx['expiring_24h']}",
+                f"За 7 дней: {ctx['expiring_7d']}",
+            )
+        )
+        blocks.append(
+            section(
+                "📉 Динамика за 30 дней",
+                f"Новых: {ctx['dyn_created']}",
+                f"Продлений: {ctx['dyn_renewed']}",
+                f"Истекло: {ctx['dyn_expired']}",
+            )
+        )
+        blocks.append(
+            section(
+                "🔁 Удержание",
+                f"Отток: {ctx['churn_rate']}%",
+                f"LTV: {_fmt_num(ctx['ltv_rub'])} ₽",
+                f"Trial → платно: {ctx['trial_rate']}%",
+            )
+        )
+        forecast = _stats_forecast("📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now)
+    elif key == "payments":
+        blocks.append(
+            section(
+                "💰 Оплаты",
+                f"Сегодня: {_fmt_num(ctx['total_payments_today'])} ₽",
+                f"Вчера: {_fmt_num(ctx['total_payments_yesterday'])} ₽",
+                f"Неделя: {_fmt_num(ctx['total_payments_week'])} ₽",
+                f"Месяц: {_fmt_num(ctx['total_payments_month'])} ₽",
+                f"Прошлый: {_fmt_num(ctx['total_payments_last_month'])} ₽",
+                f"Всего: {_fmt_num(ctx['total_payments_all_time'])} ₽",
+            )
+        )
+        blocks.append(
+            section(
+                "🧮 Чеки за месяц",
+                f"Оплат: {ctx['payments_count_month']}",
+                f"Средний чек: {_fmt_num(ctx['avg_check_month'])} ₽",
+            )
+        )
+        forecast = _stats_forecast("📈 Прогноз выручки", ctx["total_payments_month"], ctx["total_payments_last_month"], " ₽", now)
+    elif key == "tariffs":
+        rows = ctx["tariff_rows"]
+        blocks.append(section("📦 По тарифам", *rows) if rows else note("📦 По тарифам", "Пока нет распределения по тарифам."))
+        forecast = _stats_forecast("📈 Прогноз новых подписок", ctx["new_subs_month"], ctx["new_subs_last_month"], "", now)
+    elif key == "leads":
+        blocks.append(
+            section(
+                "🔥 Лиды",
+                f"Холодные: {ctx['cold_leads_count']}",
+                f"Горячие: {ctx['hot_leads_count']}",
+            )
+        )
+        blocks.append(
+            section(
+                "🎯 Потенциал возврата",
+                f"Если вернутся горячие: ~{_fmt_num(ctx['recovery_potential'])} ₽",
+            )
+        )
+        blocks.append(
+            note(
+                "ℹ️ Кто это",
+                "Холодные — регистрировались, но ни разу не платили.\n"
+                "Горячие — платили раньше, но сейчас без активной подписки.\n"
+                "Потенциал — горячие лиды × средний чек за месяц.",
+            )
+        )
+        forecast = _stats_forecast("📈 Прогноз конверсий", ctx["payments_count_month"], ctx["payments_count_last_month"], "", now)
+    elif key == "modules":
+        hook_blocks = ctx["hook_blocks"]
+        if hook_blocks:
+            blocks.extend(hook_blocks)
+        else:
+            blocks.append(note("🧩 Модули", "Подключённые модули не дают статистику."))
+
+    header = menu_title(STATS_SEGMENTS[index][2])
+    content = "\n".join(b for b in blocks if b)
+    # прогноз (если он у сегмента есть) отделяем от контента пустой строкой;
+    # значения всех таблиц экрана выравниваем по одной вертикали.
+    if content and forecast:
+        body = align_screen(f"{content}\n\n{forecast}")
+    else:
+        body = align_screen(content or forecast)
+    return f"{header}\n\n{body}\n<i>обновлено {ctx['update_time']}</i>"
+
+
 @router.callback_query(AdminPanelCallback.filter(F.action == "stats"), IsAdminFilter(), flags={"popup": True})
-async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
+async def handle_stats(callback_query: CallbackQuery, callback_data: AdminPanelCallback, session: AsyncSession):
     try:
+        segment_index = max(0, min(callback_data.page - 1, len(STATS_SEGMENTS) - 1))
         moscow_tz = pytz.timezone("Europe/Moscow")
         now = datetime.now(moscow_tz)
         today = now.date()
@@ -252,53 +424,94 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
         )
         total_payments_all_time = await sum_total_payments(session)
         hot_leads_count = await count_hot_leads(session)
+        cold_leads_count = len(await get_cold_leads(session))
+
+        from database.statistics import count_payments_between
+
+        payments_count_month = await count_payments_between(session, month_start.replace(tzinfo=None), now.replace(tzinfo=None))
+        payments_count_last_month = await count_payments_between(
+            session, last_month_start.replace(tzinfo=None), last_month_end.replace(tzinfo=None)
+        )
+
+        new_subs_month = await count_keys_created_between(
+            session, int(month_start.timestamp() * 1000), int(now.timestamp() * 1000)
+        )
+        new_subs_last_month = await count_keys_created_between(
+            session, int(last_month_start.timestamp() * 1000), int(last_month_end.timestamp() * 1000)
+        )
+
+        now_ms = int(now.timestamp() * 1000)
+        expiring_24h = await count_keys_expiring_between(session, now_ms, now_ms + 24 * 3600 * 1000)
+        expiring_7d = await count_keys_expiring_between(session, now_ms, now_ms + 7 * 24 * 3600 * 1000)
+        paying_users = await count_paying_users(session)
+        active_week = await count_users_updated_today(session, week_start_utc)
+
+        avg_check_month = round(total_payments_month / payments_count_month) if payments_count_month else 0
+        conversion = round(paying_users / total_users * 100, 1) if total_users else 0
+        recovery_potential = round(hot_leads_count * avg_check_month)
+
+        from database.subscription_events import get_retention_metrics, get_subscription_dynamics
+
+        retention = await get_retention_metrics(session, 30)
+        dynamics = await get_subscription_dynamics(session, 30)
+        dyn_created = sum(d["created"] for d in dynamics.get("dailyEvents", []))
+        dyn_renewed = sum(d["renewed"] for d in dynamics.get("dailyEvents", []))
+        dyn_expired = sum(d["expired"] for d in dynamics.get("dailyEvents", []))
 
         update_time = now.strftime("%d.%m.%y %H:%M:%S")
 
-        stats_body = card(
-            section(
-                "👤 Клиенты",
-                f"Сегодня: {registrations_today}",
-                f"Вчера: {registrations_yesterday}",
-                f"Неделя: {registrations_week}",
-                f"Месяц: {registrations_month}",
-                f"Прошлый: {registrations_last_month}",
-                f"Всего: {total_users}",
-            ),
-            section(
-                "🔗 Аккаунты",
-                f"С почтой: {identities_with_email}",
-                f"С Telegram: {users_with_tg}",
-                f"Активны сегодня: {users_updated_today}",
-                f"Привлечено: {total_referrals}",
-            ),
-            section(
-                "🔐 Подписки",
-                f"Всего: {total_keys}",
-                f"Активных: {active_keys}",
-                f"Платных: {active_paid_keys}",
-                f"Пробных: {active_trial_keys}",
-                f"Просрочено: {expired_keys}",
-            ),
-            section(
-                "💰 Деньги",
-                f"Сегодня: {total_payments_today} ₽",
-                f"Вчера: {total_payments_yesterday} ₽",
-                f"Неделя: {total_payments_week} ₽",
-                f"Месяц: {total_payments_month} ₽",
-                f"Прошлый: {total_payments_last_month} ₽",
-                f"Всего: {total_payments_all_time} ₽",
-            ),
-            section("🔥 Горячие лиды", str(hot_leads_count)),
-            section("📦 По тарифам", *tariff_rows) if tariff_rows else "",
-            section("⏱ Обновлено", update_time),
-        )
         extra_blocks = await run_hooks("admin_stats", session=session, now=now)
-        if extra_blocks:
-            stats_body += "\n\n" + "\n\n".join([str(b) for b in extra_blocks if b])
+        hook_blocks = [str(b) for b in (extra_blocks or []) if b]
 
-        new_kb = build_stats_kb()
-        stats_message = menu_title("Статистика проекта") + "\n\n" + stats_body
+        ctx = {
+            "now": now,
+            "update_time": update_time,
+            "registrations_today": registrations_today,
+            "registrations_yesterday": registrations_yesterday,
+            "registrations_week": registrations_week,
+            "registrations_month": registrations_month,
+            "registrations_last_month": registrations_last_month,
+            "total_users": total_users,
+            "identities_with_email": identities_with_email,
+            "users_with_tg": users_with_tg,
+            "users_updated_today": users_updated_today,
+            "total_referrals": total_referrals,
+            "total_keys": total_keys,
+            "active_keys": active_keys,
+            "active_paid_keys": active_paid_keys,
+            "active_trial_keys": active_trial_keys,
+            "expired_keys": expired_keys,
+            "total_payments_today": total_payments_today,
+            "total_payments_yesterday": total_payments_yesterday,
+            "total_payments_week": total_payments_week,
+            "total_payments_month": total_payments_month,
+            "total_payments_last_month": total_payments_last_month,
+            "total_payments_all_time": total_payments_all_time,
+            "payments_count_month": payments_count_month,
+            "payments_count_last_month": payments_count_last_month,
+            "new_subs_month": new_subs_month,
+            "new_subs_last_month": new_subs_last_month,
+            "expiring_24h": expiring_24h,
+            "expiring_7d": expiring_7d,
+            "paying_users": paying_users,
+            "active_week": active_week,
+            "dyn_created": dyn_created,
+            "dyn_renewed": dyn_renewed,
+            "dyn_expired": dyn_expired,
+            "churn_rate": retention.get("churnRate", 0),
+            "ltv_rub": retention.get("ltvRub", 0),
+            "trial_rate": retention.get("trialRate", 0),
+            "avg_check_month": avg_check_month,
+            "conversion": conversion,
+            "recovery_potential": recovery_potential,
+            "hot_leads_count": hot_leads_count,
+            "cold_leads_count": cold_leads_count,
+            "tariff_rows": tariff_rows,
+            "hook_blocks": hook_blocks,
+        }
+
+        new_kb = build_stats_kb(segment_index)
+        stats_message = _render_stats_segment(segment_index, ctx)
         current_text = callback_query.message.html_text or callback_query.message.text or ""
         cur_kb = callback_query.message.reply_markup
         cur_kb_json = cur_kb.model_dump_json() if cur_kb else None

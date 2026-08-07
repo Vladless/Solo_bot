@@ -37,6 +37,40 @@ async def count_total_keys(session: AsyncSession) -> int:
     return await session.scalar(select(func.count()).select_from(Key))
 
 
+async def count_keys_created_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
+    """Число подписок, созданных в интервале (Key.created_at — миллисекунды UTC)."""
+    stmt = (
+        select(func.count())
+        .select_from(Key)
+        .where(Key.created_at.isnot(None))
+        .where(Key.created_at >= start_ms)
+        .where(Key.created_at < end_ms)
+    )
+    return await session.scalar(stmt) or 0
+
+
+async def count_keys_expiring_between(session: AsyncSession, start_ms: int, end_ms: int) -> int:
+    """Число активных подписок, у которых срок истекает в интервале (риск невозобновления)."""
+    stmt = (
+        select(func.count())
+        .select_from(Key)
+        .where(Key.expiry_time >= start_ms)
+        .where(Key.expiry_time < end_ms)
+    )
+    return await session.scalar(stmt) or 0
+
+
+async def count_paying_users(session: AsyncSession) -> int:
+    """Число уникальных пользователей хотя бы с одной успешной оплатой (без внутренних систем)."""
+    stmt = (
+        select(func.count(func.distinct(Payment.user_id)))
+        .where(Payment.amount > 0)
+        .where(Payment.status == "success")
+        .where(Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED))
+    )
+    return await session.scalar(stmt) or 0
+
+
 async def count_active_keys(session: AsyncSession) -> int:
     current_time_ms = int(datetime.utcnow().timestamp() * 1000)
     return await session.scalar(select(func.count()).select_from(Key).where(Key.expiry_time > current_time_ms))
