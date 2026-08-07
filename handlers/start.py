@@ -23,9 +23,9 @@ from database.models import TrackingSource
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.instructions.instructions import send_instructions
-from handlers.keys.key_create import confirm_create_new_key
-from handlers.keys.key_view import process_callback_or_message_view_keys
-from handlers.payments.gift import handle_gift_link
+from handlers.keys.create.router import confirm_create_new_key
+from handlers.keys.view.router import process_callback_or_message_view_keys
+from handlers.payments.gifts import handle_gift_link
 from handlers.profile import process_callback_view_profile
 from handlers.refferal import invite_handler
 from hooks.hook_buttons import insert_hook_buttons
@@ -61,7 +61,7 @@ from settings.texts import (
     SUBSCRIPTION_CONFIRMED_MSG,
     SUBSCRIPTION_REQUIRED_MSG,
     WELCOME_TEXT,
-    get_about_vpn,
+    ABOUT_VPN_TEXT,
 )
 
 from .admin.panel.keyboard import AdminPanelCallback
@@ -436,7 +436,7 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
 
     kb.row(InlineKeyboardButton(text=BACK, callback_data=back_target))
 
-    text = get_about_vpn("3.2.3-minor")
+    text = ABOUT_VPN_TEXT
     text_hooks = await run_hooks("about_text", chat_id=user_id, trial=trial, session=session)
     if text_hooks:
         text = text_hooks[0]

@@ -122,7 +122,7 @@ class PaymentRenewalTimingTests(unittest.IsolatedAsyncioTestCase):
                 "handlers.payments.utils.get_key_by_server",
                 new=AsyncMock(return_value=SimpleNamespace(expiry_time=expired_at)),
             ),
-            patch("handlers.keys.key_renew.complete_key_renewal", new=AsyncMock()) as complete_mock,
+            patch("handlers.keys.renew.flow.complete_key_renewal", new=AsyncMock()) as complete_mock,
             patch("handlers.payments.utils.clear_temporary_data", new=AsyncMock()) as clear_mock,
             patch("handlers.payments.utils.datetime") as datetime_mock,
         ):

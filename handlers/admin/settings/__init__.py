@@ -7,6 +7,7 @@ from .settings_buttons import router as settings_buttons_router
 from .settings_cashboxes import router as settings_cashboxes_router
 from .settings_email import router as settings_email_router
 from .settings_manage import router as settings_manage_router
+from .settings_menu_layout import router as settings_menu_layout_router
 from .settings_modes import router as settings_modes_router
 from .settings_money import router as settings_panels_router
 from .settings_notifications import router as settings_notifications_router
@@ -20,6 +21,7 @@ router.callback_query.filter(HasPermission(PERM_SETTINGS))
 router.message.filter(HasPermission(PERM_SETTINGS))
 router.include_router(settings_manage_router)
 router.include_router(settings_buttons_router)
+router.include_router(settings_menu_layout_router)
 router.include_router(settings_cashboxes_router)
 router.include_router(settings_panels_router)
 router.include_router(settings_notifications_router)

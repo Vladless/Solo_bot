@@ -101,12 +101,17 @@ def build_settings_kb() -> InlineKeyboardMarkup:
 
 
 def build_settings_buttons_kb(buttons_state: dict[str, bool]) -> InlineKeyboardMarkup:
+    layout_button = InlineKeyboardButton(
+        text="📋 Порядок кнопок",
+        callback_data=AdminPanelCallback(action="settings_menu_layout").pack(),
+    )
     return build_toggle_section_keyboard(
         titles=BUTTON_TITLES,
         state=buttons_state,
         action="settings_button_toggle",
         columns=2,
         back_action="settings",
+        extra_rows=[[layout_button]],
     )
 
 

@@ -12,7 +12,7 @@ from sqlalchemy.orm.attributes import InstrumentedAttribute
 from api.depends import get_session, verify_admin_token
 from database.access.resolution import resolve_user_optional
 from database.models import Admin
-from settings.texts import get_site_gift_link, get_telegram_gift_link
+from services.formatting import get_site_gift_link, get_telegram_gift_link
 
 
 def _apply_user_relationship_loader(model: type, stmt):

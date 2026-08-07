@@ -9,6 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_key_by_client_id, get_key_by_email, get_keys
 from database.models import Key
 from services.payments.currency_rates import format_for_user
+from handlers.utils import render_text
+from settings.texts import (
+    SUBGROUP_DESCRIPTION_TEXT,
+    TARIFF_DESCRIPTIONS_HIDDEN,
+    TARIFF_DESCRIPTIONS_ROW,
+    TARIFF_DESCRIPTIONS_TEXT,
+)
 
 
 def key_owned_by_user(record: dict | None, user_id: int) -> bool:
@@ -65,7 +72,7 @@ def order_tariff_items(grouped_tariffs: dict) -> list[tuple[str, Any]]:
 
 
 def format_subgroup_description(description: str | None, limit: int = 300) -> str:
-    """Блок описания подгруппы над «Выберите тариф:» (пусто, если не задано).
+    """Блок описания подгруппы над списком тарифов (пусто, если не задано).
 
     Длина ограничена, чтобы caption фото не превысил лимит Telegram (1024).
     """
@@ -74,7 +81,7 @@ def format_subgroup_description(description: str | None, limit: int = 300) -> st
         return ""
     if len(text) > limit:
         text = text[: limit - 1].rstrip() + "…"
-    return f"{_escape_html(text)}\n\n"
+    return render_text(SUBGROUP_DESCRIPTION_TEXT, description=_escape_html(text))
 
 
 def format_tariff_descriptions(tariffs: list[dict[str, Any]], total_limit: int = 500) -> str:
@@ -99,17 +106,16 @@ def format_tariff_descriptions(tariffs: list[dict[str, Any]], total_limit: int =
     for name, desc in described:
         if len(desc) > per_limit:
             desc = desc[: per_limit - 1].rstrip() + "…"
-        line = f"• <b>{_escape_html(name)}</b> — {_escape_html(desc)}"
+        line = TARIFF_DESCRIPTIONS_ROW.format(name=_escape_html(name), description=_escape_html(desc))
         if used + len(line) + 1 > total_limit:
             hidden += 1
             continue
         lines.append(line)
         used += len(line) + 1
 
-    block = "\n\n" + "\n".join(lines)
     if hidden:
-        block += f"\n<i>…и ещё {hidden}</i>"
-    return block
+        lines.append(TARIFF_DESCRIPTIONS_HIDDEN.format(count=hidden))
+    return render_text(TARIFF_DESCRIPTIONS_TEXT, items="\n".join(lines))
 
 
 async def add_tariff_button_generic(

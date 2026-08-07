@@ -25,6 +25,7 @@ from database import (
     update_coupon_usage_count,
     update_key_expiry,
 )
+from handlers.admin.panel.headers import section
 from handlers.profile import process_callback_view_profile
 from handlers.utils import edit_or_send_message, format_days
 from logger import logger
@@ -34,7 +35,8 @@ from services.payments.currency_rates import format_for_user
 from settings.buttons import MAIN_MENU
 from settings.config import ADMIN_ID
 from settings.texts import (
-    COUPONS_DAYS_MESSAGE,
+    COUPONS_DAYS_HINT,
+    COUPONS_DAYS_TITLE,
     COUPON_ALREADY_USED_MSG,
     COUPON_DAYS_ACTIVATED_MSG,
     COUPON_INPUT_PROMPT,
@@ -180,20 +182,18 @@ async def activate_coupon(
 
             builder = InlineKeyboardBuilder()
             moscow_tz = pytz.timezone("Europe/Moscow")
-            response_message = COUPONS_DAYS_MESSAGE
+            key_rows = []
 
             for key in active_keys:
                 key_display = html.escape((key.alias or key.email).strip())
-                expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, tz=moscow_tz).strftime(
-                    "до %d.%m.%y, %H:%M"
-                )
-                response_message += f"• <b>{key_display}</b> ({expiry_date})\n"
+                expiry_date = datetime.fromtimestamp(key.expiry_time / 1000, tz=moscow_tz).strftime("до %d.%m.%y")
+                key_rows.append(f"{key_display}: {expiry_date}")
                 builder.button(
                     text=key_display,
                     callback_data=f"extend_key|{key.client_id}|{coupon.id}",
                 )
 
-            response_message += "</blockquote>"
+            response_message = section(COUPONS_DAYS_TITLE, *key_rows) + f"\n{COUPONS_DAYS_HINT}"
             builder.button(text="Отмена", callback_data="cancel_coupon_activation")
             builder.adjust(1)
 

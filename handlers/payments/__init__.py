@@ -20,7 +20,7 @@ from services.payments.providers import get_providers
 from .cryptobot import router as cryptobot_router
 from .fast_payment_flow import router as fast_payment_flow_router
 from .freekassa.freekassa_pay import router as freekassa_router
-from .gift import router as gift_router
+from .gifts import router as gift_router
 from .heleket import router as heleket_router
 from .kassai import router as kassai_router
 from .overpay import router as overpay_router
@@ -73,3 +73,7 @@ router.include_router(tribute_router)
 router.include_router(gift_router)
 router.include_router(pay_router)
 router.include_router(fast_payment_flow_router)
+
+# Анти-тампер и bootstrap-валидация лицензии: запускаются последними, когда пакет gifts
+# и все платёжные провайдеры полностью загружены (иначе циклический импорт gifts↔yookassa).
+from .gifts import runtime as _gifts_runtime  # noqa: E402,F401

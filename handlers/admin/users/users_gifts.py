@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import Gift, GiftUsage, Tariff
 from filters.admin import IsAdminFilter
 from services.gifts import format_gift_limits_display, format_gift_recipient_display
-from settings.texts import get_site_gift_link
+from services.formatting import get_site_gift_link
 
 from ..panel.headers import card, menu_text, quote, section
 from .keyboard import (

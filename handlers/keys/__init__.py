@@ -4,8 +4,8 @@ from aiogram import Router
 
 from .key_connect import router as connect_router
 from .key_mode import router as key_mode_router
-from .key_renew import router as renew_router
-from .key_view import router as view_router
+from .renew import router as renew_router
+from .view import router as view_router
 from .keys import router as keys_router
 
 

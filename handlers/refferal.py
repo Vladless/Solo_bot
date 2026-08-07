@@ -29,6 +29,7 @@ from database import (
 from database.access.resolution import resolve_user_optional
 from database.tariffs import get_tariffs
 from logger import logger
+from services.formatting import get_referral_link
 from services.payments.currency_rates import format_for_user
 from settings.buttons import BACK, INVITE, MAIN_MENU, QR, TOP_FIVE
 from settings.config import (
@@ -40,16 +41,19 @@ from settings.config import (
     USERNAME_BOT,
 )
 from settings.texts import (
-    INVITE_MESSAGE_TEMPLATE,
+    INVITE_ROW_BONUS,
+    INVITE_ROW_LEVEL,
+    INVITE_TEXT,
     INVITE_TEXT_NON_INLINE,
     NEW_REFERRAL_NOTIFICATION,
     REFERRAL_OFFERS,
     REFERRAL_SUCCESS_MSG,
+    TOP_REFERRALS_EMPTY_TEXT,
+    TOP_REFERRALS_ROW,
     TOP_REFERRALS_TEXT,
 )
 
-from .texts import get_referral_link
-from .utils import edit_or_send_message, format_days, safe_answer_inline_query
+from .utils import edit_or_send_message, format_days, render_text, safe_answer_inline_query
 
 
 router = Router()
@@ -85,33 +89,27 @@ async def invite_handler(callback_query_or_message: Message | CallbackQuery, ses
     referral_link = get_referral_link(chat_id)
     referral_stats = await get_referral_stats(session, chat_id)
 
-    bonuses_lines = []
+    bonus_rows = []
     for level, value in REFERRAL_BONUS_PERCENTAGES.items():
         if isinstance(value, float):
-            bonuses_lines.append(f"{level} уровень: 🌟 {int(value * 100)}% бонуса")
+            bonus_value = f"{int(value * 100)}%"
         else:
-            value_text = await format_for_user(session, chat_id, value, language_code)
-            bonuses_lines.append(f"{level} уровень: 💸 {value_text} бонуса")
-    bonuses_block = "\n".join(bonuses_lines)
+            bonus_value = await format_for_user(session, chat_id, value, language_code)
+        bonus_rows.append(INVITE_ROW_BONUS.format(level=level, value=bonus_value))
 
-    details_lines = []
-    for level, stats in referral_stats["referrals_by_level"].items():
-        bonus_value = REFERRAL_BONUS_PERCENTAGES.get(level)
-        if isinstance(bonus_value, float):
-            bonus_text = f"{int(bonus_value * 100)}%"
-        else:
-            bonus_text = await format_for_user(session, chat_id, bonus_value, language_code)
-        details_lines.append(f"🔹 Уровень {level}: {stats['total']} - {bonus_text}")
-    details_block = "\n".join(details_lines)
+    level_rows = [
+        INVITE_ROW_LEVEL.format(level=level, value=stats["total"])
+        for level, stats in referral_stats["referrals_by_level"].items()
+    ]
 
     total_bonus_text = await format_for_user(session, chat_id, referral_stats["total_referral_bonus"], language_code)
-
-    invite_message = INVITE_MESSAGE_TEMPLATE.format(
-        referral_link=referral_link,
-        bonuses_block=bonuses_block,
-        total_referrals=referral_stats["total_referrals"],
-        details_block=details_block,
-        total_referral_bonus=total_bonus_text,
+    invite_message = render_text(
+        INVITE_TEXT,
+        link=referral_link,
+        bonus_table="\n".join(bonus_rows),
+        level_table="\n".join(level_rows),
+        total=referral_stats["total_referrals"],
+        bonus=total_bonus_text,
     )
     image_path = os.path.join("img", "pic_invite.jpg")
 
@@ -210,24 +208,28 @@ async def top_referrals_handler(callback_query: CallbackQuery, session: AsyncSes
 
     user_referral_count = await get_user_referral_count(session, user_id)
 
-    personal_block = "Твоё место в рейтинге:\n"
+    user_position = 0
     if user_referral_count > 0:
         user_position = await get_referral_position(session, user_referral_count)
-        personal_block += f"{user_position}. {user_id} - {user_referral_count} чел."
-    else:
-        personal_block += "Ты еще не приглашал пользователей в проект."
 
     top_referrals = await get_top_referrals(session, limit=5)
 
     is_admin = user_id in ADMIN_ID
-    rows = ""
+    top_rows = []
     for index, row in enumerate(top_referrals, 1):
         referrer_id = str(row["referrer_user_id"])
-        count = row["referral_count"]
         display_id = referrer_id if is_admin else f"{referrer_id[:5]}*****"
-        rows += f"{index}. {display_id} - {count} чел.\n"
+        top_rows.append(TOP_REFERRALS_ROW.format(index=index, user=display_id, value=row["referral_count"]))
 
-    text = TOP_REFERRALS_TEXT.format(personal_block=personal_block, rows=rows)
+    if user_referral_count > 0:
+        text = render_text(
+            TOP_REFERRALS_TEXT,
+            top_table="\n".join(top_rows),
+            place=user_position,
+            invited=user_referral_count,
+        )
+    else:
+        text = render_text(TOP_REFERRALS_EMPTY_TEXT, top_table="\n".join(top_rows))
 
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))

@@ -6,10 +6,49 @@ from core.settings.tariffs_config import TARIFFS_CONFIG, normalize_tariff_config
 from database import get_tariff_by_id
 from database.models import Key
 from logger import logger
-from settings.texts import key_message_success
+from settings.texts import (
+    INSTRUCTIONS_TRIAL,
+    KEY_CREATED_TEXT,
+    UNLIMITED_DEVICES_LABEL,
+    UNLIMITED_ROW_VALUE,
+    UNLIMITED_TRAFFIC_LABEL,
+)
 
 
 GB = 1024 * 1024 * 1024
+
+CRYPTO_LINK_LENGTH = 200
+
+
+def plain_tariff_name(tariff_name: str) -> str:
+    """Убирает из названия тарифа приписку о безлимитах: лимиты идут отдельными строками."""
+    for suffix in (
+        f" ({UNLIMITED_TRAFFIC_LABEL}, {UNLIMITED_DEVICES_LABEL})",
+        f" ({UNLIMITED_TRAFFIC_LABEL})",
+        f" ({UNLIMITED_DEVICES_LABEL})",
+    ):
+        if tariff_name.endswith(suffix):
+            return tariff_name[: -len(suffix)]
+    return tariff_name
+
+
+def build_key_created_text(
+    connection_link: str,
+    tariff_name: str = "",
+    traffic_limit: int = 0,
+    device_limit: int = 0,
+) -> str:
+    """Собирает экран созданной подписки по шаблону из файла текстов."""
+    from handlers.utils import render_text
+
+    return render_text(
+        KEY_CREATED_TEXT,
+        link="" if len(connection_link) > CRYPTO_LINK_LENGTH else connection_link,
+        tariff_name=plain_tariff_name(tariff_name),
+        traffic=f"{traffic_limit} ГБ" if traffic_limit else UNLIMITED_ROW_VALUE,
+        devices=device_limit if device_limit else UNLIMITED_ROW_VALUE,
+        instructions=INSTRUCTIONS_TRIAL,
+    )
 
 
 async def get_effective_limits_for_key(
@@ -330,10 +369,9 @@ async def build_key_created_message(
     traffic_to_show = int(traffic_limit_bytes / GB) if traffic_limit_bytes else 0
     devices_to_show = int(device_limit) if device_limit else 0
 
-    return key_message_success(
+    return build_key_created_text(
         final_link or "Ссылка не найдена",
         tariff_name=tariff_name,
         traffic_limit=traffic_to_show,
         device_limit=devices_to_show,
-        subgroup_title=subgroup_title,
     )

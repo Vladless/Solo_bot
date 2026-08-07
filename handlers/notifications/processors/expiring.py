@@ -23,12 +23,13 @@ from handlers.notifications.sender import (
     send_messages_with_limit,
     send_notification,
 )
-from handlers.utils import get_russian_month
+from handlers.utils import get_russian_month, render_text
 from logger import logger
 from middlewares.session import wrap_session
+from services.formatting import build_renewal_done_text
 from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 from settings.config import EXECUTOR_POOL_SIZE
-from settings.texts import KEY_CANNOT_RENEW_CURRENT, KEY_EXPIRY, get_renewal_message
+from settings.texts import KEY_CANNOT_RENEW_TEXT, KEY_EXPIRY_TEXT
 
 
 moscow_tz = pytz.timezone("Europe/Moscow")
@@ -150,6 +151,20 @@ async def _process_renew_candidates(
         await add_notification(ctx.session, tg_id, notification_id)
 
 
+def _build_expiry_text(email: str, expiry_data: dict, cannot_renew: bool = False) -> str:
+    """Собирает уведомление об окончании подписки по шаблону из файла текстов."""
+    return render_text(
+        KEY_CANNOT_RENEW_TEXT if cannot_renew else KEY_EXPIRY_TEXT,
+        email=email,
+        left=expiry_data["hours_left_formatted"],
+        expiry=expiry_data["formatted_expiry_date"],
+        tariff_name=expiry_data["tariff_name"],
+        group=expiry_data["subgroup_title"],
+        traffic=expiry_data["traffic"],
+        devices=expiry_data["devices"],
+    )
+
+
 async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], photo: str, notify_type: str):
     messages = []
     for key, notification_id in items:
@@ -157,13 +172,7 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
         email = key.email or ""
 
         expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
-        text = KEY_EXPIRY.format(
-            email=email,
-            hours_left_formatted=expiry_data["hours_left_formatted"],
-            formatted_expiry_date=expiry_data["formatted_expiry_date"],
-            tariff_name=expiry_data["tariff_name"],
-            tariff_details=expiry_data["tariff_details"],
-        )
+        text = _build_expiry_text(email, expiry_data)
         keyboard = build_notification_kb(email, getattr(key, "client_id", None))
         messages.append({
             "tg_id": tg_id,
@@ -190,26 +199,14 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
 
 async def _send_expiry_warning(ctx: NotificationContext, key, photo: str) -> bool:
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
-    text = KEY_EXPIRY.format(
-        email=key.email or "",
-        hours_left_formatted=expiry_data["hours_left_formatted"],
-        formatted_expiry_date=expiry_data["formatted_expiry_date"],
-        tariff_name=expiry_data["tariff_name"],
-        tariff_details=expiry_data["tariff_details"],
-    )
+    text = _build_expiry_text(key.email or "", expiry_data)
     keyboard = build_notification_kb(key.email or "", getattr(key, "client_id", None))
     return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
 
 
 async def _send_change_tariff(ctx: NotificationContext, key, photo: str) -> bool:
     expiry_data = await prepare_key_expiry_data(key, ctx.session, ctx.current_time)
-    text = KEY_CANNOT_RENEW_CURRENT.format(
-        email=key.email or "",
-        hours_left_formatted=expiry_data["hours_left_formatted"],
-        formatted_expiry_date=expiry_data["formatted_expiry_date"],
-        tariff_name=expiry_data["tariff_name"],
-        tariff_details=expiry_data["tariff_details"],
-    )
+    text = _build_expiry_text(key.email or "", expiry_data, cannot_renew=True)
     keyboard = build_change_tariff_kb(key.email or "", getattr(key, "client_id", None))
     return await send_notification(ctx.bot, key.tg_id, photo, text, keyboard)
 
@@ -233,12 +230,11 @@ async def _send_renewed(ctx: NotificationContext, key, tariff: dict, new_expiry_
         get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
     )
 
-    text = get_renewal_message(
+    text = build_renewal_done_text(
         tariff_name=tariff["name"],
         traffic_limit=traffic_limit_gb,
         device_limit=device_limit_effective,
         expiry_date=formatted_expiry_date,
-        subgroup_title=tariff.get("subgroup_title", ""),
     )
 
     keyboard = build_notification_expired_kb()

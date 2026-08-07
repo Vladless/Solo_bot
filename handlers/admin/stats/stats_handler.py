@@ -102,6 +102,18 @@ def _previous_moscow_day_window(now: datetime | None = None) -> tuple[datetime, 
     return start.astimezone(pytz.UTC), end.astimezone(pytz.UTC), yesterday_date
 
 
+def _tree_rows(entries: list[tuple[int, str]]) -> list[str]:
+    """Продолжает ветку секции для вложенных строк."""
+    rows: list[str] = []
+    for index, (depth, text) in enumerate(entries):
+        if depth == 0:
+            rows.append(text)
+            continue
+        connector = "└" if index == len(entries) - 1 else "├"
+        rows.append(f"{connector}{'──' * depth} {text}")
+    return rows
+
+
 def _audit_success_event_counts(by_path: list[dict]) -> dict[str, int]:
     """Успешные события по шагам для бизнес-метрик в отчёте."""
     return {row["step"]: int(row.get("success", 0) or 0) for row in by_path}
@@ -174,55 +186,58 @@ async def handle_stats(callback_query: CallbackQuery, session: AsyncSession):
                 grouped_tariffs[group][subgroup] = []
             grouped_tariffs[group][subgroup].append((tid, count))
 
-        tariff_stats_text = ""
+        tariff_entries: list[tuple[int, str]] = []
         duration_buckets = Counter()
         now_ts = int(now.timestamp() * 1000)
 
         for key in no_tariff_keys:
             duration_days = round((key["expiry_time"] - now_ts) / (1000 * 60 * 60 * 24))
             if 25 <= duration_days <= 35:
-                bucket = "Без тарифа: 1 мес"
+                bucket = "1 мес"
             elif 80 <= duration_days <= 100:
-                bucket = "Без тарифа: 3 мес"
+                bucket = "3 мес"
             elif 170 <= duration_days <= 200:
-                bucket = "Без тарифа: 6 мес"
+                bucket = "6 мес"
             elif 350 <= duration_days <= 380:
-                bucket = "Без тарифа: 12 мес"
+                bucket = "12 мес"
             else:
-                bucket = "Без тарифа: прочее"
+                bucket = "прочее"
             duration_buckets[bucket] += 1
 
         bucket_order = {
-            "Без тарифа: 1 мес": 1,
-            "Без тарифа: 3 мес": 2,
-            "Без тарифа: 6 мес": 3,
-            "Без тарифа: 12 мес": 4,
-            "Без тарифа: прочее": 5,
+            "1 мес": 1,
+            "3 мес": 2,
+            "6 мес": 3,
+            "12 мес": 4,
+            "прочее": 5,
         }
         sorted_buckets = sorted(duration_buckets.items(), key=lambda x: bucket_order.get(x[0], 999))
 
-        for name, count in sorted_buckets:
-            tariff_stats_text += f"{name}: {count}\n"
+        if sorted_buckets:
+            tariff_entries.append((0, f"Без тарифа: {sum(count for _, count in sorted_buckets)}"))
+            for name, count in sorted_buckets:
+                tariff_entries.append((1, f"{name}: {count}"))
 
         for _group_idx, (group, subgroups_dict) in enumerate(grouped_tariffs.items()):
             group_total = 0
             for tariffs_list in subgroups_dict.values():
                 group_total += sum(count for _, count in tariffs_list)
 
-            tariff_stats_text += f"{group}: {group_total}\n"
+            tariff_entries.append((0, f"{group}: {group_total}"))
             sorted_subgroups = sorted(subgroups_dict.items(), key=lambda x: (x[0] is None, x[0] or ""))
             for subgroup, tariffs in sorted_subgroups:
                 sorted_tariffs = sorted(tariffs, key=lambda x: tariff_durations.get(x[0], 0))
                 subgroup_total = sum(count for _, count in sorted_tariffs)
 
                 if subgroup:
-                    tariff_stats_text += f"  {subgroup}: {subgroup_total}\n"
+                    tariff_entries.append((1, f"{subgroup}: {subgroup_total}"))
 
+                depth = 2 if subgroup else 1
                 for tid, count in sorted_tariffs:
                     name = tariff_names.get(tid, f"ID {tid}")
-                    tariff_stats_text += f"{'  ' if subgroup else ''}{name}: {count}\n"
+                    tariff_entries.append((depth, f"{name}: {count}"))
 
-        tariff_rows = [row for row in tariff_stats_text.split("\n") if row.strip()]
+        tariff_rows = _tree_rows(tariff_entries)
 
         total_referrals = await count_total_referrals(session)
 

@@ -26,6 +26,10 @@ def format_duration_days(days: int) -> str:
     return format_months(days // 30) if days % 30 == 0 else format_days(days)
 
 
+def get_referral_link(user_id: int) -> str:
+    return f"https://t.me/{USERNAME_BOT}?start=referral_{user_id}"
+
+
 def get_telegram_gift_link(gift_id: str) -> str:
     return f"https://telegram.me/{USERNAME_BOT}?start=gift_{gift_id}"
 
@@ -39,3 +43,22 @@ def get_site_gift_link(gift_id: str) -> str:
 
     site_url = get_site_url()
     return f"{site_url}/gift/{gift_id}"
+
+
+def build_renewal_done_text(
+    tariff_name: str = "",
+    traffic_limit: int = 0,
+    device_limit: int = 0,
+    expiry_date: str = "",
+) -> str:
+    """Собирает сообщение об успешном продлении по шаблону из файла текстов."""
+    from handlers.utils import render_text
+    from settings.texts import RENEWAL_DONE_TEXT, UNLIMITED_ROW_VALUE
+
+    return render_text(
+        RENEWAL_DONE_TEXT,
+        tariff_name=tariff_name,
+        traffic=f"{traffic_limit} ГБ" if traffic_limit else UNLIMITED_ROW_VALUE,
+        devices=device_limit if device_limit else UNLIMITED_ROW_VALUE,
+        expiry=expiry_date.replace(" года", "").strip(),
+    )

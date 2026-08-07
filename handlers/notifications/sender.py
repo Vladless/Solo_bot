@@ -17,7 +17,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 from database import async_session_maker
 from database.bans import save_blocked_user_ids
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
-from handlers.utils import format_hours, format_minutes, get_russian_month
+from handlers.utils import format_hours, format_minutes
 from logger import logger
 from services.tariffs.tariff_display import get_key_tariff_display
 from utils.custom_emojis import _process_text
@@ -388,10 +388,12 @@ async def prepare_key_expiry_data(key, session, current_time: int) -> dict:
 
     if not expiry_timestamp:
         return {
-            "hours_left_formatted": "",
-            "formatted_expiry_date": "",
+            "hours_left_formatted": "—",
+            "formatted_expiry_date": "—",
             "tariff_name": "—",
-            "tariff_details": "",
+            "subgroup_title": "",
+            "traffic": "—",
+            "devices": "—",
         }
 
     delta_ms = max(0, expiry_timestamp - current_time)
@@ -405,13 +407,12 @@ async def prepare_key_expiry_data(key, session, current_time: int) -> dict:
             parts.append(format_hours(hours_left))
         if minutes_left > 0:
             parts.append(format_minutes(minutes_left))
-        hours_left_formatted = f"⏳ Осталось времени: {' '.join(parts)}"
+        hours_left_formatted = " ".join(parts)
     else:
-        hours_left_formatted = "⏳ Последний день подписки!"
+        hours_left_formatted = "последний день"
 
     expiry_datetime = datetime.fromtimestamp(expiry_timestamp / 1000, tz=moscow_tz)
-    month_name = get_russian_month(expiry_datetime)
-    formatted_expiry_date = expiry_datetime.strftime(f"%d {month_name} %Y, %H:%M (МСК)")
+    formatted_expiry_date = expiry_datetime.strftime("%d.%m.%Y %H:%M")
 
     tariff_name = "—"
     subgroup_title = ""
@@ -431,16 +432,11 @@ async def prepare_key_expiry_data(key, session, current_time: int) -> dict:
     traffic_text = "безлимит" if traffic_limit_gb == 0 else f"{traffic_limit_gb} ГБ"
     devices_text = "безлимит" if device_limit == 0 else str(device_limit)
 
-    lines = []
-    if subgroup_title:
-        lines.append(subgroup_title)
-    lines.append(f"Трафик: {traffic_text}")
-    lines.append(f"Устройств: {devices_text}")
-    tariff_details = "\n" + "\n".join(lines) if lines else ""
-
     return {
         "hours_left_formatted": hours_left_formatted,
         "formatted_expiry_date": formatted_expiry_date,
         "tariff_name": tariff_name,
-        "tariff_details": tariff_details,
+        "subgroup_title": subgroup_title or "",
+        "traffic": traffic_text,
+        "devices": devices_text,
     }

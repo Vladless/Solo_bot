@@ -48,7 +48,7 @@ async def handle_unhandled_messages(message: Message, session: Any, state: FSMCo
             logger.error(f"[Fallback] start по ключевому слову не удался: {e}")
     elif intent == "buy":
         try:
-            from handlers.keys.key_create import confirm_create_new_key
+            from handlers.keys.create.router import confirm_create_new_key
 
             await confirm_create_new_key(message, state, session)
             return

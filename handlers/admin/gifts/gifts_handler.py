@@ -15,7 +15,7 @@ from filters.permissions import PERM_GIFTS
 from handlers.utils import edit_or_send_message, format_days, format_months
 from logger import logger
 from settings.buttons import BACK
-from settings.texts import get_site_gift_link
+from services.formatting import get_site_gift_link
 
 from ..panel.headers import card, menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
@@ -153,7 +153,7 @@ async def handle_tariff_selection(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "gift_limit_unlimited", IsAdminFilter())
 async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    from handlers.payments.gift import finalize_gift
+    from handlers.payments.gifts import finalize_gift
 
     data = await state.get_data()
     session: AsyncSession = callback.bot["session"]
@@ -163,7 +163,7 @@ async def handle_unlimited_gift(callback: CallbackQuery, state: FSMContext, bot:
 
 @router.message(GiftCreationState.waiting_for_limit_input_or_unlimited, IsAdminFilter())
 async def handle_limited_gift_input(message: types.Message, session: AsyncSession, state: FSMContext, bot: Bot):
-    from handlers.payments.gift import finalize_gift
+    from handlers.payments.gifts import finalize_gift
 
     try:
         max_usages = int(message.text.strip())

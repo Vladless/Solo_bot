@@ -9,10 +9,9 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot import bot
 from core.bootstrap import NOTIFICATIONS_CONFIG
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
@@ -21,30 +20,22 @@ from database import (
     get_key_by_server,
     get_key_details,
     get_tariff_by_id,
-    reset_key_current_limits_to_selected,
-    save_key_config_with_mode,
-    update_balance,
-    update_key_expiry,
 )
-from database.access.resolution import notify_telegram_chat_id
-from database.models import Key, Server
+from database.models import Server
 from database.notifications import check_cold_lead_discount, check_hot_lead_discount
 from database.tariffs import create_subgroup_hash, find_subgroup_by_hash, get_subgroup_description, get_tariffs
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
-from handlers.utils import edit_or_send_message, format_discount_time_left, get_russian_month
+from handlers.utils import edit_or_send_message, format_discount_time_left, render_text
 from hooks.hook_buttons import insert_hook_buttons
 from hooks.processors import (
     process_process_callback_renew_key,
     process_purchase_tariff_group_override,
     process_renew_tariffs,
-    process_renewal_complete,
     process_renewal_forbidden_groups,
 )
 from logger import logger
-from services.operations import renew_key_in_cluster
 from services.payments.currency_rates import format_for_user
-from services.tariffs.tariff_display import GB, get_effective_limits_for_key
-from settings.buttons import BACK, MAIN_MENU, MY_SUB, PAYMENT
+from settings.buttons import BACK, MAIN_MENU, PAYMENT
 from settings.config import DISCOUNT_ACTIVE_HOURS, RENEW_BUTTON_BEFORE_DAYS, USE_NEW_PAYMENT_FLOW
 from settings.texts import (
     ADDON_RESET_PLAN_WARNING,
@@ -53,12 +44,15 @@ from settings.texts import (
     DISCOUNT_OFFER_STEP3,
     INSUFFICIENT_FUNDS_RENEWAL_MSG,
     KEY_NOT_FOUND_MSG,
-    PLAN_SELECTION_MSG,
-    get_renewal_message,
-    renewal_switch_text,
+    PLAN_SELECTION_HINT,
+    PLAN_SELECTION_TEXT,
+    SELECT_TARIFF_HINT,
+    SUBGROUP_TITLE_TEMPLATE,
 )
 
-from .utils import (
+from .flow import _finalize_renewal, complete_key_renewal, normalize_expiry_ms
+from .switch import _maybe_show_switch_confirm
+from ..utils import (
     add_tariff_button_generic,
     build_key_callback,
     format_subgroup_description,
@@ -73,16 +67,6 @@ router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
 
 
-def normalize_expiry_ms(raw_value: int | float | None) -> int:
-    """Нормализует таймстамп истечения в миллисекунды."""
-    if not raw_value:
-        return 0
-    value = int(raw_value)
-    if value > 10**13:
-        value *= 1000
-    return value
-
-
 @router.callback_query(F.data.startswith("renew_key|"), flags={"popup": True})
 async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Обрабатывает нажатие кнопки продления конкретного ключа."""
@@ -94,7 +78,7 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
     try:
         record = await get_key_details(session, key_name)
         if not record:
-            from handlers.keys.key_create import handle_key_creation
+            from handlers.keys.create.flow import handle_key_creation
 
             await handle_key_creation(
                 tg_id=callback_query.from_user.id,
@@ -280,14 +264,21 @@ async def process_callback_renew_key(callback_query: CallbackQuery, state: FSMCo
         if _addon_parts:
             addon_warning = ADDON_RESET_PLAN_WARNING.format(addons=", ".join(_addon_parts))
 
-        response_message = (
-            PLAN_SELECTION_MSG.format(
-                balance=balance,
-                expiry_date=datetime.utcfromtimestamp(expiry_time / 1000).strftime("%Y-%m-%d %H:%M:%S"),
+        expiry_moscow = datetime.fromtimestamp(expiry_time / 1000, tz=pytz.timezone("Europe/Moscow"))
+        response_message = "\n".join(
+            block
+            for block in (
+                render_text(
+                    PLAN_SELECTION_TEXT,
+                    balance=balance,
+                    expiry=expiry_moscow.strftime("%d.%m.%Y %H:%M"),
+                ),
+                addon_warning,
+                format_tariff_descriptions(grouped_tariffs.get(None, [])),
+                discount_message,
+                PLAN_SELECTION_HINT,
             )
-            + addon_warning
-            + format_tariff_descriptions(grouped_tariffs.get(None, []))
-            + discount_message
+            if block
         )
 
         await edit_or_send_message(
@@ -317,7 +308,7 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
 
         record = await get_key_details(session, key_name)
         if not record:
-            from handlers.keys.key_create import handle_key_creation
+            from handlers.keys.create.flow import handle_key_creation
 
             await handle_key_creation(
                 tg_id=callback.from_user.id,
@@ -460,11 +451,17 @@ async def show_tariffs_in_renew_subgroup(callback: CallbackQuery, state: FSMCont
         sub_desc = await get_subgroup_description(session, group_code, subgroup)
         await edit_or_send_message(
             target_message=callback.message,
-            text=f"<b>{subgroup}</b>\n\n"
-            + format_subgroup_description(sub_desc)
-            + "Выберите тариф:"
-            + format_tariff_descriptions(filtered, total_limit=200)
-            + discount_message,
+            text="\n".join(
+                block
+                for block in (
+                    SUBGROUP_TITLE_TEMPLATE.format(subgroup=subgroup),
+                    format_subgroup_description(sub_desc),
+                    format_tariff_descriptions(filtered, total_limit=200),
+                    discount_message,
+                    SELECT_TARIFF_HINT,
+                )
+                if block
+            ),
             reply_markup=final_markup,
         )
 
@@ -523,7 +520,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
         record = await get_key_by_server(session, tg_id, client_id)
         if not record:
             logger.info(f"[RENEW] Ключ client_id={client_id} удалён — открываем покупку нового.")
-            from handlers.keys.key_create import handle_key_creation
+            from handlers.keys.create.flow import handle_key_creation
 
             await handle_key_creation(
                 tg_id=callback_query.from_user.id,
@@ -612,7 +609,7 @@ async def process_callback_renew_plan(callback_query: CallbackQuery, state: FSMC
                 renew_selected_traffic_limit=record.get("selected_traffic_limit"),
             )
 
-            from handlers.tariffs.buy.key_tariffs import start_tariff_config
+            from handlers.tariffs.buy.config import start_tariff_config
 
             await start_tariff_config(
                 callback_query=callback_query,
@@ -831,186 +828,6 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
         await callback_query.message.answer("❌ Произошла ошибка при продлении. Попробуйте позже.")
 
 
-def _tariff_config_label(duration_days: int, device_limit: int | None, addon_devices: int = 0) -> str:
-    from handlers.tariffs.addons.utils import format_devices_label
-    from services.formatting import format_duration_days
-
-    parts = [format_duration_days(int(duration_days or 0))]
-    if device_limit is not None:
-        dev = format_devices_label(device_limit)
-        if addon_devices > 0:
-            dev = f"{dev} + {addon_devices} докуплено"
-        parts.append(dev)
-    return ", ".join(parts)
-
-
-async def _maybe_show_switch_confirm(
-    callback_query: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    *,
-    tg_id: int,
-    client_id: str,
-    email: str,
-    new_tariff_id: int,
-    record: dict,
-    selected_device: int | None,
-    selected_traffic: int | None,
-) -> bool:
-    """Экран подтверждения смены тарифа (остаток → на баланс). True — экран показан."""
-    from services.keys import compute_renewal_quote
-
-    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-    quote = await compute_renewal_quote(
-        session,
-        billing_user_id=tg_id,
-        key_email=email,
-        current_tariff_id=record.get("tariff_id"),
-        current_selected_device=record.get("selected_device_limit"),
-        current_selected_traffic=record.get("selected_traffic_limit"),
-        current_expiry_ms=normalize_expiry_ms(record.get("expiry_time")),
-        now_ms=now_ms,
-        new_tariff_id=int(new_tariff_id),
-        new_selected_device=selected_device,
-        new_selected_traffic=selected_traffic,
-    )
-    if not quote.is_switch or (quote.credit_rub <= 0 and quote.credit_days <= 0):
-        return False
-
-    await state.update_data(
-        renew_sw_client_id=client_id,
-        renew_sw_email=email,
-        renew_sw_tariff_id=int(new_tariff_id),
-        renew_sw_selected_device=selected_device,
-        renew_sw_selected_traffic=selected_traffic,
-    )
-
-    old_tariff = await get_tariff_by_id(session, int(record.get("tariff_id"))) if record.get("tariff_id") else None
-    new_tariff = await get_tariff_by_id(session, int(new_tariff_id))
-
-    old_dev = record.get("selected_device_limit") if (old_tariff and old_tariff.get("configurable")) else None
-    new_dev = quote.selected_device_limit if (new_tariff and new_tariff.get("configurable")) else None
-
-    old_addon = 0
-    if old_dev is not None:
-        cur_dev = record.get("current_device_limit")
-        if cur_dev is not None:
-            old_addon = max(0, int(cur_dev) - int(old_dev))
-
-    old_label = _tariff_config_label(
-        int(old_tariff.get("duration_days") or 0) if old_tariff else 0,
-        int(old_dev) if old_dev is not None else None,
-        old_addon,
-    )
-    new_label = _tariff_config_label(
-        quote.duration_days,
-        int(new_dev) if new_dev is not None else None,
-    )
-
-    text = renewal_switch_text(
-        old_label=old_label,
-        new_label=new_label,
-        net_cost_rub=quote.net_cost_rub,
-        credit_days=quote.credit_days,
-        credit_value_rub=quote.credit_value_rub,
-        credit_rub=quote.credit_rub,
-        refund_to_balance_rub=quote.refund_to_balance_rub,
-        keeps_period=quote.keeps_period,
-    )
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="✅ Подтвердить смену", callback_data="renew_sw_confirm"))
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-    await edit_or_send_message(
-        target_message=callback_query.message,
-        text=text,
-        reply_markup=builder.as_markup(),
-    )
-    return True
-
-
-async def _finalize_renewal(
-    callback_query: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    *,
-    tg_id: int,
-    client_id: str,
-    email: str,
-    tariff_id: int,
-    duration_days: int,
-    total_gb: int,
-    cost: float,
-    full_price: int,
-    new_expiry_time: int,
-    selected_device: int | None,
-    selected_traffic: int | None,
-) -> None:
-    """Списание и завершение смены тарифа. cost — нетто (new_full − остаток), может быть < 0."""
-    balance = round(await get_balance(session, tg_id), 2)
-    cost = round(float(cost), 2)
-
-    if balance < cost:
-        required_amount = ceil(cost - balance)
-
-        if USE_NEW_PAYMENT_FLOW:
-            temp_payload = {
-                "tariff_id": int(tariff_id),
-                "client_id": client_id,
-                "cost": cost,
-                "required_amount": required_amount,
-                "new_expiry_time": int(new_expiry_time),
-                "selected_duration_days": int(duration_days),
-                "total_gb": int(total_gb or 0),
-                "email": email,
-                "selected_price_rub": int(full_price),
-            }
-            if selected_device is not None:
-                temp_payload["selected_device_limit"] = selected_device
-            if selected_traffic is not None:
-                temp_payload["selected_traffic_limit"] = selected_traffic
-
-            handled = await try_fast_payment_flow(
-                callback_query,
-                session,
-                state,
-                tg_id=tg_id,
-                temp_key="waiting_for_renewal_payment",
-                temp_payload=temp_payload,
-                required_amount=required_amount,
-            )
-            if handled:
-                return
-
-        language_code = getattr(callback_query.from_user, "language_code", None)
-        required_amount_text = await format_for_user(session, tg_id, float(required_amount), language_code)
-
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=PAYMENT, callback_data="pay"))
-        builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-        await edit_or_send_message(
-            target_message=callback_query.message,
-            text=INSUFFICIENT_FUNDS_RENEWAL_MSG.format(required_amount=required_amount_text),
-            reply_markup=builder.as_markup(),
-        )
-        return
-
-    await complete_key_renewal(
-        session=session,
-        tg_id=tg_id,
-        client_id=client_id,
-        email=email,
-        new_expiry_time=int(new_expiry_time),
-        total_gb=int(total_gb or 0),
-        cost=cost,
-        callback_query=callback_query,
-        tariff_id=int(tariff_id),
-        selected_device_limit=selected_device,
-        selected_traffic_limit=selected_traffic,
-        selected_price_rub=int(full_price),
-        credited_to_balance_rub=max(0, int(round(-cost))),
-    )
-
-
 @router.callback_query(F.data == "renew_sw_confirm")
 async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Подтверждение смены тарифа: остаток на баланс, новый тариф по полной цене."""
@@ -1069,185 +886,3 @@ async def handle_renew_switch_confirm(callback_query: CallbackQuery, state: FSMC
     except Exception as e:
         logger.error(f"[RENEW_SWITCH] Ошибка подтверждения смены для {tg_id}: {e}")
         await callback_query.message.answer("❌ Произошла ошибка. Попробуйте позже.")
-
-
-async def resolve_cluster_name(session: AsyncSession, server_or_cluster: str) -> str | None:
-    """Определяет имя кластера по server_id или cluster_name."""
-    result = await session.execute(select(Server).where(Server.cluster_name == server_or_cluster).limit(1))
-    server = result.scalars().first()
-    if server:
-        return server_or_cluster
-
-    result = await session.execute(select(Server.cluster_name).where(Server.server_name == server_or_cluster).limit(1))
-    row = result.scalar()
-    return row
-
-
-async def complete_key_renewal(
-    session: AsyncSession,
-    tg_id: int,
-    client_id: str,
-    email: str,
-    new_expiry_time: int,
-    total_gb: int,
-    cost: float,
-    callback_query: CallbackQuery | None,
-    tariff_id: int,
-    selected_device_limit: int | None = None,
-    selected_traffic_limit: int | None = None,
-    selected_price_rub: int | None = None,
-    credited_to_balance_rub: int = 0,
-):
-    """Продлевает подписку через сервис и отправляет Telegram-уведомление."""
-    from services.errors import ServiceError
-    from services.keys import execute_renewal
-
-    try:
-        logger.info(f"[Info] Продление ключа {client_id} по тарифу ID={tariff_id} (Start)")
-
-        tg_notify = await notify_telegram_chat_id(session, tg_id)
-        renewal_hook_chat = tg_notify if tg_notify is not None else tg_id
-
-        waiting_message = None
-        wait_text = "⏳ Подождите. Идет продление подписки…"
-        try:
-            if callback_query:
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=wait_text,
-                    reply_markup=None,
-                )
-            elif tg_notify is not None:
-                waiting_message = await bot.send_message(tg_notify, wait_text)
-            else:
-                logger.info(f"[Renew] Нет Telegram-чата для экрана ожидания (ref={tg_id}), пропуск")
-        except Exception as e:
-            logger.warning(f"[Renew] Не удалось показать экран ожидания: {e}")
-
-        key_info = await get_key_details(session, email)
-        if not key_info:
-            logger.error(f"[Error] Ключ с client_id={client_id} не найден в БД.")
-            return False
-
-        server_or_cluster = key_info["server_id"]
-
-        try:
-            await execute_renewal(
-                session=session,
-                billing_user_id=tg_id,
-                client_id=client_id,
-                key_email=email,
-                key_server_id=server_or_cluster,
-                tariff_id=tariff_id,
-                new_expiry_time=new_expiry_time,
-                total_gb=total_gb,
-                cost=cost,
-                selected_device_limit=selected_device_limit,
-                selected_traffic_limit=selected_traffic_limit,
-                selected_price_rub=selected_price_rub,
-            )
-        except ServiceError as e:
-            logger.error(f"[Error] Сервис продления: {e.message}")
-            err_text = f"⚠️ {e.message}"
-            err_kb = InlineKeyboardBuilder()
-            err_kb.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
-            err_markup = err_kb.as_markup()
-            try:
-                if callback_query:
-                    await edit_or_send_message(
-                        target_message=callback_query.message,
-                        text=err_text,
-                        reply_markup=err_markup,
-                    )
-                elif waiting_message:
-                    await edit_or_send_message(
-                        target_message=waiting_message,
-                        text=err_text,
-                        reply_markup=err_markup,
-                    )
-                elif tg_notify is not None:
-                    await bot.send_message(tg_notify, err_text, reply_markup=err_markup)
-            except Exception as notify_err:
-                logger.warning(f"[Renew] Не удалось показать ошибку продления: {notify_err}")
-            return False
-
-        tariff = await get_tariff_by_id(session, tariff_id)
-        tariff_name = tariff["name"] if tariff else ""
-        subgroup_title = tariff.get("subgroup_title", "") if tariff else ""
-
-        device_limit_effective = selected_device_limit
-        traffic_limit_gb_effective = selected_traffic_limit or 0
-
-        if tariff and tariff.get("configurable"):
-            sel_dev = int(selected_device_limit) if selected_device_limit is not None else None
-            sel_trf = int(selected_traffic_limit) if selected_traffic_limit is not None else None
-            dev_eff, trf_bytes = await get_effective_limits_for_key(
-                session=session,
-                tariff_id=tariff_id,
-                selected_device_limit=sel_dev,
-                selected_traffic_gb=sel_trf,
-            )
-            device_limit_effective = dev_eff
-            traffic_limit_gb_effective = int(trf_bytes / GB) if trf_bytes else 0
-
-        formatted_expiry_date = datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%d %B %Y, %H:%M")
-        formatted_expiry_date = formatted_expiry_date.replace(
-            datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz).strftime("%B"),
-            get_russian_month(datetime.fromtimestamp(new_expiry_time / 1000, tz=moscow_tz)),
-        )
-
-        response_message = get_renewal_message(
-            tariff_name=tariff_name,
-            traffic_limit=traffic_limit_gb_effective,
-            device_limit=device_limit_effective,
-            expiry_date=formatted_expiry_date,
-            subgroup_title=subgroup_title,
-        )
-
-        if credited_to_balance_rub and credited_to_balance_rub > 0:
-            new_balance = round(await get_balance(session, tg_id), 2)
-            response_message += (
-                f"\n💰 Остаток прежней подписки <b>{int(credited_to_balance_rub)} ₽</b> "
-                f"зачислен на баланс. Текущий баланс: <b>{new_balance:g} ₽</b>"
-            )
-
-        builder = InlineKeyboardBuilder()
-        builder.row(InlineKeyboardButton(text=MY_SUB, callback_data=build_key_callback("view_key", client_id, email)))
-        hook_commands = await process_renewal_complete(
-            chat_id=renewal_hook_chat, admin=False, session=session, email=email, client_id=client_id
-        )
-        if hook_commands:
-            builder = insert_hook_buttons(builder, hook_commands)
-
-        renewal_media_path = "img/pic_renewed.jpg"
-
-        try:
-            if callback_query:
-                await edit_or_send_message(
-                    target_message=callback_query.message,
-                    text=response_message,
-                    reply_markup=builder.as_markup(),
-                    media_path=renewal_media_path,
-                )
-            elif waiting_message:
-                await edit_or_send_message(
-                    target_message=waiting_message,
-                    text=response_message,
-                    reply_markup=builder.as_markup(),
-                    media_path=renewal_media_path,
-                )
-            elif tg_notify is not None:
-                await bot.send_message(tg_notify, response_message, reply_markup=builder.as_markup())
-            else:
-                logger.info(f"[Renew] Нет Telegram-чата для итогового сообщения (ref={tg_id}), пропуск")
-        except Exception as e:
-            logger.error(f"[Error] Ошибка при выводе финального сообщения: {e}")
-            if tg_notify is not None:
-                await bot.send_message(tg_notify, response_message, reply_markup=builder.as_markup())
-
-        logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")
-        return True
-
-    except Exception as e:
-        logger.error(f"[Error] Ошибка в complete_key_renewal: {e}")
-        return False

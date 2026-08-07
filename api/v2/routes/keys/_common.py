@@ -63,8 +63,8 @@ from database.coupons import mark_coupon_used
 from database.models import Key, Server, ServerSpecialgroup, Tariff
 from database.servers import cluster_name_exists, get_cluster_name_for_server_name
 from database.temporary_data import create_temporary_data
-from handlers.keys.key_view import build_key_view_payload
-from handlers.tariffs.addons.key_addons_pack import calc_pack_full_price_rub, get_pack_flags
+from handlers.keys.view.payload import build_key_view_payload
+from services.addons import calc_pack_full_price_rub, get_pack_flags
 from handlers.tariffs.addons.utils import calc_remaining_ratio_seconds, is_not_downgrade
 from handlers.utils import ALLOWED_GROUP_CODES, is_full_remnawave_cluster
 from logger import logger

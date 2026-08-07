@@ -1,32 +1,33 @@
 import asyncio
 import html
-import os
-import re
 
 from datetime import datetime, timezone
 
 import pytz
 
-from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, Message, WebAppInfo
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
 from database import get_key_details, get_keys, get_vless_enabled_batch
-from database.access.resolution import resolve_user_optional
 from database.models import Key
+from handlers.keys.view.screens import (
+    _format_device_block,
+    build_key_view_text,
+    build_single_subscription_text,
+)
 from handlers.keys.utils import build_key_callback, build_key_ref, key_owned_by_user, resolve_key
+from handlers.menu_layout import KEY_MENU, arrange_menu, split_hook_buttons
 from handlers.utils import (
     edit_or_send_message,
+    fill_text,
     format_days,
     format_hours,
     format_minutes,
     get_russian_month,
     is_full_remnawave_cluster,
+    render_screen,
     safe_answer_callback,
 )
 from hooks.hook_buttons import insert_hook_buttons
@@ -37,8 +38,6 @@ from hooks.processors import (
 from logger import logger
 from panels.remnawave_runtime import (
     get_remnawave_profile,
-    invalidate_remnawave_profile,
-    resolve_remnawave_api_url,
     with_remnawave_api,
 )
 from services.tariffs.tariff_display import GB, get_key_tariff_addons_state, get_key_tariff_display
@@ -72,63 +71,18 @@ from settings.texts import (
     DAYS_LEFT_MESSAGE,
     FROZEN_SUBSCRIPTION_MSG,
     KEYS_FOOTER,
-    KEYS_HEADER,
+    KEYS_LIST_ROW,
+    KEYS_LIST_TEXT,
+    MY_DEVICES_EMPTY_TEXT,
+    MY_DEVICES_HINT,
+    MY_DEVICES_TEXT,
     NO_SUBSCRIPTIONS_MSG,
-    RENAME_KEY_PROMPT,
-    key_message,
-    single_subscription_profile_text,
 )
 
 
-router = Router()
 moscow_tz = pytz.timezone("Europe/Moscow")
 
-
-class RenameKeyState(StatesGroup):
-    waiting_for_new_alias = State()
-
-
-@router.callback_query(F.data == "view_keys")
-@router.message(F.text == "/subs")
-async def process_callback_or_message_view_keys(
-    callback_query_or_message: Message | CallbackQuery,
-    session: AsyncSession,
-    page: int = 0,
-):
-    if isinstance(callback_query_or_message, CallbackQuery):
-        target_message = callback_query_or_message.message
-    else:
-        target_message = callback_query_or_message
-
-    tg_id = callback_query_or_message.from_user.id
-
-    records = await get_keys(session, tg_id)
-
-    if records and len(records) == 1:
-        key_ref = build_key_ref(records[0].client_id, records[0].email)
-        image_path = os.path.join("img", "pic_view.jpg")
-        await render_key_info(target_message, session, key_ref, image_path)
-        return
-
-    inline_keyboard, response_message = await build_keys_response(records, session, page=page)
-    image_path = os.path.join("img", "pic_keys.jpg")
-
-    await edit_or_send_message(
-        target_message=target_message,
-        text=response_message,
-        reply_markup=inline_keyboard,
-        media_path=image_path,
-    )
-
-
-@router.callback_query(F.data.startswith("view_keys|"))
-async def process_callback_view_keys_paged(
-    callback_query: CallbackQuery,
-    session: AsyncSession,
-):
-    parts = callback_query.data.split("|")
-    page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
-    await process_callback_or_message_view_keys(callback_query, session, page=page)
+DEVICES_PER_PAGE = 3
 
 
 async def build_keys_response(records: list[Key] | None, session: AsyncSession, page: int = 0):
@@ -145,7 +99,7 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
     page = max(0, min(page, total_pages - 1))
 
     if total:
-        response_message = KEYS_HEADER
+        key_rows: list[str] = []
 
         start = page * page_size
         end = start + page_size
@@ -171,9 +125,9 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
 
             if expiry_time:
                 expiry_date_full = datetime.fromtimestamp(expiry_time / 1000, tz=moscow_tz)
-                formatted_date_full = expiry_date_full.strftime("до %d.%m.%y, %H:%M")
+                formatted_date_full = expiry_date_full.strftime("до %d.%m.%y")
             else:
-                formatted_date_full = "без срока действия"
+                formatted_date_full = "без срока"
 
             tid = getattr(record, "tariff_id", None)
             is_vless = vless_by_tariff.get(int(tid), False) if tid is not None else False
@@ -190,9 +144,9 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
             )
             builder.row(key_button, rename_button)
 
-            response_message += f"• <b>{key_display}</b> ({formatted_date_full})\n"
+            key_rows.append(KEYS_LIST_ROW.format(name=key_display, expiry=formatted_date_full))
 
-        response_message += KEYS_FOOTER
+        response_message = render_screen(fill_text(KEYS_LIST_TEXT, table="\n".join(key_rows)), KEYS_FOOTER)
 
         if total_pages > 1:
             nav_row = []
@@ -227,77 +181,6 @@ async def build_keys_response(records: list[Key] | None, session: AsyncSession, 
     builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
 
     return builder.as_markup(), response_message
-
-
-@router.callback_query(F.data.startswith("rename_key|"), flags={"popup": True})
-async def handle_rename_key(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
-    client_id = callback.data.split("|")[1]
-    key_row = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
-    if not key_row or key_row.tg_id != callback.from_user.id:
-        await safe_answer_callback(callback, "Доступ запрещён.", show_alert=True)
-        return
-    await state.set_state(RenameKeyState.waiting_for_new_alias)
-    await state.update_data(client_id=client_id)
-
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=BACK, callback_data="cancel_and_back_to_view_keys"))
-
-    await edit_or_send_message(
-        target_message=callback.message,
-        text=RENAME_KEY_PROMPT,
-        reply_markup=builder.as_markup(),
-    )
-
-
-@router.callback_query(F.data == "cancel_and_back_to_view_keys")
-async def cancel_and_back(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
-    await state.clear()
-    await process_callback_or_message_view_keys(callback, session)
-
-
-@router.message(F.text, RenameKeyState.waiting_for_new_alias)
-async def handle_new_alias_input(message: Message, state: FSMContext, session: AsyncSession):
-    alias = message.text.strip()
-
-    if len(alias) > 10:
-        await message.answer("❌ Имя слишком длинное. Введите до 10 символов.\nПовторите ввод.")
-        return
-
-    if not alias or not re.match(r"^[a-zA-Zа-яА-ЯёЁ0-9@._-]+$", alias):
-        await message.answer(
-            "❌ Введены недопустимые символы или имя пустое. Используйте только буквы, цифры и @._-\nПовторите ввод."
-        )
-        return
-
-    data = await state.get_data()
-    client_id = data.get("client_id")
-
-    try:
-        u = await resolve_user_optional(session, message.chat.id)
-        if u is None:
-            await message.answer("❌ Не удалось переименовать подписку.")
-            await state.clear()
-            return
-        await session.execute(update(Key).where(Key.user_id == u.id, Key.client_id == client_id).values(alias=alias))
-    except Exception as error:
-        await message.answer("❌ Не удалось переименовать подписку.")
-        logger.error(f"Ошибка при обновлении alias: {error}")
-    finally:
-        await state.clear()
-
-    await process_callback_or_message_view_keys(message, session)
-
-
-@router.callback_query(F.data.startswith("view_key|"), flags={"popup": True})
-async def process_callback_view_key(callback_query: CallbackQuery, session: AsyncSession):
-    key_ref = callback_query.data.split("|", 1)[1]
-    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
-    record = await get_key_details(session, key_obj.email) if key_obj else None
-    if not key_owned_by_user(record, callback_query.from_user.id):
-        await safe_answer_callback(callback_query, "Доступ запрещён.", show_alert=True)
-        return
-    image_path = os.path.join("img", "pic_view.jpg")
-    await render_key_info(callback_query.message, session, key_ref, image_path)
 
 
 async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_email: str):
@@ -357,7 +240,7 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     if record.get("tariff_id"):
         (
             tariff_name,
-            subgroup_title,
+            _subgroup_title,
             traffic_limit_gb,
             device_limit,
             vless_enabled,
@@ -401,17 +284,15 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
     open_in_browser = bool(MODES_CONFIG.get("REMNAWAVE_WEBAPP_OPEN_IN_BROWSER", REMNAWAVE_WEBAPP_OPEN_IN_BROWSER))
     happ_cryptolink_enabled = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
-    response_message = key_message(
-        final_link,
-        formatted_expiry_date,
-        days_left_message,
-        server_name,
-        server_name if country_selection_enabled else None,
+    response_message = build_key_view_text(
+        key=final_link,
+        formatted_expiry_date=formatted_expiry_date,
+        days_left_message=days_left_message,
+        country=server_name if country_selection_enabled else None,
         hwid_count=hwid_count if device_limit is not None else 0,
         tariff_name=tariff_name,
         traffic_limit=traffic_limit_gb,
         device_limit=device_limit,
-        subgroup_title=subgroup_title,
         is_remnawave=is_full_remnawave,
         remna_used_gb=remna_used_gb,
     )
@@ -426,52 +307,36 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
 
     tv_button_enabled = bool(BUTTONS_CONFIG.get("ANDROID_TV_BUTTON_ENABLE"))
 
+    tv_button = None
     if is_full_remnawave and final_link and use_webapp and not happ_cryptolink_enabled:
         if vless_enabled:
-            builder.row(
-                InlineKeyboardButton(
-                    text=ROUTER_BUTTON,
-                    callback_data=build_key_callback("connect_router", client_id, key_name),
-                )
+            connect_button = InlineKeyboardButton(
+                text=ROUTER_BUTTON,
+                callback_data=build_key_callback("connect_router", client_id, key_name),
             )
-        elif open_in_browser:
-            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, url=final_link))
-            if tv_button_enabled:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=TV_BUTTON,
-                        callback_data=build_key_callback("connect_tv", client_id, key_name),
-                    )
-                )
         else:
-            builder.row(InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link)))
+            connect_button = (
+                InlineKeyboardButton(text=CONNECT_DEVICE, url=final_link)
+                if open_in_browser
+                else InlineKeyboardButton(text=CONNECT_DEVICE, web_app=WebAppInfo(url=final_link))
+            )
             if tv_button_enabled:
-                builder.row(
-                    InlineKeyboardButton(
-                        text=TV_BUTTON,
-                        callback_data=build_key_callback("connect_tv", client_id, key_name),
-                    )
+                tv_button = InlineKeyboardButton(
+                    text=TV_BUTTON,
+                    callback_data=build_key_callback("connect_tv", client_id, key_name),
                 )
+    elif vless_enabled:
+        connect_button = InlineKeyboardButton(
+            text=ROUTER_BUTTON,
+            callback_data=build_key_callback("connect_router", client_id, key_name),
+        )
     else:
-        if vless_enabled:
-            builder.row(
-                InlineKeyboardButton(
-                    text=ROUTER_BUTTON,
-                    callback_data=build_key_callback("connect_router", client_id, key_name),
-                )
-            )
-        else:
-            builder.row(
-                InlineKeyboardButton(
-                    text=CONNECT_DEVICE,
-                    callback_data=build_key_callback("connect_device", client_id, key_name),
-                )
-            )
+        connect_button = InlineKeyboardButton(
+            text=CONNECT_DEVICE,
+            callback_data=build_key_callback("connect_device", client_id, key_name),
+        )
 
-    builder.row(
-        InlineKeyboardButton(text=RENEW_KEY, callback_data=build_key_callback("renew_key", client_id, key_name))
-    )
-
+    addons_button = None
     if is_tariff_configurable and (addons_devices_enabled or addons_traffic_enabled):
         if addons_devices_enabled and addons_traffic_enabled:
             addons_text = ADDONS_BUTTON_DEVICES_TRAFFIC
@@ -479,40 +344,51 @@ async def build_key_view_payload(session: AsyncSession, tg_id: int, key_ref_or_e
             addons_text = ADDONS_BUTTON_DEVICES
         else:
             addons_text = ADDONS_BUTTON_TRAFFIC
-        builder.row(
-            InlineKeyboardButton(text=addons_text, callback_data=build_key_callback("key_addons", client_id, key_name))
+        addons_button = InlineKeyboardButton(
+            text=addons_text, callback_data=build_key_callback("key_addons", client_id, key_name)
         )
 
     hwid_reset_enabled = bool(BUTTONS_CONFIG.get("HWID_RESET_BUTTON_ENABLE", HWID_RESET_BUTTON))
     qrcode_enabled = bool(BUTTONS_CONFIG.get("QRCODE_BUTTON_ENABLE", QRCODE))
     delete_key_enabled = bool(BUTTONS_CONFIG.get("DELETE_KEY_BUTTON_ENABLE", ENABLE_DELETE_KEY_BUTTON))
-    if hwid_reset_enabled and hwid_count > 0:
-        builder.row(
-            InlineKeyboardButton(
-                text=MY_DEVICES,
-                callback_data=build_key_callback("my_devices", client_id, key_name) + "|0",
-            )
+
+    hook_buttons = await process_view_key_menu(key_name=key_name, session=session)
+    module_buttons, module_directives = split_hook_buttons(hook_buttons)
+
+    menu_buttons = {
+        "connect": connect_button,
+        "tv": tv_button,
+        "renew": InlineKeyboardButton(
+            text=RENEW_KEY, callback_data=build_key_callback("renew_key", client_id, key_name)
+        ),
+        "addons": addons_button,
+        "devices": InlineKeyboardButton(
+            text=MY_DEVICES,
+            callback_data=build_key_callback("my_devices", client_id, key_name) + "|0",
         )
-
-    if qrcode_enabled:
-        builder.row(InlineKeyboardButton(text=QR, callback_data=build_key_callback("show_qr", client_id, key_name)))
-
-    if delete_key_enabled:
-        builder.row(
-            InlineKeyboardButton(text=DELETE, callback_data=build_key_callback("delete_key", client_id, key_name))
+        if hwid_reset_enabled and hwid_count > 0
+        else None,
+        "qr": InlineKeyboardButton(text=QR, callback_data=build_key_callback("show_qr", client_id, key_name))
+        if qrcode_enabled
+        else None,
+        "delete": InlineKeyboardButton(
+            text=DELETE, callback_data=build_key_callback("delete_key", client_id, key_name)
         )
-
-    if country_selection_enabled:
-        builder.row(
-            InlineKeyboardButton(
-                text=CHANGE_LOCATION, callback_data=build_key_callback("change_location", client_id, key_name)
-            )
+        if delete_key_enabled
+        else None,
+        "location": InlineKeyboardButton(
+            text=CHANGE_LOCATION, callback_data=build_key_callback("change_location", client_id, key_name)
         )
+        if country_selection_enabled
+        else None,
+        "main_menu": InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"),
+        "modules": [[button] for button in module_buttons],
+    }
 
-    builder.row(InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
+    for row in arrange_menu(KEY_MENU, menu_buttons):
+        builder.row(*row)
 
-    module_buttons = await process_view_key_menu(key_name=key_name, session=session)
-    builder = insert_hook_buttons(builder, module_buttons)
+    builder = insert_hook_buttons(builder, module_directives)
 
     return response_message, builder.as_markup(), False
 
@@ -551,7 +427,7 @@ async def _build_single_subscription_text(
 
     if getattr(key, "tariff_id", None) and key_record:
         try:
-            tariff_name, subgroup_title, traffic_limit, device_limit, _, tariff = await get_key_tariff_display(
+            tariff_name, _subgroup_title, traffic_limit, device_limit, _, tariff = await get_key_tariff_display(
                 session=session,
                 key_record=key_record,
             )
@@ -589,8 +465,6 @@ async def _build_single_subscription_text(
         except Exception as e:
             logger.error(f"[single_sub] Ошибка профиля Remnawave для {key.email}: {e}")
 
-    hwid_info = f"🔄 <b>Привязанных устройств:</b> {hwid_count}" if hwid_reset_enabled else ""
-
     expiry_date = "Неизвестно"
     is_expired = False
     if getattr(key, "expiry_time", None):
@@ -609,18 +483,17 @@ async def _build_single_subscription_text(
         or "Неизвестно"
     )
 
-    return single_subscription_profile_text(
+    return build_single_subscription_text(
         username=username,
         tg_id=tg_id,
         balance=balance_text,
         key=key_link,
-        subgroup_title=subgroup_title,
         tariff_name=tariff_name,
         traffic_limit=traffic_limit,
         used_traffic_gb=used_traffic_gb,
         device_limit=device_limit,
         base_device_limit=base_device_limit,
-        hwid_info=hwid_info,
+        hwid_count=hwid_count if hwid_reset_enabled else 0,
         expiry_date=expiry_date,
         is_expired=is_expired,
     )
@@ -643,29 +516,6 @@ async def build_single_subscription_profile(session: AsyncSession, tg_id: int, u
 
     text = await _build_single_subscription_text(session, tg_id, key, username, balance_text)
     return text, rows
-
-
-DEVICES_PER_PAGE = 3
-
-
-def _format_device_block(idx: int, device: dict) -> str:
-    hwid = html.escape(str(device.get("hwid") or "—"))
-    model = html.escape(str(device.get("deviceModel") or "—"))
-    platform = html.escape(str(device.get("platform") or "—"))
-    os_version = html.escape(str(device.get("osVersion") or "—"))
-    user_agent = html.escape(str(device.get("userAgent") or "—"))
-    created_raw = str(device.get("createdAt") or "")[:19].replace("T", " ")
-    created = html.escape(created_raw or "—")
-    updated_raw = str(device.get("updatedAt") or "")[:19].replace("T", " ")
-    updated = html.escape(updated_raw or "—")
-    return (
-        f"<blockquote expandable><b>#{idx} · {model}</b>\n"
-        f"📟 <code>{hwid}</code>\n"
-        f"🧠 {platform} · {os_version}\n"
-        f"🌐 <i>{user_agent}</i>\n"
-        f"🕓 Добавлено: {created}\n"
-        f"🔄 Обновлено: {updated}</blockquote>"
-    )
 
 
 def _build_devices_keyboard(
@@ -733,7 +583,7 @@ async def _render_my_devices(
 
     total = len(devices)
     if total == 0:
-        text = "💻 <b>Мои устройства</b>\n\n🔌 Нет привязанных устройств."
+        text = MY_DEVICES_EMPTY_TEXT
         builder = InlineKeyboardBuilder()
         empty_back_cb = (
             "profile" if bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_MODE", False)) else f"view_key|{key_ref}"
@@ -752,11 +602,11 @@ async def _render_my_devices(
     start = page * DEVICES_PER_PAGE
     page_devices = devices[start : start + DEVICES_PER_PAGE]
 
-    header = f"💻 <b>Мои устройства</b>\n🔗 Привязано: <b>{total}</b>\n\n"
-    if notice:
-        header += f"{notice}\n\n"
-    body = "\n".join(_format_device_block(start + i + 1, dev) for i, dev in enumerate(page_devices))
-    text = header + body
+    header = fill_text(MY_DEVICES_TEXT, total=total, page=page + 1, pages=total_pages)
+
+    blocks = [header, notice or ""]
+    blocks += [_format_device_block(start + i + 1, dev) for i, dev in enumerate(page_devices)]
+    text = render_screen(*blocks, MY_DEVICES_HINT)
 
     builder = _build_devices_keyboard(key_ref, page, total_pages, len(page_devices))
     await edit_or_send_message(
@@ -765,80 +615,3 @@ async def _render_my_devices(
         reply_markup=builder.as_markup(),
         media_path=None,
     )
-
-
-@router.callback_query(F.data.startswith("my_devices|"), flags={"popup": True})
-async def handle_my_devices(callback_query: CallbackQuery, session: AsyncSession):
-    parts = callback_query.data.split("|")
-    if len(parts) < 3:
-        await safe_answer_callback(callback_query, "❌ Некорректный запрос.", show_alert=True)
-        return
-    key_ref = parts[1]
-    try:
-        page = int(parts[2])
-    except ValueError:
-        page = 0
-    await _render_my_devices(callback_query, session, key_ref, page)
-
-
-@router.callback_query(F.data.startswith("unbind_dev|"), flags={"popup": True})
-async def handle_unbind_device(callback_query: CallbackQuery, session: AsyncSession):
-    parts = callback_query.data.split("|")
-    if len(parts) < 4:
-        await safe_answer_callback(callback_query, "❌ Некорректный запрос.", show_alert=True)
-        return
-    key_ref = parts[1]
-    try:
-        page = int(parts[2])
-        idx = int(parts[3])
-    except ValueError:
-        await safe_answer_callback(callback_query, "❌ Некорректный запрос.", show_alert=True)
-        return
-
-    key_obj = await resolve_key(session, callback_query.from_user.id, key_ref)
-    key_name = key_obj.email if key_obj else key_ref
-    record = await get_key_details(session, key_name)
-    if not record or not key_owned_by_user(record, callback_query.from_user.id):
-        await safe_answer_callback(callback_query, "❌ Ключ не найден.", show_alert=True)
-        return
-
-    client_id = record.get("client_id")
-    if not client_id:
-        await safe_answer_callback(callback_query, "❌ У ключа отсутствует client_id.", show_alert=True)
-        return
-
-    from services.hwid_cooldown import check_delete_allowed, format_wait_time, register_deletion
-
-    allowed, wait_days = await check_delete_allowed(client_id)
-    if not allowed:
-        await safe_answer_callback(
-            callback_query,
-            f"⏳ Слишком частое удаление устройств.\nПопробуйте через {format_wait_time(wait_days)}.",
-            show_alert=True,
-        )
-        return
-
-    server_id = str(record.get("server_id") or "")
-    key_email = str(record.get("email") or "") or None
-
-    async def _delete(api):
-        devices = await api.get_user_hwid_devices(client_id, username=key_email) or []
-        target_idx = page * DEVICES_PER_PAGE + idx
-        if target_idx >= len(devices):
-            return None
-        target_hwid = devices[target_idx].get("hwid")
-        if not target_hwid:
-            return False
-        return await api.delete_user_hwid_device(client_id, target_hwid, username=key_email)
-
-    result = await with_remnawave_api(session, server_id, _delete, fallback_any=True, timeout_sec=10.0)
-    if result is None:
-        await safe_answer_callback(callback_query, "❌ Устройство не найдено.", show_alert=True)
-    elif result is False:
-        await safe_answer_callback(callback_query, "❌ Не удалось отвязать устройство.", show_alert=True)
-    else:
-        await invalidate_remnawave_profile(session, server_id, str(client_id), fallback_any=True)
-        await register_deletion(client_id)
-        await safe_answer_callback(callback_query, "✅ Устройство отвязано.")
-
-    await _render_my_devices(callback_query, session, key_ref, page)

@@ -30,6 +30,7 @@ from settings.buttons import (
 from settings.cache_config import BALANCE_CACHE_TTL_SEC, KEY_COUNT_CACHE_TTL_SEC, PROFILE_DATA_CACHE_TTL_SEC
 from settings.config import (
     BALANCE_BUTTON,
+    CHANNEL_EXISTS,
     GIFT_BUTTON,
     INSTRUCTIONS_BUTTON,
     NEWS_MESSAGE,
@@ -37,11 +38,11 @@ from settings.config import (
     SHOW_START_MENU_ONCE,
     TRIAL_TIME_DISABLE,
 )
-from settings.texts import ADD_SUBSCRIPTION_HINT
+from settings.texts import ADD_SUBSCRIPTION_HINT, PROFILE_CHANNEL_LINK, PROFILE_TEXT
 
 from .admin.panel.keyboard import AdminPanelCallback
-from .texts import profile_message_send
-from .utils import edit_or_send_message, get_username
+from .menu_layout import PROFILE_MENU, arrange_menu, split_hook_buttons
+from .utils import edit_or_send_message, get_username, join_blocks, render_text
 
 
 router = Router()
@@ -108,7 +109,15 @@ async def process_callback_view_profile(
         session=session,
     )
 
-    profile_message = profile_message_send(username, chat_id, balance_text, key_count)
+    profile_message = render_text(
+        PROFILE_TEXT,
+        username=username,
+        tg_id=chat_id,
+        balance=balance_text,
+        keys=key_count,
+    )
+    if CHANNEL_EXISTS:
+        profile_message = join_blocks(profile_message, PROFILE_CHANNEL_LINK)
     if key_count == 0:
         profile_message += ADD_SUBSCRIPTION_HINT
     else:
@@ -120,7 +129,7 @@ async def process_callback_view_profile(
     single_sub_mode = bool(MODES_CONFIG.get("SINGLE_SUBSCRIPTION_MODE", False))
     single_sub_rows = None
     if single_sub_mode and key_count == 1:
-        from handlers.keys.key_view import build_single_subscription_profile
+        from handlers.keys.view.payload import build_single_subscription_profile
 
         single_sub_payload = await build_single_subscription_profile(session, chat_id, username, balance_text)
         if single_sub_payload:
@@ -148,6 +157,7 @@ async def process_callback_view_profile(
 
     trial_time_disabled = bool(MODES_CONFIG.get("TRIAL_TIME_DISABLED", TRIAL_TIME_DISABLE))
 
+    bind_email_button = None
     if is_email_binding_enabled():
         if has_email is None:
             from database.identities import get_identity_by_tg_id
@@ -155,49 +165,53 @@ async def process_callback_view_profile(
             identity = await get_identity_by_tg_id(session, chat_id)
             has_email = bool(identity and identity.email)
         if not has_email:
-            builder.row(InlineKeyboardButton(text=BIND_EMAIL, callback_data="bind_email"))
+            bind_email_button = InlineKeyboardButton(text=BIND_EMAIL, callback_data="bind_email")
 
-    if web_button is not None:
-        builder.row(web_button)
-
-    if single_sub_rows is not None:
-        for row in single_sub_rows:
-            builder.row(*row)
-    elif key_count > 0:
-        builder.row(InlineKeyboardButton(text=MY_SUB if key_count == 1 else MY_SUBS, callback_data="view_keys"))
-    elif trial_status == 0 and not trial_time_disabled:
-        builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
-    else:
-        builder.row(InlineKeyboardButton(text=ADD_SUB, callback_data="create_key"))
-
-    secondary = []
-    if BUTTONS_CONFIG.get("BALANCE_BUTTON_ENABLE", BALANCE_BUTTON):
-        secondary.append(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
-    if BUTTONS_CONFIG.get("GIFT_BUTTON_ENABLE", GIFT_BUTTON):
-        secondary.append(InlineKeyboardButton(text=GIFTS, callback_data="gifts"))
-    if BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLE", REFERRAL_BUTTON):
-        secondary.append(InlineKeyboardButton(text=INVITE, callback_data="invite"))
-    if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):
-        secondary.append(InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions"))
-
-    for i in range(0, len(secondary), 2):
-        builder.row(*secondary[i : i + 2])
-
-    builder = insert_hook_buttons(builder, profile_menu_buttons)
-
-    if admin:
-        builder.row(
-            InlineKeyboardButton(
-                text=ADMIN_BTN,
-                callback_data=AdminPanelCallback(action="admin").pack(),
-            )
+    if key_count > 0:
+        subscription_button = InlineKeyboardButton(
+            text=MY_SUB if key_count == 1 else MY_SUBS, callback_data="view_keys"
         )
+    elif trial_status == 0 and not trial_time_disabled:
+        subscription_button = InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key")
+    else:
+        subscription_button = InlineKeyboardButton(text=ADD_SUB, callback_data="create_key")
 
     show_start_menu_once = bool(MODES_CONFIG.get("SHOW_START_MENU_ONLY_ONCE", SHOW_START_MENU_ONCE))
-    if show_start_menu_once:
-        builder.row(InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn"))
-    else:
-        builder.row(InlineKeyboardButton(text=BACK, callback_data="start"))
+    back_button = (
+        InlineKeyboardButton(text=ABOUT_VPN, callback_data="about_vpn")
+        if show_start_menu_once
+        else InlineKeyboardButton(text=BACK, callback_data="start")
+    )
+
+    module_buttons, module_directives = split_hook_buttons(profile_menu_buttons)
+
+    menu_buttons = {
+        "bind_email": bind_email_button,
+        "web_cabinet": web_button,
+        "subscription": single_sub_rows if single_sub_rows is not None else subscription_button,
+        "balance": InlineKeyboardButton(text=BALANCE, callback_data="balance")
+        if BUTTONS_CONFIG.get("BALANCE_BUTTON_ENABLE", BALANCE_BUTTON)
+        else None,
+        "gifts": InlineKeyboardButton(text=GIFTS, callback_data="gifts")
+        if BUTTONS_CONFIG.get("GIFT_BUTTON_ENABLE", GIFT_BUTTON)
+        else None,
+        "invite": InlineKeyboardButton(text=INVITE, callback_data="invite")
+        if BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLE", REFERRAL_BUTTON)
+        else None,
+        "instructions": InlineKeyboardButton(text=INSTRUCTIONS, callback_data="instructions")
+        if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON)
+        else None,
+        "admin": InlineKeyboardButton(text=ADMIN_BTN, callback_data=AdminPanelCallback(action="admin").pack())
+        if admin
+        else None,
+        "modules": [[button] for button in module_buttons],
+        "back": back_button,
+    }
+
+    for row in arrange_menu(PROFILE_MENU, menu_buttons):
+        builder.row(*row)
+
+    builder = insert_hook_buttons(builder, module_directives)
 
     await release_session_early(session)
     await edit_or_send_message(

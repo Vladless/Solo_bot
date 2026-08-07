@@ -152,6 +152,65 @@ async def handle_error(tg_id: int, callback_query: object | None = None, message
         logger.error(f"Ошибка при обработке ошибки: {e}")
 
 
+class _TemplateValues(dict):
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
+_CODE_BLOCK_RE = re.compile(r"<code>(.*?)</code>", re.S)
+_EMPTY_SECTION_RE = re.compile(r"(?:<b>[^<]*</b>\n)?<blockquote><code></code></blockquote>\n?")
+
+
+def _row_is_filled(row: str) -> bool:
+    """Строка таблицы пуста, если у метки нет значения."""
+    label, sep, value = row.partition(": ")
+    return bool(value.strip()) if sep else bool(row.strip())
+
+
+def _drop_empty_rows(text: str) -> str:
+    """Убирает из таблиц строки, у которых не оказалось значения."""
+
+    def replace(match: re.Match) -> str:
+        rows = [row for row in match.group(1).split("\n") if _row_is_filled(row)]
+        return "<code>" + "\n".join(rows) + "</code>"
+
+    return _CODE_BLOCK_RE.sub(replace, text)
+
+
+def _drop_empty_sections(text: str) -> str:
+    """Убирает блок вместе с его заголовком, если внутри не осталось строк."""
+    first_line_end = text.find("\n")
+    head, tail = (text[: first_line_end + 1], text[first_line_end + 1 :]) if first_line_end > 0 else (text, "")
+    return head + _EMPTY_SECTION_RE.sub("", tail)
+
+
+def fill_text(template: str, **values: object) -> str:
+    """Подставляет значения в шаблон и убирает строки и блоки, для которых не оказалось данных."""
+    try:
+        text = template.format_map(_TemplateValues(values))
+    except (IndexError, ValueError) as error:
+        logger.warning(f"Некорректный шаблон в файле текстов: {error}")
+        return template
+    return _drop_empty_sections(_drop_empty_rows(text)).strip("\n")
+
+
+def render_screen(*parts: str) -> str:
+    """Склеивает части экрана и выравнивает значения всех таблиц по одной вертикали."""
+    from handlers.admin.panel.headers import align_screen
+
+    return align_screen(join_blocks(*parts))
+
+
+def render_text(template: str, **values: object) -> str:
+    """Собирает экран из одного шаблона."""
+    return render_screen(fill_text(template, **values))
+
+
+def join_blocks(*blocks: str) -> str:
+    """Склеивает блоки экрана, пропуская пустые."""
+    return "\n".join(block for block in blocks if block)
+
+
 def get_plural_form(num: int, form1: str, form2: str, form3: str) -> str:
     """Универсальная функция для получения правильной формы множественного числа"""
     n = abs(num) % 100
