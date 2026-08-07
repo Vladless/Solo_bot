@@ -115,6 +115,9 @@ class AccountKeyRenewResponse(AccountKeyActionResponse):
     keeps_period: bool = False
     new_device_limit: int | None = None
     new_traffic_gb: int | None = None
+    carried_addons_rub: int = 0
+    carried_device_limit: int | None = None
+    carried_traffic_gb: int | None = None
 
 
 class AccountKeyResetHwidResponse(AccountKeyActionResponse):

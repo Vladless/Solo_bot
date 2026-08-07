@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 
 from database.models import Referral, User
+from database.users import exclude_shadow_placeholders
 
 from .base import StatsCtx, users_series
 
@@ -10,7 +11,7 @@ async def _by_source(ctx: StatsCtx) -> list[dict]:
     rows = (
         await ctx.session.execute(
             select(User.source_code, func.count())
-            .where(User.created_at >= ctx.since)
+            .where(User.created_at >= ctx.since, exclude_shadow_placeholders())
             .group_by(User.source_code)
             .order_by(func.count().desc())
             .limit(12)
@@ -32,9 +33,15 @@ async def _referrals(ctx: StatsCtx) -> dict:
 
 async def audience(ctx: StatsCtx) -> dict:
     """Пользователи/привлечение: всего, новые, триал, ряд, источники, рефералы, баланс."""
-    total_users = int(await ctx.scalar(select(func.count()).select_from(User)))
-    new_users = int(await ctx.scalar(select(func.count()).select_from(User).where(User.created_at >= ctx.since)))
-    trial_users = int(await ctx.scalar(select(func.count()).select_from(User).where(User.trial > 0)))
+    total_users = int(await ctx.scalar(select(func.count()).select_from(User).where(exclude_shadow_placeholders())))
+    new_users = int(
+        await ctx.scalar(
+            select(func.count()).select_from(User).where(User.created_at >= ctx.since, exclude_shadow_placeholders())
+        )
+    )
+    trial_users = int(
+        await ctx.scalar(select(func.count()).select_from(User).where(User.trial > 0, exclude_shadow_placeholders()))
+    )
     balance = await ctx.scalar(select(func.coalesce(func.sum(User.balance), 0)))
     return {
         "total_users": total_users,

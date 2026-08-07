@@ -51,6 +51,9 @@ class RenewalPricing:
     duration_days: int
     selected_device_limit: int | None
     selected_traffic_limit: int | None
+    carried_addons_rub: int = 0
+    carried_device_limit: int | None = None
+    carried_traffic_limit: int | None = None
 
 
 @dataclass
@@ -81,6 +84,9 @@ class RenewalQuote:
     credit_days: int = 0
     credit_value_rub: int = 0
     keeps_period: bool = False
+    carried_addons_rub: int = 0
+    carried_device_limit: int | None = None
+    carried_traffic_limit: int | None = None
 
 
 @dataclass
@@ -226,6 +232,11 @@ async def calculate_renewal_pricing(
     if total_price_rub <= 0:
         raise ValidationError("Некорректная стоимость продления")
 
+    from services.addons import resolve_carried_addons
+
+    carried = resolve_carried_addons(tariff, key_details, sel_dev_int, sel_trf_int)
+    total_price_rub += carried.price_rub
+
     final_price_rub, discount_rub, coupon_id, applied_code = await resolve_percent_coupon(
         session=session,
         billing_user_id=billing_user_id,
@@ -262,6 +273,9 @@ async def calculate_renewal_pricing(
         duration_days=duration_days,
         selected_device_limit=sel_dev_int,
         selected_traffic_limit=sel_trf_int,
+        carried_addons_rub=carried.price_rub,
+        carried_device_limit=carried.device_limit,
+        carried_traffic_limit=carried.traffic_gb,
     )
 
 
@@ -443,6 +457,9 @@ async def compute_renewal_quote(
             new_expiry_ms=new_expiry,
             coupon_id=pricing.coupon_id,
             applied_coupon_code=pricing.applied_coupon_code,
+            carried_addons_rub=pricing.carried_addons_rub,
+            carried_device_limit=pricing.carried_device_limit,
+            carried_traffic_limit=pricing.carried_traffic_limit,
         )
 
     credit = int(
@@ -556,12 +573,17 @@ async def execute_renewal(
         selected_traffic_limit,
     )
 
+    from services.addons import resolve_carried_addons
     from services.operations import renew_key_in_cluster
     from services.tariffs.tariff_display import GB, get_effective_limits_for_key
 
+    carried = resolve_carried_addons(tariff, key_info, final_device, final_traffic)
+    carried_device = carried.device_limit if carried.device_limit is not None else final_device
+    carried_traffic = carried.traffic_gb if carried.traffic_gb is not None else final_traffic
+
     if tariff.get("configurable"):
-        sel_trf = int(final_traffic) if final_traffic is not None else None
-        sel_dev = int(final_device) if final_device is not None else None
+        sel_trf = int(carried_traffic) if carried_traffic is not None else None
+        sel_dev = int(carried_device) if carried_device is not None else None
         device_eff, traffic_bytes_eff = await get_effective_limits_for_key(
             session=session,
             tariff_id=tariff_id,
@@ -658,7 +680,18 @@ async def execute_renewal(
             has_traffic_choice=has_traffic,
             config_mode="renewal",
         )
-        if has_device or has_traffic:
+        if carried.has_any:
+            await update_key_renewal_snapshot(
+                session,
+                key_email,
+                tariff_id=tariff_id,
+                selected_device_limit=final_device,
+                current_device_limit=carried_device,
+                selected_traffic_limit=final_traffic,
+                current_traffic_limit=carried_traffic,
+                apply_limits=True,
+            )
+        elif has_device or has_traffic:
             await reset_key_current_limits_to_selected(session, effective_client_id)
 
     if coupon_id is not None:

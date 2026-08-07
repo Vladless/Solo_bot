@@ -1,6 +1,7 @@
 from sqlalchemy import case, func, select
 
 from database.models import Key, Payment, Tariff, User
+from database.users import exclude_shadow_placeholders
 
 from .base import INTERNAL_SYSTEMS, StatsCtx, revenue_by_system, revenue_series
 
@@ -73,7 +74,7 @@ async def revenue(ctx: StatsCtx) -> dict:
             .where(Payment.status == "success", Payment.created_at >= ctx.since, real)
         )
     )
-    total_users = int(await ctx.scalar(select(func.count()).select_from(User)))
+    total_users = int(await ctx.scalar(select(func.count()).select_from(User).where(exclude_shadow_placeholders())))
     return {
         "revenue_period": revenue_period,
         "revenue_total": revenue_total,

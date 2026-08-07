@@ -9,10 +9,12 @@ from database import get_tariff_by_id
 from handlers.utils import edit_or_send_message, get_plural_form, safe_answer_callback
 from logger import logger
 from services.payments.currency_rates import format_for_user
+from services.addons import calc_carried_addons_price_rub, is_addons_carry_enabled
 from services.tariffs.pricing import calculate_config_price
 from services.tariffs.tariff_display import GB
 from settings.buttons import BACK, CONFIG_PAY_BUTTON_TEXT, MAIN_MENU
 from settings.texts import (
+    ADDON_CARRY_CONFIG_NOTICE,
     ADDON_RESET_CONFIG_WARNING,
     CONFIG_SCREEN_TEMPLATE,
     DEFAULT_LIMIT_LABEL,
@@ -163,6 +165,20 @@ async def render_user_config_screen(
         else None,
     )
 
+    carried_price = 0
+    if data.get("renew_mode") == "renew" and is_addons_carry_enabled():
+        _base_dev = data.get("renew_selected_device_limit")
+        _base_trf = data.get("renew_selected_traffic_limit")
+        if selected_devices == _base_dev and selected_traffic_gb == _base_trf:
+            carried_price = calc_carried_addons_price_rub(
+                tariff,
+                _base_dev,
+                _base_trf,
+                data.get("renew_current_device_limit"),
+                data.get("renew_current_traffic_limit"),
+            )
+            final_price += carried_price
+
     tg_id = callback_query.from_user.id
     language_code = getattr(callback_query.from_user, "language_code", None)
     price_text = await format_for_user(session, tg_id, float(final_price), language_code)
@@ -228,7 +244,12 @@ async def render_user_config_screen(
             _addon_parts.append(f"+{_diff_dev} {get_plural_form(_diff_dev, 'устройство', 'устройства', 'устройств')}")
         if _rc_trf is not None and _rs_trf is not None and int(_rc_trf) > int(_rs_trf):
             _addon_parts.append(f"+{int(_rc_trf) - int(_rs_trf)} ГБ")
-        if _addon_parts:
+        if _addon_parts and carried_price:
+            addon_warning_text = ADDON_CARRY_CONFIG_NOTICE.format(
+                addons=", ".join(_addon_parts),
+                price=await format_for_user(session, tg_id, float(carried_price), language_code),
+            )
+        elif _addon_parts:
             addon_warning_text = ADDON_RESET_CONFIG_WARNING.format(addons=", ".join(_addon_parts))
 
     text = CONFIG_SCREEN_TEMPLATE.format(

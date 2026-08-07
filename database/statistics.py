@@ -5,14 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import Identity, Key, Payment, Referral, Tariff, User
+from database.users import exclude_shadow_placeholders
 
 
 async def count_total_users(session: AsyncSession) -> int:
-    return await session.scalar(select(func.count()).select_from(User))
+    return await session.scalar(select(func.count()).select_from(User).where(exclude_shadow_placeholders()))
 
 
 async def count_users_with_tg_id(session: AsyncSession) -> int:
-    return await session.scalar(select(func.count()).select_from(User).where(User.tg_id.isnot(None)))
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.tg_id.isnot(None), exclude_shadow_placeholders())
+    )
 
 
 async def count_identities_with_email(session: AsyncSession) -> int:
@@ -20,16 +23,22 @@ async def count_identities_with_email(session: AsyncSession) -> int:
 
 
 async def count_users_updated_today(session: AsyncSession, today: date) -> int:
-    return await session.scalar(select(func.count()).select_from(User).where(User.updated_at >= today))
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.updated_at >= today, exclude_shadow_placeholders())
+    )
 
 
 async def count_users_registered_since(session: AsyncSession, since: date) -> int:
-    return await session.scalar(select(func.count()).select_from(User).where(User.created_at >= since))
+    return await session.scalar(
+        select(func.count()).select_from(User).where(User.created_at >= since, exclude_shadow_placeholders())
+    )
 
 
 async def count_users_registered_between(session: AsyncSession, start: date, end: date) -> int:
     return await session.scalar(
-        select(func.count()).select_from(User).where(User.created_at >= start, User.created_at < end)
+        select(func.count())
+        .select_from(User)
+        .where(User.created_at >= start, User.created_at < end, exclude_shadow_placeholders())
     )
 
 

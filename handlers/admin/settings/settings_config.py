@@ -106,6 +106,7 @@ TARIFFS_TITLES: Final[dict[str, str]] = {
     "KEY_ADDONS_PACK_MODE": "Режим докупки опций",
     "KEY_ADDONS_PRICE_BASE_MODE": "База цены докупки",
     "KEY_ADDONS_RECALC_PRICE": "Перерасчёт цены докупки",
+    "KEY_ADDONS_CARRY_ON_RENEWAL": "Переносить опции",
 }
 
 WEB_TITLES: Final[dict[str, str]] = {

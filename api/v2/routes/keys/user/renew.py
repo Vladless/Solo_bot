@@ -159,6 +159,9 @@ async def user_key_renew(
             credit_value_rub=quote.credit_value_rub,
             new_device_limit=quote.selected_device_limit,
             new_traffic_gb=quote.total_gb,
+            carried_addons_rub=quote.carried_addons_rub,
+            carried_device_limit=quote.carried_device_limit,
+            carried_traffic_gb=quote.carried_traffic_limit,
         )
 
     if payment_required:

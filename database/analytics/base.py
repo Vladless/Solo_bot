@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Payment, User
 from database.subscription_events import _INTERNAL_PAYMENT_SYSTEMS as INTERNAL_SYSTEMS
+from database.users import exclude_shadow_placeholders
 
 
 DAY_MS = 86_400_000
@@ -53,7 +54,7 @@ async def users_series(ctx: StatsCtx) -> list[dict]:
     rows = (
         await ctx.session.execute(
             select(func.date(User.created_at).label("d"), func.count())
-            .where(User.created_at >= ctx.since)
+            .where(User.created_at >= ctx.since, exclude_shadow_placeholders())
             .group_by(func.date(User.created_at))
             .order_by(func.date(User.created_at))
         )

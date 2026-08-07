@@ -747,6 +747,16 @@ async def handle_renew_config_confirm(callback_query: CallbackQuery, state: FSMC
             selected_traffic_gb=int(selected_traffic_gb) if selected_traffic_gb is not None else None,
         )
 
+        from services.addons import resolve_carried_addons
+
+        carried = resolve_carried_addons(
+            tariff,
+            record,
+            int(selected_devices) if selected_devices is not None else None,
+            int(selected_traffic_gb) if selected_traffic_gb is not None else None,
+        )
+        final_price += carried.price_rub
+
         shown = await _maybe_show_switch_confirm(
             callback_query,
             state,

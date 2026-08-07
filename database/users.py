@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import and_, delete, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from database.models import (
     GiftUsage,
     Identity,
     Key,
+    ManualBan,
     Notification,
     Payment,
     Referral,
@@ -39,6 +40,20 @@ def invalidate_user_snapshot(tg_id: int) -> None:
         loop.create_task(cache_delete(cache_key("user_snapshot", tg_id)))
     except RuntimeError:
         return
+
+
+def exclude_shadow_placeholders():
+    """Фильтр для статистики: убирает записи, заведённые массовым теневым баном.
+
+    Такой клиент создаётся только ради внешнего ключа бана и ни разу не заходил
+    в бота — профиль пустой. Реальные клиенты, забаненные позже, остаются.
+    """
+    return not_(
+        and_(
+            User.first_name.is_(None),
+            select(ManualBan.user_id).where(ManualBan.user_id == User.id, ManualBan.reason == "shadow").exists(),
+        )
+    )
 
 
 async def add_user(

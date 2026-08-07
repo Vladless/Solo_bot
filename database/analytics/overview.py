@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 
 from database.models import Coupon, Gift, Key, Payment, User, WebErrorReport
+from database.users import exclude_shadow_placeholders
 
 from .base import DAY_MS, StatsCtx, revenue_by_system, revenue_series, users_series
 
@@ -10,12 +11,14 @@ async def overview(ctx: StatsCtx) -> dict:
     now_ms, since, since_ms = ctx.now_ms, ctx.since, ctx.since_ms
     soon_ms = now_ms + 7 * DAY_MS
 
-    total_users = await ctx.scalar(select(func.count()).select_from(User))
+    total_users = await ctx.scalar(select(func.count()).select_from(User).where(exclude_shadow_placeholders()))
     total_keys = await ctx.scalar(select(func.count()).select_from(Key))
     active_keys = await ctx.scalar(
         select(func.count()).select_from(Key).where(Key.expiry_time > now_ms, Key.is_frozen.is_(False))
     )
-    new_users = await ctx.scalar(select(func.count()).select_from(User).where(User.created_at >= since))
+    new_users = await ctx.scalar(
+        select(func.count()).select_from(User).where(User.created_at >= since, exclude_shadow_placeholders())
+    )
     revenue = await ctx.scalar(
         select(func.coalesce(func.sum(Payment.amount), 0)).where(
             Payment.status == "success", Payment.created_at >= since
@@ -25,7 +28,9 @@ async def overview(ctx: StatsCtx) -> dict:
         select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.status == "success")
     )
     frozen_keys = await ctx.scalar(select(func.count()).select_from(Key).where(Key.is_frozen.is_(True)))
-    trial_users = await ctx.scalar(select(func.count()).select_from(User).where(User.trial > 0))
+    trial_users = await ctx.scalar(
+        select(func.count()).select_from(User).where(User.trial > 0, exclude_shadow_placeholders())
+    )
     new_keys = await ctx.scalar(select(func.count()).select_from(Key).where(Key.created_at >= since_ms))
     expiring_soon = await ctx.scalar(
         select(func.count())

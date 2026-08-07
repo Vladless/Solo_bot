@@ -13,6 +13,7 @@ from database.models import (
     SubscriptionEvent,
     User,
 )
+from database.users import exclude_shadow_placeholders
 from logger import logger
 
 
@@ -365,7 +366,11 @@ async def get_retention_metrics(session: AsyncSession, days: int) -> dict:
 
     trial_users = (
         await session.scalar(
-            select(func.count()).select_from(User).where(User.created_at >= since).where(User.trial > 0)
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= since)
+            .where(User.trial > 0)
+            .where(exclude_shadow_placeholders())
         )
     ) or 0
     paid_uids = (

@@ -177,6 +177,17 @@ async def resolve_price_to_charge(session: AsyncSession, state_data: dict[str, A
     return int(base_price + device_add_rub + traffic_add_rub)
 
 
+def resolve_effective_limit(current: Any, selected: Any) -> int | None:
+    """Эффективный лимит ключа: current (база + докупленные пакеты), иначе selected."""
+    raw = current if current is not None else selected
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 async def get_key_tariff_display(
     session: AsyncSession,
     key_record: dict[str, Any],
@@ -193,20 +204,14 @@ async def get_key_tariff_display(
     selected_traffic_gb = selected_traffic_gb_override
 
     if selected_device_limit is None:
-        value = key_record.get("selected_device_limit")
-        if value is not None:
-            try:
-                selected_device_limit = int(value)
-            except (TypeError, ValueError):
-                selected_device_limit = None
+        selected_device_limit = resolve_effective_limit(
+            key_record.get("current_device_limit"), key_record.get("selected_device_limit")
+        )
 
     if selected_traffic_gb is None:
-        value = key_record.get("selected_traffic_limit")
-        if value is not None:
-            try:
-                selected_traffic_gb = int(value)
-            except (TypeError, ValueError):
-                selected_traffic_gb = None
+        selected_traffic_gb = resolve_effective_limit(
+            key_record.get("current_traffic_limit"), key_record.get("selected_traffic_limit")
+        )
 
     device_limit, traffic_limit_bytes = await get_effective_limits_for_key(
         session=session,
@@ -244,16 +249,12 @@ async def get_key_tariff_addons_state(
     selected_traffic_gb_override: int | None = None
 
     if db_key:
-        if db_key.selected_device_limit is not None:
-            try:
-                selected_device_limit_override = int(db_key.selected_device_limit)
-            except (TypeError, ValueError):
-                selected_device_limit_override = None
-        if db_key.selected_traffic_limit is not None:
-            try:
-                selected_traffic_gb_override = int(db_key.selected_traffic_limit)
-            except (TypeError, ValueError):
-                selected_traffic_gb_override = None
+        selected_device_limit_override = resolve_effective_limit(
+            db_key.current_device_limit, db_key.selected_device_limit
+        )
+        selected_traffic_gb_override = resolve_effective_limit(
+            db_key.current_traffic_limit, db_key.selected_traffic_limit
+        )
 
     (
         tariff_name,
