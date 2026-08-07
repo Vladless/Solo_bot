@@ -160,19 +160,11 @@ async def process_callback_view_profile(
     if web_button is not None:
         builder.row(web_button)
 
-    gift_button = (
-        InlineKeyboardButton(text=GIFTS, callback_data="gifts")
-        if BUTTONS_CONFIG.get("GIFT_BUTTON_ENABLE", GIFT_BUTTON)
-        else None
-    )
-
     if single_sub_rows is not None:
         for row in single_sub_rows:
             builder.row(*row)
     elif key_count > 0:
-        subscription = InlineKeyboardButton(text=MY_SUB if key_count == 1 else MY_SUBS, callback_data="view_keys")
-        builder.row(*[b for b in (subscription, gift_button) if b])
-        gift_button = None
+        builder.row(InlineKeyboardButton(text=MY_SUB if key_count == 1 else MY_SUBS, callback_data="view_keys"))
     elif trial_status == 0 and not trial_time_disabled:
         builder.row(InlineKeyboardButton(text=TRIAL_SUB, callback_data="create_key"))
     else:
@@ -181,8 +173,8 @@ async def process_callback_view_profile(
     secondary = []
     if BUTTONS_CONFIG.get("BALANCE_BUTTON_ENABLE", BALANCE_BUTTON):
         secondary.append(InlineKeyboardButton(text=BALANCE, callback_data="balance"))
-    if gift_button is not None:
-        secondary.append(gift_button)
+    if BUTTONS_CONFIG.get("GIFT_BUTTON_ENABLE", GIFT_BUTTON):
+        secondary.append(InlineKeyboardButton(text=GIFTS, callback_data="gifts"))
     if BUTTONS_CONFIG.get("REFERRAL_BUTTON_ENABLE", REFERRAL_BUTTON):
         secondary.append(InlineKeyboardButton(text=INVITE, callback_data="invite"))
     if BUTTONS_CONFIG.get("INSTRUCTIONS_BUTTON_ENABLE", INSTRUCTIONS_BUTTON):

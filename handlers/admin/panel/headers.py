@@ -4,7 +4,8 @@ import re
 MENU_TEXT_EM = 15.6
 QUOTE_TEXT_EM = 14.8
 
-MONO_LINE_LIMIT = 28
+MONO_LINE_LIMIT = 32
+LABEL_COLUMN = 10
 
 _NARROW = set("iljtfrI.,:;!'`|/\\()[]{}")
 _WIDE_LAT = set("mwMW")
@@ -112,7 +113,7 @@ def _table(rows: list[str]) -> str | None:
     pairs = [row.split(": ", 1) for row in rows]
     if not all(len(pair) == 2 and pair[0] and "<" not in pair[0] for pair in pairs):
         return None
-    width = max(len(label) for label, _ in pairs)
+    width = max(LABEL_COLUMN, max(len(label) for label, _ in pairs))
     aligned = [f"{label.ljust(width)}  {value}" for label, value in pairs]
     if max(len(row) for row in aligned) + 2 > MONO_LINE_LIMIT:
         return None
