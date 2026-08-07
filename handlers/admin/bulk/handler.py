@@ -8,7 +8,7 @@ from database import get_clusters, get_tariff_group_codes, get_tariffs
 from filters.admin import HasPermission
 from filters.permissions import PERM_BULK
 
-from ..panel.headers import menu_text, quote, wrap_text
+from ..panel.headers import menu_text, quote
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
     BulkCallback,
@@ -92,10 +92,10 @@ async def _after_filter_set(target: Message, edit: bool, state: FSMContext, sess
     action = data.get("action")
     if action == "days":
         await state.set_state(BulkStates.action_days)
-        await _respond(wrap_text(target), menu_text("Дни", "Сколько дней добавить?"), None, edit)
+        await _respond(target, menu_text("Дни", "Сколько дней добавить?"), None, edit)
     elif action == "gb":
         await state.set_state(BulkStates.action_gb)
-        await _respond(wrap_text(target), menu_text("Трафик", "Сколько ГБ добавить?"), None, edit)
+        await _respond(target, menu_text("Трафик", "Сколько ГБ добавить?"), None, edit)
     else:
         await _show_preview(target, edit, state, session)
 
@@ -105,7 +105,7 @@ async def _show_preview(target: Message, edit: bool, state: FSMContext, session:
     keys = await fetch_matching_keys(session, data)
     if not keys:
         await _respond(
-            wrap_text(target),
+            target,
             menu_text("Массовое действие", "По фильтру ничего не найдено.", quote(_describe(data))),
             build_done_kb(),
             edit,
@@ -126,7 +126,7 @@ async def _show_preview(target: Message, edit: bool, state: FSMContext, session:
             "Операция необратимая."
         )
     await _respond(
-        wrap_text(target),
+        target,
         menu_text(
             "Массовое действие",
             "Подтвердить выполнение?",
