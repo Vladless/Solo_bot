@@ -1477,6 +1477,266 @@ def restore_from_backup():
     step_ok("Восстановление из бэкапа завершено")
 
 
+def _pg_docker_container() -> str | None:
+    try:
+        out = subprocess.run(
+            ["docker", "ps", "--filter", "name=solobot-postgres", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return None
+    names = [n.strip() for n in out.stdout.splitlines() if n.strip()]
+    if "solobot-postgres" in names:
+        return "solobot-postgres"
+    return names[0] if names else None
+
+
+def _list_db_backups() -> list[str]:
+    if not os.path.isdir(BACK_DIR):
+        return []
+    files = [
+        os.path.join(BACK_DIR, name)
+        for name in os.listdir(BACK_DIR)
+        if name.startswith("db-") and name.endswith(".dump")
+    ]
+    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return files
+
+
+def _prune_db_backups(keep: int = 5) -> None:
+    for path in _list_db_backups()[keep:]:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+
+
+def backup_database() -> str | None:
+    from datetime import datetime
+
+    creds = _read_config_db_creds()
+    if not creds.get("password"):
+        step_fail("В config.py не заполнен доступ к БД (DB_PASSWORD).")
+        return None
+
+    os.makedirs(BACK_DIR, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dst = os.path.join(BACK_DIR, f"db-{ts}.dump")
+    container = _pg_docker_container()
+
+    step_warn("Создаётся дамп базы данных...")
+    try:
+        with open(dst, "wb") as out_file:
+            if container:
+                proc = subprocess.run(
+                    [
+                        "docker", "exec", "-e", f"PGPASSWORD={creds['password']}", container,
+                        "pg_dump", "-U", creds["user"], "-h", "127.0.0.1", "-p", "5432",
+                        "-F", "c", creds["name"],
+                    ],
+                    stdout=out_file,
+                    stderr=subprocess.PIPE,
+                )
+            elif shutil.which("pg_dump") is None:
+                step_fail("pg_dump не найден на хосте и контейнер PostgreSQL не обнаружен.")
+                out_file.close()
+                os.remove(dst)
+                return None
+            else:
+                host = _read_config_str("PG_HOST") or "127.0.0.1"
+                port = _read_config_str("PG_PORT") or "5432"
+                env = {**os.environ, "PGPASSWORD": creds["password"]}
+                proc = subprocess.run(
+                    ["pg_dump", "-U", creds["user"], "-h", host, "-p", port, "-F", "c", creds["name"]],
+                    stdout=out_file,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                )
+    except Exception as e:
+        step_fail(f"Ошибка бэкапа БД: {e}")
+        return None
+
+    if proc.returncode != 0:
+        step_fail((proc.stderr or b"").decode("utf-8", "replace").strip()[:300] or "Ошибка pg_dump")
+        try:
+            os.remove(dst)
+        except Exception:
+            pass
+        return None
+
+    size_mb = os.path.getsize(dst) / (1024 * 1024)
+    step_ok(f"Бэкап БД сохранён: {dst} ({size_mb:.1f} МБ)")
+    _prune_db_backups()
+    return dst
+
+
+def _pg_recreate_db(creds: dict, container: str | None, host: str, port: str) -> bool:
+    name = creds["name"]
+    user = creds["user"]
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name) or not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", user):
+        step_fail("Недопустимое имя БД или пользователя в config.py.")
+        return False
+
+    def run_admin(sql: str):
+        if container:
+            return subprocess.run(
+                [
+                    "docker", "exec", "-e", f"PGPASSWORD={creds['password']}", container,
+                    "psql", "-U", user, "-h", "127.0.0.1", "-p", "5432", "-d", "postgres", "-c", sql,
+                ],
+                capture_output=True,
+                text=True,
+            )
+        env = {**os.environ, "PGPASSWORD": creds["password"]}
+        return subprocess.run(
+            ["psql", "-U", user, "-h", host, "-p", port, "-d", "postgres", "-c", sql],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    with console.status("[warn.bold]Пересоздаю базу данных…[/warn.bold]"):
+        run_admin(
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE datname = '{name}' AND pid <> pg_backend_pid();"
+        )
+        drop = run_admin(f"DROP DATABASE IF EXISTS {name};")
+        create = run_admin(f"CREATE DATABASE {name} OWNER {user};")
+
+    if drop.returncode != 0 or create.returncode != 0:
+        step_fail((drop.stderr or create.stderr or "").strip()[:300] or "Не удалось пересоздать базу данных.")
+        return False
+    return True
+
+
+def restore_database():
+    from datetime import datetime
+
+    backups = _list_db_backups()[:5]
+    if not backups:
+        step_fail(f"Бэкапы базы данных не найдены: {BACK_DIR}")
+        return
+
+    heading("Бэкапы базы данных", BACK_DIR)
+    shown = []
+    for idx, path in enumerate(backups, 1):
+        try:
+            dt = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d.%m.%Y %H:%M")
+        except Exception:
+            dt = "дата неизвестна"
+        console.print(f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt}[/faint]")
+        shown.append((idx, path))
+
+    try:
+        choice = safe_prompt(
+            f"[key]{_G_PROMPT}[/key] [title]Какой дамп восстановить[/title]",
+            choices=[str(i) for i, _ in shown],
+        )
+    except Exception:
+        return
+    sel_path = shown[int(choice) - 1][1]
+
+    step_warn("Текущая база данных будет ПОЛНОСТЬЮ заменена выбранным дампом.")
+    if not safe_confirm("Продолжить восстановление базы данных?"):
+        return
+
+    creds = _read_config_db_creds()
+    container = _pg_docker_container()
+    host = _read_config_str("PG_HOST") or "127.0.0.1"
+    port = _read_config_str("PG_PORT") or "5432"
+
+    if is_service_exists(SERVICE_NAME):
+        console.print("[title]Останавливаю бота перед восстановлением БД...[/title]")
+        subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME], check=False)
+
+    if not _pg_recreate_db(creds, container, host, port):
+        return
+
+    step_warn("Восстанавливаю базу данных из дампа...")
+    if container:
+        with open(sel_path, "rb") as dump_file:
+            rc = subprocess.run(
+                [
+                    "docker", "exec", "-i", "-e", f"PGPASSWORD={creds['password']}", container,
+                    "pg_restore", f"--dbname={creds['name']}", "-U", creds["user"],
+                    "-h", "127.0.0.1", "-p", "5432", "--no-owner", "--clean", "--if-exists",
+                ],
+                stdin=dump_file,
+                capture_output=True,
+            ).returncode
+    elif shutil.which("pg_restore") is None:
+        step_fail("pg_restore не найден на хосте и контейнер PostgreSQL не обнаружен.")
+        return
+    else:
+        env = {**os.environ, "PGPASSWORD": creds["password"]}
+        rc = subprocess.run(
+            [
+                "pg_restore", f"--dbname={creds['name']}", "-U", creds["user"], "-h", host, "-p", port,
+                "--no-owner", "--clean", "--if-exists", sel_path,
+            ],
+            capture_output=True,
+            env=env,
+        ).returncode
+
+    if rc != 0:
+        step_fail("Ошибка pg_restore при восстановлении базы данных.")
+    else:
+        step_ok("База данных восстановлена.")
+
+    if is_service_exists(SERVICE_NAME):
+        restart_service()
+
+
+def manage_backup():
+    while True:
+        menu(
+            "Бэкап и восстановление",
+            [
+                (
+                    "Создать бэкап",
+                    [
+                        ("1", "▤", "Папка бота", True, ""),
+                        ("2", "▤", "База данных", True, ""),
+                        ("3", "▤", "Всё вместе", True, ""),
+                    ],
+                ),
+                (
+                    "Восстановить",
+                    [
+                        ("4", "⭯", "Папку бота", True, ""),
+                        ("5", "⭯", "Базу данных", True, ""),
+                        ("6", "⭯", "Всё вместе", True, ""),
+                    ],
+                ),
+                (
+                    "",
+                    [
+                        ("7", "←", "Назад", True, ""),
+                    ],
+                ),
+            ],
+            subtitle=BACK_DIR,
+        )
+        choice = ask_choice(7, "Действие")
+        if choice == "1":
+            backup_project()
+        elif choice == "2":
+            backup_database()
+        elif choice == "3":
+            backup_project()
+            backup_database()
+        elif choice == "4":
+            restore_from_backup()
+        elif choice == "5":
+            restore_database()
+        elif choice == "6":
+            restore_from_backup()
+            restore_database()
+        elif choice == "7":
+            return
+
+
 def _sync_rpc_files() -> bool:
     core_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "core")
     os.makedirs(core_dir, exist_ok=True)
@@ -4361,7 +4621,7 @@ def show_menu():
                 "Обслуживание",
                 [
                     ("7", "↑", "Обновить Solobot", bot_installed, need_install),
-                    ("8", "⭯", "Восстановить из бэкапа", True, ""),
+                    ("8", "▤", "Бэкап и восстановление", True, ""),
                     ("9", "⚙", "Установить или переустановить бота", True, ""),
                 ],
             ),
@@ -4477,7 +4737,7 @@ def main():
             elif choice == "7":
                 show_update_menu()
             elif choice == "8":
-                restore_from_backup()
+                manage_backup()
             elif choice == "9":
                 install_bot()
             elif choice == "10":

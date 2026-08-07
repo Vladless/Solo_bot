@@ -64,7 +64,8 @@ nginx.conf
 .csv
 /logs
 .ruff_cache
-modules/
+modules/*
+!modules/partner_program/
 storage/
 static/web_uploads/
 
