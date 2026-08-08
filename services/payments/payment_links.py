@@ -39,7 +39,15 @@ def register_payment_creator(provider_id: str, creator: PaymentLinkCreator) -> N
     """Регистрирует создателя платёжной ссылки для кассы."""
     key = provider_id.strip().upper()
     _registry[key] = creator
-    logger.debug(f"[Payments] Зарегистрирован создатель ссылки: {key}")
+
+
+def log_registered_creators() -> None:
+    """Печатает одной строкой список касс, умеющих платёжные ссылки."""
+    if not _registry:
+        logger.warning("[Payments] Ни одна касса не зарегистрировала создателя ссылки")
+        return
+    keys = sorted(_registry)
+    logger.info("[Payments] Кассы со ссылками ({}): {}", len(keys), ", ".join(keys))
 
 
 async def merge_creators_from_hooks() -> None:

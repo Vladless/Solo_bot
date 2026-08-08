@@ -308,7 +308,7 @@ class UsersRepoTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_user_preferred_currency_returns_none_when_unset(self):
         session = _make_session(execute_return=_result_with(scalar=None))
-        result = await get_user_preferred_currency(session, 1234)
+        result = await get_user_preferred_currency(session, 4321)
         self.assertIsNone(result)
 
 

@@ -1504,6 +1504,38 @@ def _list_db_backups() -> list[str]:
     return files
 
 
+def _bot_backup_dir() -> str:
+    """Каталог, куда бэкапы кладёт сам бот — берём из его config.py."""
+    value = _read_config_str("BACK_DIR").strip()
+    if not value:
+        return ""
+    return value if os.path.isabs(value) else os.path.join(PROJECT_DIR, value)
+
+
+def _list_bot_db_backups() -> list[str]:
+    """Дампы, снятые ботом при запуске. Формат тот же pg_dump -Fc, отличается только имя."""
+    path = _bot_backup_dir()
+    if not path or not os.path.isdir(path):
+        return []
+    if os.path.abspath(path) == os.path.abspath(BACK_DIR):
+        return []
+    files = [
+        os.path.join(path, name)
+        for name in os.listdir(path)
+        if "-backup-" in name and "-full-backup-" not in name and name.endswith((".sql", ".dump"))
+    ]
+    files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return files
+
+
+def _list_restorable_dumps() -> list[tuple[str, str]]:
+    """Все дампы, пригодные для pg_restore: снятые из CLI и снятые ботом."""
+    items = [(path, "CLI") for path in _list_db_backups()]
+    items += [(path, "бот") for path in _list_bot_db_backups()]
+    items.sort(key=lambda item: os.path.getmtime(item[0]), reverse=True)
+    return items
+
+
 def _prune_db_backups(keep: int = 5) -> None:
     for path in _list_db_backups()[keep:]:
         try:
@@ -1613,19 +1645,25 @@ def _pg_recreate_db(creds: dict, container: str | None, host: str, port: str) ->
 def restore_database():
     from datetime import datetime
 
-    backups = _list_db_backups()[:5]
+    backups = _list_restorable_dumps()[:10]
     if not backups:
-        step_fail(f"Бэкапы базы данных не найдены: {BACK_DIR}")
+        places = BACK_DIR
+        bot_dir = _bot_backup_dir()
+        if bot_dir and os.path.abspath(bot_dir) != os.path.abspath(BACK_DIR):
+            places = f"{BACK_DIR} и {bot_dir}"
+        step_fail(f"Бэкапы базы данных не найдены: {places}")
         return
 
     heading("Бэкапы базы данных", BACK_DIR)
     shown = []
-    for idx, path in enumerate(backups, 1):
+    for idx, (path, origin) in enumerate(backups, 1):
         try:
             dt = datetime.fromtimestamp(os.path.getmtime(path)).strftime("%d.%m.%Y %H:%M")
         except Exception:
             dt = "дата неизвестна"
-        console.print(f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt}[/faint]")
+        console.print(
+            f"  [key]{idx}[/key]  [text]{os.path.basename(path)}[/text]  [faint]{dt} · {origin}[/faint]"
+        )
         shown.append((idx, path))
 
     try:
@@ -4527,7 +4565,7 @@ def update_bot_docker():
 
 def manage_bot_docker():
     while True:
-        style, state = _docker_bot_state()
+        _style, state = _docker_bot_state()
         installed = state not in ("нет docker-compose.yml", "Docker не установлен")
         menu(
             "Бот в Docker",
