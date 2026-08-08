@@ -1,4 +1,4 @@
-import asyncio
+import inspect
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -133,7 +133,7 @@ async def store_key(
             current_traffic_limit=current_traffic_limit,
         )
         add_result = session.add(new_key)
-        if asyncio.iscoroutine(add_result):
+        if inspect.isawaitable(add_result):
             await add_result
         logger.info(f"[Store Key] Ключ создан: user_id={uid}, client_id={client_id}, server_id={server_id}")
         try:

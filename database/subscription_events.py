@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, or_, select
@@ -39,7 +41,7 @@ async def record_subscription_event(
     """Добавляет событие в журнал. Никогда не бросает исключение — логирование
     подписок не должно ломать операции с ключами. Коммит — за вызывающим (контракт транзакций)."""
     try:
-        session.add(
+        add_result = session.add(
             SubscriptionEvent(
                 event_type=event_type,
                 user_id=user_id,
@@ -55,6 +57,8 @@ async def record_subscription_event(
                 metadata_=metadata,
             )
         )
+        if inspect.isawaitable(add_result):
+            await add_result
     except Exception as e:
         logger.warning("[sub-events] не удалось записать событие {}: {}", event_type, e)
 

@@ -41,6 +41,39 @@ def wrap_session(session: AsyncSession, maker) -> _SessionProxy:
     return _SessionProxy(session, maker, {})
 
 
+class _PendingCall:
+    """Вызов к отпущенной сессии: у неё синхронных методов больше нет, всё идёт короткой сессией.
+
+    Если результат не дождались (`session.add(...)` без await), операция до БД не доходит.
+    Питон сообщает об этом только предупреждением в stderr — здесь оно превращается в строку лога
+    с именем метода, иначе запись теряется молча.
+    """
+
+    __slots__ = ("_coro", "_method", "_awaited")
+
+    def __init__(self, coro, method: str) -> None:
+        self._coro = coro
+        self._method = method
+        self._awaited = False
+
+    def __await__(self):
+        self._awaited = True
+        return self._coro.__await__()
+
+    def __del__(self) -> None:
+        if self._awaited:
+            return
+        try:
+            self._coro.close()
+            logger.error(
+                "Сессия отпущена: результат session.{}() не дождались — операция до БД не дошла. "
+                "Нужен `await` на вызове",
+                self._method,
+            )
+        except Exception:
+            pass
+
+
 class _SessionProxy:
     __slots__ = ("_session", "_maker", "_released", "_data")
 
@@ -86,7 +119,7 @@ class _SessionProxy:
         if self._released:
 
             def _short(*a, **k):
-                return self._with_short_session(name, *a, **k)
+                return _PendingCall(self._with_short_session(name, *a, **k), name)
 
             return _short
         return getattr(self._session, name)
