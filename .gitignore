@@ -67,7 +67,8 @@ nginx.conf
 modules/*
 !modules/partner_program/
 storage/
-static/web_uploads/
+static/
+packs/
 
 .license_state
 .license_lease

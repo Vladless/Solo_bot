@@ -2138,18 +2138,91 @@ _PACK_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 _BUILTIN_PACK_IDS = {"core", "cyber-mono", "capybara", "default"}
 
 
+@router.get("/api/web/packs/available")
+async def list_available_packs_route(_identity=Depends(verify_identity_designer)):
+    """Наборы со своими блоками, доступные этому боту. Стоковые сюда не попадают:
+    их блоки уже в ядре, им нужен только сид, и тот приезжает при установке."""
+    from core.rpc import get_entitled_pack_meta, refresh_entitled_packs
+    from services.web_packs import installed_pack_version
+
+    entitled = await refresh_entitled_packs()
+    meta = get_entitled_pack_meta()
+
+    packs = []
+    for pack_id in entitled:
+        if pack_id in _BUILTIN_PACK_IDS:
+            continue
+        info = meta.get(pack_id) or {}
+        available_version = str(info.get("version") or "").strip()
+        local_version = installed_pack_version(pack_id)
+        packs.append(
+            {
+                "id": pack_id,
+                "name": str(info.get("name") or pack_id),
+                "description": str(info.get("description") or ""),
+                "installed": bool(local_version),
+                "installedVersion": local_version,
+                "version": available_version,
+                "updateAvailable": bool(local_version and available_version and available_version != local_version),
+            }
+        )
+    return {"packs": packs}
+
+
+@router.post("/api/web/packs/install")
+async def install_pack_route(payload: dict, _identity=Depends(verify_identity_designer)):
+    """Скачивает набор и ставит его. Недоступный набор до установки не доходит."""
+    from core.rpc import refresh_entitled_packs
+    from services.web_packs import download_and_install_pack
+
+    pack_id = str((payload or {}).get("pack_id") or "").strip()
+    if not pack_id:
+        raise HTTPException(status_code=400, detail="Не указан набор")
+    if pack_id not in await refresh_entitled_packs():
+        raise HTTPException(status_code=403, detail="Доступ к набору не выдан")
+
+    result = await download_and_install_pack(pack_id)
+    if not result.ok:
+        raise HTTPException(status_code=400, detail=result.error or "Не удалось установить набор")
+    return {"ok": True, "pack_id": result.pack_id, "version": result.version}
+
+
+@router.post("/api/web/packs/uninstall")
+async def uninstall_pack_route(payload: dict, _identity=Depends(verify_identity_designer)):
+    """Удаляет установленный набор с этого бота."""
+    from services.web_packs import remove_pack
+
+    pack_id = str((payload or {}).get("pack_id") or "").strip()
+    if not remove_pack(pack_id):
+        raise HTTPException(status_code=404, detail="Набор не установлен")
+    return {"ok": True, "pack_id": pack_id}
+
+
+@router.get("/api/web/packs/installed")
+async def list_installed_packs_route():
+    """Манифесты паков, установленных на этом боте — веб-апп грузит по ним блоки.
+    Открыт без авторизации: манифест не секрет, а кабинет читают и гости."""
+    from services.web_packs import list_installed_packs
+
+    return {"packs": list_installed_packs()}
+
+
 @router.get("/api/web/packs")
 async def list_packs(
     session: AsyncSession = Depends(get_session),
     _identity=Depends(verify_identity_designer),
 ):
     """Список своих (не встроенных) сохранённых наборов + статус сохранения встроенных дизайн-паков."""
+    from core.rpc import refresh_entitled_packs
     from database.web_default_seed import has_builtin_pack_file, list_custom_pack_designs, load_pack_design
 
+    entitled = set(await refresh_entitled_packs())
     custom = await list_custom_pack_designs(session, _BUILTIN_PACK_IDS)
     builtin_saved: dict[str, bool] = {}
     for pid in ("cyber-mono", "capybara"):
-        builtin_saved[pid] = bool(await load_pack_design(session, pid)) or has_builtin_pack_file(pid)
+        builtin_saved[pid] = (
+            bool(await load_pack_design(session, pid)) or has_builtin_pack_file(pid) or pid in entitled
+        )
     return {"custom": custom, "builtinSaved": builtin_saved}
 
 

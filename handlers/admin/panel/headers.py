@@ -155,7 +155,9 @@ def _split_pair(row: str) -> tuple[str, str] | None:
 
 
 def align_screen(text: str) -> str:
-    """Выравнивает значения во всех таблицах экрана по одной вертикали."""
+    """Выравнивает значения во всех таблицах экрана по одной вертикали. Метка и значение
+    идут отдельными моноблоками: Telegram копирует по нажатию ровно одно значение,
+    а не всю таблицу. Разделяющий пробел один на строку, поэтому колонки не разъезжаются."""
     blocks: list[list[str]] = []
     for body in _CODE_BLOCK_RE.findall(text):
         rows = [row for row in body.split("\n") if row.strip()]
@@ -187,11 +189,12 @@ def align_screen(text: str) -> str:
         if rows not in aligned:
             lines = [branch(row, index == len(rows) - 1) for index, row in enumerate(rows)]
             return "<code>" + "\n".join(lines) + "</code>"
-        lines = [
-            f"{branch(_split_pair(row)[0], index == len(rows) - 1).ljust(width)}  {_split_pair(row)[1]}"
-            for index, row in enumerate(rows)
-        ]
-        return "<code>" + "\n".join(lines) + "</code>"
+        lines = []
+        for index, row in enumerate(rows):
+            label, value = _split_pair(row)
+            cell = branch(label, index == len(rows) - 1).ljust(width)
+            lines.append(f"<code>{cell}</code> <code>{value}</code>")
+        return "\n".join(lines)
 
     return _CODE_BLOCK_RE.sub(render, text)
 

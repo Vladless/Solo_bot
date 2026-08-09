@@ -1,49 +1,52 @@
-import json
-
-from pathlib import Path
-
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.admin import Setting
 from database.models.web import WebFlow, WebPage, WebPageVariant, WebPageVariantBlock
+from logger import logger
 
 
 DEFAULT_VARIANT_KEY = "default"
 DEFAULT_VARIANT_NAME = "Основной"
 PACK_DESIGN_SETTING_PREFIX = "pack_design:"
 
-_SEED_DIR = Path(__file__).resolve().parent.parent / "web_seeds"
-_SITE_FILE = _SEED_DIR / "default_site.json"
-
-_PACK_SITE_FILES = {
-    "cyber-mono": "cyber_mono_site.json",
-    "capybara": "capybara_site.json",
-}
-
 
 def _load_pack_site_file(pack_id: str) -> dict | None:
-    """Встроенный дизайн набора из репо-файла (формат capture_current_site)."""
-    fname = _PACK_SITE_FILES.get(pack_id)
-    if not fname:
-        return None
-    try:
-        raw = json.loads((_SEED_DIR / fname).read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    return raw if isinstance(raw, dict) else None
+    """Дизайн набора берётся из установленного пака — в репозитории бота их больше нет."""
+    from services.web_packs import load_pack_seed
+
+    return load_pack_seed(pack_id)
 
 
 def has_builtin_pack_file(pack_id: str) -> bool:
     return _load_pack_site_file(pack_id) is not None
 
 
-def _load_site() -> tuple[dict, dict, list]:
-    """Возвращает (theme_tokens, pages, flows) из default_site.json.
-    pages: {slug: [{type, order, data}, ...]}. '_theme' — токены темы, '_flows' — пути клиента."""
-    try:
-        raw = json.loads(_SITE_FILE.read_text(encoding="utf-8"))
-    except Exception:
+DEFAULT_PACK_ID = "default"
+
+
+async def _ensure_pack_seed(pack_id: str) -> dict | None:
+    """Дизайн набора приезжает из источника наборов: в репозитории бота сидов нет."""
+    from services.web_packs import download_and_install_pack, load_pack_seed
+
+    seed = load_pack_seed(pack_id)
+    if seed is not None:
+        return seed
+
+    result = await download_and_install_pack(pack_id)
+    if not result.ok:
+        logger.error("[Seed] Не удалось получить набор {}: {}", pack_id, result.error)
+        return None
+    return load_pack_seed(pack_id)
+
+
+async def _ensure_default_pack() -> dict | None:
+    return await _ensure_pack_seed(DEFAULT_PACK_ID)
+
+
+def _split_site(raw: dict | None) -> tuple[dict, dict, list]:
+    """Разбирает сид на (токены темы, страницы, flow)."""
+    if not isinstance(raw, dict):
         return {}, {}, []
     theme = raw.get("_theme") or {}
     pages = {k: v for k, v in raw.items() if not k.startswith("_") and isinstance(v, list)}
@@ -118,7 +121,9 @@ async def seed_default_site(session: AsyncSession, force: bool = False) -> bool:
         if (existing.scalar() or 0) > 0:
             return False
 
-    theme, pages, flows = _load_site()
+    theme, pages, flows = _split_site(await _ensure_default_pack())
+    if not pages:
+        return False
     theme_tokens = theme or BLACK_ORANGE_THEME
     theme_tokens = _apply_runtime_links(theme_tokens)
     return await _apply_site(session, theme_tokens, pages, flows, force, page_themes=None)
@@ -365,10 +370,10 @@ async def _apply_captured_site(session: AsyncSession, site: dict) -> bool:
 
 async def install_pack_design(session: AsyncSession, pack_id: str) -> bool:
     """Устанавливает дизайн набора (страницы + темы + flow). force=True.
-    Приоритет: сохранённый в БД дизайн → встроенный репо-файл набора."""
+    Приоритет: сохранённый в БД дизайн → сид набора, при нужде скачанный с сайта."""
     site = await load_pack_design(session, pack_id)
     if not site:
-        site = _load_pack_site_file(pack_id)
+        site = await _ensure_pack_seed(pack_id)
     if not site:
         return False
     return await _apply_captured_site(session, site)

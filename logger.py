@@ -134,12 +134,7 @@ def _error_throttle_prune():
         _error_throttle.pop(k, None)
 
 
-def _filter(record):
-    if record.get("name") in _EXCLUDE or record.get("module") in _EXCLUDE:
-        return False
-    level_no = getattr(record.get("level"), "no", 20)
-    if level_no < 40:
-        return True
+def _throttle_allows(record):
     key = _error_throttle_key(record)
     now = time.monotonic()
     if key in _error_throttle:
@@ -155,6 +150,22 @@ def _filter(record):
         _error_throttle_prune()
         _error_throttle[key] = (now, 0)
     return True
+
+
+def _filter(record):
+    """Решение по записи принимается один раз: фильтр зовётся каждым приёмником,
+    и без общего вердикта второй считал бы запись повтором первого."""
+    if record.get("name") in _EXCLUDE or record.get("module") in _EXCLUDE:
+        return False
+    level_no = getattr(record.get("level"), "no", 20)
+    if level_no < 40:
+        return True
+    extra = record.get("extra")
+    if not isinstance(extra, dict):
+        return _throttle_allows(record)
+    if "throttle_verdict" not in extra:
+        extra["throttle_verdict"] = _throttle_allows(record)
+    return extra["throttle_verdict"]
 
 
 def _file_filter(record):

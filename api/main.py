@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+
 from time import perf_counter
 
 from fastapi import Depends, FastAPI, Request
@@ -12,12 +13,16 @@ from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
 
 from audit import ensure_api_context, log_api_access, record_api_access_event_background
-from settings.config import API_LOGGING, API_VERSION, API_CORS_ORIGINS, LOGGING_LEVEL
 from database import async_session_maker
 from logger import logger
+from settings.config import API_CORS_ORIGINS, API_LOGGING, API_VERSION, LOGGING_LEVEL
+
 
 if API_VERSION == 1:
-    from api.v1 import router as api_router, VERSION as API_DOC_VERSION
+    from api.v1 import (
+        VERSION as API_DOC_VERSION,
+        router as api_router,
+    )
 else:
     from api.v2 import VERSION as API_DOC_VERSION
     from api.v2.router import router as api_router
@@ -46,6 +51,34 @@ app.add_middleware(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+_shutting_down = False
+
+
+class QuietShutdownMiddleware:
+    """При остановке открытые потоки (SSE, долгие запросы) рвутся, и стек отмены
+    всплывает наружу простынёй. После сигнала остановки гасим её молча."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "lifespan":
+            await self.app(scope, receive, send)
+            return
+        try:
+            await self.app(scope, receive, send)
+        except asyncio.CancelledError:
+            if _shutting_down:
+                return
+            raise
+
+
+@app.on_event("shutdown")
+async def _mark_shutting_down() -> None:
+    global _shutting_down
+    _shutting_down = True
+
 
 _WEAK_PASSWORDS = frozenset({"111", "1111", "admin", "password", "12345678", "qwerty"})
 
@@ -204,12 +237,18 @@ async def api_access_log_middleware(request: Request, call_next):
     return response
 
 
+app.add_middleware(QuietShutdownMiddleware)
+
+
 @app.get("/api/health", include_in_schema=False)
 async def health():
     return {"status": "ok"}
 
 
-from api.depends import get_session as _get_session, verify_identity_admin as _verify_admin
+from api.depends import (
+    get_session as _get_session,
+    verify_identity_admin as _verify_admin,
+)
 
 
 @app.get("/api/health/detailed", include_in_schema=False)
@@ -218,7 +257,9 @@ async def health_detailed(
     _identity=Depends(_verify_admin),
 ):
     import time
+
     from sqlalchemy import text
+
     from core.redis_cache import _get_redis
 
     checks: dict[str, object] = {"status": "ok", "timestamp": int(time.time())}
@@ -250,3 +291,7 @@ app.include_router(api_router)
 _web_uploads_dir = "static/web_uploads"
 os.makedirs(_web_uploads_dir, exist_ok=True)
 app.mount("/api/web/uploads", StaticFiles(directory=_web_uploads_dir), name="web_uploads")
+
+_web_packs_dir = "static/web_packs"
+os.makedirs(_web_packs_dir, exist_ok=True)
+app.mount("/api/web/packs/files", StaticFiles(directory=_web_packs_dir), name="web_packs")
