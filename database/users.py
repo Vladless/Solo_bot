@@ -84,6 +84,9 @@ async def add_user(
     inserted_id = res.scalar_one_or_none()
     if inserted_id is None:
         return None
+    from database.access.resolution import invalidate_uid_cache
+
+    await invalidate_uid_cache(tg_id, inserted_id)
     await cache_set(cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
     logger.info(f"[DB] Новый пользователь добавлен: tg_id={tg_id} id={inserted_id} (source: {source_code})")
     return int(inserted_id)
@@ -343,6 +346,7 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     if u is None:
         return
     uid = u.id
+    tg_ref = u.tg_id
 
     identity_id = u.identity_id
 
@@ -398,6 +402,18 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
         )
         if not still_linked:
             await session.execute(delete(Identity).where(Identity.id == identity_id))
+
+    from database.access.resolution import invalidate_uid_cache
+    from database.cache_purge import defer_purge
+
+    refs = [uid] if tg_ref is None else [uid, tg_ref]
+    keys = [cache_key(name, ref) for ref in refs for name in ("uref", "user_exists", "profile_data", "user_snapshot", "balance")]
+    if not defer_purge(session, *keys):
+        await invalidate_uid_cache(*refs)
+        for ref in refs:
+            await invalidate_profile_cache(ref)
+            await invalidate_balance_cache(ref)
+            invalidate_user_snapshot(ref)
 
     logger.info(f"[DB] Данные пользователя id={uid} полностью удалены")
 
