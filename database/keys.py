@@ -26,23 +26,31 @@ async def invalidate_key_email(client_id: str) -> None:
     await cache_delete(cache_key("key_email", client_id))
 
 
-async def _purge_keys_cache_ids(*ids: int) -> None:
+async def _purge_keys_cache_ids(session: AsyncSession | None, *ids: int) -> None:
+    from database.cache_purge import defer_purge
+
     for i in ids:
-        await cache_delete(cache_key("keys_list", i))
-        await cache_delete(cache_key("key_count", i))
-        await cache_delete(cache_key("user_squads", i))
-        await invalidate_profile_cache(i)
+        keys = (
+            cache_key("keys_list", i),
+            cache_key("key_count", i),
+            cache_key("user_squads", i),
+            cache_key("profile_data", i),
+        )
+        if defer_purge(session, *keys):
+            continue
+        for key in keys:
+            await cache_delete(key)
 
 
 async def invalidate_keys_list(session: AsyncSession, legacy_user_ref: int) -> None:
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:
-        await _purge_keys_cache_ids(legacy_user_ref)
+        await _purge_keys_cache_ids(session, legacy_user_ref)
         return
     if u.tg_id is not None:
-        await _purge_keys_cache_ids(u.id, u.tg_id)
+        await _purge_keys_cache_ids(session, u.id, u.tg_id)
     else:
-        await _purge_keys_cache_ids(u.id)
+        await _purge_keys_cache_ids(session, u.id)
 
 
 async def invalidate_key_details_by_client_id(session: AsyncSession, client_id: str) -> None:

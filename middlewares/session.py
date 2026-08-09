@@ -11,6 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from logger import logger
 
 
+async def _flush_cache_purges(session) -> None:
+    try:
+        from database.cache_purge import flush_purges
+
+        await flush_purges(session)
+    except Exception as exc:
+        logger.warning("[Cache] Отложенный сброс не выполнен: {}", exc)
+
+
 def _is_bot_blocked_error(exc: BaseException) -> bool:
     """Проверяет, что исключение связано с блокировкой бота пользователем (в т.ч. обёрнутое)."""
     if isinstance(exc, TelegramForbiddenError):
@@ -89,6 +98,7 @@ class _SessionProxy:
         self._released = True
         try:
             await self._session.commit()
+            await _flush_cache_purges(self._session)
         except Exception:
             await self._session.rollback()
         try:
@@ -165,6 +175,7 @@ class SessionMiddleware(BaseMiddleware):
                 try:
                     await session.commit()
                     committed = True
+                    await _flush_cache_purges(session)
                     return result
                 except Exception as commit_err:
                     logger.warning(

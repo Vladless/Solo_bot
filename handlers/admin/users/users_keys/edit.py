@@ -1,7 +1,7 @@
 from database.subscription_events import get_recent_renewals
 from services.subscription_keys import resolve_remnawave_server_ref
 
-from ...panel.headers import card, menu_text, section
+from ...panel.headers import card, menu_text, quote, section
 from ._common import *  # noqa: F401,F403
 
 

@@ -195,16 +195,21 @@ async def mark_trial_started_if_eligible(session: AsyncSession, tg_id: int) -> N
 
 
 async def update_trial(session: AsyncSession, legacy_user_ref: int, status: int):
+    from database.cache_purge import defer_purge
+
     u = await resolve_user_optional(session, legacy_user_ref)
     if u is None:
         return
     uid = u.id
     await session.execute(update(User).where(User.id == uid).values(trial=status))
-    await invalidate_profile_cache(uid)
-    invalidate_user_snapshot(uid)
-    if u.tg_id is not None:
-        await invalidate_profile_cache(u.tg_id)
-        invalidate_user_snapshot(u.tg_id)
+    refs = [uid] if u.tg_id is None else [uid, u.tg_id]
+    keys = [cache_key(name, ref) for ref in refs for name in ("profile_data", "user_snapshot")]
+    if not defer_purge(session, *keys):
+        await invalidate_profile_cache(uid)
+        invalidate_user_snapshot(uid)
+        if u.tg_id is not None:
+            await invalidate_profile_cache(u.tg_id)
+            invalidate_user_snapshot(u.tg_id)
     logger.info(f"[DB] Триал статус обновлён для пользователя id={uid}: {status}")
 
 

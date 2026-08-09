@@ -31,6 +31,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
+            from database.cache_purge import flush_purges
+
+            await flush_purges(session)
         except Exception:
             await session.rollback()
             raise
