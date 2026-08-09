@@ -39,9 +39,14 @@ def get_gift_link(user_id: int, gift_id: str) -> str:
 
 
 def get_site_gift_link(gift_id: str) -> str:
-    from core.settings.web_config import get_site_url
+    """Ссылка на подарок на сайте, пустая при выключенном сайте."""
+    from core.settings.web_config import get_site_url, is_web_enabled
 
+    if not is_web_enabled():
+        return ""
     site_url = get_site_url()
+    if not site_url:
+        return ""
     return f"{site_url}/gift/{gift_id}"
 
 

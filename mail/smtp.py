@@ -203,9 +203,9 @@ def build_broadcast_email(text_html: str, image_url: str | None = None) -> tuple
 
     site_url = ""
     try:
-        from core.settings.web_config import get_site_url
+        from core.settings.web_config import get_site_url, is_web_enabled
 
-        site_url = get_site_url()
+        site_url = get_site_url() if is_web_enabled() else ""
     except Exception:
         site_url = ""
 

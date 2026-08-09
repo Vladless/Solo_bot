@@ -163,7 +163,7 @@ _EMPTY_SECTION_RE = re.compile(r"(?:<b>[^<]*</b>\n)?<blockquote><code></code></b
 
 def _row_is_filled(row: str) -> bool:
     """Строка таблицы пуста, если у метки нет значения."""
-    label, sep, value = row.partition(": ")
+    _label, sep, value = row.partition(": ")
     return bool(value.strip()) if sep else bool(row.strip())
 
 
@@ -184,6 +184,27 @@ def _drop_empty_sections(text: str) -> str:
     return head + _EMPTY_SECTION_RE.sub("", tail)
 
 
+_TAG_RE = re.compile(r"<[^>]+>")
+_EMPTY_ANCHOR_RE = re.compile(r"<a\s+href=['\"]\s*['\"][^>]*>.*?</a>", re.S | re.I)
+_DANGLING_SEPARATOR_RE = re.compile(r"(?m)^\s*[·|]\s*|\s*[·|]\s*$")
+
+
+def _drop_empty_links(text: str) -> str:
+    """Убирает ссылки без адреса и строки-метки, у которых не осталось значения."""
+    lines = []
+    for line in _EMPTY_ANCHOR_RE.sub("", text).split("\n"):
+        cleaned = _DANGLING_SEPARATOR_RE.sub("", line)
+        bare = _TAG_RE.sub("", cleaned).strip()
+        if bare.endswith(":") and ": " in cleaned + " ":
+            _label, sep, value = cleaned.rpartition(":")
+            if sep and not _TAG_RE.sub("", value).strip():
+                continue
+        if not bare and _TAG_RE.sub("", line).strip():
+            continue
+        lines.append(cleaned)
+    return "\n".join(lines)
+
+
 def fill_text(template: str, **values: object) -> str:
     """Подставляет значения в шаблон и убирает строки и блоки, для которых не оказалось данных."""
     try:
@@ -191,7 +212,7 @@ def fill_text(template: str, **values: object) -> str:
     except (IndexError, ValueError) as error:
         logger.warning(f"Некорректный шаблон в файле текстов: {error}")
         return template
-    return _drop_empty_sections(_drop_empty_rows(text)).strip("\n")
+    return _drop_empty_sections(_drop_empty_rows(_drop_empty_links(text))).strip("\n")
 
 
 def render_screen(*parts: str) -> str:
