@@ -6,31 +6,41 @@ from core.redis_cache import cache_delete
 _PENDING = "pending_cache_purge"
 
 
-def defer_purge(session: AsyncSession | None, *keys: str) -> bool:
-    """Откладывает сброс ключей до коммита. Сброс до него бесполезен: читатель успеет
-    наполнить кеш ещё не закоммиченными данными, и они переживут коммит на весь TTL."""
+def _pending_store(session) -> dict | None:
+    """Хранилище отложенных ключей. У отпущенной сессии его нет: прокси подменяет
+    любое обращение вызовом короткой сессии, откладывать там нечего."""
     if session is None:
-        return False
+        return None
     try:
         info = session.info
     except Exception:
+        return None
+    return info if isinstance(info, dict) else None
+
+
+def defer_purge(session: AsyncSession | None, *keys: str) -> bool:
+    """Откладывает сброс ключей до коммита. Сброс до него бесполезен: читатель успеет
+    наполнить кеш ещё не закоммиченными данными, и они переживут коммит на весь TTL."""
+    info = _pending_store(session)
+    if info is None:
         return False
-    pending = info.get(_PENDING)
-    if pending is None:
-        pending = set()
-        info[_PENDING] = pending
-    pending.update(k for k in keys if k)
+    try:
+        pending = info.get(_PENDING)
+        if not isinstance(pending, set):
+            pending = set()
+            info[_PENDING] = pending
+        pending.update(k for k in keys if k)
+    except Exception:
+        return False
     return True
 
 
 async def flush_purges(session: AsyncSession | None) -> None:
     """Сбрасывает отложенные ключи. Вызывается после успешного коммита."""
-    if session is None:
+    info = _pending_store(session)
+    if info is None:
         return
-    try:
-        pending = session.info.pop(_PENDING, None)
-    except Exception:
-        return
+    pending = info.pop(_PENDING, None)
     for key in pending or ():
         try:
             await cache_delete(key)
