@@ -29,6 +29,10 @@ def extract_tg_id_from_username(value: str | None) -> int | None:
 
     value = value.strip()
 
+    if value.isdigit():
+        tg_id = int(value)
+        return tg_id if tg_id > 0 else None
+
     match = re.search(r"[-_](\d+)(?:\D|$)", value)
     if not match:
         return None
@@ -86,9 +90,19 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
         )
         return
 
+    users = sorted(
+        users,
+        key=lambda u: (
+            u.get("id") if isinstance(u.get("id"), int) else float("inf"),
+            u.get("createdAt") or "",
+        ),
+    )
+
     logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
 
     added_users = await import_remnawave_users(session, users)
+    if added_users:
+        await session.flush()
 
     server_id = server.cluster_name or server.server_name
 
@@ -206,6 +220,12 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
             logger.warning(f"[SKIP] Пропущен клиент: tg_id={tg_id}, client_id={client_id}")
             continue
 
+        user_row = await session.execute(select(User.id).where(User.tg_id == tg_id))
+        user_id = user_row.scalar_one_or_none()
+        if user_id is None:
+            logger.warning(f"[SKIP] Пользователь не найден в БД: tg_id={tg_id}, client_id={client_id}")
+            continue
+
         existing = (await session.execute(select(Key).where(Key.client_id == client_id))).scalar_one_or_none()
 
         if existing is not None:
@@ -219,7 +239,12 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
             created_ts = int(parser.isoparse(created_at).timestamp() * 1000) if created_at else int(time.time() * 1000)
             expire_ts = int(parser.isoparse(expire_at).timestamp() * 1000) if expire_at else int(time.time() * 1000)
 
+            device_limit = user.get("hwidDeviceLimit")
+            traffic_bytes = user.get("trafficLimitBytes")
+            traffic_gb = int(traffic_bytes) // (1024**3) if isinstance(traffic_bytes, int | float) else None
+
             new_key = Key(
+                user_id=user_id,
                 tg_id=tg_id,
                 client_id=client_id,
                 email=email,
@@ -233,6 +258,8 @@ async def import_remnawave_keys(session: AsyncSession, users: list[dict], server
                 alias=None,
                 notified=False,
                 notified_24h=False,
+                current_device_limit=device_limit if isinstance(device_limit, int) else None,
+                current_traffic_limit=traffic_gb,
             )
             session.add(new_key)
             added += 1

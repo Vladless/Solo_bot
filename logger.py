@@ -153,8 +153,7 @@ def _throttle_allows(record):
 
 
 def _filter(record):
-    """Решение по записи принимается один раз: фильтр зовётся каждым приёмником,
-    и без общего вердикта второй считал бы запись повтором первого."""
+    """Пропускает запись, вердикт о подавлении повтора вычисляется один раз на запись."""
     if record.get("name") in _EXCLUDE or record.get("module") in _EXCLUDE:
         return False
     level_no = getattr(record.get("level"), "no", 20)

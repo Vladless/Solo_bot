@@ -7,8 +7,7 @@ _PENDING = "pending_cache_purge"
 
 
 def _pending_store(session) -> dict | None:
-    """Хранилище отложенных ключей. У отпущенной сессии его нет: прокси подменяет
-    любое обращение вызовом короткой сессии, откладывать там нечего."""
+    """Хранилище отложенных ключей или None, если сессия отпущена."""
     if session is None:
         return None
     try:
@@ -19,8 +18,7 @@ def _pending_store(session) -> dict | None:
 
 
 def defer_purge(session: AsyncSession | None, *keys: str) -> bool:
-    """Откладывает сброс ключей до коммита. Сброс до него бесполезен: читатель успеет
-    наполнить кеш ещё не закоммиченными данными, и они переживут коммит на весь TTL."""
+    """Откладывает сброс ключей кеша до коммита."""
     info = _pending_store(session)
     if info is None:
         return False

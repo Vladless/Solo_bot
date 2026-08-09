@@ -37,8 +37,7 @@ async def resolve_user_optional(session: AsyncSession, legacy_id: int) -> User |
 
 
 async def invalidate_uid_cache(*legacy_ids: int | None) -> None:
-    """Снимает маппинг legacy_ref → users.id. Обязателен при удалении и заведении клиента:
-    иначе после пересоздания ссылка ведёт на исчезнувшую строку и клиент выглядит новым."""
+    """Снимает кешированный маппинг legacy_ref → users.id."""
     from core.redis_cache import cache_delete, cache_key
 
     for ref in legacy_ids:
