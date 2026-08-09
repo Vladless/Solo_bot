@@ -4,6 +4,7 @@ from typing import Any
 
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_key_by_client_id, get_key_by_email, get_keys
@@ -46,7 +47,25 @@ async def resolve_key(session: AsyncSession, tg_id: int, key_ref: str | int | No
     if key_obj:
         return key_obj
 
-    return await get_key_by_client_id(session, key_ref_str, tg_id)
+    key_obj = await get_key_by_client_id(session, key_ref_str, tg_id)
+    if key_obj:
+        return key_obj
+
+    return await _resolve_key_from_db(session, tg_id, key_ref_str)
+
+
+async def _resolve_key_from_db(session: AsyncSession, tg_id: int, key_ref: str) -> Key | None:
+    """Ищет ключ по свежему списку из БД: кеш списка мог отстать от только что созданной подписки."""
+    from database.access.resolution import resolve_uid_cached
+
+    uid = await resolve_uid_cached(session, tg_id)
+    if uid is None:
+        return None
+    rows = (await session.execute(select(Key).where(Key.user_id == uid))).scalars().all()
+    for candidate in rows:
+        if build_key_ref(candidate.client_id, candidate.email) == key_ref:
+            return candidate
+    return None
 
 
 def _escape_html(value: str) -> str:
