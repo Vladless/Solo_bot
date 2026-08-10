@@ -189,17 +189,27 @@ _EMPTY_ANCHOR_RE = re.compile(r"<a\s+href=['\"]\s*['\"][^>]*>.*?</a>", re.S | re
 _DANGLING_SEPARATOR_RE = re.compile(r"(?m)^\s*[·|]\s*|\s*[·|]\s*$")
 
 
+def _markup_of(line: str) -> str:
+    """Оставляет от строки только теги: строка уходит, а открытые блоки не рвутся."""
+    return "".join(_TAG_RE.findall(line))
+
+
 def _drop_empty_links(text: str) -> str:
     """Убирает ссылки без адреса и строки-метки, у которых не осталось значения."""
     lines = []
     for line in _EMPTY_ANCHOR_RE.sub("", text).split("\n"):
         cleaned = _DANGLING_SEPARATOR_RE.sub("", line)
         bare = _TAG_RE.sub("", cleaned).strip()
+        drop = False
         if bare.endswith(":") and ": " in cleaned + " ":
             _label, sep, value = cleaned.rpartition(":")
-            if sep and not _TAG_RE.sub("", value).strip():
-                continue
-        if not bare and _TAG_RE.sub("", line).strip():
+            drop = bool(sep) and not _TAG_RE.sub("", value).strip()
+        if not drop and not bare and _TAG_RE.sub("", line).strip():
+            drop = True
+        if drop:
+            markup = _markup_of(cleaned)
+            if markup:
+                lines.append(markup)
             continue
         lines.append(cleaned)
     return "\n".join(lines)

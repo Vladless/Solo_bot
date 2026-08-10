@@ -69,6 +69,7 @@ modules/*
 storage/
 static/
 packs/
+reference/
 
 .license_state
 .license_lease
