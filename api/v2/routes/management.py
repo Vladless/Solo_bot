@@ -24,7 +24,7 @@ from api.v2.schemas.audit import (
 )
 from audit import drain_audit_redis_to_db, list_audit_events
 from core.bootstrap import MANAGEMENT_CONFIG
-from core.executor import run_io
+from core.executor import run_io, spawn
 from core.redis_cache import cache_incr
 from core.settings.management_config import update_management_config
 from core.settings.modes_config import resolve_protect_content
@@ -321,7 +321,7 @@ async def trigger_backup(identity=Depends(verify_identity_admin)):
         if exception:
             logger.error(f"[Management] Backup finished with error: {exception}")
 
-    asyncio.create_task(_run_backup())
+    spawn(_run_backup())
     return {"status": "backup_started"}
 
 

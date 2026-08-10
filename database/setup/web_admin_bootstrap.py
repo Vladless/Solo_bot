@@ -1,9 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.identities import hash_password
 from database.models import Identity
 from logger import logger
+from utils.cpu_tasks import hash_password
 
 
 async def ensure_web_admin(session: AsyncSession) -> None:

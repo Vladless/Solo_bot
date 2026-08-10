@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from logger import logger
+from core.executor import run_io
 
 
 WEB_UPLOAD_DIR = Path("static/web_uploads")
@@ -42,17 +43,16 @@ async def host_telegram_photo(bot, file_id: str | None) -> str | None:
             return None
 
         try:
-            from api.v2.routes.web import _optimize_image_bytes
             from core.executor import run_cpu
+            from utils.cpu_tasks import optimize_image_bytes
 
-            data = await run_cpu(_optimize_image_bytes, data, ext)
+            data = await run_cpu(optimize_image_bytes, data, ext)
         except Exception:
             pass
 
         WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         name = f"{uuid.uuid4().hex}{ext}"
-        with open(WEB_UPLOAD_DIR / name, "wb") as f:
-            f.write(data)
+        await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
         return f"/api/web/uploads/{name}"
     except Exception as e:
         logger.warning(f"[WebMedia] Не удалось разместить медиа рассылки на сайте: {e}")
@@ -76,8 +76,7 @@ async def host_telegram_document(bot, file_id: str | None, file_name: str | None
             return None
         WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         name = f"{uuid.uuid4().hex}{ext}"
-        with open(WEB_UPLOAD_DIR / name, "wb") as f:
-            f.write(data)
+        await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
         return f"/api/web/uploads/{name}"
     except Exception as e:
         logger.warning(f"[WebMedia] Не удалось разместить документ на сайте: {e}")

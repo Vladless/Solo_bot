@@ -16,6 +16,7 @@ from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
 from handlers.admin.sender.sender_utils import get_recipient_emails, is_telegram_chat_id, parse_channels
 from logger import logger
+from core.executor import spawn
 
 
 DEFAULT_MESSAGES_PER_SECOND = 25
@@ -218,7 +219,7 @@ class BroadcastService:
                 elif result == "retry":
                     if msg.attempts < self.max_attempts:
                         try:
-                            asyncio.create_task(self._schedule_retry(msg))
+                            spawn(self._schedule_retry(msg))
                             self.pending_retries += 1
                         except Exception as e:
                             logger.error(f"❌ Не удалось запланировать повтор для {msg.tg_id}: {e}")

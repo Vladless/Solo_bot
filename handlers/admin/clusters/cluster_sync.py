@@ -154,6 +154,7 @@ async def handle_cluster_availability(
     callback_data: AdminClusterCallback,
     session: Any,
 ):
+    from panels.remnawave_runtime import remnawave_api
     cluster_name = callback_data.data
     servers = await get_servers(session)
     cluster_servers = servers.get(cluster_name, [])
@@ -208,44 +209,44 @@ async def handle_cluster_availability(
                 if not server_inbound_id:
                     raise Exception("Не указан inbound_id сервера")
 
-                remna = RemnawaveAPI(server["api_url"])
-                nodes_data = await remna.get_all_nodes_with_online(
-                    username=REMNAWAVE_LOGIN,
-                    password=REMNAWAVE_PASSWORD,
-                    inbound_id=server_inbound_id,
-                )
-
-                if nodes_data.get("error"):
-                    raise Exception(nodes_data["error"])
-
-                online_remna_users = nodes_data["total_online"]
-                total_online_users += online_remna_users
-
-                nodes_info = nodes_data["nodes"]
-                lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_remna_users} онлайн")
-                seen = set()
-                unique_nodes = []
-                for node_info in nodes_info:
-                    node_name = node_info.get("name", "Unknown")
-                    if node_name in seen:
-                        continue
-                    seen.add(node_name)
-                    unique_nodes.append(node_info)
-
-                unique_nodes.sort(key=lambda n: n.get("online_users", 0), reverse=True)
-
-                for node_info in unique_nodes:
-                    node_name = node_info.get("name", "Unknown")
-                    country_code = node_info.get("country_code", "Unknown")
-                    online_users = node_info.get("online_users", 0)
-
-                    flag = (
-                        "".join(chr(ord(c) + 127397) for c in country_code.upper())
-                        if country_code != "Unknown" and len(country_code) == 2
-                        else country_code
+                async with remnawave_api(server["api_url"]) as remna:
+                    nodes_data = await remna.get_all_nodes_with_online(
+                        username=REMNAWAVE_LOGIN,
+                        password=REMNAWAVE_PASSWORD,
+                        inbound_id=server_inbound_id,
                     )
-                    status = "🔴 " if not node_info.get("is_online", True) else ""
-                    lines.append(f"  ↳ {status}{flag} ({node_name}): {online_users} онлайн")
+
+                    if nodes_data.get("error"):
+                        raise Exception(nodes_data["error"])
+
+                    online_remna_users = nodes_data["total_online"]
+                    total_online_users += online_remna_users
+
+                    nodes_info = nodes_data["nodes"]
+                    lines.append(f"🌍 <b>{prefix} {server_name}</b> — {online_remna_users} онлайн")
+                    seen = set()
+                    unique_nodes = []
+                    for node_info in nodes_info:
+                        node_name = node_info.get("name", "Unknown")
+                        if node_name in seen:
+                            continue
+                        seen.add(node_name)
+                        unique_nodes.append(node_info)
+
+                    unique_nodes.sort(key=lambda n: n.get("online_users", 0), reverse=True)
+
+                    for node_info in unique_nodes:
+                        node_name = node_info.get("name", "Unknown")
+                        country_code = node_info.get("country_code", "Unknown")
+                        online_users = node_info.get("online_users", 0)
+
+                        flag = (
+                            "".join(chr(ord(c) + 127397) for c in country_code.upper())
+                            if country_code != "Unknown" and len(country_code) == 2
+                            else country_code
+                        )
+                        status = "🔴 " if not node_info.get("is_online", True) else ""
+                        lines.append(f"  ↳ {status}{flag} ({node_name}): {online_users} онлайн")
 
         except Exception as e:
             error_text = str(e) or "Сервер недоступен"
@@ -325,6 +326,7 @@ async def handle_sync_server(
     callback_data: AdminClusterCallback,
     session: AsyncSession,
 ):
+    from panels.remnawave_runtime import remnawave_api
     server_name = callback_data.data
 
     try:
@@ -453,99 +455,99 @@ async def handle_sync_server(
                         datetime.utcfromtimestamp(key["expiry_time"] / 1000).replace(tzinfo=timezone.utc).isoformat()
                     )
 
-                    remna = RemnawaveAPI(key["api_url"])
-                    if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-                        logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
-                        continue
+                    async with remnawave_api(key["api_url"]) as remna:
+                        if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                            logger.error(f"Не удалось авторизоваться в Remnawave для сервера {server_name}")
+                            continue
 
-                    traffic_limit_bytes = 0
-                    hwid_limit = 0
+                        traffic_limit_bytes = 0
+                        hwid_limit = 0
 
-                    current_device_limit_from_key = key.get("current_device_limit")
-                    current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
-                    selected_device_limit_from_key = key.get("selected_device_limit")
-                    selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
+                        current_device_limit_from_key = key.get("current_device_limit")
+                        current_traffic_limit_gb_from_key = key.get("current_traffic_limit")
+                        selected_device_limit_from_key = key.get("selected_device_limit")
+                        selected_traffic_limit_gb_from_key = key.get("selected_traffic_limit")
 
-                    if tariff:
-                        if current_traffic_limit_gb_from_key is not None:
-                            traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
-                        elif selected_traffic_limit_gb_from_key is not None:
-                            traffic_limit_bytes = int(selected_traffic_limit_gb_from_key * 1024**3)
-                        elif tariff.get("traffic_limit") is not None:
-                            traffic_limit_bytes = int(tariff.get("traffic_limit") * 1024**3)
+                        if tariff:
+                            if current_traffic_limit_gb_from_key is not None:
+                                traffic_limit_bytes = int(current_traffic_limit_gb_from_key * 1024**3)
+                            elif selected_traffic_limit_gb_from_key is not None:
+                                traffic_limit_bytes = int(selected_traffic_limit_gb_from_key * 1024**3)
+                            elif tariff.get("traffic_limit") is not None:
+                                traffic_limit_bytes = int(tariff.get("traffic_limit") * 1024**3)
 
-                        if current_device_limit_from_key is not None:
-                            hwid_limit = int(current_device_limit_from_key)
-                        elif selected_device_limit_from_key is not None:
-                            hwid_limit = int(selected_device_limit_from_key)
-                        else:
-                            hwid_limit = tariff.get("device_limit")
+                            if current_device_limit_from_key is not None:
+                                hwid_limit = int(current_device_limit_from_key)
+                            elif selected_device_limit_from_key is not None:
+                                hwid_limit = int(selected_device_limit_from_key)
+                            else:
+                                hwid_limit = tariff.get("device_limit")
 
-                    from database.access.resolution import panel_identity_fields
+                        from database.access.resolution import panel_identity_fields
 
-                    _ptg, _pemail = await panel_identity_fields(
-                        session, int(key.get("owner_tg_id") or 0) or key["user_id"]
-                    )
-                    success = await remna.update_user(
-                        uuid=key["client_id"],
-                        lookup_username=key.get("email"),
-                        expire_at=expire_iso,
-                        telegram_id=_ptg,
-                        email=_pemail or None,
-                        active_user_inbounds=[key["inbound_id"]],
-                        traffic_limit_bytes=traffic_limit_bytes,
-                        hwid_device_limit=hwid_limit,
-                    )
-
-                    if success:
-                        try:
-                            sub = await remna.get_subscription_by_username(key["email"])
-                            if sub:
-                                new_remnawave_link = sub.get("subscriptionUrl")
-
-                                if new_remnawave_link:
-                                    key_value = await make_aggregated_link(
-                                        session=session,
-                                        cluster_all=cluster_servers,
-                                        cluster_id=cluster_name,
-                                        email=key["email"],
-                                        client_id=key["client_id"],
-                                        tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
-                                        remna_link_override=None,
-                                        plan=tariff,
-                                    )
-
-                                    await session.execute(
-                                        update(Key)
-                                        .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
-                                        .values(remnawave_link=new_remnawave_link, key=key_value)
-                                    )
-                                    logger.info(f"[Sync] Обновлена ссылка для {key['email']}: {new_remnawave_link}")
-                        except Exception as e:
-                            logger.warning(f"[Sync] Не удалось получить ссылку для {key['email']}: {e}")
-
-                    if not success:
-                        logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
-
-                        await delete_key_from_cluster(server_name, key["email"], key["client_id"], session)
-
-                        await create_key_on_cluster(
-                            cluster_id=server_name,
-                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
-                            client_id=key["client_id"],
-                            email=key["email"],
-                            expiry_timestamp=key["expiry_time"],
-                            plan=key["tariff_id"],
-                            session=session,
-                            remnawave_link=key["remnawave_link"],
-                            hwid_limit=hwid_limit,
-                            traffic_limit_bytes=traffic_limit_bytes,
-                            selected_device_limit=key.get("selected_device_limit"),
-                            selected_traffic_limit_gb=key.get("selected_traffic_limit"),
-                            current_device_limit=key.get("current_device_limit"),
-                            current_traffic_limit_gb=key.get("current_traffic_limit"),
-                            selected_price_rub=key.get("selected_price_rub"),
+                        _ptg, _pemail = await panel_identity_fields(
+                            session, int(key.get("owner_tg_id") or 0) or key["user_id"]
                         )
+                        success = await remna.update_user(
+                            uuid=key["client_id"],
+                            lookup_username=key.get("email"),
+                            expire_at=expire_iso,
+                            telegram_id=_ptg,
+                            email=_pemail or None,
+                            active_user_inbounds=[key["inbound_id"]],
+                            traffic_limit_bytes=traffic_limit_bytes,
+                            hwid_device_limit=hwid_limit,
+                        )
+
+                        if success:
+                            try:
+                                sub = await remna.get_subscription_by_username(key["email"])
+                                if sub:
+                                    new_remnawave_link = sub.get("subscriptionUrl")
+
+                                    if new_remnawave_link:
+                                        key_value = await make_aggregated_link(
+                                            session=session,
+                                            cluster_all=cluster_servers,
+                                            cluster_id=cluster_name,
+                                            email=key["email"],
+                                            client_id=key["client_id"],
+                                            tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                                            remna_link_override=None,
+                                            plan=tariff,
+                                        )
+
+                                        await session.execute(
+                                            update(Key)
+                                            .where(Key.user_id == key["user_id"], Key.client_id == key["client_id"])
+                                            .values(remnawave_link=new_remnawave_link, key=key_value)
+                                        )
+                                        logger.info(f"[Sync] Обновлена ссылка для {key['email']}: {new_remnawave_link}")
+                            except Exception as e:
+                                logger.warning(f"[Sync] Не удалось получить ссылку для {key['email']}: {e}")
+
+                        if not success:
+                            logger.warning("[Sync] ошибка обновления, пробуем пересоздать")
+
+                            await delete_key_from_cluster(server_name, key["email"], key["client_id"], session)
+
+                            await create_key_on_cluster(
+                                cluster_id=server_name,
+                                tg_id=int(key.get("owner_tg_id") or 0) or key["user_id"],
+                                client_id=key["client_id"],
+                                email=key["email"],
+                                expiry_timestamp=key["expiry_time"],
+                                plan=key["tariff_id"],
+                                session=session,
+                                remnawave_link=key["remnawave_link"],
+                                hwid_limit=hwid_limit,
+                                traffic_limit_bytes=traffic_limit_bytes,
+                                selected_device_limit=key.get("selected_device_limit"),
+                                selected_traffic_limit_gb=key.get("selected_traffic_limit"),
+                                current_device_limit=key.get("current_device_limit"),
+                                current_traffic_limit_gb=key.get("current_traffic_limit"),
+                                selected_price_rub=key.get("selected_price_rub"),
+                            )
                 else:
                     await create_client_on_server(
                         {

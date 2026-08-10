@@ -23,6 +23,7 @@ from database.models import (
     WebNotification,
     WebPushSubscription,
 )
+from core.executor import spawn
 from logger import logger
 from settings.cache_config import (
     BALANCE_CACHE_TTL_SEC,
@@ -36,8 +37,8 @@ def invalidate_user_snapshot(tg_id: int) -> None:
     import asyncio
 
     try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(cache_delete(cache_key("user_snapshot", tg_id)))
+        asyncio.get_running_loop()
+        spawn(cache_delete(cache_key("user_snapshot", tg_id)))
     except RuntimeError:
         return
 

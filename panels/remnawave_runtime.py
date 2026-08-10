@@ -1,6 +1,8 @@
 import asyncio
 import time
 
+from contextlib import asynccontextmanager
+
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -302,6 +304,19 @@ async def fetch_all_remnawave_traffic(
 
     logger.info(f"[Bulk Traffic] Получено {len(result)} профилей трафика из {len(all_users)} юзеров Remnawave")
     return result
+
+
+@asynccontextmanager
+async def remnawave_api(api_url: str):
+    """Отдаёт клиент панели и закрывает его на выходе."""
+    api = RemnawaveAPI(api_url)
+    try:
+        yield api
+    finally:
+        try:
+            await api.aclose()
+        except Exception as error:
+            logger.debug(f"[Remnawave] Клиент не закрылся: {error}")
 
 
 async def with_remnawave_api(

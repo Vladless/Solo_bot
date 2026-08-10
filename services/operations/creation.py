@@ -36,7 +36,8 @@ async def create_key_on_cluster(
     selected_price_rub: int = None,
 ):
     from panels._3xui import ClientConfig, add_client, get_xui_instance
-    from panels.remnawave import RemnawaveAPI, get_vless_link_for_remnawave_by_username
+    from panels.remnawave import get_vless_link_for_remnawave_by_username
+    from panels.remnawave_runtime import remnawave_api
     from services.clusters import ALLOWED_GROUP_CODES, check_server_key_limit
 
     try:
@@ -153,78 +154,78 @@ async def create_key_on_cluster(
         remnawave_link_value = None
 
         if remnawave_servers:
-            remna = RemnawaveAPI(remnawave_servers[0]["api_url"])
-            logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-            if not logged_in:
-                logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
-            else:
-                expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
-                inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
-                if inbound_ids:
-                    short_uuid = None
-                    if remnawave_link and "/" in remnawave_link:
-                        short_uuid = remnawave_link.rstrip("/").split("/")[-1]
-
-                    user_data = {
-                        "username": email,
-                        "trafficLimitStrategy": "NO_RESET",
-                        "expireAt": expire_at,
-                        "activeInternalSquads": inbound_ids,
-                        "uuid": client_id,
-                    }
-
-                    if session is not None:
-                        try:
-                            from database.access.resolution import panel_identity_fields
-
-                            panel_tg, panel_email = await panel_identity_fields(session, tg_id)
-                            if panel_tg is not None:
-                                user_data["telegramId"] = panel_tg
-                            if panel_email:
-                                user_data["email"] = panel_email
-                        except Exception as e:
-                            logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
-
-                    if traffic_limit_bytes_value and traffic_limit_bytes_value > 0:
-                        user_data["trafficLimitBytes"] = traffic_limit_bytes_value
-
-                    if short_uuid:
-                        user_data["shortUuid"] = short_uuid
-
-                    user_data["hwidDeviceLimit"] = device_limit_value
-
-                    if external_squad_uuid:
-                        user_data["externalSquadUuid"] = external_squad_uuid
-
-                    logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
-                    result = await remna.create_user(user_data)
-                    if result:
-                        remnawave_created = True
-                        remnawave_client_id = result.get("vlessUuid") or result.get("uuid")
-                        remnawave_link_value = result.get("subscriptionUrl")
-
-                        remnawave_key = None
-                        if need_vless_key:
-                            try:
-                                remnawave_key = await get_vless_link_for_remnawave_by_username(remna, email, email)
-                            except Exception as e:
-                                logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
-                        else:
-                            crypto_link = await process_extract_cryptolink_from_result(
-                                result=result,
-                                cluster_id=server_id_to_store,
-                                plan=plan,
-                                session=session,
-                                email=email,
-                                tg_id=tg_id,
-                                need_vless_key=need_vless_key,
-                            )
-                            if crypto_link:
-                                remnawave_key = crypto_link
-
-                        logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
+            async with remnawave_api(remnawave_servers[0]["api_url"]) as remna:
+                logged_in = await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+                if not logged_in:
+                    logger.error(f"{PANEL_REMNA} Не удалось войти в Remnawave API")
                 else:
-                    logger.warning(f"{PANEL_REMNA} Нет inbound_id у серверов")
+                    expire_at = datetime.utcfromtimestamp(expiry_timestamp / 1000).isoformat() + "Z"
+                    inbound_ids = [s.get("inbound_id") for s in remnawave_servers if s.get("inbound_id")]
+                    if inbound_ids:
+                        short_uuid = None
+                        if remnawave_link and "/" in remnawave_link:
+                            short_uuid = remnawave_link.rstrip("/").split("/")[-1]
+
+                        user_data = {
+                            "username": email,
+                            "trafficLimitStrategy": "NO_RESET",
+                            "expireAt": expire_at,
+                            "activeInternalSquads": inbound_ids,
+                            "uuid": client_id,
+                        }
+
+                        if session is not None:
+                            try:
+                                from database.access.resolution import panel_identity_fields
+
+                                panel_tg, panel_email = await panel_identity_fields(session, tg_id)
+                                if panel_tg is not None:
+                                    user_data["telegramId"] = panel_tg
+                                if panel_email:
+                                    user_data["email"] = panel_email
+                            except Exception as e:
+                                logger.debug(f"{PANEL_REMNA} поля владельца не резолвлены: {e}")
+
+                        if traffic_limit_bytes_value and traffic_limit_bytes_value > 0:
+                            user_data["trafficLimitBytes"] = traffic_limit_bytes_value
+
+                        if short_uuid:
+                            user_data["shortUuid"] = short_uuid
+
+                        user_data["hwidDeviceLimit"] = device_limit_value
+
+                        if external_squad_uuid:
+                            user_data["externalSquadUuid"] = external_squad_uuid
+
+                        logger.debug(f"{PANEL_REMNA} Данные для создания клиента: {user_data}")
+                        result = await remna.create_user(user_data)
+                        if result:
+                            remnawave_created = True
+                            remnawave_client_id = result.get("vlessUuid") or result.get("uuid")
+                            remnawave_link_value = result.get("subscriptionUrl")
+
+                            remnawave_key = None
+                            if need_vless_key:
+                                try:
+                                    remnawave_key = await get_vless_link_for_remnawave_by_username(remna, email, email)
+                                except Exception as e:
+                                    logger.error(f"{PANEL_REMNA} Ошибка сборки VLESS: {e}")
+                            else:
+                                crypto_link = await process_extract_cryptolink_from_result(
+                                    result=result,
+                                    cluster_id=server_id_to_store,
+                                    plan=plan,
+                                    session=session,
+                                    email=email,
+                                    tg_id=tg_id,
+                                    need_vless_key=need_vless_key,
+                                )
+                                if crypto_link:
+                                    remnawave_key = crypto_link
+
+                            logger.info(f"{PANEL_REMNA} Пользователь создан: {result}")
+                    else:
+                        logger.warning(f"{PANEL_REMNA} Нет inbound_id у серверов")
 
         final_client_id = remnawave_client_id or client_id
 

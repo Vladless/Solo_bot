@@ -56,7 +56,7 @@ _shutting_down = False
 
 
 class QuietShutdownMiddleware:
-    """Гасит отмену запроса после сигнала остановки."""
+    """Гасит отмену запроса, если клиент уже отключился или идёт остановка."""
 
     def __init__(self, app) -> None:
         self.app = app
@@ -65,10 +65,20 @@ class QuietShutdownMiddleware:
         if scope["type"] == "lifespan":
             await self.app(scope, receive, send)
             return
+
+        disconnected = False
+
+        async def watch(*args, **kwargs):
+            nonlocal disconnected
+            message = await receive(*args, **kwargs)
+            if message.get("type") == "http.disconnect":
+                disconnected = True
+            return message
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, watch, send)
         except asyncio.CancelledError:
-            if _shutting_down:
+            if _shutting_down or disconnected:
                 return
             raise
 

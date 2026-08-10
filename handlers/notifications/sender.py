@@ -14,9 +14,11 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup
 
+from core.executor import spawn
 from database import async_session_maker
 from database.bans import save_blocked_user_ids
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
+from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.utils import format_hours, format_minutes
 from logger import logger
 from services.tariffs.tariff_display import get_key_tariff_display
@@ -107,6 +109,7 @@ async def send_notification(
     caption: str,
     keyboard: InlineKeyboardMarkup | None = None,
 ) -> bool:
+    keyboard = webapp_only_markup() or keyboard
     if image_filename is None:
         return await _send_text(bot, tg_id, caption, keyboard)
 
@@ -193,6 +196,9 @@ class FastNotificationSender:
         tg_id = msg["tg_id"]
         if not is_telegram_chat_id(tg_id):
             return "fail"
+        webapp_markup = webapp_only_markup()
+        if webapp_markup is not None:
+            msg = {**msg, "keyboard": webapp_markup}
         try:
             await self.rate_limiter.acquire()
 
@@ -299,7 +305,7 @@ class FastNotificationSender:
                 elif result == "retry":
                     if msg.get("_attempts", 0) < self.max_attempts:
                         try:
-                            asyncio.create_task(self._schedule_retry(msg))
+                            spawn(self._schedule_retry(msg))
                             self.pending_retries += 1
                         except Exception as e:
                             logger.error(f"Не удалось запланировать повтор для {msg.get('tg_id')}: {e}")

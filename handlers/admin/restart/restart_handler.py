@@ -8,7 +8,7 @@ import psutil
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from core.executor import run_io
+from core.executor import run_io, spawn
 from filters.admin import HasPermission, IsAdminFilter
 from filters.permissions import PERM_MANAGEMENT
 
@@ -28,7 +28,7 @@ async def handle_restart_confirm(callback_query: CallbackQuery, callback_data: A
         menu_text("Перезапуск", "🔄 Перезапускаем бота...", markup=kb), reply_markup=kb
     )
 
-    asyncio.create_task(restart_bot())
+    spawn(restart_bot())
 
 
 async def restart_bot():

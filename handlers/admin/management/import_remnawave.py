@@ -15,7 +15,6 @@ from database.models import Key, Server, User
 from filters.admin import HasPermission
 from filters.permissions import PERM_MANAGEMENT
 from logger import logger
-from panels.remnawave import RemnawaveAPI
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
 from ..panel.headers import card, menu_text, quote, section
@@ -64,6 +63,7 @@ def extract_tg_id_from_user_payload(user: dict) -> int | None:
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "export_remnawave"), HasPermission(PERM_MANAGEMENT))
 async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession):
+    from panels.remnawave_runtime import remnawave_api
     result = await session.execute(select(Server).where(Server.panel_type == "remnawave", Server.enabled.is_(True)))
     servers = result.scalars().all()
 
@@ -76,62 +76,62 @@ async def show_remnawave_clients(callback: CallbackQuery, session: AsyncSession)
 
     server = servers[0]
 
-    api = RemnawaveAPI(base_url=server.api_url)
+    async with remnawave_api(server.api_url) as api:
 
-    users = await api.get_all_users_time(
-        username=REMNAWAVE_LOGIN,
-        password=REMNAWAVE_PASSWORD,
-    )
+        users = await api.get_all_users_time(
+            username=REMNAWAVE_LOGIN,
+            password=REMNAWAVE_PASSWORD,
+        )
 
-    if not users:
+        if not users:
+            await callback.message.edit_text(
+                menu_text("Импорт с панели", "📭 На панели нет клиентов.", markup=build_back_to_db_menu()),
+                reply_markup=build_back_to_db_menu(),
+            )
+            return
+
+        users = sorted(
+            users,
+            key=lambda u: (
+                u.get("id") if isinstance(u.get("id"), int) else float("inf"),
+                u.get("createdAt") or "",
+            ),
+        )
+
+        logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
+
+        added_users = await import_remnawave_users(session, users)
+        if added_users:
+            await session.flush()
+
+        server_id = server.cluster_name or server.server_name
+
+        added_keys, updated_keys = await import_remnawave_keys(session, users, server_id=server_id)
+
+        preview: list[str] = []
+        for i, user in enumerate(users[:3], 1):
+            email = user.get("email") or user.get("username") or "-"
+            expire = (user.get("expireAt") or "")[:10]
+            preview.append(f"{i}. {email}: до {expire}")
+
         await callback.message.edit_text(
-            menu_text("Импорт с панели", "📭 На панели нет клиентов.", markup=build_back_to_db_menu()),
+            menu_text(
+                "Импорт с панели",
+                "✅ Импорт завершён.",
+                card(
+                    section(
+                        "📊 Итог",
+                        f"Найдено: {len(users)}",
+                        f"Клиентов: {added_users}",
+                        f"Подписок: {added_keys}",
+                        f"Обновлено: {updated_keys}",
+                    ),
+                    section("👥 Первые три", *preview),
+                ),
+                markup=build_back_to_db_menu(),
+            ),
             reply_markup=build_back_to_db_menu(),
         )
-        return
-
-    users = sorted(
-        users,
-        key=lambda u: (
-            u.get("id") if isinstance(u.get("id"), int) else float("inf"),
-            u.get("createdAt") or "",
-        ),
-    )
-
-    logger.warning(f"[Remnawave Export] Пример ответа:\n{json.dumps(users[:3], indent=2, ensure_ascii=False)}")
-
-    added_users = await import_remnawave_users(session, users)
-    if added_users:
-        await session.flush()
-
-    server_id = server.cluster_name or server.server_name
-
-    added_keys, updated_keys = await import_remnawave_keys(session, users, server_id=server_id)
-
-    preview: list[str] = []
-    for i, user in enumerate(users[:3], 1):
-        email = user.get("email") or user.get("username") or "-"
-        expire = (user.get("expireAt") or "")[:10]
-        preview.append(f"{i}. {email}: до {expire}")
-
-    await callback.message.edit_text(
-        menu_text(
-            "Импорт с панели",
-            "✅ Импорт завершён.",
-            card(
-                section(
-                    "📊 Итог",
-                    f"Найдено: {len(users)}",
-                    f"Клиентов: {added_users}",
-                    f"Подписок: {added_keys}",
-                    f"Обновлено: {updated_keys}",
-                ),
-                section("👥 Первые три", *preview),
-            ),
-            markup=build_back_to_db_menu(),
-        ),
-        reply_markup=build_back_to_db_menu(),
-    )
 
 
 async def import_remnawave_users(session: AsyncSession, users: list[dict]) -> int:

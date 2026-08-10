@@ -56,12 +56,12 @@ from settings.config import (
     TRIAL_TIME_DISABLE,
 )
 from settings.texts import (
+    ABOUT_VPN_TEXT,
     NOT_SUBSCRIBED_YET_MSG,
     SUBSCRIPTION_CHECK_ERROR_MSG,
     SUBSCRIPTION_CONFIRMED_MSG,
     SUBSCRIPTION_REQUIRED_MSG,
     WELCOME_TEXT,
-    ABOUT_VPN_TEXT,
 )
 
 from .admin.panel.keyboard import AdminPanelCallback
@@ -346,6 +346,17 @@ async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, se
     await upsert_source_if_empty(session, user_data["tg_id"], utm_code)
 
 
+async def show_webapp_only_start(message: Message, image_path: str) -> bool:
+    """Стартовый экран веб-режима: медиа и одна кнопка открытия приложения."""
+    from handlers.notifications.webapp_only import webapp_only_markup
+
+    markup = webapp_only_markup()
+    if markup is None:
+        return False
+    await edit_or_send_message(message, WELCOME_TEXT, reply_markup=markup, media_path=image_path)
+    return True
+
+
 async def show_start_menu(
     message: Message,
     admin: bool,
@@ -355,6 +366,11 @@ async def show_start_menu(
 ):
     image_path = os.path.join("img", "pic.jpg")
     kb = InlineKeyboardBuilder()
+
+    if MODES_CONFIG.get("WEBAPP_ONLY_MODE", False):
+        if await show_webapp_only_start(message, image_path):
+            await release_session_early(session)
+            return
 
     if trial is None or key_count is None:
         snap = await get_user_snapshot(session, message.chat.id)

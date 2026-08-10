@@ -16,6 +16,7 @@ from database.models import Admin, Identity, Ticket, TicketMessage, User
 from services import tickets as svc
 from services.tickets.events import TICKETS_EVENTS_CHANNEL, tickets_client_channel
 from settings.config import REDIS_URL
+from core.executor import run_io
 
 
 async def require_tickets_enabled() -> None:
@@ -148,16 +149,15 @@ async def upload_ticket_attachment(
         raise HTTPException(status_code=400, detail=f"Размер не более {MAX_UPLOAD_BYTES // (1024 * 1024)} МБ")
     if ext != ".gif":
         try:
-            from api.v2.routes.web import _optimize_image_bytes
             from core.executor import run_cpu
+            from utils.cpu_tasks import optimize_image_bytes
 
-            data = await run_cpu(_optimize_image_bytes, data, ext)
+            data = await run_cpu(optimize_image_bytes, data, ext)
         except Exception:
             pass
     WEB_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{uuid_mod.uuid4().hex}{ext}"
-    with open(WEB_UPLOAD_DIR / name, "wb") as f:
-        f.write(data)
+    await run_io((WEB_UPLOAD_DIR / name).write_bytes, data)
     return {"url": f"{_ATTACHMENT_URL_PREFIX}{name}"}
 
 

@@ -3,8 +3,8 @@ import atexit
 import multiprocessing
 import signal
 
-from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from collections.abc import Callable, Coroutine
+from concurrent.futures import BrokenExecutor, ProcessPoolExecutor, ThreadPoolExecutor
 from typing import TypeVar
 
 from logger import logger
@@ -14,6 +14,17 @@ T = TypeVar("T")
 
 _thread_pool: ThreadPoolExecutor | None = None
 _process_pool: ProcessPoolExecutor | None = None
+_background_tasks: set[asyncio.Task] = set()
+
+
+def spawn(coro: Coroutine[object, object, object], *, name: str | None = None) -> asyncio.Task:
+    """Запускает фоновую задачу и держит на неё ссылку до завершения."""
+    task = asyncio.ensure_future(coro)
+    if name:
+        task.set_name(name)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
 
 
 def _atexit_shutdown_pools() -> None:
@@ -103,7 +114,28 @@ async def run_io[T](fn: Callable[..., T], *args: object) -> T:
     return await loop.run_in_executor(get_thread_pool(), lambda: fn(*args))
 
 
+def _drop_process_pool() -> None:
+    """Сбрасывает пул процессов, не дожидаясь остановки воркеров."""
+    global _process_pool
+    if _process_pool is None:
+        return
+    try:
+        atexit.unregister(_atexit_shutdown_pools)
+    except Exception:
+        pass
+    try:
+        _process_pool.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+    _process_pool = None
+
+
 async def run_cpu[T](fn: Callable[..., T], *args: object) -> T:
-    """Выполняет fn(*args) в пуле процессов (CPU). fn — функция уровня модуля (для pickle)."""
+    """Выполняет fn(*args) в пуле процессов; на сломанном пуле повторяет на новом."""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(get_process_pool(), fn, *args)
+    try:
+        return await loop.run_in_executor(get_process_pool(), fn, *args)
+    except BrokenExecutor:
+        logger.warning("[Executor] Пул процессов сломан, поднимаю новый: {}", getattr(fn, "__name__", fn))
+        _drop_process_pool()
+        return await loop.run_in_executor(get_process_pool(), fn, *args)

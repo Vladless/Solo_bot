@@ -1,10 +1,6 @@
 import os
 import urllib.parse
 
-from io import BytesIO
-
-import qrcode
-
 from aiogram import F, Router, types
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -47,21 +43,6 @@ from settings.texts import (
 
 
 router = Router()
-
-
-def generate_key_qr_file(qr_data: str, email: str) -> str:
-    """Генерация QR в файл. Вызывать через run_cpu(). Возвращает путь к файлу."""
-    qr = qrcode.QRCode(version=1, box_size=10, border=4)
-    qr.add_data(qr_data)
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    qr_path = f"/tmp/qrcode_{email}.png"
-    with open(qr_path, "wb") as f:
-        f.write(buffer.read())
-    return qr_path
 
 
 @router.callback_query(F.data.startswith("connect_device|"), flags={"popup": True})
@@ -282,8 +263,9 @@ async def show_qr_code(callback_query: types.CallbackQuery, session: AsyncSessio
             return
 
         from core.executor import run_cpu
+        from utils.cpu_tasks import generate_qr_file
 
-        qr_path = await run_cpu(generate_key_qr_file, qr_data, record.email)
+        qr_path = await run_cpu(generate_qr_file, qr_data, f"/tmp/qrcode_{record.email}.png")
 
         builder = InlineKeyboardBuilder()
         builder.row(

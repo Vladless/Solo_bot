@@ -81,6 +81,7 @@ async def check_server_key_limit(
 
 async def check_server_availability(server_info: dict[str, Any], session: AsyncSession) -> ServerAvailability:
     """Проверяет доступность сервера (enabled + лимит + API ping)."""
+    from panels.remnawave_runtime import remnawave_api
     server_name = server_info.get("server_name", "unknown")
     panel_type = (server_info.get("panel_type") or "3x-ui").lower()
     enabled = server_info.get("enabled", True)
@@ -101,8 +102,8 @@ async def check_server_availability(server_info: dict[str, Any], session: AsyncS
         if panel_type == "remnawave":
             from panels.remnawave import RemnawaveAPI
 
-            remna = RemnawaveAPI(server_info["api_url"])
-            await asyncio.wait_for(remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0)
+            async with remnawave_api(server_info["api_url"]) as remna:
+                await asyncio.wait_for(remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD), timeout=5.0)
         else:
             from panels._3xui import AsyncApi
 

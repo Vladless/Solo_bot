@@ -1,9 +1,5 @@
 import os
 
-from io import BytesIO
-
-import qrcode
-
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -57,21 +53,6 @@ from .utils import edit_or_send_message, format_days, render_text, safe_answer_i
 
 
 router = Router()
-
-
-def generate_referral_qr_file(referral_link: str, chat_id: str) -> str:
-    """Генерация QR в файл. Вызывать через run_cpu(). Возвращает путь к файлу."""
-    qr = qrcode.QRCode(version=1, box_size=10, border=4)
-    qr.add_data(referral_link)
-    qr.make(fit=True)
-    image = qr.make_image(fill_color="black", back_color="white")
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    buffer.seek(0)
-    qr_path = f"/tmp/qrcode_referral_{chat_id}.png"
-    with open(qr_path, "wb") as file:
-        file.write(buffer.read())
-    return qr_path
 
 
 @router.callback_query(F.data == "invite")
@@ -179,10 +160,11 @@ async def inline_referral_handler(inline_query: InlineQuery, session: AsyncSessi
 async def show_referral_qr(callback_query: CallbackQuery):
     try:
         from core.executor import run_cpu
+        from utils.cpu_tasks import generate_qr_file
 
         chat_id = callback_query.data.split("|")[1]
         referral_link = get_referral_link(chat_id)
-        qr_path = await run_cpu(generate_referral_qr_file, referral_link, chat_id)
+        qr_path = await run_cpu(generate_qr_file, referral_link, f"/tmp/qrcode_referral_{chat_id}.png")
 
         builder = InlineKeyboardBuilder()
         builder.row(InlineKeyboardButton(text=BACK, callback_data="invite"))

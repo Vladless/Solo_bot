@@ -301,13 +301,14 @@ async def log_db_pool_status() -> None:
         size = pool.size()
         checked_out = pool.checkedout()
         checked_in = getattr(pool, "checkedin", lambda: size - checked_out)()
-        overflow = getattr(pool, "overflow", lambda: -1)()
+        raw_overflow = getattr(pool, "overflow", lambda: 0)()
+        overflow_in_use = max(0, raw_overflow)
         logger.info(
-            "[DBPool] size={} in_use={} idle={} overflow={}",
+            "[DBPool] пул={} занято={} свободно={} сверх лимита={}",
             size,
             checked_out,
             checked_in,
-            overflow,
+            overflow_in_use,
         )
     except Exception as error:
         logger.debug("[DBPool] не удалось получить статус пула: {}", error)

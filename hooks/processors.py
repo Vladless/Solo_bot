@@ -156,39 +156,39 @@ async def process_get_cryptolink_after_renewal(
     **kwargs,
 ) -> str | None:
     """Получает криптоссылку из Remnawave после продления подписки."""
+    from panels.remnawave_runtime import remnawave_api
     if not remnawave_nodes:
         return None
 
     try:
         from database import get_tariff_by_id
-        from panels.remnawave import RemnawaveAPI
         from services.operations.utils import is_plan_vless
         from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD
 
-        remna = RemnawaveAPI(remnawave_nodes[0]["api_url"])
-        if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
-            return None
+        async with remnawave_api(remnawave_nodes[0]["api_url"]) as remna:
+            if not await remna.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD):
+                return None
 
-        subscription_data = await remna.get_subscription_by_username(email)
-        if not subscription_data:
-            return None
+            subscription_data = await remna.get_subscription_by_username(email)
+            if not subscription_data:
+                return None
 
-        need_vless_key = False
-        if plan:
-            tariff = await get_tariff_by_id(session, plan)
-            if tariff:
-                need_vless_key = is_plan_vless(tariff)
+            need_vless_key = False
+            if plan:
+                tariff = await get_tariff_by_id(session, plan)
+                if tariff:
+                    need_vless_key = is_plan_vless(tariff)
 
-        return await process_extract_cryptolink_from_result(
-            result=subscription_data,
-            cluster_id=cluster_id,
-            plan=plan,
-            session=session,
-            email=email,
-            tg_id=tg_id,
-            need_vless_key=need_vless_key,
-            **kwargs,
-        )
+            return await process_extract_cryptolink_from_result(
+                result=subscription_data,
+                cluster_id=cluster_id,
+                plan=plan,
+                session=session,
+                email=email,
+                tg_id=tg_id,
+                need_vless_key=need_vless_key,
+                **kwargs,
+            )
     except Exception as e:
         logger.warning(f"[GET_CRYPTOLINK_AFTER_RENEWAL] Ошибка получения криптоссылки: {e}")
         return None

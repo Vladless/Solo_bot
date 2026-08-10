@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.executor import run_io, should_run_heavy_tasks_separately
+from core.executor import run_io, should_run_heavy_tasks_separately, spawn
 from database import async_session_maker, save_blocked_user_ids
 from database.models import Server
 from database.scheduled_broadcasts import (
@@ -507,8 +507,8 @@ async def handle_broadcast_confirm(callback_query: CallbackQuery, state: FSMCont
 
         def progress_cb(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
             main_loop.call_soon_threadsafe(
-                lambda c=completed, t=total, s=sent, f=failed, p=pending: asyncio.ensure_future(
-                    _edit_progress(c, t, s, f, p), loop=main_loop
+                lambda c=completed, t=total, s=sent, f=failed, p=pending: spawn(
+                    _edit_progress(c, t, s, f, p)
                 )
             )
 

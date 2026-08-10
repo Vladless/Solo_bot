@@ -17,6 +17,7 @@ from database import (
 )
 from database.access.resolution import notify_telegram_chat_id
 from database.models import Server
+from handlers.notifications.webapp_only import webapp_only_markup
 from handlers.payments.fast_payment_flow import try_fast_payment_flow
 from handlers.utils import edit_or_send_message, get_russian_month
 from hooks.hook_buttons import insert_hook_buttons
@@ -236,7 +237,7 @@ async def complete_key_renewal(
 
         tariff = await get_tariff_by_id(session, tariff_id)
         tariff_name = tariff["name"] if tariff else ""
-        subgroup_title = tariff.get("subgroup_title", "") if tariff else ""
+        tariff.get("subgroup_title", "") if tariff else ""
 
         device_limit_effective = selected_device_limit
         traffic_limit_gb_effective = selected_traffic_limit or 0
@@ -299,13 +300,17 @@ async def complete_key_renewal(
                     media_path=renewal_media_path,
                 )
             elif tg_notify is not None:
-                await bot.send_message(tg_notify, response_message, reply_markup=builder.as_markup())
+                await bot.send_message(
+                    tg_notify, response_message, reply_markup=webapp_only_markup() or builder.as_markup()
+                )
             else:
                 logger.info(f"[Renew] Нет Telegram-чата для итогового сообщения (ref={tg_id}), пропуск")
         except Exception as e:
             logger.error(f"[Error] Ошибка при выводе финального сообщения: {e}")
             if tg_notify is not None:
-                await bot.send_message(tg_notify, response_message, reply_markup=builder.as_markup())
+                await bot.send_message(
+                    tg_notify, response_message, reply_markup=webapp_only_markup() or builder.as_markup()
+                )
 
         logger.info(f"[Info] Продление ключа {client_id} завершено успешно (User: {tg_id})")
         return True

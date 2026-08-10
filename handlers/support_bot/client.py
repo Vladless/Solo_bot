@@ -13,6 +13,7 @@ from database.identities import get_or_create_identity_for_tg
 from handlers.support_bot.media import collect_attachment
 from services import tickets as svc
 from settings.texts import TRIAGE_ITEMS
+from core.executor import spawn
 
 
 router = Router()
@@ -62,7 +63,7 @@ async def _answer_ephemeral(message: Message, text: str, delay: float = 4.0) -> 
         except Exception:
             pass
 
-    asyncio.create_task(_cleanup())
+    spawn(_cleanup())
 
 
 async def _active_ticket(session, identity_id: str):

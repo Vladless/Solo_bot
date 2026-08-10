@@ -37,15 +37,13 @@ from database.models import (
 )
 from database.site_revision import bump_site_revision
 from logger import logger
+from core.executor import run_io
 
 
 UPLOAD_DIR = Path("static/web_uploads")
 ALLOWED_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".webm"})
 MAX_FILE_SIZE = 100 * 1024 * 1024
 _IMAGE_RESIZE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp"})
-_IMAGE_MAX_SIDE = 2048
-_IMAGE_JPEG_QUALITY = 85
-_IMAGE_WEBP_QUALITY = 85
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9\-]*$")
 
@@ -59,39 +57,6 @@ EXTENSION_CONTENT_TYPES: dict[str, frozenset[str]] = {
     ".mp4": frozenset({"video/mp4"}),
     ".webm": frozenset({"video/webm"}),
 }
-
-
-def _optimize_image_bytes(data: bytes, ext: str) -> bytes:
-    """Уменьшает большие картинки до _IMAGE_MAX_SIDE и пережимает с разумным качеством."""
-    try:
-        from io import BytesIO
-
-        from PIL import Image, ImageOps
-
-        with Image.open(BytesIO(data)) as img:
-            img = ImageOps.exif_transpose(img)
-            w, h = img.size
-            if max(w, h) <= _IMAGE_MAX_SIDE and len(data) < 500_000:
-                return data
-            if max(w, h) > _IMAGE_MAX_SIDE:
-                img.thumbnail((_IMAGE_MAX_SIDE, _IMAGE_MAX_SIDE), Image.Resampling.LANCZOS)
-            buffer = BytesIO()
-            save_kwargs: dict = {}
-            if ext in (".jpg", ".jpeg"):
-                if img.mode not in ("RGB", "L"):
-                    img = img.convert("RGB")
-                save_kwargs = {"format": "JPEG", "quality": _IMAGE_JPEG_QUALITY, "optimize": True, "progressive": True}
-            elif ext == ".webp":
-                save_kwargs = {"format": "WEBP", "quality": _IMAGE_WEBP_QUALITY, "method": 6}
-            elif ext == ".png":
-                save_kwargs = {"format": "PNG", "optimize": True}
-            else:
-                return data
-            img.save(buffer, **save_kwargs)
-            optimized = buffer.getvalue()
-            return optimized if len(optimized) < len(data) else data
-    except Exception:
-        return data
 
 
 _SVG_NS = "http://www.w3.org/2000/svg"
@@ -973,10 +938,10 @@ async def upload_media(
         file_data = _sanitize_svg(file_data)
     elif ext in _IMAGE_RESIZE_EXTENSIONS:
         from core.executor import run_cpu
+        from utils.cpu_tasks import optimize_image_bytes
 
-        file_data = await run_cpu(_optimize_image_bytes, file_data, ext)
-    with open(path, "wb") as f:
-        f.write(file_data)
+        file_data = await run_cpu(optimize_image_bytes, file_data, ext)
+    await run_io(Path(path).write_bytes, file_data)
     url = f"/api/web/uploads/{name}"
     logger.info(
         "[WebUpload] admin={} file={} -> {} ({} bytes)",

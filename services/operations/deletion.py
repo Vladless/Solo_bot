@@ -9,7 +9,6 @@ from logger import (
     PANEL_XUI,
 )
 from panels._3xui import delete_client, get_xui_instance
-from panels.remnawave import RemnawaveAPI
 from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN_LOGIN_ENABLED
 
 from .utils import unique_by_api_url
@@ -71,24 +70,25 @@ async def delete_on_3xui(servers: list, email: str, client_id: str):
 
 
 async def delete_on_remnawave(servers: list, client_id: str, username: str | None = None) -> bool:
+    from panels.remnawave_runtime import remnawave_api
     servers = unique_by_api_url(servers)
     for s in servers:
         name = s.get("server_name", "remna")
-        api = RemnawaveAPI(s.get("api_url"))
-        if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
-            ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-            if not ok:
-                logger.warning(f"{PANEL_REMNA} [{name}] Авторизация не удалась")
-                continue
-        try:
-            done = await api.delete_user(client_id, username=username)
-            if done:
-                logger.info(f"{PANEL_REMNA} [{name}] Клиент {client_id} удалён")
-                return True
-        except Exception as e:
-            msg = str(e).lower()
-            if "not found" in msg or "не найден" in msg or "404" in msg:
-                logger.info(f"{PANEL_REMNA} [{name}] Клиент {client_id} не найден")
-            else:
-                logger.warning(f"{PANEL_REMNA} [{name}] Ошибка удаления клиента {client_id}: {e}")
+        async with remnawave_api(s.get("api_url")) as api:
+            if not REMNAWAVE_TOKEN_LOGIN_ENABLED:
+                ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+                if not ok:
+                    logger.warning(f"{PANEL_REMNA} [{name}] Авторизация не удалась")
+                    continue
+            try:
+                done = await api.delete_user(client_id, username=username)
+                if done:
+                    logger.info(f"{PANEL_REMNA} [{name}] Клиент {client_id} удалён")
+                    return True
+            except Exception as e:
+                msg = str(e).lower()
+                if "not found" in msg or "не найден" in msg or "404" in msg:
+                    logger.info(f"{PANEL_REMNA} [{name}] Клиент {client_id} не найден")
+                else:
+                    logger.warning(f"{PANEL_REMNA} [{name}] Ошибка удаления клиента {client_id}: {e}")
     return False

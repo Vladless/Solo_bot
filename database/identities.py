@@ -3,8 +3,6 @@ import secrets
 
 from datetime import datetime, timedelta
 
-import bcrypt
-
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +12,7 @@ from database.access.tg_mirror import refresh_tg_mirrors_for_user
 from database.models import Admin, Identity, User
 from logger import logger
 from settings.config import API_TOKEN_TTL_DAYS
+from utils.cpu_tasks import check_password, hash_password
 
 
 def _request_meta(request) -> tuple[str | None, str | None]:
@@ -35,35 +34,8 @@ def _request_meta(request) -> tuple[str | None, str | None]:
     return ua, ip
 
 
-_BCRYPT_MAX_PASSWORD_BYTES = 72
-_BCRYPT_ROUNDS = 12
-
-
-def _password_bytes(password: str) -> bytes:
-    """Пароль в байтах, не длиннее 72 байт (ограничение bcrypt)."""
-    raw = password.encode("utf-8")
-    if len(raw) > _BCRYPT_MAX_PASSWORD_BYTES:
-        return raw[:_BCRYPT_MAX_PASSWORD_BYTES]
-    return raw
-
-
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def hash_password(password: str) -> str:
-    """Хеш пароля через bcrypt (соль уникальна на каждый пароль)."""
-    salt = bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
-    return bcrypt.hashpw(_password_bytes(password), salt).decode("ascii")
-
-
-def check_password(password: str, password_hash: str | None) -> bool:
-    if not password_hash:
-        return False
-    try:
-        return bcrypt.checkpw(_password_bytes(password), password_hash.encode("ascii"))
-    except Exception:
-        return False
 
 
 def generate_token() -> str:

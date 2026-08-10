@@ -28,7 +28,7 @@ async def ensure_on_remnawave(
     external_squad_uuid: str | None = None,
     session=None,
 ) -> tuple[str | None, str | None]:
-    from panels.remnawave import RemnawaveAPI
+    from panels.remnawave_runtime import remnawave_api
     from services.operations.utils import bytes_from_gb
 
     if not servers:
@@ -53,110 +53,110 @@ async def ensure_on_remnawave(
 
     inbounds = [s.get("inbound_id") for s in servers if s.get("inbound_id")]
 
-    api = RemnawaveAPI(servers[0]["api_url"])
-    ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
-    if not ok:
-        logger.error(f"{PANEL_REMNA} API недоступен при создании/обновлении")
-        return None, None
+    async with remnawave_api(servers[0]["api_url"]) as api:
+        ok = await api.login(REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD)
+        if not ok:
+            logger.error(f"{PANEL_REMNA} API недоступен при создании/обновлении")
+            return None, None
 
-    expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
-    traffic_bytes = bytes_from_gb(total_gb)
-    use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
+        expire_iso = datetime.utcfromtimestamp(new_expiry_time // 1000).isoformat() + "Z"
+        traffic_bytes = bytes_from_gb(total_gb)
+        use_crypto_link = bool(MODES_CONFIG.get("HAPP_CRYPTOLINK_ENABLED", HAPP_CRYPTOLINK))
 
-    async def _build_link_from_subscription(sub_url: str | None) -> str | None:
-        if not sub_url:
-            return None
-        remna_link = None
-        if use_crypto_link:
+        async def _build_link_from_subscription(sub_url: str | None) -> str | None:
+            if not sub_url:
+                return None
+            remna_link = None
+            if use_crypto_link:
+                try:
+                    remna_link = await api.encrypt_happ_crypto_link(sub_url)
+                except Exception as e:
+                    logger.error(f"{PANEL_REMNA} ошибка шифрования happ-ссылки: {e}")
+                    remna_link = None
+            if not remna_link:
+                remna_link = sub_url
+            return remna_link
+
+        async def do_update():
             try:
-                remna_link = await api.encrypt_happ_crypto_link(sub_url)
-            except Exception as e:
-                logger.error(f"{PANEL_REMNA} ошибка шифрования happ-ссылки: {e}")
-                remna_link = None
-        if not remna_link:
-            remna_link = sub_url
-        return remna_link
+                updated = await api.update_user(
+                    uuid=client_id,
+                    lookup_username=email,
+                    expire_at=expire_iso,
+                    active_user_inbounds=inbounds,
+                    traffic_limit_bytes=traffic_bytes,
+                    hwid_device_limit=hwid_device_limit,
+                    external_squad_uuid=external_squad_uuid,
+                )
+                if not updated:
+                    return None, None
 
-    async def do_update():
-        try:
-            updated = await api.update_user(
-                uuid=client_id,
-                lookup_username=email,
-                expire_at=expire_iso,
-                active_user_inbounds=inbounds,
-                traffic_limit_bytes=traffic_bytes,
-                hwid_device_limit=hwid_device_limit,
-                external_squad_uuid=external_squad_uuid,
-            )
-            if not updated:
+                if reset_traffic:
+                    try:
+                        await api.reset_user_traffic(client_id, username=email)
+                    except Exception:
+                        pass
+
+                remna_link = None
+                try:
+                    sub_data = await api.get_subscription_by_username(email)
+                except Exception as e:
+                    logger.error(f"{PANEL_REMNA} get_subscription_by_username при update: {e}")
+                    sub_data = None
+
+                if sub_data:
+                    sub_url = sub_data.get("subscriptionUrl")
+                    remna_link = await _build_link_from_subscription(sub_url)
+
+                return client_id, remna_link
+            except Exception as e:
+                logger.error(f"{PANEL_REMNA} update_user не удалось: {e}")
                 return None, None
 
-            if reset_traffic:
-                try:
-                    await api.reset_user_traffic(client_id, username=email)
-                except Exception:
-                    pass
-
-            remna_link = None
+        async def do_create():
             try:
-                sub_data = await api.get_subscription_by_username(email)
-            except Exception as e:
-                logger.error(f"{PANEL_REMNA} get_subscription_by_username при update: {e}")
-                sub_data = None
+                payload = {
+                    "username": email,
+                    "trafficLimitStrategy": "NO_RESET",
+                    "expireAt": expire_iso,
+                    "activeInternalSquads": inbounds,
+                    "uuid": client_id,
+                }
+                if panel_tg is not None:
+                    payload["telegramId"] = panel_tg
+                if panel_email:
+                    payload["email"] = panel_email
+                if traffic_bytes > 0:
+                    payload["trafficLimitBytes"] = traffic_bytes
+                payload["hwidDeviceLimit"] = hwid_device_limit
+                if external_squad_uuid is not None:
+                    payload["externalSquadUuid"] = external_squad_uuid or None
 
-            if sub_data:
-                sub_url = sub_data.get("subscriptionUrl")
+                created = await api.create_user(payload)
+                if not created:
+                    return None, None
+
+                user = created.get("user") or {}
+                new_uuid = user.get("vlessUuid") or user.get("uuid") or client_id
+
+                sub_url = created.get("subscriptionUrl")
                 remna_link = await _build_link_from_subscription(sub_url)
 
-            return client_id, remna_link
-        except Exception as e:
-            logger.error(f"{PANEL_REMNA} update_user не удалось: {e}")
-            return None, None
-
-    async def do_create():
-        try:
-            payload = {
-                "username": email,
-                "trafficLimitStrategy": "NO_RESET",
-                "expireAt": expire_iso,
-                "activeInternalSquads": inbounds,
-                "uuid": client_id,
-            }
-            if panel_tg is not None:
-                payload["telegramId"] = panel_tg
-            if panel_email:
-                payload["email"] = panel_email
-            if traffic_bytes > 0:
-                payload["trafficLimitBytes"] = traffic_bytes
-            payload["hwidDeviceLimit"] = hwid_device_limit
-            if external_squad_uuid is not None:
-                payload["externalSquadUuid"] = external_squad_uuid or None
-
-            created = await api.create_user(payload)
-            if not created:
+                return new_uuid, remna_link
+            except Exception as e:
+                logger.error(f"{PANEL_REMNA} создание не удалось: {e}")
                 return None, None
 
-            user = created.get("user") or {}
-            new_uuid = user.get("vlessUuid") or user.get("uuid") or client_id
+        if attempt_update_first:
+            updated_id, link = await do_update()
+            if updated_id:
+                return updated_id, link
+            return await do_create()
 
-            sub_url = created.get("subscriptionUrl")
-            remna_link = await _build_link_from_subscription(sub_url)
-
-            return new_uuid, remna_link
-        except Exception as e:
-            logger.error(f"{PANEL_REMNA} создание не удалось: {e}")
-            return None, None
-
-    if attempt_update_first:
-        updated_id, link = await do_update()
-        if updated_id:
-            return updated_id, link
-        return await do_create()
-
-    created_id, link = await do_create()
-    if created_id:
-        return created_id, link
-    return await do_update()
+        created_id, link = await do_create()
+        if created_id:
+            return created_id, link
+        return await do_update()
 
 
 async def ensure_on_3xui(
