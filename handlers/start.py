@@ -209,6 +209,11 @@ async def process_start_logic(
     if not await check_user_exists(session, user_data["tg_id"]):
         await add_user(session=session, **user_data)
 
+    from handlers.legal import legal_gate_passed
+
+    if not await legal_gate_passed(message, session, user_data["tg_id"]):
+        return
+
     tl = (text or "").strip().lower()
     if tl == "trial":
         await confirm_create_new_key(message, state, session)
@@ -446,6 +451,11 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
         kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
     if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
+
+    from handlers.legal import legal_doc_buttons
+
+    for legal_button in legal_doc_buttons():
+        kb.row(legal_button)
 
     module_buttons = await run_hooks("about_menu", chat_id=user_id, trial=trial, session=session)
     kb = insert_hook_buttons(kb, module_buttons)

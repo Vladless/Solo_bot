@@ -10,6 +10,7 @@ from .donate import router as donate_router
 from .email_binding import router as email_binding_router
 from .instructions import router as instructions_router
 from .keys import router as keys_router
+from .legal import router as legal_router
 from .notifications import router as notifications_router
 from .payments import router as payments_router
 from .polls import router as polls_router
@@ -25,6 +26,7 @@ router = Router(name="handlers_main_router")
 router.include_routers(
     chat_member_router,
     start_router,
+    legal_router,
     captcha_router,
     profile_router,
     donate_router,

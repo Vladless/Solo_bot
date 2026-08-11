@@ -45,6 +45,7 @@ class User(DictLikeMixin, Base):
         ),
         nullable=True,
     )
+    legal_accepted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

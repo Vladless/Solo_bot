@@ -5,6 +5,7 @@ from database.tariffs import initialize_all_tariff_weights
 from logger import logger
 
 from .settings.buttons_config import BUTTONS_CONFIG, load_buttons_config, update_buttons_config
+from .settings.legal_config import LEGAL_CONFIG, load_legal_config, update_legal_config
 from .settings.management_config import MANAGEMENT_CONFIG, load_management_config, update_management_config
 from .settings.menu_layout_config import MENU_LAYOUT, load_menu_layout, update_menu_layout
 from .settings.modes_config import MODES_CONFIG, load_modes_config, update_modes_config
@@ -31,6 +32,7 @@ async def bootstrap() -> None:
         await load_money_config(session)
         await load_management_config(session)
         await load_tariffs_config(session)
+        await load_legal_config(session)
         await load_web_config(session)
         await load_remnawave_config(session)
         await session.commit()

@@ -1407,6 +1407,15 @@ async def _migration_v49_widen_scheduled_broadcasts_channel(conn: AsyncConnectio
     )
 
 
+async def _migration_v50_users_legal_accepted_at(conn: AsyncConnection) -> None:
+    _mig_out("[schema_upgrade] v50: users.legal_accepted_at (согласие с документами)")
+    if not await _table_exists(conn, "users"):
+        return
+    if await _column_exists(conn, "users", "legal_accepted_at"):
+        return
+    await _exec_ignore(conn, "ALTER TABLE users ADD COLUMN legal_accepted_at TIMESTAMP")
+
+
 async def _migration_v30_add_users_created_at_index(conn: AsyncConnection) -> None:
     _mig_out("[schema_upgrade] v30: индекс users(created_at)")
     if not await _table_exists(conn, "users"):
@@ -1845,6 +1854,7 @@ _MIGRATIONS = [
     (47, "tickets.topic_id (форум-темы)", _migration_v47_ticket_topic_id),
     (48, "tickets/ticket_messages → timestamptz (UTC)", _migration_v48_ticket_timestamptz),
     (49, "scheduled_broadcasts.channel → VARCHAR(32) (мультиканал)", _migration_v49_widen_scheduled_broadcasts_channel),
+    (50, "users.legal_accepted_at (согласие с документами)", _migration_v50_users_legal_accepted_at),
 ]
 
 
