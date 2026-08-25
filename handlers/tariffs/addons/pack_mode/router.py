@@ -50,7 +50,6 @@ router = Router()
 
 
 @router.callback_query(F.data.startswith("key_addons|"), flags={"popup": True})
-
 async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     key_ref = callback.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback.from_user.id, key_ref)
@@ -244,11 +243,8 @@ async def handle_addons_devices_choice(callback: CallbackQuery, state: FSMContex
         f"new_devices={new_devices} selected_devices={selected_devices}"
     )
 
-    if selected_devices is not None and int(selected_devices) == new_devices:
-        await callback.answer()
-        return
-
-    await state.update_data(addon_selected_device_limit=new_devices)
+    repeated = selected_devices is not None and int(selected_devices) == new_devices
+    await state.update_data(addon_selected_device_limit=None if repeated else new_devices)
     await render_addons_screen(callback, state, session)
 
 
@@ -270,11 +266,8 @@ async def handle_addons_traffic_choice(callback: CallbackQuery, state: FSMContex
         f"new_traffic_gb={new_traffic_gb} selected_traffic_gb={selected_traffic_gb}"
     )
 
-    if selected_traffic_gb is not None and int(selected_traffic_gb) == new_traffic_gb:
-        await callback.answer()
-        return
-
-    await state.update_data(addon_selected_traffic_gb=new_traffic_gb)
+    repeated = selected_traffic_gb is not None and int(selected_traffic_gb) == new_traffic_gb
+    await state.update_data(addon_selected_traffic_gb=None if repeated else new_traffic_gb)
     await render_addons_screen(callback, state, session)
 
 
@@ -309,6 +302,10 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
         if not email or not tariff_id:
             await callback.message.answer("❌ Данные для изменения подписки не найдены.")
             await state.clear()
+            return
+
+        if selected_devices is None and selected_traffic_gb is None:
+            await callback.answer("Выберите пакет устройств или трафика", show_alert=True)
             return
 
         record = await get_key_details(session, email)

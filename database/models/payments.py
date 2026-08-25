@@ -11,7 +11,7 @@ class Payment(DictLikeMixin, Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=True, index=True)
+    tg_id = Column(BigInteger, nullable=True, index=True)
     amount = Column(Float)
     payment_system = Column(String)
     status = Column(String)

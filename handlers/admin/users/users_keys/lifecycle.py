@@ -412,7 +412,9 @@ async def handle_recreate_key_confirm(
                 )
                 return
 
-            new_link = f"{PUBLIC_LINK}{new_email}/{tg_id}"
+            from database.access.resolution import subscription_owner_ref
+
+            new_link = f"{PUBLIC_LINK}{new_email}/{await subscription_owner_ref(session, tg_id)}"
             await update_key_email_and_link(session, old_email, new_email, new_link, client_id)
 
         else:

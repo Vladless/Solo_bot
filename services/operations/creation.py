@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
+from database.access.resolution import subscription_owner_ref
 from database.users import mark_trial_started_if_eligible
 from hooks.processors import process_extract_cryptolink_from_result
 from logger import (
@@ -269,20 +270,22 @@ async def create_key_on_cluster(
         cluster_all = enabled_servers
         subgroup_code = subgroup_title if subgroup_title else None
 
+        link_ref = await subscription_owner_ref(session, tg_id)
+
         public_link = await make_aggregated_link(
             session=session,
             cluster_all=cluster_all,
             cluster_id=server_id_to_store,
             email=email,
             client_id=final_client_id,
-            tg_id=tg_id,
+            tg_id=link_ref,
             subgroup_code=subgroup_code,
             remna_link_override=remnawave_key or remnawave_link_value,
             plan=plan,
         )
 
         if not public_link:
-            public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+            public_link = f"{PUBLIC_LINK}{email}/{link_ref}"
 
         if (remnawave_created and remnawave_client_id) or xui_servers:
             await store_key(

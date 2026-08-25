@@ -70,6 +70,15 @@ async def resolve_uid_cached(session: AsyncSession, legacy_id: int) -> int | Non
     return uid
 
 
+async def subscription_owner_ref(session: AsyncSession, legacy_ref: int) -> int:
+    """Хвост ссылки на подписку. У клиента с сайта это синтетический tg_id (минус id),
+    а не users.id: панель заводит клиента именно под ним, и ссылка обязана совпасть."""
+    user = await resolve_user_optional(session, legacy_ref)
+    if user is not None and user.tg_id is not None:
+        return int(user.tg_id)
+    return int(legacy_ref)
+
+
 async def panel_identity_fields(session: AsyncSession, legacy_ref: int) -> tuple[int | None, str | None]:
     """Поля владельца ключа для внешней панели: (telegram_id, email).
 

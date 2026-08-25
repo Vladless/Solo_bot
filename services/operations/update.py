@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import resolve_user_optional, subscription_owner_ref
 from database.keys import delete_key_by_user_and_email, get_key_by_user_and_email
 from database.models import Key
 from database.tariffs import get_active_tariff_by_id
@@ -248,7 +248,7 @@ async def update_subscription(
     tariff_id = record.tariff_id
     alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
-    public_link = f"{PUBLIC_LINK}{email}/{tg_id}"
+    public_link = f"{PUBLIC_LINK}{email}/{await subscription_owner_ref(session, tg_id)}"
 
     selected_device_limit = getattr(record, "selected_device_limit", None)
     selected_traffic_limit = getattr(record, "selected_traffic_limit", None)

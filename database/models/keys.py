@@ -24,7 +24,7 @@ class Key(DictLikeMixin, Base):
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, nullable=False, index=True
     )
     client_id = Column(String, primary_key=True)
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id"), nullable=True, index=True)
+    tg_id = Column(BigInteger, nullable=True, index=True)
     email = Column(String, unique=True)
     created_at = Column(BigInteger)
     expiry_time = Column(BigInteger, index=True)

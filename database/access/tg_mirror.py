@@ -18,6 +18,22 @@ from database.models import (
 )
 
 
+TG_FOREIGN_KEY_MIRRORS: tuple[tuple[type, str], ...] = (
+    (Key, "tg_id"),
+    (Payment, "tg_id"),
+    (Gift, "sender_tg_id"),
+    (Gift, "recipient_tg_id"),
+)
+
+
+async def release_tg_mirrors(session: AsyncSession, tg_id: int) -> None:
+    """Снимает ссылки на tg_id перед его обнулением в users. Внешние ключи этих
+    колонок смотрят на users.tg_id без ON UPDATE, поэтому обнулить родителя,
+    пока на него ссылаются, база не даст."""
+    for model, column in TG_FOREIGN_KEY_MIRRORS:
+        await session.execute(update(model).where(getattr(model, column) == tg_id).values({column: None}))
+
+
 def mirror_telegram_id(user: User | None) -> int | None:
     if user is None:
         return None

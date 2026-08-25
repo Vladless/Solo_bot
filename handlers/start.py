@@ -1,4 +1,5 @@
 import os
+import re
 
 from typing import Any
 
@@ -66,7 +67,7 @@ from settings.texts import (
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
-from .utils import edit_or_send_message, extract_user_data, safe_answer_callback
+from .utils import build_support_button, edit_or_send_message, extract_user_data, safe_answer_callback
 
 
 router = Router()
@@ -177,7 +178,7 @@ async def process_start_logic(
     _MAX_START_PARTS = 20
     if text and len(text) > _MAX_START_PAYLOAD_LEN:
         text = text[:_MAX_START_PAYLOAD_LEN]
-    parts = text.split("-") if text else []
+    parts = _split_start_payload(text)
     if len(parts) > _MAX_START_PARTS:
         parts = parts[:_MAX_START_PARTS]
 
@@ -308,6 +309,25 @@ async def handle_gift(part, message, state, session, user_data):
         return True
     finally:
         processing_gifts.discard(gift_id)
+
+
+_START_DIRECTIVE_RE = re.compile(r"^(?:coupons|gift|referral|utm|partner)[_a-z]*", re.IGNORECASE)
+
+
+def _split_start_payload(text: str | None) -> list[str]:
+    """Делит склеенный payload по дефису, но только там, где начинается новая директива.
+    Коды партнёров и рефералов пишутся алфавитом base64url, где дефис легален,
+    и резать по нему вслепую значит терять часть кода."""
+    if not text:
+        return []
+    chunks = text.split("-")
+    parts: list[str] = []
+    for chunk in chunks:
+        if parts and not _START_DIRECTIVE_RE.match(chunk):
+            parts[-1] = f"{parts[-1]}-{chunk}"
+            continue
+        parts.append(chunk)
+    return parts
 
 
 async def handle_referral_link_safe(part, message, state, session, user_data):
@@ -443,12 +463,14 @@ async def handle_about_vpn(callback: CallbackQuery, session: AsyncSession):
     if BUTTONS_CONFIG.get("DONATIONS_BUTTON_ENABLE", DONATIONS_ENABLE):
         kb.row(InlineKeyboardButton(text=DONAT_BUTTON, callback_data="donate"))
 
-    if MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED"):
+    if MODES_CONFIG.get("SUPPORT_TRIAGE_ENABLED", False):
         from handlers.support_triage import TriageCallback
 
         kb.row(InlineKeyboardButton(text=SUPPORT, callback_data=TriageCallback(action="root").pack()))
-    elif SUPPORT_CHAT_URL:
-        kb.row(InlineKeyboardButton(text=SUPPORT, url=SUPPORT_CHAT_URL))
+    else:
+        support_btn = await build_support_button()
+        if support_btn:
+            kb.row(support_btn)
     if BUTTONS_CONFIG.get("CHANNEL_BUTTON_ENABLE", CHANNEL_EXISTS):
         kb.row(InlineKeyboardButton(text=CHANNEL, url=CHANNEL_URL))
 

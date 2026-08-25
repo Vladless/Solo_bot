@@ -1,6 +1,7 @@
 import asyncio
 import os
 import ssl
+import subprocess
 import tempfile
 import time
 
@@ -20,6 +21,21 @@ from cryptography.hazmat.primitives.serialization import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.bootstrap import PAYMENTS_CONFIG
+from database import register_pending_payment
+from database.models import User
+from handlers.payments.keyboards import (
+    balance_fallback_kb,
+    build_amounts_keyboard,
+    parse_amount_from_callback,
+    pay_keyboard,
+    payment_options_for_user,
+)
+from handlers.utils import edit_or_send_message
+from logger import logger
+from services.payments.currency_rates import format_for_user
+from services.payments.payment_links import register_payment_creator
+from settings.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
 from settings.config import (
     OVERPAY_API_URL,
     OVERPAY_CARDS_TERMINAL_ID,
@@ -33,27 +49,12 @@ from settings.config import (
     OVERPAY_SERVER_IP,
     OVERPAY_USERNAME,
 )
-from core.bootstrap import PAYMENTS_CONFIG
-from database import register_pending_payment
-from database.models import User
-from settings.buttons import BACK, OVERPAY_CARDS, OVERPAY_SBP, PAY_2
-from handlers.payments.keyboards import (
-    balance_fallback_kb,
-    build_amounts_keyboard,
-    parse_amount_from_callback,
-    pay_keyboard,
-    payment_options_for_user,
-)
 from settings.texts import (
     OVERPAY_CARDS_DESCRIPTION,
     OVERPAY_PAYMENT_MESSAGE,
     OVERPAY_PAYMENT_TITLE,
     OVERPAY_SBP_DESCRIPTION,
 )
-from handlers.utils import edit_or_send_message
-from logger import logger
-from services.payments.currency_rates import format_for_user
-from services.payments.payment_links import register_payment_creator
 
 
 router = Router()
@@ -110,6 +111,43 @@ def _resolve_cert_path(path: str) -> str:
     return os.path.join(project_root, path)
 
 
+def _pem_from_cryptography(p12_data: bytes, password: bytes | None) -> bytes | None:
+    """Штатный разбор. Ключ идёт последним: openssl читает цепочку до первого не-сертификата,
+    и CA, поставленные после ключа, молча теряются."""
+    private_key, certificate, additional = pkcs12.load_key_and_certificates(p12_data, password)
+    if private_key is None or certificate is None:
+        logger.error("[Overpay] В .p12 нет приватного ключа или сертификата")
+        return None
+    bundle = certificate.public_bytes(Encoding.PEM)
+    for ca_cert in additional or []:
+        bundle += ca_cert.public_bytes(Encoding.PEM)
+    bundle += private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
+    return bundle
+
+
+def _pem_from_openssl(path: str, password: str) -> bytes | None:
+    """Запасной путь для контейнеров, которые не берёт cryptography: старое шифрование,
+    нестандартные поля, самодельные сборки. Пароль передаём через окружение, не в аргументах."""
+    env = {**os.environ, "OVERPAY_P12_PASS": password}
+    for extra in (["-legacy"], []):
+        try:
+            result = subprocess.run(
+                ["openssl", "pkcs12", "-in", path, "-nodes", "-passin", "env:OVERPAY_P12_PASS", *extra],
+                capture_output=True,
+                timeout=20,
+                env=env,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            logger.warning(f"[Overpay] openssl недоступен: {error}")
+            return None
+        if result.returncode == 0 and b"BEGIN" in result.stdout:
+            logger.info("[Overpay] Сертификат разобран через openssl{}".format(" -legacy" if extra else ""))
+            return result.stdout
+    logger.error("[Overpay] openssl тоже не смог разобрать .p12")
+    return None
+
+
 def _build_ssl_context() -> ssl.SSLContext | None:
     global _ssl_context
     if _ssl_context is not None:
@@ -129,16 +167,19 @@ def _build_ssl_context() -> ssl.SSLContext | None:
         with open(resolved, "rb") as cert_file:
             p12_data = cert_file.read()
 
-        password = (OVERPAY_CERT_PASSWORD or "").encode("utf-8") or None
-        private_key, certificate, additional = pkcs12.load_key_and_certificates(p12_data, password)
-        if private_key is None or certificate is None:
-            logger.error("[Overpay] В .p12 нет приватного ключа или сертификата")
-            return None
+        raw_password = OVERPAY_CERT_PASSWORD or ""
+        password = raw_password.encode("utf-8") or None
 
-        pem_bundle = certificate.public_bytes(Encoding.PEM)
-        pem_bundle += private_key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption())
-        for ca_cert in additional or []:
-            pem_bundle += ca_cert.public_bytes(Encoding.PEM)
+        try:
+            pem_bundle = _pem_from_cryptography(p12_data, password)
+        except Exception as error:
+            logger.warning(f"[Overpay] Штатный разбор .p12 не удался ({error}), пробую openssl")
+            pem_bundle = None
+
+        if pem_bundle is None:
+            pem_bundle = _pem_from_openssl(resolved, raw_password)
+        if pem_bundle is None:
+            return None
 
         context = ssl.create_default_context()
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pem")

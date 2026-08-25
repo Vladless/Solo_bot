@@ -122,11 +122,6 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
     if not has_traffic_option:
         selected_traffic_gb = None
 
-    if selected_devices is None and has_device_option and device_int_options:
-        selected_devices = device_int_options[0]
-    if selected_traffic_gb is None and has_traffic_option and traffic_int_options:
-        selected_traffic_gb = traffic_int_options[0]
-
     await state.update_data(
         addon_selected_device_limit=selected_devices,
         addon_selected_traffic_gb=selected_traffic_gb,
@@ -299,12 +294,13 @@ async def render_addons_screen(callback: CallbackQuery, state: FSMContext, sessi
             for i in range(0, len(traffic_buttons), 2):
                 builder.row(*traffic_buttons[i : i + 2])
 
-    builder.row(
-        InlineKeyboardButton(
-            text=CONFIRM_ADDON_BUTTON_TEXT.format(amount=extra_price_text),
-            callback_data="key_addons_confirm",
+    if has_device_pack_selected or has_traffic_pack_selected:
+        builder.row(
+            InlineKeyboardButton(
+                text=CONFIRM_ADDON_BUTTON_TEXT.format(amount=extra_price_text),
+                callback_data="key_addons_confirm",
+            )
         )
-    )
     builder.row(
         InlineKeyboardButton(
             text=BACK,

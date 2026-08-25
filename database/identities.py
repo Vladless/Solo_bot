@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.executor import run_cpu, run_io
 from database import identity_sessions as _idsess
-from database.access.tg_mirror import refresh_tg_mirrors_for_user
+from database.access.tg_mirror import refresh_tg_mirrors_for_user, release_tg_mirrors
 from database.models import Admin, Identity, User
 from logger import logger
 from settings.config import API_TOKEN_TTL_DAYS
@@ -713,9 +713,16 @@ async def detach_telegram(session: AsyncSession, identity_id: str) -> Identity |
     if identity.email is None:
         return None
     old_tg = int(identity.tg_id)
+    affected = (
+        await session.execute(select(User.id).where(User.identity_id == identity_id, User.tg_id == old_tg))
+    ).scalars().all()
+
     identity.tg_id = None
     identity.is_admin = False
+    await release_tg_mirrors(session, old_tg)
     await session.execute(update(User).where(User.identity_id == identity_id, User.tg_id == old_tg).values(tg_id=None))
+    for user_id in affected:
+        await refresh_tg_mirrors_for_user(session, user_id)
     await session.flush()
     await session.refresh(identity)
     return identity

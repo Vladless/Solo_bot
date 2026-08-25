@@ -232,15 +232,54 @@ async def delete_client(
         return False
 
 
-async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str) -> dict[str, Any]:
+_LEGACY_TRAFFIC_ENDPOINT = "panel/api/inbounds/getClientTrafficsById/{key}"
+_MODERN_TRAFFIC_ENDPOINT = "panel/api/clients/traffic/{key}"
+_modern_panels: set[str] = set()
+
+
+def _traffic_rows(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        return [payload]
+    return [row for row in (payload or []) if isinstance(row, dict)]
+
+
+async def _fetch_traffic(xui: py3xui.AsyncApi, endpoint: str, key: str) -> list[dict[str, Any]] | None:
+    """None — маршрут не отвечает данными: панель другого поколения."""
+    api = xui.client
     try:
-        traffic_data = await xui.client.get_traffic_by_id(client_id)
-        if not traffic_data:
+        response = await api._get(api._url(endpoint.format(key=key)), {"Accept": "application/json"})
+        body = response.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict) or not body.get("success"):
+        return None
+    return _traffic_rows(body.get("obj"))
+
+
+async def get_client_traffic(xui: py3xui.AsyncApi, client_id: str, email: str | None = None) -> dict[str, Any]:
+    try:
+        host = str(getattr(xui.client, "_host", "") or "")
+        rows = None
+
+        if email and host in _modern_panels:
+            rows = await _fetch_traffic(xui, _MODERN_TRAFFIC_ENDPOINT, email)
+        if rows is None:
+            rows = await _fetch_traffic(xui, _LEGACY_TRAFFIC_ENDPOINT, client_id)
+            if rows is not None:
+                _modern_panels.discard(host)
+        if rows is None and email:
+            rows = await _fetch_traffic(xui, _MODERN_TRAFFIC_ENDPOINT, email)
+            if rows is not None:
+                _modern_panels.add(host)
+                logger.info(f"[XUI] Панель {host} отвечает по маршрутам 3.6, перешёл на них.")
+
+        if not rows:
             logger.warning(f"Трафик для клиента {client_id} не найден.")
             return {"status": "not_found", "client_id": client_id}
 
-        logger.info(f"Трафик для клиента {client_id} успешно получен.")
-        return {"status": "success", "client_id": client_id, "traffic": traffic_data}
+        used_bytes = sum(int(row.get("up") or 0) + int(row.get("down") or 0) for row in rows)
+        logger.info(f"Трафик для клиента {client_id} успешно получен: {used_bytes} байт.")
+        return {"status": "success", "client_id": client_id, "used_bytes": used_bytes, "traffic": rows}
 
     except httpx.ConnectTimeout as e:
         logger.error(f"Ошибка при получении трафика клиента {client_id}: {e}")

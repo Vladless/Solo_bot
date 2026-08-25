@@ -58,10 +58,9 @@ async def get_user_traffic(session: AsyncSession, tg_id: int, email: str) -> dic
         try:
             if panel_type == "3x-ui":
                 xui = await get_xui_instance(api_url)
-                traffic_info = await get_client_traffic(xui, client_id)
-                if traffic_info["status"] == "success" and traffic_info["traffic"]:
-                    client_data = traffic_info["traffic"][0]
-                    used_gb = (client_data.up + client_data.down) / 1073741824
+                traffic_info = await get_client_traffic(xui, client_id, email)
+                if traffic_info["status"] == "success":
+                    used_gb = int(traffic_info.get("used_bytes") or 0) / 1073741824
                     return server_name, round(used_gb, 2)
                 else:
                     return server_name, "Ошибка получения трафика"
