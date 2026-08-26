@@ -20,7 +20,13 @@ _START_WORDS = {"старт", "начать", "начало", "меню", "menu"
 _BUY_WORDS = {"купить", "оформить", "подписаться", "подписка", "приобрести", "buy", "тариф", "тарифы"}
 
 
+def keyword_replies_enabled() -> bool:
+    return bool((MODES_CONFIG or {}).get("KEYWORD_REPLIES_ENABLED", True))
+
+
 def _match_keyword_intent(text: str | None) -> str | None:
+    if not keyword_replies_enabled():
+        return None
     cleaned = (text or "").strip().lower().lstrip("/").strip(" .!?,")
     if not cleaned:
         return None

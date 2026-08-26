@@ -93,6 +93,7 @@ MODES_TITLES: Final[dict[str, str]] = {
     "RENEWAL_CREDIT_AS_DAYS": "Перерасчет дни",
     "RENEWAL_SWITCH_KEEP_PERIOD": "Смена: сохранять срок",
     "GIFT_EXTEND_ENABLED": "Подарок продлить",
+    "KEYWORD_REPLIES_ENABLED": "Горячие слова",
     "WEBAPP_ONLY_MODE": "Только веб-приложение",
 }
 

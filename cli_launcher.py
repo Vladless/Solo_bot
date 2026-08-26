@@ -59,7 +59,7 @@ def _bootstrap_rpc() -> None:
     try:
         import core.rpc  # noqa: F401
 
-        if hasattr(core.rpc, "fetch_bot_proxy_template"):
+        if hasattr(core.rpc, "get_settings_builder_url"):
             return
     except Exception:
         pass
@@ -129,6 +129,7 @@ from core.rpc import (  # noqa: E402
     adopt_beta_files,
     cli_gate,
     extract_version,
+    get_settings_builder_url,
     local_version,
     migrate_settings_layout,
     project_uses_new_layout,
@@ -453,7 +454,7 @@ TEMP_DIR = os.path.expanduser("~/.solobot_tmp")
 PROJECT_DIR = os.path.abspath(os.path.dirname(__file__))
 IS_ROOT_DIR = PROJECT_DIR == "/root"
 GITHUB_REPO = "https://github.com/Vladless/Solo_bot"
-CONFIG_BUILDER_URL = "https://pocomacho.ru/solonetbot/dashboard"
+CONFIG_BUILDER_URL = get_settings_builder_url()
 WIKI_URL = "https://wikibot.solobot.ru"
 GHCR_IMAGE = os.environ.get("GHCR_IMAGE", "vladless/solo-brick").strip() or "vladless/solo-brick"
 DEFAULT_SERVICE_NAME = "bot.service"
@@ -578,12 +579,51 @@ _CONFIRM_YES = {"y", "yes", "1", "true", "д", "да", "у"}
 _CONFIRM_NO = {"n", "no", "0", "false", "н", "нет"}
 
 
+_AUTO_YES = False
+_AUTO_TAG = ""
+_AUTO_OVERWRITE: dict[str, bool] = {}
+_AUTO_ABORT_REASON = ""
+
+_AUTO_FILE_MARKERS = (("buttons", "buttons.py"), ("img", "папку img"), ("redis_cache", "redis_cache.py"))
+_AUTO_STOP_MARKERS = (
+    ("БЕЗ бэкапа", "резервная копия не создана"),
+    ("Всё равно продолжить обновление", "config и texts не содержат переменных новой версии"),
+)
+
+
+def _auto_answer(message: str) -> bool | None:
+    """Ответ за админа в неинтерактивном режиме. None — обычный интерактивный запуск.
+
+    Вопросы «обновлять ли buttons.py / img / redis_cache.py» отвечаются по флагам:
+    без флага файл не перезаписывается. Вопросы, где «да» означает обновление
+    вслепую (без бэкапа, с неполным конфигом), отвечаются «нет» — без админа
+    у экрана такой риск брать нельзя. Остальные подтверждения — «да».
+    """
+    global _AUTO_ABORT_REASON
+
+    if not _AUTO_YES:
+        return None
+    for key, marker in _AUTO_FILE_MARKERS:
+        if marker in message:
+            return bool(_AUTO_OVERWRITE.get(key, False))
+    for marker, reason in _AUTO_STOP_MARKERS:
+        if marker in message:
+            _AUTO_ABORT_REASON = reason
+            return False
+    return True
+
+
 def safe_confirm(message: str, default: bool = False, **kwargs) -> bool:
     """Подтверждение y/n, устойчивое к раскладке.
 
     Срезает не-ASCII «мусор» от переключения раскладки и принимает y/n в любой
     раскладке (y/да/д/у → да, n/нет/н → нет). Пустой ввод → значение по умолчанию.
     """
+    auto = _auto_answer(message)
+    if auto is not None:
+        console.print(f"[faint]{message} → {'да' if auto else 'нет'}[/faint]")
+        return auto
+
     suffix = "[faint](Y/n)[/faint]" if default else "[faint](y/n)[/faint]"
     while True:
         try:
@@ -2563,6 +2603,12 @@ def update_from_release():
         for idx, name in enumerate(tag_names, 1):
             label = "релиз" if name in release_tag_names else "патч"
             console.print(f"  [key]{idx}[/key]  [text]{name}[/text]  [faint]{label}[/faint]")
+
+        if _AUTO_YES:
+            if _AUTO_TAG and _AUTO_TAG not in tag_names:
+                raise ValueError(f"Версия {_AUTO_TAG} недоступна")
+            _do_update_to_tag(_AUTO_TAG or tag_names[-1], update_buttons, update_img, update_redis_cache)
+            return
 
         choices = [str(i) for i in range(1, len(tag_names) + 1)]
         selected = safe_prompt(
@@ -4686,12 +4732,99 @@ def show_menu():
     )
 
 
+UPDATE_REPORT_FILE = os.path.join(PROJECT_DIR, ".update_report.json")
+
+
+def _write_update_report(status: str, detail: str, channel: str, tag: str, notify: int = 0) -> None:
+    """Отчёт для бота: он прочитает его после перезапуска и доложит админу.
+
+    Пишется в самом конце, после очистки папки проекта, поэтому переживает обновление.
+    """
+    import json
+    import time
+
+    try:
+        with open(UPDATE_REPORT_FILE, "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "status": status,
+                    "detail": detail,
+                    "channel": channel,
+                    "tag": tag,
+                    "notify": int(notify or 0),
+                    "finished_at": int(time.time()),
+                },
+                fh,
+                ensure_ascii=False,
+            )
+    except OSError:
+        pass
+
+
+def run_unattended_update(channel: str, tag: str, overwrite: dict, notify: int = 0) -> int:
+    """Обновление без вопросов. Возвращает код выхода."""
+    global _AUTO_YES, _AUTO_TAG, _AUTO_OVERWRITE, _AUTO_ABORT_REASON
+
+    _AUTO_YES = True
+    _AUTO_TAG = tag or ""
+    _AUTO_OVERWRITE = dict(overwrite or {})
+    _AUTO_ABORT_REASON = ""
+
+    before = local_version(PROJECT_DIR) or "—"
+    try:
+        if channel == "beta":
+            update_from_beta()
+        else:
+            update_from_release()
+    except Exception as error:
+        _write_update_report("error", str(error)[:400], channel, tag, notify)
+        console.print(f"[err]Обновление не удалось: {error}[/err]")
+        return 1
+
+    if _AUTO_ABORT_REASON:
+        _write_update_report("skipped", _AUTO_ABORT_REASON, channel, tag, notify)
+        console.print(f"[warn]Обновление отменено: {_AUTO_ABORT_REASON}[/warn]")
+        return 2
+
+    after = local_version(PROJECT_DIR) or "—"
+    _write_update_report("ok", f"{before} → {after}", channel, tag, notify)
+    console.print(f"[ok]Обновление завершено: {before} → {after}[/ok]")
+    return 0
+
+
+def _parse_cli_args(argv: list[str]) -> dict | None:
+    """Разбор аргументов. None — обычный интерактивный запуск."""
+    if not argv or argv[0] != "--update":
+        return None
+    job = {"channel": "release", "tag": "", "overwrite": {}, "notify": 0}
+    rest = argv[1:]
+    if rest and not rest[0].startswith("--"):
+        job["channel"] = rest.pop(0)
+    while rest:
+        item = rest.pop(0)
+        if item == "--tag" and rest:
+            job["tag"] = rest.pop(0)
+        elif item == "--notify" and rest:
+            try:
+                job["notify"] = int(rest.pop(0))
+            except ValueError:
+                job["notify"] = 0
+        elif item in ("--with-buttons", "--with-img", "--with-redis-cache"):
+            job["overwrite"][item.replace("--with-", "").replace("-", "_")] = True
+    return job
+
+
 def main():
     os.chdir(PROJECT_DIR)
     if sys.version_info[:2] != (3, 12):
         python312 = shutil.which("python3.12")
         if python312 and os.path.realpath(python312) != os.path.realpath(sys.executable):
             os.execv(python312, [python312] + sys.argv)
+
+    job = _parse_cli_args(sys.argv[1:])
+    if job is not None:
+        sys.exit(run_unattended_update(job["channel"], job["tag"], job["overwrite"], job["notify"]))
+
     auto_update_cli()
     print_logo()
     _ensure_solobot_command()

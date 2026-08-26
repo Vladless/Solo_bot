@@ -45,6 +45,10 @@ def build_management_kb(
         callback_data=AdminPanelCallback(action="restart").pack(),
     )
     builder.button(
+        text="⬆️ Обновить",
+        callback_data=AdminPanelCallback(action="update").pack(),
+    )
+    builder.button(
         text="🌐 Домен",
         callback_data=AdminPanelCallback(action="change_domain").pack(),
     )
