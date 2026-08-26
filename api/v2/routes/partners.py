@@ -494,20 +494,29 @@ async def partner_conditions(
     payout_methods = (
         [title for key, title in method_map if bool(getattr(partner_settings, key, False))] if partner_settings else []
     )
+
+    def _by_level(raw: dict) -> dict[int, float]:
+        """Ключи уровней приводятся к int: из настроек они могут прийти строками."""
+        result: dict[int, float] = {}
+        for key, value in (raw or {}).items():
+            if not str(key).isdigit():
+                continue
+            try:
+                result[int(key)] = float(value)
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    percent_levels = _by_level(percent_levels_raw) if mode in {"percent_only", "flat_plus_percent"} else {}
+    flat_levels = _by_level(flat_levels_raw) if mode in {"flat_only", "flat_plus_percent"} else {}
+
     level_lines: list[str] = []
-    all_levels = sorted({int(k) for k in [*percent_levels_raw.keys(), *flat_levels_raw.keys()] if str(k).isdigit()})
-    for level in all_levels:
+    for level in sorted({*percent_levels, *flat_levels}):
         parts: list[str] = []
-        if level in percent_levels_raw:
-            try:
-                parts.append(f"{float(percent_levels_raw[level]) * 100:.0f}%")
-            except Exception:
-                pass
-        if level in flat_levels_raw:
-            try:
-                parts.append(f"{float(flat_levels_raw[level]):.0f} RUB")
-            except Exception:
-                pass
+        if percent_levels.get(level):
+            parts.append(f"{percent_levels[level] * 100:.0f}%")
+        if flat_levels.get(level):
+            parts.append(f"{flat_levels[level]:.0f} RUB")
         if parts:
             level_lines.append(f"{level} уровень: {' + '.join(parts)}")
     if not level_lines:
