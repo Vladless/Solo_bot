@@ -461,7 +461,7 @@ DEFAULT_SERVICE_NAME = "bot.service"
 VENV_PYTHON = os.path.join(PROJECT_DIR, "venv", "bin", "python")
 SOLOBOT_CMD_PATH = "/usr/local/bin/solobot"
 SETTINGS_DIR = os.path.join(PROJECT_DIR, "settings")
-CLI_VERSION = "v1.1.0"
+CLI_VERSION = "v1.2.0"
 
 
 def _ensure_solobot_command() -> None:
@@ -2025,6 +2025,12 @@ def clean_project_dir_safe(update_buttons=False, update_img=False, update_redis_
                 continue
 
             if os.path.abspath(dir_path).startswith(os.path.join(PROJECT_DIR, "static", "web_uploads") + os.sep):
+                continue
+
+            try:
+                if os.listdir(dir_path):
+                    continue
+            except OSError:
                 continue
 
             try:

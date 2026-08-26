@@ -57,7 +57,9 @@ def _build_switch_text(*, old_label: str, new_label: str, quote) -> str:
             credit=quote.credit_value_rub,
             days=format_days(quote.credit_days),
         )
-        pay = RENEWAL_SWITCH_PAY.format(amount=quote.net_cost_rub) if quote.net_cost_rub > 0 else RENEWAL_SWITCH_PAY_FREE
+        pay = (
+            RENEWAL_SWITCH_PAY.format(amount=quote.net_cost_rub) if quote.net_cost_rub > 0 else RENEWAL_SWITCH_PAY_FREE
+        )
     else:
         credit = RENEWAL_SWITCH_CREDIT_REFUND.format(credit=quote.credit_rub)
         if quote.net_cost_rub > 0:
@@ -72,6 +74,8 @@ def _build_switch_text(*, old_label: str, new_label: str, quote) -> str:
         credit=credit,
         pay=pay,
     )
+
+
 from .flow import normalize_expiry_ms
 
 
@@ -105,7 +109,7 @@ async def _maybe_show_switch_confirm(
         new_selected_device=selected_device,
         new_selected_traffic=selected_traffic,
     )
-    if not quote.is_switch or (quote.credit_rub <= 0 and quote.credit_days <= 0):
+    if not quote.is_switch or (quote.credit_rub <= 0 and quote.credit_days <= 0 and not quote.keeps_period):
         return False
 
     await state.update_data(

@@ -66,7 +66,8 @@ class RenewalQuote:
     net_cost_rub=полная цена, бонус-дни new_expiry_ms (credit_days).
     Смена тарифа с сохранением срока (RENEWAL_SWITCH_KEEP_PERIOD, приоритетнее
     режима дней): expiry не меняется, net_cost_rub = цена нового за остаток
-    периода − credit_rub, keeps_period=True.
+    периода − credit_rub, keeps_period=True. На уход с триала не действует:
+    там сохранять нечего, клиент получает полный период нового тарифа.
     """
 
     is_switch: bool
@@ -316,6 +317,14 @@ async def compute_remaining_credit(
     return round(remaining_days * (old_price / old_duration), 2)
 
 
+async def _is_trial_tariff(session: AsyncSession, tariff_id: int | None) -> bool:
+    """Триал ли текущий тариф."""
+    if not tariff_id:
+        return False
+    tariff = await get_tariff_by_id(session, int(tariff_id))
+    return bool(tariff) and (tariff.get("group_code") or "").strip() == "trial"
+
+
 async def _is_same_config(
     session: AsyncSession,
     *,
@@ -477,6 +486,8 @@ async def compute_renewal_quote(
     from core.bootstrap import MODES_CONFIG
 
     keep_period = bool(MODES_CONFIG.get("RENEWAL_SWITCH_KEEP_PERIOD", False))
+    if keep_period and await _is_trial_tariff(session, current_tariff_id):
+        keep_period = False
     remaining_ms = max(0, int(current_expiry_ms) - int(now_ms))
     if keep_period and remaining_ms > 0 and duration_days > 0:
         remaining_days = remaining_ms / _DAY_MS
