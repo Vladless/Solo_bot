@@ -167,6 +167,18 @@ def describe_telegram_event(event: TelegramObject) -> str:
     return type(event).__name__
 
 
+def _pg_safe(value: str | None, limit: int = 2000) -> str | None:
+    """Готовит строку к записи в PostgreSQL: там запрещён байт \x00.
+
+    Путь берётся из запроса как есть, поэтому сканер с `%00` в адресе оставлял
+    запись, которую база отвергала навсегда — и она запирала всю очередь аудита.
+    """
+    if value is None:
+        return None
+    clean = str(value).replace("\x00", "")
+    return clean[:limit]
+
+
 def ensure_api_context(request: Request) -> AuditContext:
     context = getattr(request.state, "audit_context", None)
     if isinstance(context, AuditContext):
@@ -179,7 +191,7 @@ def ensure_api_context(request: Request) -> AuditContext:
     context = AuditContext(
         request_id=new_request_id(),
         channel="api",
-        path_or_handler=path_or_handler,
+        path_or_handler=_pg_safe(path_or_handler) or "-",
     )
     request.state.audit_context = context
     request.state.audit_request_id = context.request_id
@@ -1056,6 +1068,51 @@ async def get_audit_funnel_from_redis_since(
     return _funnel_from_rows(rows, steps_ordered)
 
 
+def _record_created_at(rec: dict) -> datetime:
+    """Время события из записи Redis; при мусоре — текущее."""
+    created = rec.get("created_at")
+    if isinstance(created, str):
+        try:
+            created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        except Exception:
+            created = None
+    if not isinstance(created, datetime):
+        created = datetime.now(timezone.utc)
+    return _naive_utc(created)
+
+
+async def _drain_batch_one_by_one(session_factory: Any, batch: list[dict]) -> tuple[int, list[str]]:
+    """Пишет пачку по одной записи. Возвращает записанное и то, что база не приняла.
+
+    Нужен, когда пачка падает целиком: без такого разбора одна неисправимая
+    запись запирает очередь навсегда и весь журнал перестаёт доходить до базы.
+    """
+    written = 0
+    poisoned: list[str] = []
+    for rec in batch:
+        try:
+            async with session_factory() as session:
+                event = AuditEvent(
+                    event_type=_pg_safe(rec.get("event_type")) or "telegram_access",
+                    channel=_pg_safe(rec.get("channel")) or "telegram",
+                    path_or_handler=_pg_safe(rec.get("path_or_handler")) or "telegram",
+                    actor_tg_id=rec.get("actor_tg_id"),
+                    entity_type=_pg_safe(rec.get("entity_type")),
+                    entity_id=_pg_safe(rec.get("entity_id")),
+                    result=_pg_safe(rec.get("result")) or "success",
+                    reason=_pg_safe(rec.get("reason")),
+                    metadata_=rec.get("metadata_"),
+                    request_id=rec.get("request_id"),
+                    created_at=_record_created_at(rec),
+                )
+                session.add(event)
+                await session.commit()
+            written += 1
+        except Exception as exc:
+            poisoned.append(f"{rec.get('request_id') or '-'}: {type(exc).__name__}")
+    return written, poisoned
+
+
 async def drain_audit_redis_to_db(session_factory: Any) -> int:
     from core.redis_cache import cache_delete, cache_lmove_batch, cache_lpop_batch, cache_lrange, cache_setnx
 
@@ -1121,15 +1178,15 @@ async def drain_audit_redis_to_db(session_factory: Any) -> int:
                             created = datetime.now(timezone.utc)
                         created = _naive_utc(created)
                         event = AuditEvent(
-                            event_type=rec.get("event_type", "telegram_access"),
-                            channel=rec.get("channel", "telegram"),
-                            path_or_handler=rec.get("path_or_handler") or "telegram",
+                            event_type=_pg_safe(rec.get("event_type")) or "telegram_access",
+                            channel=_pg_safe(rec.get("channel")) or "telegram",
+                            path_or_handler=_pg_safe(rec.get("path_or_handler")) or "telegram",
                             actor_identity_id=actor_identity_id,
                             actor_tg_id=rec.get("actor_tg_id"),
-                            entity_type=rec.get("entity_type"),
-                            entity_id=rec.get("entity_id"),
-                            result=rec.get("result", "success"),
-                            reason=rec.get("reason"),
+                            entity_type=_pg_safe(rec.get("entity_type")),
+                            entity_id=_pg_safe(rec.get("entity_id")),
+                            result=_pg_safe(rec.get("result")) or "success",
+                            reason=_pg_safe(rec.get("reason")),
                             metadata_=rec.get("metadata_"),
                             request_id=request_id,
                             created_at=created,
@@ -1140,8 +1197,16 @@ async def drain_audit_redis_to_db(session_factory: Any) -> int:
                 await cache_lpop_batch(_AUDIT_REDIS_PROCESSING_KEY, len(raw_batch))
                 total += inserted_count
             except Exception as exc:
-                logger.warning("[Audit] drain_audit_redis_to_db батч не записан, останется в Redis processing: {}", exc)
-                break
+                logger.warning("[Audit] drain_audit_redis_to_db батч не записан, разбираю поштучно: {}", exc)
+                written, poisoned = await _drain_batch_one_by_one(session_factory, batch)
+                total += written
+                if poisoned:
+                    logger.error(
+                        "[Audit] {} событий не принимает база и они отброшены, иначе очередь стоит навсегда: {}",
+                        len(poisoned),
+                        poisoned[:3],
+                    )
+                await cache_lpop_batch(_AUDIT_REDIS_PROCESSING_KEY, len(raw_batch))
         return total
     finally:
         await cache_delete(_AUDIT_REDIS_DRAIN_LOCK_KEY)
