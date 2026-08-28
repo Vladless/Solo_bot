@@ -71,5 +71,99 @@ class DumpFallbackTests(unittest.TestCase):
         self.assertLess(read_at, unlink_at, "дамп нельзя удалять, если он не отправлен")
 
 
+class DumpSplitTests(unittest.IsolatedAsyncioTestCase):
+    """pg_dump -Fc уже сжат внутри, поэтому большой дамп можно только резать."""
+
+    async def _send(self, size_mb: int, limit_mb: int = 49, max_parts: int | None = None):
+        import os
+        import tempfile
+        from unittest.mock import AsyncMock
+
+        import database  # noqa: F401 — модели не поднимутся первым импортом
+
+        import utils.backup as backup
+
+        saved = backup.MAX_DUMP_PARTS
+        if max_parts is not None:
+            backup.MAX_DUMP_PARTS = max_parts
+        tmp = tempfile.NamedTemporaryFile(suffix=".sql", delete=False)
+        tmp.write(b"x" * (size_mb * 1024 * 1024))
+        tmp.close()
+        bot = AsyncMock()
+        try:
+            sent = await backup._send_dump_in_parts(bot, [111], {}, tmp.name, limit_mb * 1024 * 1024)
+        finally:
+            backup.MAX_DUMP_PARTS = saved
+            os.unlink(tmp.name)
+        return sent, bot
+
+    async def test_дамп_режется_на_части_под_лимит(self):
+        sent, bot = await self._send(95)
+        self.assertEqual(sent, 2)
+        sizes = [len(c.kwargs["document"].data) for c in bot.send_document.await_args_list]
+        self.assertEqual(sum(sizes), 95 * 1024 * 1024, "части должны складываться в исходный файл")
+        self.assertTrue(all(size <= 49 * 1024 * 1024 for size in sizes))
+
+    async def test_части_пронумерованы(self):
+        _, bot = await self._send(95)
+        names = [c.kwargs["document"].filename for c in bot.send_document.await_args_list]
+        self.assertTrue(names[0].endswith(".part01"), names)
+        self.assertTrue(names[1].endswith(".part02"), names)
+
+    async def test_подпись_объясняет_как_собрать(self):
+        _, bot = await self._send(95)
+        caption = bot.send_document.await_args_list[0].kwargs["caption"]
+        self.assertIn("Часть 1 из 2", caption)
+        self.assertIn(".part*", caption)
+
+    async def test_слишком_много_частей_не_шлём(self):
+        sent, bot = await self._send(95, max_parts=1)
+        self.assertEqual(sent, 0)
+        self.assertEqual(bot.send_document.await_count, 0, "лучше оставить на сервере, чем засыпать чат")
+
+    async def test_помещающийся_дамп_уходит_одной_частью(self):
+        sent, bot = await self._send(20)
+        self.assertEqual(sent, 1)
+        self.assertEqual(bot.send_document.await_count, 1)
+
+
+class SplitWiringTests(unittest.TestCase):
+    def test_ветка_большого_дампа_пробует_резать(self):
+        branch = BACKUP[BACKUP.index("elif os.path.getsize(db_path) > TELEGRAM_SEND_LIMIT:") :][:1400]
+        self.assertIn("parts_sent = await _send_dump_in_parts(", branch)
+        self.assertIn("if parts_sent:", branch)
+
+    def test_если_резать_нельзя_остаётся_прежнее_сообщение(self):
+        branch = BACKUP[BACKUP.index("elif os.path.getsize(db_path) > TELEGRAM_SEND_LIMIT:") :][:1400]
+        self.assertIn("Дамп базы тоже не влез", branch)
+        self.assertIn("лежит рядом", branch)
+
+
+class DumpAsBackupTests(unittest.TestCase):
+    """При BACKUP_CREATE_ARCHIVE=False бэкап и есть дамп — второй раз снимать его незачем."""
+
+    def _branch(self) -> str:
+        start = BACKUP.index("if file_size > TELEGRAM_SEND_LIMIT:")
+        return BACKUP[start : BACKUP.index("for target in targets:", start)]
+
+    def test_дамп_не_снимается_повторно(self):
+        branch = self._branch()
+        self.assertIn('already_dump = backup_file_path.endswith(".sql")', branch)
+        self.assertIn("db_path, db_err = backup_file_path, None", branch)
+
+    def test_исходный_файл_не_удаляется(self):
+        branch = self._branch()
+        self.assertIn("if not already_dump:", branch)
+        self.assertLess(branch.index("if not already_dump:"), branch.index("os.unlink(db_path)"))
+
+    def test_заголовок_называет_вещи_своими_именами(self):
+        branch = self._branch()
+        self.assertIn('"⚠️ Дамп в чат не влез." if already_dump else "⚠️ Архив в чат не влез."', branch)
+
+    def test_подпись_блока_тоже_меняется(self):
+        branch = self._branch()
+        self.assertIn('section("📦 Дамп" if already_dump else "📦 Архив"', branch)
+
+
 if __name__ == "__main__":
     unittest.main()

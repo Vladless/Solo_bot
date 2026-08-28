@@ -92,6 +92,9 @@ def autoclose_stale_tickets_process_runner() -> None:
 
 WEB_ANALYTICS_RETENTION_DAYS = 90
 WEB_ERROR_RETENTION_DAYS = 30
+# Журнал доступа пишется на каждый запрос к API, включая внешние сканы.
+# Удаление для него было написано, но не вызывалось — таблица росла без предела.
+AUDIT_RETENTION_DAYS = 90
 
 
 async def cleanup_web_analytics_job() -> None:
@@ -131,14 +134,20 @@ async def cleanup_web_analytics_job() -> None:
             rl = await session.execute(
                 _sa_text("DELETE FROM rate_limit_counters WHERE window_start < :c"), {"c": rl_cutoff}
             )
+
+            from audit import delete_old_audit_events
+
+            audit_removed = await delete_old_audit_events(session, older_than_days=AUDIT_RETENTION_DAYS)
             await session.commit()
             logger.info(
-                "[WebAnalyticsCleanup] удалено page_views={} flow_events={} error_reports={} traffic_history={} rate_limit={}",
+                "[WebAnalyticsCleanup] удалено page_views={} flow_events={} error_reports={} "
+                "traffic_history={} rate_limit={} audit_events={}",
                 pv.rowcount,
                 fe.rowcount,
                 er.rowcount,
                 th.rowcount,
                 rl.rowcount,
+                audit_removed,
             )
         except Exception as error:
             logger.error("[WebAnalyticsCleanup] ошибка очистки: {}", error)

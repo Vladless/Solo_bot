@@ -357,6 +357,38 @@ async def create_backup_and_send_to_admins(client) -> None:
     await client.database.export()
 
 
+MAX_DUMP_PARTS = 12
+
+
+async def _send_dump_in_parts(active_bot, targets, kw_base: dict, db_path: str, limit: int) -> int:
+    """Режет дамп на куски под лимит Telegram и отправляет их по очереди.
+
+    pg_dump -Fc уже сжат внутри, поэтому упаковать его меньше не выйдет —
+    остаётся резать. Собирается обратно обычным `cat part* > dump.sql`.
+    """
+    total = os.path.getsize(db_path)
+    parts = (total + limit - 1) // limit
+    if parts > MAX_DUMP_PARTS:
+        return 0
+
+    base = os.path.basename(db_path)
+    sent = 0
+    async with aiofiles.open(db_path, "rb") as source:
+        for index in range(1, parts + 1):
+            chunk = await source.read(limit)
+            if not chunk:
+                break
+            doc = BufferedInputFile(file=chunk, filename=f"{base}.part{index:02d}")
+            caption = f"Часть {index} из {parts} · собрать: cat {base}.part* &gt; {base}"
+            for target in targets:
+                try:
+                    await active_bot.send_document(document=doc, caption=caption, chat_id=target, **kw_base)
+                except Exception as e:
+                    logger.error("[Backup] Часть {} дампа не отправлена в {}: {}", index, target, e)
+            sent += 1
+    return sent
+
+
 async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None = None) -> None:
     if not backup_file_path or not os.path.exists(backup_file_path):
         raise FileNotFoundError(f"Файл бэкапа не найден: {backup_file_path}")
@@ -381,7 +413,12 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
             size_mb = file_size / (1024 * 1024)
             targets = [chat_id] if chat_id else list(ADMIN_ID)
 
-            db_path, db_err = _create_database_backup()
+            # Когда бэкап и есть дамп, второй раз его снимать незачем — режем этот.
+            already_dump = backup_file_path.endswith(".sql")
+            if already_dump:
+                db_path, db_err = backup_file_path, None
+            else:
+                db_path, db_err = _create_database_backup()
             db_doc = None
             db_note = ""
             if db_err or not db_path:
@@ -389,8 +426,25 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
                 logger.error("[Backup] Дамп для отправки не создан: {}", db_err)
             elif os.path.getsize(db_path) > TELEGRAM_SEND_LIMIT:
                 db_size_mb = os.path.getsize(db_path) / (1024 * 1024)
-                db_note = f"Дамп базы тоже не влез ({db_size_mb:.0f} МБ), лежит рядом: {db_path}"
-                logger.warning("[Backup] Дамп {} МБ больше лимита, оставлен на сервере: {}", int(db_size_mb), db_path)
+                kw_parts: dict = {"parse_mode": "HTML"}
+                if chat_id and thread_id:
+                    kw_parts["message_thread_id"] = thread_id
+                parts_sent = await _send_dump_in_parts(
+                    active_bot, targets, kw_parts, db_path, TELEGRAM_SEND_LIMIT
+                )
+                if parts_sent:
+                    db_note = (
+                        f"Дамп {db_size_mb:.0f} МБ ушёл {parts_sent} частями — "
+                        f"собрать: cat {os.path.basename(db_path)}.part* &gt; {os.path.basename(db_path)}"
+                    )
+                    logger.info("[Backup] Дамп {} МБ отправлен {} частями", int(db_size_mb), parts_sent)
+                else:
+                    db_note = f"Дамп базы тоже не влез ({db_size_mb:.0f} МБ), лежит рядом: {db_path}"
+                    logger.warning(
+                        "[Backup] Дамп {} МБ больше лимита и слишком велик для дробления, оставлен: {}",
+                        int(db_size_mb),
+                        db_path,
+                    )
             else:
                 try:
                     async with aiofiles.open(db_path, "rb") as f:
@@ -400,23 +454,27 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
                     db_note = f"Дамп базы прочитать не удалось: {e}"
                     logger.error("[Backup] Не удалось прочитать дамп БД: {}", e)
                 finally:
-                    try:
-                        os.unlink(db_path)
-                    except Exception:
-                        pass
+                    if not already_dump:
+                        try:
+                            os.unlink(db_path)
+                        except Exception:
+                            pass
 
             from handlers.admin.panel.headers import card, menu_text, section
 
             blocks = [
-                section("📦 Архив", f"Размер: {size_mb:.0f} МБ", "Лимит: 50 МБ"),
+                section("📦 Дамп" if already_dump else "📦 Архив", f"Размер: {size_mb:.0f} МБ", "Лимит: 50 МБ"),
                 section("🖥 Лежит на сервере", f"<code>{backup_file_path}</code>"),
             ]
             if db_note:
                 blocks.append(section("🗄 База", db_note))
             blocks.append(section("♻️ Вернуть", "Бот → Управление БД"))
+            headline = "💾 В чат ушёл дамп базы."
+            if not db_doc:
+                headline = "⚠️ Дамп в чат не влез." if already_dump else "⚠️ Архив в чат не влез."
             caption = menu_text(
                 "Бэкап",
-                "💾 В чат ушёл дамп базы." if db_doc else "⚠️ Архив в чат не влез.",
+                headline,
                 card(*blocks),
             )
 
