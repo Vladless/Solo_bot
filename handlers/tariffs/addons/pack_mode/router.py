@@ -419,6 +419,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                         "current_device_limit": current_devices,
                         "current_traffic_gb": current_traffic_gb,
                         "required_amount": required_amount,
+                        "agreed_extra_price": int(extra_price),
                     },
                     required_amount=required_amount,
                 )

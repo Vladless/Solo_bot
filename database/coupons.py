@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import case, delete, func, insert, or_, select, update
+from sqlalchemy import and_, case, delete, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -151,16 +151,53 @@ async def has_any_coupon_usage(session: AsyncSession, legacy_user_ref: int) -> b
     return result.first() is not None
 
 
-async def update_coupon_usage_count(session: AsyncSession, coupon_id: int):
-    await session.execute(
+async def claim_coupon_slot(session: AsyncSession, coupon_id: int) -> bool:
+    """Занимает слот купона одним запросом. False — лимит уже исчерпан.
+
+    Проверять лимит отдельным select нельзя: два клиента одновременно пройдут
+    проверку последнего слота и оба получат бонус.
+    """
+    used = func.coalesce(Coupon.usage_count, 0)
+    result = await session.execute(
         update(Coupon)
-        .where(Coupon.id == coupon_id)
+        .where(
+            Coupon.id == coupon_id,
+            or_(Coupon.usage_limit.is_(None), used < Coupon.usage_limit),
+        )
         .values(
-            usage_count=Coupon.usage_count + 1,
-            is_used=case((Coupon.usage_count + 1 >= Coupon.usage_limit, True), else_=False),
+            usage_count=used + 1,
+            is_used=case(
+                (and_(Coupon.usage_limit.isnot(None), used + 1 >= Coupon.usage_limit), True),
+                else_=False,
+            ),
         )
     )
-    logger.info(f"🔁 Обновлён счётчик купона {coupon_id}")
+    claimed = bool(result.rowcount)
+    if claimed:
+        logger.info(f"🔁 Обновлён счётчик купона {coupon_id}")
+    else:
+        logger.info(f"⛔ Слот купона {coupon_id} не занят: лимит исчерпан")
+    return claimed
+
+
+async def release_coupon_slot(session: AsyncSession, coupon_id: int) -> None:
+    """Возвращает занятый слот, если активация дальше не состоялась."""
+    used = func.coalesce(Coupon.usage_count, 0)
+    await session.execute(
+        update(Coupon)
+        .where(Coupon.id == coupon_id, used > 0)
+        .values(
+            usage_count=used - 1,
+            is_used=case(
+                (and_(Coupon.usage_limit.isnot(None), used - 1 >= Coupon.usage_limit), True),
+                else_=False,
+            ),
+        )
+    )
+
+
+async def update_coupon_usage_count(session: AsyncSession, coupon_id: int) -> bool:
+    return await claim_coupon_slot(session, coupon_id)
 
 
 async def mark_coupon_used(session: AsyncSession, coupon_id: int, legacy_user_ref: int):

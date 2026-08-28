@@ -47,6 +47,46 @@ async def bulk_reissue(session: AsyncSession, keys: list[Key]) -> tuple[int, int
     return ok, fail, skipped
 
 
+async def _notify_reissue(bot, tg_id, email: str, new_link: str) -> bool:
+    """Сообщает о новой ссылке и в Telegram, и в кабинет: у веб-клиента чата нет.
+
+    Уведомление пишется отдельной сессией: сбой не должен ронять остаток пачки.
+    """
+    delivered = False
+    if tg_id and int(tg_id) > 0:
+        try:
+            await bot.send_message(
+                chat_id=tg_id,
+                text=(
+                    "🔄 <b>Ваша подписка была перевыпущена</b>\n\n"
+                    f"🔗 <b>Новая ссылка подписки:</b>\n<code>{new_link}</code>\n\n"
+                    "<i>Старая ссылка больше не работает.</i>"
+                ),
+            )
+            delivered = True
+        except Exception as e:
+            logger.warning(f"[Bulk] reissue_link notify {tg_id}: {type(e).__name__}: {e!r}")
+    if tg_id:
+        try:
+            from database import async_session_maker
+            from database.web_notifications import notify_web
+
+            async with async_session_maker() as notify_session:
+                notification = await notify_web(
+                    notify_session,
+                    tg_id=int(tg_id),
+                    type="system",
+                    title="Подписка перевыпущена",
+                    message="Ссылка подписки обновлена, старая больше не работает.",
+                    data={"email": email, "link": new_link},
+                )
+                await notify_session.commit()
+            delivered = delivered or notification is not None
+        except Exception as e:
+            logger.warning(f"[Bulk] reissue_link web-notify {tg_id}: {type(e).__name__}: {e!r}")
+    return delivered
+
+
 async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tuple[int, int, int, int]:
     servers = await get_servers(session)
     targets = [(key.tg_id, key.email, key.client_id, key.server_id) for key in keys]
@@ -74,19 +114,8 @@ async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tupl
                     continue
                 await update_key_subscription_links(session, email, new_link)
                 ok += 1
-                if tg_id and tg_id > 0:
-                    try:
-                        await bot.send_message(
-                            chat_id=tg_id,
-                            text=(
-                                "🔄 <b>Ваша подписка была перевыпущена</b>\n\n"
-                                f"🔗 <b>Новая ссылка подписки:</b>\n<code>{new_link}</code>\n\n"
-                                "<i>Старая ссылка больше не работает.</i>"
-                            ),
-                        )
-                        notified += 1
-                    except Exception as e:
-                        logger.warning(f"[Bulk] reissue_link notify {tg_id}: {type(e).__name__}: {e!r}")
+                if await _notify_reissue(bot, tg_id, email, new_link):
+                    notified += 1
             else:
                 if not tg_id:
                     skipped += 1

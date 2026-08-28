@@ -8,6 +8,7 @@ import threading
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 from typing import Literal
 
 from aiogram import Bot
@@ -215,6 +216,17 @@ class PeriodicTaskManager:
             pass
         self._process_lock_file = None
 
+    @staticmethod
+    def _report_loop_exit(task_id: str, task: asyncio.Task) -> None:
+        """Упавший цикл иначе исчезает молча: никто его не перезапускает и не замечает."""
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            logger.opt(exception=error).error("[PeriodicManager] Цикл {} упал и больше не работает", task_id)
+        else:
+            logger.warning("[PeriodicManager] Цикл {} завершился сам и больше не работает", task_id)
+
     def _build_scheduler(self) -> AsyncIOScheduler:
         from settings.config import EXECUTOR_POOL_SIZE, PROCESS_POOL_SIZE
 
@@ -292,7 +304,9 @@ class PeriodicTaskManager:
             scheduler.start()
             self._scheduler = scheduler
             for loop_task in self._loop_tasks.values():
-                self._running_tasks[loop_task.task_id] = asyncio.create_task(loop_task.runner(bot, sessionmaker))
+                task = asyncio.create_task(loop_task.runner(bot, sessionmaker))
+                task.add_done_callback(partial(self._report_loop_exit, loop_task.task_id))
+                self._running_tasks[loop_task.task_id] = task
             for loop_task in self._thread_loop_tasks.values():
                 stop_event = threading.Event()
                 thread = threading.Thread(

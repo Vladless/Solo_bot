@@ -13,6 +13,7 @@ from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
 
 from audit import ensure_api_context, log_api_access, record_api_access_event_background
+from core.executor import spawn
 from database import async_session_maker
 from logger import logger
 from settings.config import API_CORS_ORIGINS, API_LOGGING, API_VERSION, LOGGING_LEVEL
@@ -212,7 +213,7 @@ async def api_access_log_middleware(request: Request, call_next):
                 result="fail",
                 reason=type(exc).__name__,
             )
-        asyncio.create_task(
+        spawn(
             record_api_access_event_background(
                 async_session_maker,
                 request,
@@ -234,7 +235,7 @@ async def api_access_log_middleware(request: Request, call_next):
             duration_ms=duration_ms,
             result=result,
         )
-    asyncio.create_task(
+    spawn(
         record_api_access_event_background(
             async_session_maker,
             request,

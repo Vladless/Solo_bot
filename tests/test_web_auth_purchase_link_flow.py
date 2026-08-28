@@ -50,8 +50,8 @@ def _empty_result():
         scalar_one_or_none=lambda: None,
         scalar_one=lambda: 0,
         scalar=lambda: None,
-        scalars=lambda: SimpleNamespace(all=lambda: [], first=lambda: None),
-        all=lambda: [],
+        scalars=lambda: SimpleNamespace(all=list, first=lambda: None),
+        all=list,
     )
 
 

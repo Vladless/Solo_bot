@@ -46,7 +46,6 @@ router = Router()
 
 
 @router.callback_query(F.data.startswith("key_addons|"), flags={"popup": True})
-
 async def start_key_addons(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     key_ref = callback.data.split("|", 1)[1]
     key_obj = await resolve_key(session, callback.from_user.id, key_ref)
@@ -543,6 +542,7 @@ async def handle_addons_confirm(callback: CallbackQuery, state: FSMContext, sess
                     "current_device_limit": current_devices,
                     "current_traffic_gb": current_traffic_gb,
                     "required_amount": required_amount,
+                    "agreed_extra_price": int(extra_price),
                 },
                 required_amount=required_amount,
             )

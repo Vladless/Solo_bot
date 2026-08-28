@@ -1844,6 +1844,26 @@ async def _migration_v48_ticket_timestamptz(conn: AsyncConnection) -> None:
                 )
 
 
+async def _migration_v52_payments_status_created_index(conn: AsyncConnection) -> None:
+    """Индексы на payments.status/created_at.
+
+    По этой паре фильтруют и аналитика выручки, и уборка зависших платежей,
+    а таблица растёт с каждой попыткой оплаты — без индекса каждый такой
+    запрос читал её целиком.
+    """
+    _mig_out("[schema_upgrade] v52: индексы payments (status, created_at)")
+    if not await _table_exists(conn, "payments"):
+        return
+    for index_name, columns in (
+        ("ix_payments_status_created", "status, created_at"),
+        ("ix_payments_created", "created_at"),
+    ):
+        if await _index_exists(conn, "payments", index_name):
+            continue
+        await conn.execute(text(f"CREATE INDEX {index_name} ON payments ({columns})"))
+        _mig_out(f"[schema_upgrade] v52: создан {index_name}")
+
+
 _MIGRATIONS = [
     (1, "Добавление users.id", _migration_v1_add_users_id),
     (2, "Добавление user_id колонок", _migration_v2_add_user_id_columns),
@@ -1896,6 +1916,7 @@ _MIGRATIONS = [
     (49, "scheduled_broadcasts.channel → VARCHAR(32) (мультиканал)", _migration_v49_widen_scheduled_broadcasts_channel),
     (50, "users.legal_accepted_at (согласие с документами)", _migration_v50_users_legal_accepted_at),
     (51, "Снятие внешних ключей на users.tg_id", _migration_v51_drop_tg_id_foreign_keys),
+    (52, "Индексы payments (status, created_at)", _migration_v52_payments_status_created_index),
 ]
 
 

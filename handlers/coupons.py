@@ -17,12 +17,13 @@ from database import (
     add_payment,
     add_user,
     check_coupon_usage,
+    claim_coupon_slot,
     create_coupon_usage,
     get_coupon_by_code,
     get_keys,
     get_tariff_by_id,
+    release_coupon_slot,
     update_balance,
-    update_coupon_usage_count,
     update_key_expiry,
 )
 from handlers.admin.panel.headers import section
@@ -287,15 +288,22 @@ async def handle_key_extension(
         if tariff:
             key_subgroup = tariff.get("subgroup_title")
 
+        if not await claim_coupon_slot(session, coupon.id):
+            await edit_or_send_message(
+                target_message=callback_query.message,
+                text="❌ Лимит активаций купона исчерпан.",
+            )
+            await state.clear()
+            return
         reserved = await create_coupon_usage(session, coupon.id, tg_id)
         if not reserved:
+            await release_coupon_slot(session, coupon.id)
             await edit_or_send_message(
                 target_message=callback_query.message,
                 text="❌ Вы уже активировали этот купон.",
             )
             await state.clear()
             return
-        await update_coupon_usage_count(session, coupon.id)
 
         await release_session_early(session)
         await renew_key_in_cluster(

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_admin_token, verify_admin_token_short
 from core.bootstrap import MANAGEMENT_CONFIG
-from core.executor import run_io
+from core.executor import run_io, spawn
 from core.settings.management_config import update_management_config
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker
@@ -230,11 +230,15 @@ async def restore_trials(
 @router.post("/backup")
 async def trigger_backup(admin=Depends(verify_admin_token)):
     async def _run_backup() -> None:
-        exception = await backup_database()
+        try:
+            exception = await backup_database()
+        except Exception as error:
+            logger.opt(exception=error).error("[Management] Backup crashed: {}", error)
+            return
         if exception:
             logger.error(f"[Management] Backup finished with error: {exception}")
 
-    asyncio.create_task(_run_backup())
+    spawn(_run_backup())
     return {"status": "backup_started"}
 
 

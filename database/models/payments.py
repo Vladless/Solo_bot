@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, Integer, Numeric, String
+from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 
 from ._base import Base, DictLikeMixin
@@ -8,6 +8,10 @@ from ._base import Base, DictLikeMixin
 
 class Payment(DictLikeMixin, Base):
     __tablename__ = "payments"
+    __table_args__ = (
+        Index("ix_payments_status_created", "status", "created_at"),
+        Index("ix_payments_created", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)

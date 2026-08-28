@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING
 from database.coupons import (
     apply_percent_coupon,
     check_coupon_usage,
+    claim_coupon_slot,
     create_coupon_usage,
     get_coupon_by_code_ci,
-    update_coupon_usage_count,
+    release_coupon_slot,
 )
 from database.keys import count_active_keys_for_user
 from database.models import Coupon
@@ -106,9 +107,12 @@ async def apply_fixed_coupon(
     if bool(getattr(coupon, "new_users_only", False)):
         await _check_new_user(session, user_id)
 
+    if not await claim_coupon_slot(session, int(coupon.id)):
+        raise ValidationError("Лимит активаций купона исчерпан")
+    if not await create_coupon_usage(session, int(coupon.id), int(user_id)):
+        await release_coupon_slot(session, int(coupon.id))
+        raise ValidationError("Купон уже активирован")
     await update_balance(session, int(user_id), float(amount))
-    await create_coupon_usage(session, int(coupon.id), int(user_id))
-    await update_coupon_usage_count(session, int(coupon.id))
     await add_payment(
         session=session,
         legacy_user_ref=int(user_id),

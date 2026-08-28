@@ -13,7 +13,7 @@ def _load_builder():
     """Сборка строк уровней чистая — берём её из роутера, не поднимая FastAPI."""
     segment = ROUTE[ROUTE.index("    def _by_level(raw: dict)") : ROUTE.index("    mode_labels = {")]
     lines = ["def build(mode, percent_levels_raw, flat_levels_raw):"]
-    lines += [line for line in segment.rstrip().splitlines()]
+    lines += list(segment.rstrip().splitlines())
     lines.append("    return level_lines")
     namespace: dict = {}
     exec("\n".join(lines), namespace)

@@ -23,9 +23,14 @@ async def backup_loop(bot, _sessionmaker) -> None:
         await asyncio.Event().wait()
         return
     while True:
-        error = await backup_database(bot_instance=bot)
-        if error:
-            logger.error("[Backup] Ошибка: {}", error)
+        try:
+            error = await backup_database(bot_instance=bot)
+            if error:
+                logger.error("[Backup] Ошибка: {}", error)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("[Backup] Копия не создана: {}", exc)
         await asyncio.sleep(BACKUP_TIME)
 
 
