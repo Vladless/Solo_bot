@@ -383,12 +383,21 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
 
             db_path, db_err = _create_database_backup()
             db_doc = None
-            if db_path and not db_err and os.path.getsize(db_path) <= TELEGRAM_SEND_LIMIT:
+            db_note = ""
+            if db_err or not db_path:
+                db_note = f"Дамп базы не создан: {db_err}" if db_err else "Дамп базы не создан"
+                logger.error("[Backup] Дамп для отправки не создан: {}", db_err)
+            elif os.path.getsize(db_path) > TELEGRAM_SEND_LIMIT:
+                db_size_mb = os.path.getsize(db_path) / (1024 * 1024)
+                db_note = f"Дамп базы тоже не влез ({db_size_mb:.0f} МБ), лежит рядом: {db_path}"
+                logger.warning("[Backup] Дамп {} МБ больше лимита, оставлен на сервере: {}", int(db_size_mb), db_path)
+            else:
                 try:
                     async with aiofiles.open(db_path, "rb") as f:
                         db_bytes = await f.read()
                     db_doc = BufferedInputFile(file=db_bytes, filename=os.path.basename(db_path))
                 except Exception as e:
+                    db_note = f"Дамп базы прочитать не удалось: {e}"
                     logger.error("[Backup] Не удалось прочитать дамп БД: {}", e)
                 finally:
                     try:
@@ -398,14 +407,17 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
 
             from handlers.admin.panel.headers import card, menu_text, section
 
+            blocks = [
+                section("📦 Архив", f"Размер: {size_mb:.0f} МБ", "Лимит: 50 МБ"),
+                section("🖥 Лежит на сервере", f"<code>{backup_file_path}</code>"),
+            ]
+            if db_note:
+                blocks.append(section("🗄 База", db_note))
+            blocks.append(section("♻️ Вернуть", "Бот → Управление БД"))
             caption = menu_text(
                 "Бэкап",
                 "💾 В чат ушёл дамп базы." if db_doc else "⚠️ Архив в чат не влез.",
-                card(
-                    section("📦 Архив", f"Размер: {size_mb:.0f} МБ", "Лимит: 50 МБ"),
-                    section("🖥 Лежит на сервере", f"<code>{backup_file_path}</code>"),
-                    section("♻️ Вернуть", "Бот → Управление БД"),
-                ),
+                card(*blocks),
             )
 
             for target in targets:

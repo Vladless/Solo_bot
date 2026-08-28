@@ -1420,15 +1420,28 @@ def prune_old_backups():
             subprocess.run(["sudo", "rm", "-rf", path])
 
 
+BACKUP_SKIP_DIRS = ("venv", "node_modules", ".git", "__pycache__")
+
+
 def backup_project() -> str | None:
+    """Копия проекта без того, что восстанавливается само.
+
+    venv пересобирает установка зависимостей, node_modules и .git тянут сотни
+    мегабайт и в откате не нужны — держать их в копии значит только раздувать её.
+    """
     from datetime import datetime
 
     os.makedirs(BACK_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dst = os.path.join(BACK_DIR, f"backup-{ts}")
     step_warn("Создаётся резервная копия проекта...")
+    install_rsync_if_needed()
+    excludes = [f"--exclude={name}" for name in BACKUP_SKIP_DIRS]
     with console.status("[brand]Копирование файлов...[/brand]"):
-        result = subprocess.run(["cp", "-r", PROJECT_DIR, dst], check=False)
+        result = subprocess.run(
+            ["rsync", "-a", *excludes, f"{PROJECT_DIR}/", f"{dst}/"],
+            check=False,
+        )
     if result.returncode != 0:
         step_fail("Не удалось создать бэкап")
         return None
@@ -1443,8 +1456,10 @@ def _restore_backup_unattended(backup_path: str) -> bool:
     if is_service_exists(SERVICE_NAME):
         subprocess.run(["sudo", "systemctl", "stop", SERVICE_NAME], check=False)
     install_rsync_if_needed()
+    # Того, чего в копии нет, --delete не должен сносить: venv переживает откат.
+    excludes = [f"--exclude={name}" for name in BACKUP_SKIP_DIRS]
     result = run_with_status(
-        ["rsync", "-a", "--delete", f"{backup_path}/", f"{PROJECT_DIR}/"],
+        ["rsync", "-a", "--delete", *excludes, f"{backup_path}/", f"{PROJECT_DIR}/"],
         status_text="Откат из бэкапа",
     )
     return result.returncode == 0
@@ -4359,32 +4374,57 @@ def _parse_solo_brick_semver(tag: str):
     return (major, minor, patch, 0, tuple(ids))
 
 
+def _docker_label(kind: str, ref: str) -> str | None:
+    """Лейбл версии у образа или контейнера. None — докер не ответил или лейбла нет."""
+    try:
+        result = subprocess.run(
+            [
+                "docker",
+                kind,
+                "inspect",
+                "--format",
+                '{{index .Config.Labels "org.opencontainers.image.version"}}',
+                ref,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    label = (result.stdout or "").strip()
+    if result.returncode != 0 or not label or label == "<no value>":
+        return None
+    return label
+
+
 def read_installed_solo_brick_version() -> str | None:
-    """Версия установленного Solo-brick по лейблу докер-образа."""
-    for image_ref in (f"ghcr.io/{GHCR_IMAGE}:latest", f"ghcr.io/{GHCR_IMAGE}"):
-        try:
-            result = subprocess.run(
-                [
-                    "docker",
-                    "image",
-                    "inspect",
-                    "--format",
-                    '{{index .Config.Labels "org.opencontainers.image.version"}}',
-                    image_ref,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            label = (result.stdout or "").strip()
-            if result.returncode == 0 and label and label != "<no value>":
-                return label
-        except Exception:
-            continue
+    """Версия работающего Solo-brick.
+
+    Спрашиваем сперва сам контейнер: только он знает, из какого образа поднят.
+    Образ :latest проверять первым нельзя — на канале dev его может не быть
+    вовсе, и версия показывалась как «не определено».
+    """
+    label = _docker_label("container", WEB_CONTAINER_NAME)
+    if label:
+        return label
+
+    saved_tag = _get_saved_web_tag()
+    refs = [f"ghcr.io/{GHCR_IMAGE}:{saved_tag}"]
+    for tag in WEB_TAG_CHOICES:
+        ref = f"ghcr.io/{GHCR_IMAGE}:{tag}"
+        if ref not in refs:
+            refs.append(ref)
+    refs.append(f"ghcr.io/{GHCR_IMAGE}")
+
+    for image_ref in refs:
+        label = _docker_label("image", image_ref)
+        if label:
+            return label
     return None
 
 
-def fetch_latest_ghcr_tag(image: str) -> str | None:
+def fetch_latest_ghcr_tag(image: str, channel: str = "") -> str | None:
     try:
         token_resp = http_get(f"https://ghcr.io/token?scope=repository:{image}:pull", timeout=8)
         if token_resp.status_code != 200:
@@ -4402,8 +4442,17 @@ def fetch_latest_ghcr_tag(image: str) -> str | None:
         versions = []
         for raw in tags:
             parsed = _parse_solo_brick_semver(str(raw))
-            if parsed is not None:
-                versions.append((parsed, str(raw)))
+            if parsed is None:
+                continue
+            prerelease = parsed[3] == 0
+            # На канале latest предрелизы не предлагаем, на dev — наоборот, они и нужны.
+            if channel == "latest" and prerelease:
+                continue
+            if channel == "dev" and not prerelease:
+                continue
+            versions.append((parsed, str(raw)))
+        if not versions and channel:
+            return fetch_latest_ghcr_tag(image)
         if not versions:
             return None
         versions.sort(key=lambda item: item[0], reverse=True)
@@ -4415,8 +4464,9 @@ def fetch_latest_ghcr_tag(image: str) -> str | None:
 def show_website_version_banner():
     """Короткий баннер с установленной и доступной версией сайта."""
     installed = read_installed_solo_brick_version()
+    channel = _get_saved_web_tag()
     with console.status("[accent]Проверка версии Solo-brick...[/accent]"):
-        latest = fetch_latest_ghcr_tag(GHCR_IMAGE)
+        latest = fetch_latest_ghcr_tag(GHCR_IMAGE, channel)
     installed_str = installed if installed else "не определено"
     latest_str = latest if latest else "недоступно"
     tag = ""
