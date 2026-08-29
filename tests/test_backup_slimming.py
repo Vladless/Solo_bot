@@ -165,5 +165,67 @@ class DumpAsBackupTests(unittest.TestCase):
         self.assertIn('section("📦 Дамп" if already_dump else "📦 Архив"', branch)
 
 
+class DumpAlwaysSentTests(unittest.IsolatedAsyncioTestCase):
+    """База уходит своим файлом и не зависит от того, сколько весит папка."""
+
+    async def _run(self, dump_mb: int | None, limit_mb: int = 49):
+        import os
+        import tempfile
+        from unittest.mock import AsyncMock, patch
+
+        import database  # noqa: F401
+
+        import utils.backup as backup
+
+        if dump_mb is None:
+            maker = lambda: (None, RuntimeError("pg_dump упал"))  # noqa: E731
+            path = None
+        else:
+            tmp = tempfile.NamedTemporaryFile(suffix=".sql", delete=False)
+            tmp.write(b"d" * (dump_mb * 1024 * 1024))
+            tmp.close()
+            path = tmp.name
+            maker = lambda: (path, None)  # noqa: E731
+
+        bot = AsyncMock()
+        with patch.object(backup, "_create_database_backup", maker):
+            await backup._send_dump_alongside(bot, "/tmp/arch.tar.gz", 555, None, limit_mb * 1024 * 1024)
+        if path and os.path.exists(path):
+            os.unlink(path)
+        return bot, path
+
+    async def test_небольшой_дамп_уходит_одним_файлом(self):
+        bot, _ = await self._run(3)
+        self.assertEqual(bot.send_document.await_count, 1)
+        self.assertEqual(bot.send_document.await_args_list[0].kwargs["caption"], "Дамп базы")
+
+    async def test_временный_файл_убирается(self):
+        _, path = await self._run(3)
+        import os
+
+        self.assertFalse(os.path.exists(path))
+
+    async def test_большой_дамп_уходит_частями(self):
+        bot, _ = await self._run(95)
+        names = [c.kwargs["document"].filename for c in bot.send_document.await_args_list]
+        self.assertEqual(len(names), 2)
+        self.assertTrue(all(".part" in name for name in names))
+
+    async def test_сбой_снятия_не_ломает_отправку(self):
+        bot, _ = await self._run(None)
+        self.assertEqual(bot.send_document.await_count, 0)
+
+
+class DumpAlongsideWiringTests(unittest.TestCase):
+    def test_дамп_шлётся_до_архива(self):
+        body = BACKUP[BACKUP.index("async def _send_backup_telegram") :]
+        self.assertIn("await _send_dump_alongside(active_bot, backup_file_path", body)
+        self.assertLess(body.index("_send_dump_alongside"), body.index("if file_size > TELEGRAM_SEND_LIMIT:"))
+
+    def test_для_самого_дампа_дубля_не_будет(self):
+        body = BACKUP[BACKUP.index("async def _send_backup_telegram") :]
+        self.assertIn('not backup_file_path.endswith(".sql")', body)
+
+
 if __name__ == "__main__":
     unittest.main()

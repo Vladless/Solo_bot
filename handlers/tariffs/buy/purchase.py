@@ -24,6 +24,59 @@ from settings.texts import (
 CREATING_KEY_BUTTON_TEXT = "⏳ Подождите..."
 
 
+async def _offer_coupon_before_charge(
+    callback_query,
+    state,
+    session,
+    *,
+    tariff: dict,
+    price_rub: int,
+    duration_days: int,
+    selected_device_limit,
+    selected_traffic_gb,
+    balance,
+) -> bool:
+    """Экран «оформить или ввести купон» до списания. True — экран показан.
+
+    Раньше при достаточном балансе деньги списывались сразу, и купон вводить
+    было негде: кнопка жила только на экране доплаты.
+    """
+    from core.bootstrap import BUTTONS_CONFIG
+    from database.temporary_data import create_temporary_data
+    from settings.buttons import COUPON
+
+    if not BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
+        return False
+
+    tg_id = callback_query.from_user.id
+    payload = {
+        "tariff_id": tariff["id"],
+        "selected_price_rub": int(price_rub),
+        "selected_duration_days": int(duration_days),
+        "selected_device_limit": selected_device_limit,
+        "selected_traffic_limit_gb": selected_traffic_gb,
+        "required_amount": 0,
+    }
+    await create_temporary_data(session, tg_id, "waiting_for_payment", payload)
+    await state.update_data(temp_key="waiting_for_payment", temp_payload=payload, required_amount=0)
+
+    language_code = getattr(callback_query.from_user, "language_code", None)
+    price_text = await format_for_user(session, tg_id, float(price_rub), language_code)
+    balance_text = await format_for_user(session, tg_id, float(balance), language_code)
+
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=CREATING_KEY_BUTTON_TEXT, callback_data="buy_confirm_balance"))
+    builder.row(InlineKeyboardButton(text=COUPON, callback_data="fastflow_coupon"))
+    builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
+    await edit_or_send_message(
+        target_message=callback_query.message,
+        text=f"К оплате: {price_text}\nНа балансе: {balance_text}\n\nЕсли есть купон — примените его перед оплатой.",
+        reply_markup=builder.as_markup(),
+    )
+    await safe_answer_callback(callback_query)
+    return True
+
+
 async def proceed_purchase_with_values(
     callback_query: CallbackQuery,
     session: Any,
@@ -87,6 +140,19 @@ async def proceed_purchase_with_values(
             text=INSUFFICIENT_FUNDS_MSG.format(required_amount=required_amount_text),
             reply_markup=builder.as_markup(),
         )
+        return
+
+    if await _offer_coupon_before_charge(
+        callback_query,
+        state,
+        session,
+        tariff=tariff,
+        price_rub=price_rub,
+        duration_days=duration_days,
+        selected_device_limit=selected_device_limit,
+        selected_traffic_gb=selected_traffic_gb,
+        balance=balance,
+    ):
         return
 
     builder = InlineKeyboardBuilder()

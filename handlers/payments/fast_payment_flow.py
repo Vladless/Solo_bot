@@ -8,7 +8,6 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import select
 
-from settings.config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
 from core.bootstrap import PAYMENTS_CONFIG
 from core.settings.buttons_config import BUTTONS_CONFIG
 from core.settings.money_config import get_currency_mode
@@ -20,21 +19,22 @@ from database import (
 )
 from database.coupons import apply_percent_coupon
 from database.temporary_data import create_temporary_data, get_temporary_data
-from settings import buttons as btn
 from handlers.payments.currency_flow import (
     build_currency_choice_kb,
     currency_label,
     shortfall_lead_text,
 )
+from handlers.utils import edit_or_send_message
+from logger import logger
+from services.payments.providers import get_providers_with_hooks, sort_provider_names
+from settings import buttons as btn
+from settings.config import TRIBUTE_LINK, USE_NEW_PAYMENT_FLOW
 from settings.texts import (
     FASTFLOW_COUPON_APPLIED_TEMPLATE,
     FAST_PAY_CHOOSE_CURRENCY,
     FAST_PAY_CHOOSE_PROVIDER,
     RESUME_CHECKOUT_EXPIRED,
 )
-from handlers.utils import edit_or_send_message
-from logger import logger
-from services.payments.providers import get_providers_with_hooks, sort_provider_names
 
 
 router = Router()
@@ -391,6 +391,34 @@ async def fastflow_coupon(callback_query: CallbackQuery, state: FSMContext):
     )
 
 
+@router.callback_query(F.data == "buy_confirm_balance")
+async def buy_confirm_balance(callback_query: CallbackQuery, state: FSMContext, session: Any):
+    """Оформление с баланса после экрана с предложением купона."""
+    data = await state.get_data()
+    temp_key = data.get("temp_key")
+    payload = data.get("temp_payload")
+    if not temp_key or not isinstance(payload, dict):
+        await callback_query.answer("Данные покупки не найдены", show_alert=True)
+        return
+    await callback_query.answer()
+    await state.set_state(None)
+    await _finish_from_balance(callback_query.message, session, str(temp_key), payload)
+
+
+async def _finish_from_balance(message, session, temp_key: str, payload: dict) -> bool:
+    """Доплачивать нечего — закрываем покупку с баланса, а не показываем кассы."""
+    from handlers.payments.utils import _handle_temp_state
+
+    try:
+        done = await _handle_temp_state(session, message.from_user.id, temp_key, payload, 0)
+    except Exception as e:
+        logger.error("[FastFlow] покупка с баланса не завершилась: {}", e)
+        return False
+    if not done:
+        await message.answer("❌ Не удалось завершить покупку. Попробуйте ещё раз.")
+    return done
+
+
 @router.message(FastFlowCouponState.waiting_for_coupon_code)
 async def fastflow_apply_coupon(message: Message, state: FSMContext, session: Any):
     input_text = "Введите купон:"
@@ -400,6 +428,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     already_used_text = "Вы уже использовали этот купон"
     new_users_only_text = "Купон доступен только новым пользователям"
     not_applicable_text = "Купон не применим к текущей сумме"
+    days_coupon_text = "Это купон на дни подписки — активируйте его в меню «Купон», он продлит активный ключ."
     no_methods_text = "Нет доступных способов оплаты"
 
     back_markup = (
@@ -467,6 +496,46 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     except (TypeError, ValueError):
         base_price = int(required_amount)
 
+    percent_raw = int(getattr(coupon, "percent", 0) or 0)
+    amount_raw = int(getattr(coupon, "amount", 0) or 0)
+    days_raw = int(getattr(coupon, "days", 0) or 0)
+
+    if percent_raw <= 0 and days_raw > 0:
+        await message.answer(days_coupon_text, reply_markup=back_markup)
+        return
+
+    if percent_raw <= 0 and amount_raw > 0:
+        # Купон на баланс закрывает недостачу деньгами: зачисляем и пересчитываем.
+        from services.coupons import apply_fixed_coupon
+        from services.errors import ServiceError
+
+        try:
+            await apply_fixed_coupon(session=session, user_id=message.from_user.id, tg_id=message.from_user.id, code=code)
+        except ServiceError as e:
+            await message.answer(f"❌ {e.message}", reply_markup=back_markup)
+            return
+        except Exception as e:
+            logger.error("[FastFlow] купон на баланс не применён: {}", e)
+            await message.answer(not_applicable_text, reply_markup=back_markup)
+            return
+
+        balance_after = await get_balance(session, message.from_user.id)
+        price_now = int(temp_payload.get("selected_price_rub") or temp_payload.get("cost") or required_amount)
+        left = int(max(0, ceil(float(price_now) - float(balance_after))))
+        payload_after = dict(temp_payload)
+        payload_after["required_amount"] = left
+        await create_temporary_data(session, message.from_user.id, str(temp_key), payload_after)
+        await state.update_data(required_amount=left, temp_payload=payload_after)
+        await state.set_state(None)
+        if left == 0:
+            await _finish_from_balance(message, session, str(temp_key), payload_after)
+            return
+        await message.answer(
+            f"✅ Купон активирован, на баланс начислено {amount_raw}. Осталось доплатить {left}.",
+            reply_markup=back_markup,
+        )
+        return
+
     new_price, discount = apply_percent_coupon(int(base_price), coupon)
     if int(discount) <= 0:
         await message.answer(not_applicable_text, reply_markup=back_markup)
@@ -479,6 +548,8 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     temp_payload_updated = dict(temp_payload)
     temp_payload_updated["required_amount"] = int(required_amount_new)
     temp_payload_updated["pending_coupon_id"] = int(coupon.id)
+    # Без кода скидка теряется: списание пересчитывает цену заново по тарифу.
+    temp_payload_updated["applied_coupon_code"] = code
     if "selected_price_rub" in temp_payload_updated:
         temp_payload_updated["selected_price_rub"] = int(new_price)
     if "cost" in temp_payload_updated:
@@ -498,6 +569,10 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         },
     )
     await state.set_state(None)
+
+    if required_amount_new == 0:
+        await _finish_from_balance(message, session, str(temp_key), temp_payload_updated)
+        return
 
     payment_config = await get_payment_providers_config()
     providers_map = await get_providers_with_hooks(payment_config)

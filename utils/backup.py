@@ -389,6 +389,42 @@ async def _send_dump_in_parts(active_bot, targets, kw_base: dict, db_path: str, 
     return sent
 
 
+async def _send_dump_alongside(active_bot, archive_path: str, chat_id, thread_id, limit: int) -> None:
+    """Отправляет дамп базы отдельным файлом рядом с архивом.
+
+    Архив может раздуться картинками и загрузками, а восстановление держится
+    на базе — она не должна зависеть от веса папки.
+    """
+    targets = [chat_id] if chat_id else list(ADMIN_ID)
+    kw_base: dict = {"parse_mode": "HTML"}
+    if chat_id and thread_id:
+        kw_base["message_thread_id"] = thread_id
+
+    db_path, db_err = _create_database_backup()
+    if db_err or not db_path:
+        logger.error("[Backup] Отдельный дамп не создан: {}", db_err)
+        return
+    try:
+        if os.path.getsize(db_path) > limit:
+            await _send_dump_in_parts(active_bot, targets, kw_base, db_path, limit)
+            return
+        async with aiofiles.open(db_path, "rb") as f:
+            payload = await f.read()
+        doc = BufferedInputFile(file=payload, filename=os.path.basename(db_path))
+        for target in targets:
+            try:
+                await active_bot.send_document(document=doc, caption="Дамп базы", chat_id=target, **kw_base)
+            except Exception as e:
+                logger.error("[Backup] Отдельный дамп не отправлен в {}: {}", target, e)
+    except Exception as e:
+        logger.error("[Backup] Отдельный дамп не прочитан: {}", e)
+    finally:
+        try:
+            os.unlink(db_path)
+        except Exception:
+            pass
+
+
 async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None = None) -> None:
     if not backup_file_path or not os.path.exists(backup_file_path):
         raise FileNotFoundError(f"Файл бэкапа не найден: {backup_file_path}")
@@ -409,6 +445,11 @@ async def _send_backup_telegram(backup_file_path: str, bot_instance: Bot | None 
         chat_id, thread_id = _parse_destination()
 
         file_size = os.path.getsize(backup_file_path)
+        if file_size <= TELEGRAM_SEND_LIMIT and not backup_file_path.endswith(".sql"):
+            # База — единственное, без чего не восстановиться, поэтому она уходит
+            # своим файлом и не зависит от того, сколько весит папка.
+            await _send_dump_alongside(active_bot, backup_file_path, chat_id, thread_id, TELEGRAM_SEND_LIMIT)
+
         if file_size > TELEGRAM_SEND_LIMIT:
             size_mb = file_size / (1024 * 1024)
             targets = [chat_id] if chat_id else list(ADMIN_ID)
