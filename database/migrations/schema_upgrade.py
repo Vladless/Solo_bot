@@ -1864,6 +1864,27 @@ async def _migration_v52_payments_status_created_index(conn: AsyncConnection) ->
         _mig_out(f"[schema_upgrade] v52: создан {index_name}")
 
 
+async def _migration_v53_drop_self_referrals(conn: AsyncConnection) -> None:
+    """Снимает саморефералов и вторых пригласителей."""
+    _mig_out("[schema_upgrade] v53: очистка самореферальных связей")
+    if not await _table_exists(conn, "referrals"):
+        return
+    result = await conn.execute(text("DELETE FROM referrals WHERE referred_user_id = referrer_user_id"))
+    if result.rowcount:
+        _mig_out(f"[schema_upgrade] v53: снято самореферальных связей: {result.rowcount}", "green")
+    result = await conn.execute(
+        text(
+            "DELETE FROM referrals r USING ("
+            "  SELECT referred_user_id, MIN(referrer_user_id) AS keep_id"
+            "  FROM referrals GROUP BY referred_user_id HAVING COUNT(*) > 1"
+            ") d "
+            "WHERE r.referred_user_id = d.referred_user_id AND r.referrer_user_id <> d.keep_id"
+        )
+    )
+    if result.rowcount:
+        _mig_out(f"[schema_upgrade] v53: снято лишних пригласителей: {result.rowcount}", "green")
+
+
 _MIGRATIONS = [
     (1, "Добавление users.id", _migration_v1_add_users_id),
     (2, "Добавление user_id колонок", _migration_v2_add_user_id_columns),
@@ -1917,6 +1938,7 @@ _MIGRATIONS = [
     (50, "users.legal_accepted_at (согласие с документами)", _migration_v50_users_legal_accepted_at),
     (51, "Снятие внешних ключей на users.tg_id", _migration_v51_drop_tg_id_foreign_keys),
     (52, "Индексы payments (status, created_at)", _migration_v52_payments_status_created_index),
+    (53, "Очистка самореферальных связей", _migration_v53_drop_self_referrals),
 ]
 
 

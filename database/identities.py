@@ -487,6 +487,19 @@ async def _transfer_user_data(
         ),
         {"src": src_uid, "dst": dst_uid},
     )
+    await session.execute(
+        text(
+            "DELETE FROM referrals "
+            "WHERE (referred_user_id = :src AND referrer_user_id = :dst) "
+            "OR (referred_user_id = :dst AND referrer_user_id = :src)"
+        ),
+        {"src": src_uid, "dst": dst_uid},
+    )
+    dst_has_referrer = (
+        await session.execute(select(Referral.referrer_user_id).where(Referral.referred_user_id == dst_uid).limit(1))
+    ).first() is not None
+    if dst_has_referrer:
+        await session.execute(delete(Referral).where(Referral.referred_user_id == src_uid))
     await session.execute(update(Referral).where(Referral.referred_user_id == src_uid).values(referred_user_id=dst_uid))
     await session.execute(update(Referral).where(Referral.referrer_user_id == src_uid).values(referrer_user_id=dst_uid))
 

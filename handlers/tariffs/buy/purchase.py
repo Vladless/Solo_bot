@@ -43,7 +43,7 @@ async def _offer_coupon_before_charge(
     """
     from core.bootstrap import BUTTONS_CONFIG
     from database.temporary_data import create_temporary_data
-    from settings.buttons import COUPON
+    from settings.buttons import CONFIG_PAY_BUTTON_TEXT, COUPON
 
     if not BUTTONS_CONFIG.get("COUPON_BUTTON_ENABLE", True):
         return False
@@ -65,7 +65,11 @@ async def _offer_coupon_before_charge(
     balance_text = await format_for_user(session, tg_id, float(balance), language_code)
 
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=CREATING_KEY_BUTTON_TEXT, callback_data="buy_confirm_balance"))
+    builder.row(
+        InlineKeyboardButton(
+            text=CONFIG_PAY_BUTTON_TEXT.format(amount=price_text), callback_data="buy_confirm_balance"
+        )
+    )
     builder.row(InlineKeyboardButton(text=COUPON, callback_data="fastflow_coupon"))
     builder.row(InlineKeyboardButton(text=BACK, callback_data="back_to_tariff_group_list"))
     await edit_or_send_message(

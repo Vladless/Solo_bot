@@ -28,7 +28,7 @@ class Poll(DictLikeMixin, Base):
     is_anonymous = Column(Boolean, nullable=False, server_default=sql_text("false"))
     status = Column(String(16), nullable=False, server_default=sql_text("'open'"), index=True)
     sent_count = Column(Integer, nullable=False, server_default=sql_text("0"))
-    created_by_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_tg_id = Column(BigInteger, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=sql_text("now()"))
     closed_at = Column(DateTime(timezone=True), nullable=True)
 

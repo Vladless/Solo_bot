@@ -160,8 +160,8 @@ async def process_start_logic(
     await state.update_data(original_text=text, user_data=user_data)
 
     if admin and text:
-        _sup = text.strip().lower()
-        if _sup.startswith("suser_") and _sup[6:].isdigit():
+        user_ref = parse_admin_user_ref(text.strip().lower())
+        if user_ref is not None:
             from handlers.admin.users.users_manage import process_user_search
 
             await state.clear()
@@ -169,7 +169,7 @@ async def process_start_logic(
                 message,
                 state,
                 session,
-                int(_sup[6:]),
+                user_ref,
                 actor_tg_id=(message.from_user.id if message.from_user else None),
             )
             return
@@ -312,6 +312,14 @@ async def handle_gift(part, message, state, session, user_data):
 
 
 _START_DIRECTIVE_RE = re.compile(r"^(?:coupons|gift|referral|utm|partner)[_a-z]*", re.IGNORECASE)
+
+
+def parse_admin_user_ref(payload: str) -> int | None:
+    """Разбирает payload /start suser_<ref>."""
+    if not payload.startswith("suser_"):
+        return None
+    ref = payload[6:]
+    return int(ref) if ref.removeprefix("-").isdigit() else None
 
 
 def _split_start_payload(text: str | None) -> list[str]:

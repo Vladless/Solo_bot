@@ -58,9 +58,10 @@ async def process_inactive_trial(
         builder.row(types.InlineKeyboardButton(text=MAIN_MENU, callback_data="profile"))
         keyboard = builder.as_markup()
 
-        trial_extended = user["last_notification_time"] is not None
+        already_notified = user["last_notification_time"] is not None
+        bonus_granted = int(user.get("trial") or 0) == -1
 
-        if trial_extended and extra_days > 0:
+        if already_notified and extra_days > 0 and not bonus_granted:
             total_days = extra_days + trial_days
             message = TRIAL_INACTIVE_BONUS_MSG.format(
                 display_name=display_name,

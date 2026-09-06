@@ -102,7 +102,7 @@ def _event_created_at_moscow(event) -> datetime | None:
     return created.astimezone(MOSCOW_TZ)
 
 
-def _load_balance_log_events(tg_id: int, limit: int) -> list:
+def _load_balance_log_events(user_id: int, limit: int) -> list:
     if limit <= 0 or not LOGS_DIR.is_dir():
         return []
 
@@ -121,7 +121,7 @@ def _load_balance_log_events(tg_id: int, limit: int) -> list:
             match = BALANCE_LOG_PATTERN.match(line.strip())
             if not match:
                 continue
-            if int(match.group("tg_id")) != tg_id:
+            if int(match.group("user_id")) != user_id:
                 continue
 
             old_balance = float(match.group("old"))
@@ -141,9 +141,9 @@ def _load_balance_log_events(tg_id: int, limit: int) -> list:
                     channel="system",
                     path_or_handler="logger:balance",
                     actor_identity_id=None,
-                    actor_tg_id=tg_id,
+                    actor_tg_id=user_id,
                     entity_type="telegram_user",
-                    entity_id=tg_id,
+                    entity_id=user_id,
                     result="success",
                     reason=None,
                     metadata_={
@@ -457,7 +457,7 @@ def _format_event_line(
         raw_id = str(event.entity_id or "")
         eid = html.escape(raw_id[:40] + ("…" if len(raw_id) > 40 else ""))
         if event.entity_type == "telegram_user" and raw_id.isdigit():
-            entity = f"\n{_FLOW_INDENT}tg_id: <code>{eid}</code>"
+            entity = f"\n{_FLOW_INDENT}user_id: <code>{eid}</code>"
         else:
             entity = f"\n{_FLOW_INDENT}{etype}: <code>{eid}</code>"
 
@@ -498,14 +498,16 @@ def _render_events_as_flow(events: list) -> list[str]:
 async def _render_user_audit(
     message: Message,
     session: AsyncSession,
-    tg_id: int,
+    user_id: int,
     *,
     channel_filter: str = "all",
     category_filter: str = "all",
     page: int = 0,
 ) -> None:
     page = max(0, page)
-    user_identity_id = await session.scalar(select(User.identity_id).where(User.tg_id == tg_id))
+    owner = (await session.execute(select(User.identity_id, User.tg_id).where(User.id == user_id))).first()
+    user_identity_id = owner[0] if owner else None
+    owner_tg_id = owner[1] if owner else None
     channel = None if channel_filter == "all" else channel_filter
     event_types = _resolve_event_types(category_filter)
     include_balance_logs = channel_filter == "all" and category_filter in {"all", "balance"}
@@ -513,7 +515,7 @@ async def _render_user_audit(
 
     cache_key_str = cache_key(
         "audit_history",
-        tg_id,
+        user_id,
         user_identity_id or "",
         channel_filter,
         category_filter,
@@ -531,14 +533,14 @@ async def _render_user_audit(
             if category_filter != "balance":
                 audit_events = await list_audit_events(
                     session,
-                    tg_id=tg_id,
+                    tg_id=owner_tg_id,
                     identity_id=user_identity_id,
                     channel=channel,
                     event_types=event_types,
                     limit=combined_limit,
                     offset=0,
                 )
-            balance_events = _load_balance_log_events(tg_id, combined_limit)
+            balance_events = _load_balance_log_events(user_id, combined_limit)
             merged_events = sorted(audit_events + balance_events, key=_event_created_at, reverse=True)
             start = page * PAGE_SIZE
             stop = start + PAGE_SIZE
@@ -548,7 +550,7 @@ async def _render_user_audit(
         else:
             raw_events = await list_audit_events(
                 session,
-                tg_id=tg_id,
+                tg_id=owner_tg_id,
                 identity_id=user_identity_id,
                 channel=channel,
                 event_types=event_types,
@@ -588,9 +590,9 @@ async def _render_user_audit(
             blocks.extend(_render_events_as_flow(rev))
 
     await message.edit_text(
-        text=menu_text("Аудит", f"Клиент <code>{tg_id}</code>", card(*blocks)),
+        text=menu_text("Аудит", f"Клиент <code>{user_id}</code>", card(*blocks)),
         reply_markup=build_user_audit_kb(
-            tg_id=tg_id,
+            user_id=user_id,
             channel_filter=channel_filter,
             category_filter=category_filter,
             page=page,
@@ -614,7 +616,7 @@ async def handle_user_audit(
     await _render_user_audit(
         callback_query.message,
         session,
-        callback_data.tg_id,
+        callback_data.user_id,
         channel_filter=channel_filter,
         category_filter=category_filter,
         page=page,
@@ -634,7 +636,7 @@ async def handle_user_audit_page(
     await _render_user_audit(
         callback_query.message,
         session,
-        callback_data.tg_id,
+        callback_data.user_id,
         channel_filter=channel_filter,
         category_filter=category_filter,
         page=page,

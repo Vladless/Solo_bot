@@ -22,9 +22,26 @@ class ResolvedActor:
 
 
 def telegram_chat_id(user: User | None) -> int | None:
-    if user is None:
+    """Адрес чата в Telegram; у синтетического tg_id чата нет."""
+    if user is None or user.tg_id is None:
         return None
-    return user.tg_id
+    tg = int(user.tg_id)
+    return tg if tg > 0 else None
+
+
+async def user_id_from_legacy_ref(session: AsyncSession, ref: int) -> int | None:
+    """Приводит users.id или tg_id к users.id."""
+    by_id = await session.scalar(select(User.id).where(User.id == ref))
+    if by_id is not None:
+        return int(by_id)
+    by_tg = await session.scalar(select(User.id).where(User.tg_id == ref))
+    return int(by_tg) if by_tg is not None else None
+
+
+async def chat_id_for_user(session: AsyncSession, user_id: int) -> int | None:
+    """Адрес чата клиента; None у клиента без Telegram."""
+    tg = await session.scalar(select(User.tg_id).where(User.id == user_id))
+    return None if tg is None or int(tg) <= 0 else int(tg)
 
 
 async def resolve_user_optional(session: AsyncSession, legacy_id: int) -> User | None:

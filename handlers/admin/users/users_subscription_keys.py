@@ -33,31 +33,31 @@ ERR_NOT_REMNAWAVE = menu_text("Ключи", "Доступно только дл�
 ERR_BAD_REQUEST = menu_text("Ключи", "❌ Некорректный запрос.")
 
 
-def _back_to_key_edit_kb(tg_id: int, key_ref: str) -> InlineKeyboardMarkup:
+def _back_to_key_edit_kb(user_id: int, key_ref: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=key_ref).pack(),
+            callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=key_ref).pack(),
         )
     )
     return builder.as_markup()
 
 
-def _back_to_list_kb(tg_id: int, key_ref: str, page: int) -> InlineKeyboardMarkup:
+def _back_to_list_kb(user_id: int, key_ref: str, page: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
             text=BACK,
             callback_data=AdminUserEditorCallback(
-                action="users_keys_list", tg_id=tg_id, data=f"{key_ref}|{page}"
+                action="users_keys_list", user_id=user_id, data=f"{key_ref}|{page}"
             ).pack(),
         )
     )
     return builder.as_markup()
 
 
-def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> InlineKeyboardMarkup:
+def _build_hosts_kb(user_id: int, key_ref: str, links: list[str], page: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     total = len(links)
     total_pages = max(1, (total + HOSTS_PER_PAGE - 1) // HOSTS_PER_PAGE)
@@ -74,7 +74,7 @@ def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> In
             InlineKeyboardButton(
                 text=label,
                 callback_data=AdminUserEditorCallback(
-                    action="users_keys_show", tg_id=tg_id, data=f"{key_ref}|{page}|{idx}"
+                    action="users_keys_show", user_id=user_id, data=f"{key_ref}|{page}|{idx}"
                 ).pack(),
             )
         )
@@ -88,7 +88,7 @@ def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> In
                 InlineKeyboardButton(
                     text="◀️",
                     callback_data=AdminUserEditorCallback(
-                        action="users_keys_list", tg_id=tg_id, data=f"{key_ref}|{page - 1}"
+                        action="users_keys_list", user_id=user_id, data=f"{key_ref}|{page - 1}"
                     ).pack(),
                 )
             )
@@ -98,7 +98,7 @@ def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> In
                 InlineKeyboardButton(
                     text="▶️",
                     callback_data=AdminUserEditorCallback(
-                        action="users_keys_list", tg_id=tg_id, data=f"{key_ref}|{page + 1}"
+                        action="users_keys_list", user_id=user_id, data=f"{key_ref}|{page + 1}"
                     ).pack(),
                 )
             )
@@ -107,7 +107,7 @@ def _build_hosts_kb(tg_id: int, key_ref: str, links: list[str], page: int) -> In
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=key_ref).pack(),
+            callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=key_ref).pack(),
         )
     )
     return builder.as_markup()
@@ -151,33 +151,33 @@ async def handle_hosts_list(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref, page, _ = _parse_data(callback_data.data)
 
-    key_obj = await resolve_admin_key(session, tg_id, key_ref)
+    key_obj = await resolve_admin_key(session, user_id, key_ref)
     if not key_obj:
-        logger.warning(f"[subscription_keys] resolve_admin_key вернул None: tg_id={tg_id}, key_ref='{key_ref}'")
-        await _safe_edit(callback_query, ERR_KEY_NOT_FOUND, _back_to_key_edit_kb(tg_id, key_ref))
+        logger.warning(f"[subscription_keys] resolve_admin_key вернул None: user_id={user_id}, key_ref='{key_ref}'")
+        await _safe_edit(callback_query, ERR_KEY_NOT_FOUND, _back_to_key_edit_kb(user_id, key_ref))
         return
 
     if not key_obj.email:
-        await _safe_edit(callback_query, ERR_NO_USERNAME, _back_to_key_edit_kb(tg_id, key_ref))
+        await _safe_edit(callback_query, ERR_NO_USERNAME, _back_to_key_edit_kb(user_id, key_ref))
         return
 
     server_ref = await resolve_remnawave_server_ref(session, key_obj.server_id or "")
     if not server_ref:
-        await _safe_edit(callback_query, ERR_NOT_REMNAWAVE, _back_to_key_edit_kb(tg_id, key_ref))
+        await _safe_edit(callback_query, ERR_NOT_REMNAWAVE, _back_to_key_edit_kb(user_id, key_ref))
         return
 
     await _safe_answer(callback_query)
 
     links = await fetch_user_links(session, key_obj.server_id or "", key_obj.email)
     if links is None:
-        await _safe_edit(callback_query, ERR_API_FAIL, _back_to_key_edit_kb(tg_id, key_ref))
+        await _safe_edit(callback_query, ERR_API_FAIL, _back_to_key_edit_kb(user_id, key_ref))
         return
 
     if not links:
-        await _safe_edit(callback_query, ERR_NO_HOSTS, _back_to_key_edit_kb(tg_id, key_ref))
+        await _safe_edit(callback_query, ERR_NO_HOSTS, _back_to_key_edit_kb(user_id, key_ref))
         return
 
     total = len(links)
@@ -195,7 +195,7 @@ async def handle_hosts_list(
         ),
     )
 
-    await _safe_edit(callback_query, text, _build_hosts_kb(tg_id, key_ref, links, page))
+    await _safe_edit(callback_query, text, _build_hosts_kb(user_id, key_ref, links, page))
 
 
 @router.callback_query(
@@ -207,27 +207,27 @@ async def handle_host_show(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref, page, idx = _parse_data(callback_data.data)
 
     if idx < 0:
-        await _safe_edit(callback_query, ERR_BAD_REQUEST, _back_to_list_kb(tg_id, key_ref, page))
+        await _safe_edit(callback_query, ERR_BAD_REQUEST, _back_to_list_kb(user_id, key_ref, page))
         return
 
-    key_obj = await resolve_admin_key(session, tg_id, key_ref)
+    key_obj = await resolve_admin_key(session, user_id, key_ref)
     if not key_obj or not key_obj.email:
-        await _safe_edit(callback_query, ERR_KEY_NOT_FOUND, _back_to_list_kb(tg_id, key_ref, page))
+        await _safe_edit(callback_query, ERR_KEY_NOT_FOUND, _back_to_list_kb(user_id, key_ref, page))
         return
 
     await _safe_answer(callback_query)
 
     links = await fetch_user_links(session, key_obj.server_id or "", key_obj.email)
     if links is None:
-        await _safe_edit(callback_query, ERR_API_FAIL, _back_to_list_kb(tg_id, key_ref, page))
+        await _safe_edit(callback_query, ERR_API_FAIL, _back_to_list_kb(user_id, key_ref, page))
         return
 
     if idx >= len(links):
-        await _safe_edit(callback_query, ERR_HOST_NOT_FOUND, _back_to_list_kb(tg_id, key_ref, page))
+        await _safe_edit(callback_query, ERR_HOST_NOT_FOUND, _back_to_list_kb(user_id, key_ref, page))
         return
 
     link = links[idx]
@@ -239,4 +239,4 @@ async def handle_host_show(
         quote(f"<code>{html_escape(link)}</code>"),
     )
 
-    await _safe_edit(callback_query, text, _back_to_list_kb(tg_id, key_ref, page))
+    await _safe_edit(callback_query, text, _back_to_list_kb(user_id, key_ref, page))

@@ -20,7 +20,7 @@ def _target(stmt) -> str:
 
 
 class RecordingSession:
-    """Пишет очередь запросов: важен не только состав, но и порядок."""
+    """Пишет очередь запросов."""
 
     def __init__(self, user_ids=(77,)) -> None:
         self.statements = []
@@ -60,12 +60,18 @@ class ReleaseMirrorsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(covered, mirrored, "снимать нужно каждое зеркало tg_id в этих таблицах")
 
     async def test_внешних_ключей_на_users_tg_id_больше_нет(self):
-        from database import models
+        import handlers  # noqa: F401  подтягивает в метадату и модели модулей
 
-        for model in (models.Key, models.Payment, models.Gift):
-            for column in model.__table__.columns:
-                for fk in column.foreign_keys:
-                    self.assertNotEqual(fk.target_fullname, "users.tg_id", f"{model.__name__}.{column.name}")
+        from database.models import Base
+
+        offenders = [
+            f"{table.name}.{column.name}"
+            for table in Base.metadata.sorted_tables
+            for column in table.columns
+            for fk in column.foreign_keys
+            if fk.target_fullname == "users.tg_id"
+        ]
+        self.assertEqual(offenders, [], "обнулить users.tg_id при отвязке база не даст")
 
     async def test_снимаются_и_чужие_строки_с_тем_же_tg(self):
         session = RecordingSession()
@@ -115,3 +121,31 @@ class DetachTelegramOrderTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnlinkTgCardTests(unittest.IsolatedAsyncioTestCase):
+    async def _unlink(self, user):
+        from handlers.admin.users import users_manage
+
+        identity = SimpleNamespace(id="idt-1", tg_id=OLD_TG, email="u@test")
+        callback = SimpleNamespace(
+            message=Mock(), answer=AsyncMock(), from_user=SimpleNamespace(id=1), data="", bot=Mock()
+        )
+        render = AsyncMock()
+        with (
+            patch.object(users_manage, "_resolve_identity_for_user", new=AsyncMock(return_value=identity)),
+            patch.object(users_manage, "resolve_user_optional", new=AsyncMock(return_value=user)),
+            patch.object(users_manage, "process_user_search", new=render),
+            patch("database.identities.detach_telegram", new=AsyncMock(return_value=identity)),
+        ):
+            await users_manage.handle_unlink_tg(
+                callback,
+                SimpleNamespace(user_id=OLD_TG),
+                Mock(),
+                Mock(),
+            )
+        return render
+
+    async def test_карточка_перечитывается_по_тому_же_user_id(self):
+        render = await self._unlink(SimpleNamespace(id=77))
+        self.assertEqual(render.await_args.kwargs["user_id"], OLD_TG)

@@ -6,8 +6,10 @@ from unittest.mock import AsyncMock, patch
 from database.access.resolution import (
     ActorSurface,
     ResolvedActor,
+    chat_id_for_user,
     resolve_actor_from_identity,
     resolve_actor_from_legacy_ref,
+    telegram_chat_id,
 )
 
 
@@ -79,3 +81,22 @@ class ResolveActorFromIdentityTests(unittest.IsolatedAsyncioTestCase):
                 identity_id="ident-main",
             ),
         )
+
+
+class ChatAddressTests(unittest.IsolatedAsyncioTestCase):
+    """Синтетический tg_id не является адресом чата."""
+
+    def test_обычный_tg_это_адрес_чата(self):
+        self.assertEqual(telegram_chat_id(SimpleNamespace(tg_id=8119047207)), 8119047207)
+
+    def test_синтетический_tg_адресом_не_является(self):
+        self.assertIsNone(telegram_chat_id(SimpleNamespace(tg_id=-96)))
+
+    def test_без_tg_адреса_нет(self):
+        self.assertIsNone(telegram_chat_id(SimpleNamespace(tg_id=None)))
+        self.assertIsNone(telegram_chat_id(None))
+
+    async def test_резолвер_по_user_id_отсекает_синтетический(self):
+        for stored, expected in ((8119047207, 8119047207), (-96, None), (None, None)):
+            session = SimpleNamespace(scalar=AsyncMock(return_value=stored))
+            self.assertEqual(await chat_id_for_user(session, 96), expected, stored)

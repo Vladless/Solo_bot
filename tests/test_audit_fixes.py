@@ -109,7 +109,7 @@ class BulkWebNotifyTests(unittest.TestCase):
         body = BULK[BULK.index("async def _notify_reissue") :]
         body = body[: body.index("return delivered")]
         self.assertIn("async with async_session_maker() as notify_session:", body)
-        self.assertIn("notify_web(\n                    notify_session,", body)
+        self.assertIn("notify_web(\n                notify_session,", body)
         self.assertNotIn("_notify_reissue(session,", BULK)
 
     def test_перевыпуск_уведомляет_и_кабинет(self):
@@ -120,7 +120,8 @@ class BulkWebNotifyTests(unittest.TestCase):
 
     def test_телеграм_только_реальным_чатам(self):
         body = BULK[BULK.index("async def _notify_reissue") :]
-        self.assertIn("if tg_id and int(tg_id) > 0:", body)
+        self.assertIn("chat_id = await chat_id_for_user(session, user_id)", body)
+        self.assertIn("if chat_id is not None:", body)
 
     def test_веб_уведомление_не_ограничено_знаком_id(self):
         body = BULK[BULK.index("async def _notify_reissue") :]

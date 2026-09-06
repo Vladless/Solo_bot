@@ -231,13 +231,12 @@ async def sub_change_tariff(
 
     devices = payload.get("devices")
     traffic_gb = payload.get("traffic_gb")
-    owner_ref = key.tg_id if key.tg_id is not None else key.user_id
     if bool(tariff.get("configurable")) and (devices is not None or traffic_gb is not None):
-        await save_key_tariff_selection(session, owner_ref, key.email, tariff_id, devices, traffic_gb)
+        await save_key_tariff_selection(session, key.user_id, key.email, tariff_id, devices, traffic_gb)
         total_gb = int(traffic_gb) if traffic_gb else int(tariff.get("traffic_limit") or 0)
         hwid = int(devices) if devices else int(tariff.get("device_limit") or 0)
     else:
-        await reset_key_tariff_state(session, owner_ref, key.email, tariff_id)
+        await reset_key_tariff_state(session, key.user_id, key.email, tariff_id)
         total_gb = int(tariff.get("traffic_limit") or 0)
         hwid = int(tariff.get("device_limit") or 0)
     key.tariff_id = tariff_id
@@ -351,8 +350,7 @@ async def sub_change_location(
         raise HTTPException(status_code=400, detail="Не выбран кластер/страна")
     from services.operations.update import update_subscription
 
-    owner_ref = key.tg_id if key.tg_id is not None else key.user_id
-    await update_subscription(owner_ref, key.email, session, cluster_override=cluster, country_override=country)
+    await update_subscription(key.user_id, key.email, session, cluster_override=cluster, country_override=country)
     logger.info(f"[API] Подписка {client_id} перенесена: cluster={cluster} country={country}")
     return {"message": "Локация изменена"}
 
@@ -369,8 +367,7 @@ async def sub_reissue(
     cluster = str((payload or {}).get("cluster") or "").strip() or key.server_id
     from services.operations.update import update_subscription
 
-    owner_ref = key.tg_id if key.tg_id is not None else key.user_id
-    await update_subscription(owner_ref, key.email, session, cluster_override=cluster)
+    await update_subscription(key.user_id, key.email, session, cluster_override=cluster)
     logger.info(f"[API] Подписка {client_id} перевыпущена на {cluster}")
     return {"message": "Подписка перевыпущена"}
 

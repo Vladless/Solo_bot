@@ -46,6 +46,9 @@ async def process_referrals(session: AsyncSession, user_id: int, amount: float) 
         if not referral:
             break
         referrer_id = int(referral["referrer_user_id"])
+        if referrer_id == current_id:
+            logger.warning(f"⚠️ Самореферал в цепочке пользователя {u.id}, бонус не начислен")
+            break
         percent = REFERRAL_BONUS_PERCENTAGES.get(level)
         if not percent:
             current_id = referrer_id
@@ -57,7 +60,7 @@ async def process_referrals(session: AsyncSession, user_id: int, amount: float) 
     result_map: dict[int, float] = {}
     for referrer_id, (bonus, lvl) in bonus_by_chain.items():
         await update_balance(session, referrer_id, float(bonus))
-        await add_payment(session, tg_id=referrer_id, amount=bonus, payment_system="referral")
+        await add_payment(session, user_id=referrer_id, amount=bonus, payment_system="referral")
         logger.info(f"Начислен бонус {bonus}₽ пользователю {referrer_id} за уровень {lvl}")
         result_map[referrer_id] = bonus
 
@@ -84,7 +87,7 @@ async def process_cashback(session: AsyncSession, user_id: int, amount: float) -
     cashback_amount = round(amount * (cashback_percent / 100))
     if cashback_amount > 0:
         await update_balance(session, user_id, cashback_amount)
-        await add_payment(session, tg_id=user_id, amount=cashback_amount, payment_system="cashback")
+        await add_payment(session, user_id=user_id, amount=cashback_amount, payment_system="cashback")
         logger.info(f"Начислен кешбэк {cashback_amount}₽ пользователю {user_id}")
 
     return float(cashback_amount)

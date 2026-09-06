@@ -52,6 +52,7 @@ def _empty_result():
         scalar=lambda: None,
         scalars=lambda: SimpleNamespace(all=list, first=lambda: None),
         all=list,
+        first=lambda: None,
     )
 
 

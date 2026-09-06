@@ -40,9 +40,7 @@ class MigrationTests(unittest.TestCase):
         block = MIGRATIONS[MIGRATIONS.index("_MIGRATIONS = [") :]
         block = block[: block.index("\n]")]
         nums = [int(n) for n in re.findall(r"^\s*\((\d+),", block, re.M)]
-        self.assertEqual(nums, sorted(nums))
-        self.assertEqual(len(nums), len(set(nums)))
-        self.assertEqual(nums[-1], 52)
+        self.assertEqual(nums, list(range(1, len(nums) + 1)))
 
     def test_идемпотентна(self):
         body = _migration_body()

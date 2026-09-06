@@ -213,5 +213,6 @@ crud_router = generate_crud_router(
     schema_create=UserBase,
     schema_update=UserUpdate,
     identifier_field="tg_id",
+    legacy_user_ref=True,
     enabled_methods=["get_all", "get_one", "create", "update"],
 )

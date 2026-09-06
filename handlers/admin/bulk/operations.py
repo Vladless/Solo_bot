@@ -4,6 +4,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_servers, get_tariff_by_id, update_key_expiry
+from database.access.resolution import chat_id_for_user
 from database.keys import delete_key, mark_key_as_frozen, mark_key_as_unfrozen, update_key_subscription_links
 from database.models import Key
 from logger import logger
@@ -32,14 +33,14 @@ def _find_cluster_servers(servers: dict, server_id: str) -> list:
 
 
 async def bulk_reissue(session: AsyncSession, keys: list[Key]) -> tuple[int, int, int]:
-    targets = [(key.tg_id, key.email) for key in keys]
+    targets = [(key.user_id, key.email) for key in keys]
     ok = fail = skipped = 0
-    for tg_id, email in targets:
-        if not tg_id:
+    for user_id, email in targets:
+        if not user_id:
             skipped += 1
             continue
         try:
-            await update_subscription(tg_id=tg_id, email=email, session=session)
+            await update_subscription(user_id=user_id, email=email, session=session)
             ok += 1
         except Exception as e:
             fail += 1
@@ -47,16 +48,17 @@ async def bulk_reissue(session: AsyncSession, keys: list[Key]) -> tuple[int, int
     return ok, fail, skipped
 
 
-async def _notify_reissue(bot, tg_id, email: str, new_link: str) -> bool:
+async def _notify_reissue(bot, session: AsyncSession, user_id: int, email: str, new_link: str) -> bool:
     """Сообщает о новой ссылке и в Telegram, и в кабинет: у веб-клиента чата нет.
 
     Уведомление пишется отдельной сессией: сбой не должен ронять остаток пачки.
     """
     delivered = False
-    if tg_id and int(tg_id) > 0:
+    chat_id = await chat_id_for_user(session, user_id)
+    if chat_id is not None:
         try:
             await bot.send_message(
-                chat_id=tg_id,
+                chat_id=chat_id,
                 text=(
                     "🔄 <b>Ваша подписка была перевыпущена</b>\n\n"
                     f"🔗 <b>Новая ссылка подписки:</b>\n<code>{new_link}</code>\n\n"
@@ -65,33 +67,32 @@ async def _notify_reissue(bot, tg_id, email: str, new_link: str) -> bool:
             )
             delivered = True
         except Exception as e:
-            logger.warning(f"[Bulk] reissue_link notify {tg_id}: {type(e).__name__}: {e!r}")
-    if tg_id:
-        try:
-            from database import async_session_maker
-            from database.web_notifications import notify_web
+            logger.warning(f"[Bulk] reissue_link notify {user_id}: {type(e).__name__}: {e!r}")
+    try:
+        from database import async_session_maker
+        from database.web_notifications import notify_web
 
-            async with async_session_maker() as notify_session:
-                notification = await notify_web(
-                    notify_session,
-                    tg_id=int(tg_id),
-                    type="system",
-                    title="Подписка перевыпущена",
-                    message="Ссылка подписки обновлена, старая больше не работает.",
-                    data={"email": email, "link": new_link},
-                )
-                await notify_session.commit()
-            delivered = delivered or notification is not None
-        except Exception as e:
-            logger.warning(f"[Bulk] reissue_link web-notify {tg_id}: {type(e).__name__}: {e!r}")
+        async with async_session_maker() as notify_session:
+            notification = await notify_web(
+                notify_session,
+                tg_id=int(user_id),
+                type="system",
+                title="Подписка перевыпущена",
+                message="Ссылка подписки обновлена, старая больше не работает.",
+                data={"email": email, "link": new_link},
+            )
+            await notify_session.commit()
+        delivered = delivered or notification is not None
+    except Exception as e:
+        logger.warning(f"[Bulk] reissue_link web-notify {user_id}: {type(e).__name__}: {e!r}")
     return delivered
 
 
 async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tuple[int, int, int, int]:
     servers = await get_servers(session)
-    targets = [(key.tg_id, key.email, key.client_id, key.server_id) for key in keys]
+    targets = [(key.user_id, key.email, key.client_id, key.server_id) for key in keys]
     ok = fail = skipped = notified = 0
-    for tg_id, email, client_id, server_id in targets:
+    for user_id, email, client_id, server_id in targets:
         try:
             cluster_servers = _find_cluster_servers(servers, server_id)
             remnawave_servers = [s for s in cluster_servers if s.get("panel_type", "3x-ui").lower() == "remnawave"]
@@ -114,13 +115,13 @@ async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tupl
                     continue
                 await update_key_subscription_links(session, email, new_link)
                 ok += 1
-                if await _notify_reissue(bot, tg_id, email, new_link):
+                if await _notify_reissue(bot, session, user_id, email, new_link):
                     notified += 1
             else:
-                if not tg_id:
+                if not user_id:
                     skipped += 1
                     continue
-                await update_subscription(tg_id=tg_id, email=email, session=session)
+                await update_subscription(user_id=user_id, email=email, session=session)
                 ok += 1
         except Exception as e:
             fail += 1
@@ -236,7 +237,7 @@ async def bulk_freeze(session: AsyncSession, keys: list[Key]) -> tuple[int, int,
                 fail += 1
                 continue
             time_left = max(0, key.expiry_time - now_ms)
-            await mark_key_as_frozen(session, key.tg_id or key.user_id, key.client_id, time_left)
+            await mark_key_as_frozen(session, key.user_id, key.client_id, time_left)
             ok += 1
         except Exception as e:
             fail += 1
@@ -272,7 +273,7 @@ async def bulk_unfreeze(session: AsyncSession, keys: list[Key]) -> tuple[int, in
                 reset_traffic=False,
                 plan=key.tariff_id,
             )
-            await mark_key_as_unfrozen(session, key.tg_id or key.user_id, key.client_id, new_expiry)
+            await mark_key_as_unfrozen(session, key.user_id, key.client_id, new_expiry)
             ok += 1
         except Exception as e:
             fail += 1

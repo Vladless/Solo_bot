@@ -50,10 +50,18 @@ class SourceGuardTests(unittest.TestCase):
         self.assertIn("tg_id=link_ref,", block[:400])
 
     def test_обновление_и_перевыпуск_тоже_исправлены(self):
-        self.assertIn("subscription_owner_ref(session, tg_id)", UPDATE)
-        self.assertIn("subscription_owner_ref(session, tg_id)", LIFECYCLE)
-        self.assertNotIn('f"{PUBLIC_LINK}{email}/{tg_id}"', UPDATE)
-        self.assertNotIn('f"{PUBLIC_LINK}{new_email}/{tg_id}"', LIFECYCLE)
+        self.assertIn("subscription_owner_ref(session, user_id)", UPDATE)
+        self.assertIn("subscription_owner_ref(session, user_id)", LIFECYCLE)
+        self.assertNotIn('f"{PUBLIC_LINK}{email}/{user_id}"', UPDATE)
+        self.assertNotIn('f"{PUBLIC_LINK}{new_email}/{user_id}"', LIFECYCLE)
+
+    def test_в_панель_уходит_владелец_а_не_users_id(self):
+        """В панель уходит номер владельца, а не users.id."""
+        block = UPDATE[UPDATE.index("async def update_subscription"):]
+        for call in ("update_key_on_cluster(", "make_aggregated_link("):
+            args = block[block.index(call):][:600]
+            self.assertIn("tg_id=owner_ref,", args, call)
+            self.assertNotIn("tg_id=user_id,", args, call)
 
 
 if __name__ == "__main__":

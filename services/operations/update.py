@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import filter_cluster_by_subgroup, filter_cluster_by_tariff, get_servers, get_tariff_by_id, store_key
-from database.access.resolution import resolve_user_optional, subscription_owner_ref
+from database.access.resolution import resolve_user_optional, subscription_owner_ref, user_id_from_legacy_ref
 from database.keys import delete_key_by_user_and_email, get_key_by_user_and_email
 from database.models import Key
 from database.tariffs import get_active_tariff_by_id
@@ -226,17 +226,20 @@ async def update_key_on_cluster(
 
 
 async def update_subscription(
-    tg_id: int,
+    user_id: int,
     email: str,
     session: AsyncSession,
     cluster_override: str = None,
     country_override: str = None,
     remnawave_link: str = None,
+    *,
+    tg_id: int | None = None,
 ) -> None:
-    u = await resolve_user_optional(session, tg_id)
-    if u is None:
+    """Пересоздаёт подписку клиента."""
+    uid = await user_id_from_legacy_ref(session, user_id if user_id is not None else tg_id)
+    if uid is None:
         raise ValueError(f"The key {email} does not exist in database")
-    uid = u.id
+    user_id = uid
     record: Key | None = await get_key_by_user_and_email(session, uid, email)
     if not record:
         raise ValueError(f"The key {email} does not exist in database")
@@ -248,7 +251,8 @@ async def update_subscription(
     tariff_id = record.tariff_id
     alias = record.alias
     remnawave_link = remnawave_link or record.remnawave_link
-    public_link = f"{PUBLIC_LINK}{email}/{await subscription_owner_ref(session, tg_id)}"
+    owner_ref = await subscription_owner_ref(session, user_id)
+    public_link = f"{PUBLIC_LINK}{email}/{owner_ref}"
 
     selected_device_limit = getattr(record, "selected_device_limit", None)
     selected_traffic_limit = getattr(record, "selected_traffic_limit", None)
@@ -281,7 +285,7 @@ async def update_subscription(
         logger.warning(f"[Update] Перевыпуск {email} не завершён ({reason}), восстанавливаем прежнюю запись")
         await store_key(
             session=session,
-            legacy_user_ref=tg_id,
+            legacy_user_ref=user_id,
             client_id=client_id,
             email=email,
             expiry_time=expiry_time,
@@ -374,7 +378,7 @@ async def update_subscription(
 
     try:
         new_client_id, remnawave_link_value = await update_key_on_cluster(
-            tg_id=tg_id,
+            tg_id=owner_ref,
             client_id=client_id,
             email=email,
             expiry_time=expiry_time,
@@ -394,7 +398,7 @@ async def update_subscription(
             cluster_id=new_cluster_id,
             email=email,
             client_id=new_client_id,
-            tg_id=tg_id,
+            tg_id=owner_ref,
             subgroup_code=subgroup_code,
             remna_link_override=None,
             plan=tariff_id,
@@ -407,7 +411,7 @@ async def update_subscription(
 
     await store_key(
         session=session,
-        legacy_user_ref=tg_id,
+        legacy_user_ref=user_id,
         client_id=new_client_id,
         email=email,
         expiry_time=expiry_time,

@@ -52,24 +52,25 @@ async def invalidate_payment_cache(payment_id: str) -> None:
 
 async def add_payment(
     session: AsyncSession,
-    legacy_user_ref: int | None = None,
+    user_id: int | None = None,
     amount: float = 0,
     payment_system: str = "",
     *,
     tg_id: int | None = None,
+    legacy_user_ref: int | None = None,
     status: str = "success",
     currency: str = "RUB",
     payment_id: str | None = None,
     metadata: dict | None = None,
     original_amount: float | None = None,
 ) -> int:
-    if legacy_user_ref is None:
-        legacy_user_ref = tg_id
-    if legacy_user_ref is None:
-        raise ValueError("legacy_user_ref is required for payment")
-    u = await resolve_user_optional(session, legacy_user_ref)
+    """Записывает платёж на users.id; tg_id и legacy_user_ref — совместимость."""
+    ref = next((v for v in (user_id, tg_id, legacy_user_ref) if v is not None), None)
+    if ref is None:
+        raise ValueError("add_payment: не указан клиент")
+    u = await resolve_user_optional(session, ref)
     if u is None:
-        raise ValueError(f"user not found for payment: {legacy_user_ref}")
+        raise ValueError(f"user not found for payment: {ref}")
     now_moscow = datetime.now(MOSCOW_TZ).replace(tzinfo=None)
     stmt = (
         insert(Payment)

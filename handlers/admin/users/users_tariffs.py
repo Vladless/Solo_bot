@@ -41,14 +41,14 @@ async def handle_back_to_key_menu(
 ):
     data = await state.get_data()
     email = data.get("email")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     await state.clear()
 
-    if not email or not tg_id:
+    if not email or not user_id:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         return
 
-    callback_data = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
+    callback_data = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=user_id)
 
     await handle_key_edit(
         callback_query=callback_query,
@@ -68,18 +68,18 @@ async def handle_user_choose_tariff_group(
     session: AsyncSession,
     state: FSMContext,
 ):
-    tg_id = callback_data.tg_id
-    key_obj = await resolve_admin_key(session, tg_id, callback_data.data)
+    user_id = callback_data.user_id
+    key_obj = await resolve_admin_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Тариф клиента", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Тариф клиента", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
 
     await state.set_state(RenewTariffState.selecting_group)
-    await state.update_data(email=email, tg_id=tg_id)
+    await state.update_data(email=email, user_id=user_id)
 
     groups = await get_tariff_group_codes(session)
 
@@ -136,9 +136,9 @@ async def handle_user_renew_confirm(
     tariff_id = int(callback_query.data.split(":")[1])
     data = await state.get_data()
     email = data.get("email")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
 
-    if not email or not tg_id:
+    if not email or not user_id:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         await state.clear()
         return
@@ -149,7 +149,7 @@ async def handle_user_renew_confirm(
         await state.clear()
         return
 
-    key_obj = await get_key_by_email(session, email, tg_id)
+    key_obj = await get_key_by_email(session, email, user_id)
     if not key_obj:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Ключ не найден."))
         await state.clear()
@@ -339,7 +339,7 @@ async def handle_user_renew_confirm(
 
     new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.utcnow().timestamp() * 1000)
 
-    await reset_key_tariff_state(session, tg_id, email, tariff_id)
+    await reset_key_tariff_state(session, user_id, email, tariff_id)
     await release_session_early(session)
 
     try:
@@ -358,7 +358,7 @@ async def handle_user_renew_confirm(
         )
     except Exception as e:
         logger.error(
-            f"[AdminRenew] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}"
+            f"[AdminRenew] renew_key_in_cluster failed: user_id={user_id} email={email} tariff_id={tariff_id}: {e}"
         )
         ok = False
 
@@ -369,7 +369,7 @@ async def handle_user_renew_confirm(
             menu_text("Тариф клиента", "❌ Не удалось обновить подписку на серверах (renew).")
         )
 
-    callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
+    callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=user_id)
 
     await handle_key_edit(
         callback_query=callback_query, callback_data=callback_data_back, session=session, update=False
@@ -623,9 +623,9 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
 
     data = await state.get_data()
     email = data.get("email")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
 
-    if not email or not tg_id:
+    if not email or not user_id:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Не найдены данные сессии."))
         await state.clear()
         return
@@ -643,7 +643,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
         await state.clear()
         return
 
-    key_obj = await get_key_by_email(session, email, tg_id)
+    key_obj = await get_key_by_email(session, email, user_id)
     if not key_obj:
         await callback_query.message.edit_text(menu_text("Тариф клиента", "❌ Ключ не найден."))
         await state.clear()
@@ -660,7 +660,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
 
     new_expiry_time = int(key_obj.expiry_time or 0) or int(datetime.utcnow().timestamp() * 1000)
 
-    await save_key_tariff_selection(session, tg_id, email, tariff_id, selected_devices, selected_traffic_gb)
+    await save_key_tariff_selection(session, user_id, email, tariff_id, selected_devices, selected_traffic_gb)
     await release_session_early(session)
 
     try:
@@ -679,7 +679,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
         )
     except Exception as e:
         logger.error(
-            f"[AdminRenewCfg] renew_key_in_cluster failed: tg_id={tg_id} email={email} tariff_id={tariff_id}: {e}"
+            f"[AdminRenewCfg] renew_key_in_cluster failed: user_id={user_id} email={email} tariff_id={tariff_id}: {e}"
         )
         ok = False
 
@@ -690,7 +690,7 @@ async def handle_cfg_renew_apply(callback_query: CallbackQuery, session: AsyncSe
             menu_text("Тариф клиента", "❌ Не удалось обновить подписку на серверах (renew).")
         )
 
-    callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=int(tg_id))
+    callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=int(user_id))
 
     await handle_key_edit(
         callback_query=callback_query, callback_data=callback_data_back, session=session, update=False

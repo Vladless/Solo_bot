@@ -339,6 +339,33 @@ async def get_hot_lead_notification_flags(session: AsyncSession, legacy_user_ref
     return dict(out)
 
 
+async def get_hot_lead_notification_times(
+    session: AsyncSession, legacy_user_refs: list[int]
+) -> dict[int, dict[str, datetime]]:
+    """Время отправки каждого шага hot_lead_*."""
+    if not legacy_user_refs:
+        return {}
+    id_map = await _map_legacy_refs_to_user_ids(session, legacy_user_refs)
+    if not id_map:
+        return {}
+    uids = list(set(id_map.values()))
+    uid_to_ref = {id_map[ref]: ref for ref in legacy_user_refs if ref in id_map}
+    out: dict[int, dict[str, datetime]] = defaultdict(dict)
+    for chunk in _batched_list(uids, _LEGACY_REF_MAP_BATCH_SIZE):
+        stmt = select(
+            Notification.user_id,
+            Notification.notification_type,
+            Notification.last_notification_time,
+        ).where(
+            Notification.user_id.in_(chunk),
+            Notification.notification_type.in_(_HOT_LEAD_NOTIFICATION_TYPES),
+        )
+        result = await session.execute(stmt)
+        for uid, ntype, last_time in result.all():
+            out[uid_to_ref.get(uid, uid)][ntype] = _as_utc(last_time)
+    return dict(out)
+
+
 async def get_cold_lead_notification_flags(session: AsyncSession, legacy_user_refs: list[int]) -> dict[int, set[str]]:
     if not legacy_user_refs:
         return {}
@@ -511,6 +538,7 @@ async def check_notifications_bulk(
                 User.username,
                 User.first_name,
                 User.last_name,
+                User.trial,
                 subq_registered.c.registered_time,
                 subq_sent.c.last_notification_time,
             )
@@ -545,6 +573,7 @@ async def check_notifications_bulk(
                     "username": row.username,
                     "first_name": row.first_name,
                     "last_name": row.last_name,
+                    "trial": row.trial,
                     "last_notification_time": int(last_sent_time.timestamp() * 1000) if last_sent_time else None,
                 })
         logger.info(f"Найдено {len(users)} пользователей, готовых к уведомлению типа {notification_type}")

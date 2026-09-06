@@ -115,7 +115,7 @@ async def apply_fixed_coupon(
     await update_balance(session, int(user_id), float(amount))
     await add_payment(
         session=session,
-        legacy_user_ref=int(user_id),
+        user_id=int(user_id),
         amount=float(amount),
         payment_system="coupon",
         status="success",

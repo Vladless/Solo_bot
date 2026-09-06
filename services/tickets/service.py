@@ -294,9 +294,7 @@ async def delete_stale(session: AsyncSession, *, answered_days: int = 2, closed_
 
 
 async def resolve_billing_user_ref(session: AsyncSession, identity) -> int | None:
-    """Ref для админ-карточки клиента: реальный tg_id, иначе внутренний User.id.
-
-    Работает и для веб-клиентов без Telegram (по identity_id → User)."""
+    """users.id для админ-карточки клиента."""
     from database.models import User
 
     user = (await session.execute(select(User).where(User.identity_id == identity.id))).scalar_one_or_none()
@@ -304,11 +302,7 @@ async def resolve_billing_user_ref(session: AsyncSession, identity) -> int | Non
         tg = getattr(identity, "tg_id", None)
         if tg and int(tg) != 0:
             user = (await session.execute(select(User).where(User.tg_id == int(tg)))).scalar_one_or_none()
-    if user is None:
-        return None
-    if user.tg_id and int(user.tg_id) > 0:
-        return int(user.tg_id)
-    return int(user.id)
+    return int(user.id) if user is not None else None
 
 
 async def build_client_context(session: AsyncSession, identity) -> dict | None:

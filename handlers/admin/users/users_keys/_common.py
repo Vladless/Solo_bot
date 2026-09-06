@@ -32,6 +32,7 @@ from database import (
     update_key_expiry,
     update_key_subscription_links,
 )
+from database.access.resolution import chat_id_for_user
 from database.models import Key
 from filters.admin import IsAdminFilter
 from handlers.utils import generate_random_email, handle_error
@@ -76,7 +77,7 @@ router = Router()
 
 async def resolve_callback_key(
     session: AsyncSession,
-    tg_id: int,
+    user_id: int,
     key_ref: str | int | None,
 ) -> Key | None:
-    return await resolve_admin_key(session, tg_id, key_ref)
+    return await resolve_admin_key(session, user_id, key_ref)

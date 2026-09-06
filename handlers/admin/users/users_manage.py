@@ -21,11 +21,13 @@ from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import (
+    async_session_maker,
     update_trial,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import chat_id_for_user, resolve_user_optional, user_id_from_legacy_ref
 from database.models import Admin, Identity, Key, ManualBan, Payment, Referral, Tariff, User
 from database.subscription_events import get_user_subscription_history, resolve_user_ref_by_client_id
+from database.web_notifications import notify_web
 from filters.admin import IsAdminFilter
 from logger import logger
 from settings.config import USERNAME_BOT
@@ -84,8 +86,7 @@ async def _fetch_search_candidates(session: AsyncSession, uid_reasons: dict[int,
             bits.append(email)
         prefix = "👤🔑" if uid in key_owners else "👤"
         label = (f"{prefix} " + " · ".join(bits))[:64]
-        ref = tg if tg is not None else uid
-        results.append({"ref": int(ref), "label": label})
+        results.append({"ref": int(uid), "label": label})
     results.sort(key=lambda c: c["label"].lower())
     return results
 
@@ -226,7 +227,7 @@ async def _render_search_results(target: types.Message, results: list[dict], que
         builder.row(
             InlineKeyboardButton(
                 text=c["label"],
-                callback_data=AdminUserEditorCallback(action="users_editor", tg_id=int(c["ref"]), edit=True).pack(),
+                callback_data=AdminUserEditorCallback(action="users_editor", user_id=int(c["ref"]), edit=True).pack(),
             )
         )
     nav: list[InlineKeyboardButton] = []
@@ -346,7 +347,7 @@ async def handle_send_message(
     callback_data: AdminUserEditorCallback,
     state: FSMContext,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
     await callback_query.message.edit_text(
         text=(
@@ -355,20 +356,20 @@ async def handle_send_message(
                 "Пришлите то, что нужно отправить.",
                 section("📨 Подойдёт", "текст", "картинка", "текст с картинкой"),
                 quote("Форматирование штатное телеграмное: жирный, курсив и прочее."),
-                markup=build_editor_kb(tg_id),
+                markup=build_editor_kb(user_id),
             )
         ),
-        reply_markup=build_editor_kb(tg_id),
+        reply_markup=build_editor_kb(user_id),
     )
 
-    await state.update_data(tg_id=tg_id)
+    await state.update_data(user_id=user_id)
     await state.set_state(UserEditorState.waiting_for_message_text)
 
 
 @router.message(UserEditorState.waiting_for_message_text, IsAdminFilter())
 async def handle_message_text_input(message: Message, state: FSMContext):
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     text_message = message.html_text or message.text or message.caption or ""
     photo = message.photo[-1].file_id if message.photo else None
 
@@ -379,9 +380,9 @@ async def handle_message_text_input(message: Message, state: FSMContext):
                 "Сообщение клиенту",
                 "⚠️ Сообщение слишком длинное.",
                 section("📏 Длина", f"Максимум: {max_len}", f"Сейчас: {len(text_message)}"),
-                markup=build_editor_kb(tg_id),
+                markup=build_editor_kb(user_id),
             ),
-            reply_markup=build_editor_kb(tg_id),
+            reply_markup=build_editor_kb(user_id),
         )
         await state.clear()
         return
@@ -412,51 +413,62 @@ async def handle_message_text_input(message: Message, state: FSMContext):
     IsAdminFilter(),
     UserEditorState.preview_message,
 )
-async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext):
+async def handle_send_user_message(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     text_message = data.get("text")
     photo = data.get("photo")
+    chat_id = await chat_id_for_user(session, user_id)
+
+    delivered: list[str] = []
+    failures: list[str] = []
+
+    if chat_id is not None:
+        try:
+            if photo:
+                await callback_query.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=photo,
+                    caption=text_message,
+                    parse_mode="HTML",
+                )
+            else:
+                await callback_query.bot.send_message(
+                    chat_id=chat_id,
+                    text=text_message,
+                    parse_mode="HTML",
+                )
+            delivered.append("Telegram")
+        except Exception as e:
+            failures.append(f"Telegram: {e}")
 
     try:
-        if photo:
-            await callback_query.bot.send_photo(
-                chat_id=tg_id,
-                photo=photo,
-                caption=text_message,
-                parse_mode="HTML",
-            )
-        else:
-            await callback_query.bot.send_message(
-                chat_id=tg_id,
-                text=text_message,
-                parse_mode="HTML",
-            )
-        try:
-            import re
-
-            from database import async_session_maker
-            from database.web_notifications import notify_web
-
-            clean = re.sub(r"<[^>]+>", "", text_message or "").strip()
-            lines = clean.split("\n", 1)
-            title = lines[0][:120]
-            body = lines[1].strip()[:300] if len(lines) > 1 else ""
-            async with async_session_maker() as session:
-                await notify_web(session, tg_id=tg_id, type="message", title=title, message=body)
-                await session.commit()
-        except Exception as e:
-            logger.warning("[UserManage] Ошибка web-уведомления для tg_id={}: {}", tg_id, e)
-
-        await callback_query.message.edit_text(
-            text=menu_text("Клиент", "✅ Сообщение отправлено.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
-        )
+        clean = re.sub(r"<[^>]+>", "", text_message or "").strip()
+        lines = clean.split("\n", 1)
+        title = lines[0][:120]
+        body = lines[1].strip()[:300] if len(lines) > 1 else ""
+        async with async_session_maker() as notify_session:
+            await notify_web(notify_session, tg_id=user_id, type="message", title=title, message=body)
+            await notify_session.commit()
+        delivered.append("кабинет")
     except Exception as e:
-        await callback_query.message.edit_text(
-            text=menu_text("Клиент", f"❌ Не удалось отправить сообщение: {e}", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+        logger.warning("[UserManage] Ошибка web-уведомления для user_id={}: {}", user_id, e)
+        failures.append(f"кабинет: {e}")
+
+    if delivered:
+        body = section("📬 Доставлено", *delivered)
+        if failures:
+            body = card(body, section("⚠️ Не дошло", *failures))
+        screen = menu_text("Клиент", "✅ Сообщение отправлено.", body, markup=build_editor_kb(user_id))
+    else:
+        screen = menu_text(
+            "Клиент",
+            "❌ Сообщение никуда не доставлено.",
+            section("⚠️ Причины", *failures) if failures else quote("У клиента нет ни Telegram, ни кабинета."),
+            markup=build_editor_kb(user_id),
         )
+
+    await callback_query.message.edit_text(text=screen, reply_markup=build_editor_kb(user_id))
     await state.clear()
 
 
@@ -467,10 +479,10 @@ async def handle_send_user_message(callback_query: CallbackQuery, state: FSMCont
 )
 async def handle_cancel_user_message(callback_query: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     await callback_query.message.edit_text(
-        text=menu_text("Клиент", "Отправка отменена.", markup=build_editor_kb(tg_id)),
-        reply_markup=build_editor_kb(tg_id),
+        text=menu_text("Клиент", "Отправка отменена.", markup=build_editor_kb(user_id)),
+        reply_markup=build_editor_kb(user_id),
     )
     await state.clear()
 
@@ -484,12 +496,12 @@ async def handle_trial_restore(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
-    await update_trial(session, tg_id, 0)
+    await update_trial(session, user_id, 0)
     await callback_query.message.edit_text(
-        text=menu_text("Клиент", "✅ Триал восстановлен.", markup=build_editor_kb(tg_id)),
-        reply_markup=build_editor_kb(tg_id),
+        text=menu_text("Клиент", "✅ Триал восстановлен.", markup=build_editor_kb(user_id)),
+        reply_markup=build_editor_kb(user_id),
     )
 
 
@@ -555,7 +567,7 @@ async def handle_users_export_referrals(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    referrer_tg_id = callback_data.tg_id
+    referrer_tg_id = callback_data.user_id
 
     csv_file = await export_referrals_csv(referrer_tg_id, session)
 
@@ -573,13 +585,19 @@ async def process_user_search(
     message: types.Message,
     state: FSMContext,
     session: AsyncSession,
-    tg_id: int,
+    user_id: int | None = None,
     edit: bool = False,
     actor_tg_id: int | None = None,
+    *,
+    tg_id: int | None = None,
 ) -> None:
+    """Показывает карточку клиента по users.id или tg_id."""
+    if user_id is None:
+        user_id = tg_id
     await state.clear()
 
-    u = await resolve_user_optional(session, tg_id)
+    resolved_id = await user_id_from_legacy_ref(session, user_id)
+    u = await session.scalar(select(User).where(User.id == resolved_id)) if resolved_id is not None else None
     if u is None:
         await message.answer(
             text=menu_text("Клиент", "❌ Клиент с таким ID не найден.", markup=build_admin_back_kb()),
@@ -701,15 +719,16 @@ async def process_user_search(
     has_email = identity_email is not None and str(identity_email).strip() != ""
     has_tg = real_tg_id is not None
     kb = await build_user_edit_kb(
-        tg_id,
+        int(real_tg_id) if real_tg_id is not None else uid,
         key_records,
         is_banned=is_banned,
         admin_role=admin_role,
         has_email=has_email,
         has_tg=has_tg,
+        legacy_tg_id=real_tg_id,
     )
 
-    screen = menu_text("Клиент", f"@{username}" if username else f"<code>{tg_id}</code>", text, markup=kb)
+    screen = menu_text("Клиент", f"@{username}" if username else f"<code>{real_tg_id if real_tg_id is not None else uid}</code>", text, markup=kb)
 
     if edit:
         try:
@@ -734,7 +753,7 @@ async def handle_users_editor(
         callback.message,
         state=state,
         session=session,
-        tg_id=callback_data.tg_id,
+        user_id=callback_data.user_id,
         edit=callback_data.edit,
         actor_tg_id=callback.from_user.id,
     )
@@ -753,7 +772,7 @@ async def handle_users_site(callback: CallbackQuery, callback_data: AdminUserEdi
     try:
         await callback.message.edit_text(
             text=text,
-            reply_markup=build_user_site_tabs_kb(callback_data.tg_id),
+            reply_markup=build_user_site_tabs_kb(callback_data.user_id),
             disable_web_page_preview=True,
         )
     except TelegramBadRequest:
@@ -780,7 +799,7 @@ async def handle_users_site_tab(callback: CallbackQuery, callback_data: AdminUse
     try:
         await callback.message.edit_text(
             text=text,
-            reply_markup=build_user_site_send_kb(callback_data.tg_id, tab),
+            reply_markup=build_user_site_send_kb(callback_data.user_id, tab),
             disable_web_page_preview=True,
         )
     except TelegramBadRequest:
@@ -824,12 +843,12 @@ async def handle_users_site_send(callback: CallbackQuery, callback_data: AdminUs
 
     try:
         await bot.send_message(
-            callback_data.tg_id,
+            callback_data.user_id,
             "Откройте раздел в личном кабинете 👇",
             reply_markup=builder.as_markup(),
         )
     except Exception as e:
-        logger.warning(f"[users_site_send] send to {callback_data.tg_id} failed: {e}")
+        logger.warning(f"[users_site_send] send to {callback_data.user_id} failed: {e}")
         await callback.answer("Клиент не запускал бота", show_alert=True)
         return
     await callback.answer(f"✅ Отправлено клиенту: {label}", show_alert=True)
@@ -848,7 +867,7 @@ async def handle_user_sub_history(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    u = await resolve_user_optional(session, callback_data.tg_id)
+    u = await resolve_user_optional(session, callback_data.user_id)
     if u is None:
         await callback.answer("Клиент не найден", show_alert=True)
         return
@@ -861,7 +880,7 @@ async def handle_user_sub_history(
                 InlineKeyboardButton(
                     text="◀️ Назад",
                     callback_data=AdminUserEditorCallback(
-                        action="users_editor", tg_id=callback_data.tg_id, edit=True
+                        action="users_editor", user_id=callback_data.user_id, edit=True
                     ).pack(),
                 )
             ]
@@ -964,7 +983,7 @@ async def handle_unlink_email(
 ):
     from database.identities import detach_email
 
-    identity = await _resolve_identity_for_user(session, callback_data.tg_id)
+    identity = await _resolve_identity_for_user(session, callback_data.user_id)
     if identity is None:
         await callback.answer("Веб-аккаунт не привязан", show_alert=True)
         return
@@ -983,7 +1002,7 @@ async def handle_unlink_email(
         callback.message,
         state=state,
         session=session,
-        tg_id=callback_data.tg_id,
+        user_id=callback_data.user_id,
         edit=True,
         actor_tg_id=callback.from_user.id,
     )
@@ -1002,7 +1021,7 @@ async def handle_unlink_tg(
 ):
     from database.identities import detach_telegram
 
-    identity = await _resolve_identity_for_user(session, callback_data.tg_id)
+    identity = await _resolve_identity_for_user(session, callback_data.user_id)
     if identity is None:
         await callback.answer("Веб-аккаунт не привязан", show_alert=True)
         return
@@ -1021,7 +1040,7 @@ async def handle_unlink_tg(
         callback.message,
         state=state,
         session=session,
-        tg_id=callback_data.tg_id,
+        user_id=callback_data.user_id,
         edit=True,
         actor_tg_id=callback.from_user.id,
     )

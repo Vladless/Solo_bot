@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import Gift, GiftUsage, Tariff
 from filters.admin import IsAdminFilter
-from services.gifts import format_gift_limits_display, format_gift_recipient_display
 from services.formatting import get_site_gift_link
+from services.gifts import format_gift_limits_display, format_gift_recipient_display
 
 from ..panel.headers import card, menu_text, quote, section
 from .keyboard import (
@@ -22,10 +22,10 @@ MOSCOW_TZ = pytz.timezone("Europe/Moscow")
 router = Router()
 
 
-async def get_user_gifts(session: AsyncSession, tg_id: int) -> list:
+async def get_user_gifts(session: AsyncSession, user_id: int) -> list:
     from database.access.resolution import resolve_user_optional
 
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_id)
     if u is None:
         return []
     stmt = select(Gift).where(Gift.sender_user_id == u.id).order_by(Gift.created_at.desc())
@@ -33,18 +33,18 @@ async def get_user_gifts(session: AsyncSession, tg_id: int) -> list:
     return result.scalars().all()
 
 
-async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: int, page: int = 0):
-    gifts = await get_user_gifts(session, tg_id)
+async def show_gifts_list(message: types.Message, session: AsyncSession, user_id: int, page: int = 0):
+    gifts = await get_user_gifts(session, user_id)
 
     if not gifts:
         text = menu_text(
             "Подарки клиента",
-            f"<code>{tg_id}</code>",
+            f"<code>{user_id}</code>",
             quote("Клиент ещё не создавал подарков."),
         )
         await message.edit_text(
             text=text,
-            reply_markup=build_user_gifts_kb(tg_id, [], page),
+            reply_markup=build_user_gifts_kb(user_id, [], page),
         )
         return
 
@@ -110,11 +110,11 @@ async def show_gifts_list(message: types.Message, session: AsyncSession, tg_id: 
     await message.edit_text(
         text=menu_text(
             "Подарки клиента",
-            f"Клиент <code>{tg_id}</code>",
+            f"Клиент <code>{user_id}</code>",
             card(*blocks),
-            markup=build_user_gifts_kb(tg_id, gifts, page),
+            markup=build_user_gifts_kb(user_id, gifts, page),
         ),
-        reply_markup=build_user_gifts_kb(tg_id, gifts, page),
+        reply_markup=build_user_gifts_kb(user_id, gifts, page),
     )
 
 
@@ -127,7 +127,7 @@ async def handle_users_gifts(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    await show_gifts_list(callback.message, session, callback_data.tg_id, page=0)
+    await show_gifts_list(callback.message, session, callback_data.user_id, page=0)
 
 
 @router.callback_query(
@@ -138,8 +138,8 @@ async def handle_gifts_page(
     callback: types.CallbackQuery,
     session: AsyncSession,
 ):
-    _, tg_id, page = callback.data.split("|")
-    await show_gifts_list(callback.message, session, int(tg_id), page=int(page))
+    _, user_id, page = callback.data.split("|")
+    await show_gifts_list(callback.message, session, int(user_id), page=int(page))
 
 
 @router.callback_query(
@@ -151,8 +151,8 @@ async def handle_gift_delete(
     callback: types.CallbackQuery,
     session: AsyncSession,
 ):
-    _, tg_id, gift_id, page = callback.data.split("|")
-    tg_id, page = int(tg_id), int(page)
+    _, user_id, gift_id, page = callback.data.split("|")
+    user_id, page = int(user_id), int(page)
 
     stmt = select(Gift).where(Gift.gift_id == gift_id)
     result = await session.execute(stmt)
@@ -172,10 +172,10 @@ async def handle_gift_delete(
                 "❓ <b>Удалить подарок?</b>",
                 quote(f"📆 Длительность: {gift.selected_months} мес.\n📅 Создан: {created_str}\n📊 Статус: {status}"),
                 quote("⚠️ Отменить будет нельзя."),
-                markup=build_gift_delete_confirm_kb(tg_id, gift_id, page),
+                markup=build_gift_delete_confirm_kb(user_id, gift_id, page),
             )
         ),
-        reply_markup=build_gift_delete_confirm_kb(tg_id, gift_id, page),
+        reply_markup=build_gift_delete_confirm_kb(user_id, gift_id, page),
     )
 
 
@@ -188,11 +188,11 @@ async def handle_gift_delete_confirm(
     callback: types.CallbackQuery,
     session: AsyncSession,
 ):
-    _, tg_id, gift_id = callback.data.split("|")
-    tg_id = int(tg_id)
+    _, user_id, gift_id = callback.data.split("|")
+    user_id = int(user_id)
 
     await session.execute(delete(GiftUsage).where(GiftUsage.gift_id == gift_id))
     await session.execute(delete(Gift).where(Gift.gift_id == gift_id))
 
     await callback.answer("Подарок удалён", show_alert=True)
-    await show_gifts_list(callback.message, session, tg_id, page=0)
+    await show_gifts_list(callback.message, session, user_id, page=0)

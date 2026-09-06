@@ -297,6 +297,7 @@ async def get_key_details(session: AsyncSession, email: str) -> dict | None:
         "created_at": key.created_at,
         "expiry_time": key.expiry_time,
         "client_id": key.client_id,
+        "user_id": key.user_id,
         "tg_id": user.tg_id,
         "email": key.email,
         "is_frozen": key.is_frozen,

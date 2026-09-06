@@ -12,13 +12,13 @@ async def handle_reissue_menu(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -34,7 +34,7 @@ async def handle_reissue_menu(
 
     await callback_query.message.edit_text(
         text=text,
-        reply_markup=build_reissue_menu_kb(key_ref, tg_id),
+        reply_markup=build_reissue_menu_kb(key_ref, user_id),
     )
 
 
@@ -47,13 +47,13 @@ async def handle_update_key(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -62,7 +62,7 @@ async def handle_update_key(
         text=menu_text("Подписка", f"📡 Выберите кластер, на котором пересоздать ключ <b>{email}</b>:"),
         reply_markup=await build_cluster_selection_kb(
             session,
-            tg_id,
+            user_id,
             key_ref,
             action="confirm_admin_key_reissue",
         ),
@@ -71,13 +71,13 @@ async def handle_update_key(
 
 @router.callback_query(F.data.startswith("confirm_admin_key_reissue|"), IsAdminFilter())
 async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: AsyncSession, state: FSMContext):
-    _, tg_id, key_ref, cluster_id = callback_query.data.split("|")
-    tg_id = int(tg_id)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    _, user_id, key_ref, cluster_id = callback_query.data.split("|")
+    user_id = int(user_id)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -100,7 +100,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
                     text=BACK,
                     callback_data=AdminUserEditorCallback(
                         action="users_key_edit",
-                        tg_id=tg_id,
+                        user_id=user_id,
                         data=key_ref,
                     ).pack(),
                 )
@@ -121,19 +121,19 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
 
         if use_country_selection:
             unique_countries = {srv["server_name"] for srv in cluster_servers}
-            await state.update_data(tg_id=tg_id, email=email, key_ref=key_ref, cluster_id=cluster_id)
+            await state.update_data(user_id=user_id, email=email, key_ref=key_ref, cluster_id=cluster_id)
             builder = InlineKeyboardBuilder()
             for country in sorted(unique_countries):
                 builder.button(
                     text=country,
-                    callback_data=f"admin_reissue_country|{tg_id}|{key_ref}|{country}",
+                    callback_data=f"admin_reissue_country|{user_id}|{key_ref}|{country}",
                 )
             builder.row(
                 InlineKeyboardButton(
                     text=BACK,
                     callback_data=AdminUserEditorCallback(
                         action="users_key_edit",
-                        tg_id=tg_id,
+                        user_id=user_id,
                         data=key_ref,
                     ).pack(),
                 )
@@ -150,7 +150,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
         remnawave_link = key_link.remnawave_link if key_link else None
 
         await update_subscription(
-            tg_id,
+            user_id,
             email,
             session,
             cluster_override=cluster_id,
@@ -159,7 +159,7 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
 
         await handle_key_edit(
             callback_query,
-            AdminUserEditorCallback(tg_id=tg_id, data=key_ref, action="view_key"),
+            AdminUserEditorCallback(user_id=user_id, data=key_ref, action="view_key"),
             session,
             True,
         )
@@ -170,13 +170,13 @@ async def confirm_admin_key_reissue(callback_query: CallbackQuery, session: Asyn
 
 @router.callback_query(F.data.startswith("admin_reissue_country|"), IsAdminFilter())
 async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSession, state: FSMContext):
-    _, tg_id, key_ref, country = callback_query.data.split("|")
-    tg_id = int(tg_id)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    _, user_id, key_ref, country = callback_query.data.split("|")
+    user_id = int(user_id)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -200,7 +200,7 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
                         text=BACK,
                         callback_data=AdminUserEditorCallback(
                             action="users_key_edit",
-                            tg_id=tg_id,
+                            user_id=user_id,
                             data=key_ref,
                         ).pack(),
                     )
@@ -221,7 +221,7 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
         remnawave_link = key_link.remnawave_link if key_link else None
 
         await update_subscription(
-            tg_id=tg_id,
+            user_id=user_id,
             email=email,
             session=session,
             country_override=country,
@@ -230,7 +230,7 @@ async def admin_reissue_country(callback_query: CallbackQuery, session: AsyncSes
 
         await handle_key_edit(
             callback_query,
-            AdminUserEditorCallback(tg_id=tg_id, data=key_ref, action="view_key"),
+            AdminUserEditorCallback(user_id=user_id, data=key_ref, action="view_key"),
             session,
             True,
         )
@@ -248,14 +248,14 @@ async def handle_recreate_key_start(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -276,13 +276,13 @@ async def handle_recreate_key_start(
     builder.row(
         InlineKeyboardButton(
             text="✅ Пересоздать",
-            callback_data=f"confirm_recreate|{tg_id}|{key_ref}",
+            callback_data=f"confirm_recreate|{user_id}|{key_ref}",
         )
     )
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", tg_id=tg_id, data=key_ref).pack(),
+            callback_data=AdminUserEditorCallback(action="users_key_edit", user_id=user_id, data=key_ref).pack(),
         )
     )
 
@@ -294,16 +294,16 @@ async def handle_recreate_key_confirm(
     callback_query: CallbackQuery,
     session: AsyncSession,
 ):
-    _, tg_id, key_ref = callback_query.data.split("|")
-    tg_id = int(tg_id)
+    _, user_id, key_ref = callback_query.data.split("|")
+    user_id = int(user_id)
 
     try:
-        key_obj = await resolve_callback_key(session, tg_id, key_ref)
+        key_obj = await resolve_callback_key(session, user_id, key_ref)
 
         if not key_obj:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-                reply_markup=build_editor_kb(tg_id),
+                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -329,8 +329,8 @@ async def handle_recreate_key_confirm(
 
         if not cluster:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", f"❌ Кластер {cluster_id} не найден.", markup=build_editor_kb(tg_id)),
-                reply_markup=build_editor_kb(tg_id),
+                text=menu_text("Подписка", f"❌ Кластер {cluster_id} не найден.", markup=build_editor_kb(user_id)),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -342,9 +342,9 @@ async def handle_recreate_key_confirm(
             if not api_url:
                 await callback_query.message.edit_text(
                     text=menu_text(
-                        "Подписка", "❌ У Remnawave сервера не задан api_url.", markup=build_editor_kb(tg_id)
+                        "Подписка", "❌ У Remnawave сервера не задан api_url.", markup=build_editor_kb(user_id)
                     ),
-                    reply_markup=build_editor_kb(tg_id),
+                    reply_markup=build_editor_kb(user_id),
                 )
                 return
 
@@ -360,9 +360,9 @@ async def handle_recreate_key_confirm(
             if not user_data:
                 await callback_query.message.edit_text(
                     text=menu_text(
-                        "Подписка", "❌ Не удалось выполнить revoke. Проверьте логи.", markup=build_editor_kb(tg_id)
+                        "Подписка", "❌ Не удалось выполнить revoke. Проверьте логи.", markup=build_editor_kb(user_id)
                     ),
-                    reply_markup=build_editor_kb(tg_id),
+                    reply_markup=build_editor_kb(user_id),
                 )
                 return
 
@@ -371,9 +371,9 @@ async def handle_recreate_key_confirm(
             if not new_link:
                 await callback_query.message.edit_text(
                     text=menu_text(
-                        "Подписка", "❌ Revoke выполнен, но новая ссылка не получена.", markup=build_editor_kb(tg_id)
+                        "Подписка", "❌ Revoke выполнен, но новая ссылка не получена.", markup=build_editor_kb(user_id)
                     ),
-                    reply_markup=build_editor_kb(tg_id),
+                    reply_markup=build_editor_kb(user_id),
                 )
                 return
 
@@ -406,23 +406,23 @@ async def handle_recreate_key_confirm(
                     text=menu_text(
                         "Подписка",
                         "❌ Не удалось сменить ссылку ни на одном 3x-ui сервере. Проверьте логи.",
-                        markup=build_editor_kb(tg_id),
+                        markup=build_editor_kb(user_id),
                     ),
-                    reply_markup=build_editor_kb(tg_id),
+                    reply_markup=build_editor_kb(user_id),
                 )
                 return
 
             from database.access.resolution import subscription_owner_ref
 
-            new_link = f"{PUBLIC_LINK}{new_email}/{await subscription_owner_ref(session, tg_id)}"
+            new_link = f"{PUBLIC_LINK}{new_email}/{await subscription_owner_ref(session, user_id)}"
             await update_key_email_and_link(session, old_email, new_email, new_link, client_id)
 
         else:
             await callback_query.message.edit_text(
                 text=menu_text(
-                    "Подписка", "❌ В кластере нет серверов Remnawave или 3x-ui.", markup=build_editor_kb(tg_id)
+                    "Подписка", "❌ В кластере нет серверов Remnawave или 3x-ui.", markup=build_editor_kb(user_id)
                 ),
-                reply_markup=build_editor_kb(tg_id),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -446,14 +446,17 @@ async def handle_recreate_key_confirm(
                 )
             )
 
+            chat_id = await chat_id_for_user(session, user_id)
+            if chat_id is None:
+                raise RuntimeError("у клиента нет Telegram")
             await callback_query.bot.send_message(
-                chat_id=tg_id,
+                chat_id=chat_id,
                 text=user_text,
                 reply_markup=user_kb.as_markup(),
             )
             notification_sent = True
         except Exception as e:
-            logger.warning(f"Не удалось отправить уведомление клиенту {tg_id}: {e}")
+            logger.warning(f"Не удалось отправить уведомление клиенту {user_id}: {e}")
             notification_sent = False
 
         text = menu_text(
@@ -471,7 +474,7 @@ async def handle_recreate_key_confirm(
                 text=BACK,
                 callback_data=AdminUserEditorCallback(
                     action="users_key_edit",
-                    tg_id=tg_id,
+                    user_id=user_id,
                     data=key_ref,
                 ).pack(),
             )
@@ -485,8 +488,8 @@ async def handle_recreate_key_confirm(
     except Exception as e:
         logger.error(f"Ошибка при revoke ключа {old_email}: {e}")
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", f"❌ Ошибка при пересоздании: {e}", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", f"❌ Ошибка при пересоздании: {e}", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
 
 
@@ -500,11 +503,11 @@ async def handle_delete_key(
     state: FSMContext,
     session: AsyncSession,
 ):
-    key_obj = await resolve_callback_key(session, callback_data.tg_id, callback_data.data)
+    key_obj = await resolve_callback_key(session, callback_data.user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
-            reply_markup=build_editor_kb(callback_data.tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.user_id)),
+            reply_markup=build_editor_kb(callback_data.user_id),
         )
         return
 
@@ -513,21 +516,21 @@ async def handle_delete_key(
 
     if client_id is None:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
-            reply_markup=build_editor_kb(callback_data.tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.user_id)),
+            reply_markup=build_editor_kb(callback_data.user_id),
         )
         return
 
     await state.set_state(UserEditorState.confirm_delete_key)
     await state.update_data(
         delete_key_email=email,
-        delete_key_tg_id=int(callback_data.tg_id),
+        delete_key_tg_id=int(callback_data.user_id),
         delete_key_client_id=client_id,
     )
 
     await callback_query.message.edit_text(
-        text=menu_text("Подписка", "⚠️ Удалить подписку?", markup=build_key_delete_kb(callback_data.tg_id)),
-        reply_markup=build_key_delete_kb(callback_data.tg_id),
+        text=menu_text("Подписка", "⚠️ Удалить подписку?", markup=build_key_delete_kb(callback_data.user_id)),
+        reply_markup=build_key_delete_kb(callback_data.user_id),
     )
 
 
@@ -549,15 +552,15 @@ async def handle_delete_key_confirm(
     client_id = data.get("delete_key_client_id")
     await state.clear()
 
-    if not email or int(expected_tg_id or 0) != int(callback_data.tg_id):
+    if not email or int(expected_tg_id or 0) != int(callback_data.user_id):
         await callback_query.answer("Данные устарели", show_alert=True)
         return
 
     if not client_id:
-        key_obj = await get_key_by_email(session, email, int(callback_data.tg_id))
+        key_obj = await get_key_by_email(session, email, int(callback_data.user_id))
         client_id = key_obj.client_id if key_obj else None
 
-    kb = build_editor_kb(callback_data.tg_id)
+    kb = build_editor_kb(callback_data.user_id)
 
     if client_id:
         clusters = await get_servers(session=session)
@@ -591,14 +594,14 @@ async def handle_delete_user(
     callback_query: CallbackQuery,
     callback_data: AdminUserEditorCallback,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     await callback_query.message.edit_text(
         text=menu_text(
             "Подписка",
-            f"⚠️ Удалить клиента {tg_id}?",
-            markup=build_user_delete_kb(tg_id),
+            f"⚠️ Удалить клиента {user_id}?",
+            markup=build_user_delete_kb(user_id),
         ),
-        reply_markup=build_user_delete_kb(tg_id),
+        reply_markup=build_user_delete_kb(user_id),
     )
 
 
@@ -611,9 +614,9 @@ async def handle_delete_user_confirm(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
-    key_records = [(row.email, row.client_id) for row in await get_keys(session, tg_id)]
+    key_records = [(row.email, row.client_id) for row in await get_keys(session, user_id)]
     await release_session_early(session)
 
     async def delete_keys_from_servers():
@@ -625,22 +628,22 @@ async def handle_delete_user_confirm(
                     tasks.append(delete_key_from_cluster(cluster_id, email, client_id, session))
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
-            logger.error(f"Ошибка при удалении ключей с серверов для пользователя {tg_id}: {e}")
+            logger.error(f"Ошибка при удалении ключей с серверов для пользователя {user_id}: {e}")
 
     await delete_keys_from_servers()
 
     try:
-        await delete_user_data(session, tg_id)
+        await delete_user_data(session, user_id)
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", f"🗑️ Клиент {tg_id} был удален.", markup=build_admin_back_kb()),
+            text=menu_text("Подписка", f"🗑️ Клиент {user_id} был удален.", markup=build_admin_back_kb()),
             reply_markup=build_admin_back_kb(),
         )
     except Exception as e:
-        logger.error(f"Ошибка при удалении данных из базы данных для пользователя {tg_id}: {e}")
+        logger.error(f"Ошибка при удалении данных из базы данных для пользователя {user_id}: {e}")
         await callback_query.message.edit_text(
             text=menu_text(
                 "Подписка",
-                f"❌ Не удалось удалить клиента {tg_id}. Попробуйте ещё раз.",
+                f"❌ Не удалось удалить клиента {user_id}. Попробуйте ещё раз.",
                 markup=build_admin_back_kb(),
             ),
             reply_markup=build_admin_back_kb(),
@@ -657,8 +660,8 @@ async def handle_create_key_start(
     state: FSMContext,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    await state.update_data(tg_id=tg_id)
+    user_id = callback_data.user_id
+    await state.update_data(user_id=user_id)
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 
@@ -669,8 +672,8 @@ async def handle_create_key_start(
 
         if not countries:
             await callback_query.message.edit_text(
-                menu_text("Подписка", "❌ Нет доступных стран для создания ключа.", markup=build_editor_kb(tg_id)),
-                reply_markup=build_editor_kb(tg_id),
+                menu_text("Подписка", "❌ Нет доступных стран для создания ключа.", markup=build_editor_kb(user_id)),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -693,8 +696,8 @@ async def handle_create_key_start(
 
     if not cluster_names:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Нет доступных кластеров для создания ключа.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Нет доступных кластеров для создания ключа.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -755,10 +758,10 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
     cluster_name = callback_query.data
 
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
 
-    if not tg_id:
-        await callback_query.message.edit_text(menu_text("Подписка", "❌ Ошибка: tg_id клиента не найден."))
+    if not user_id:
+        await callback_query.message.edit_text(menu_text("Подписка", "❌ Ошибка: user_id клиента не найден."))
         return
 
     await state.update_data(cluster_name=cluster_name)
@@ -791,7 +794,7 @@ async def handle_create_key_cluster(callback_query: CallbackQuery, state: FSMCon
 @router.callback_query(UserEditorState.selecting_duration, IsAdminFilter())
 async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    tg_id = data.get("tg_id", callback_query.from_user.id)
+    user_id = data.get("user_id", callback_query.from_user.id)
 
     use_country_selection = bool(MODES_CONFIG.get("COUNTRY_SELECTION_ENABLED", USE_COUNTRY_SELECTION))
 
@@ -814,7 +817,7 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
             country = data["country"]
             await create_key_on_cluster(
                 country,
-                tg_id,
+                user_id,
                 client_id,
                 email,
                 expiry_ms,
@@ -827,15 +830,15 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
                 menu_text(
                     "Подписка",
                     f"✅ Ключ создан для страны <b>{country}</b> на {duration_days} дней.",
-                    markup=build_editor_kb(tg_id),
+                    markup=build_editor_kb(user_id),
                 ),
-                reply_markup=build_editor_kb(tg_id),
+                reply_markup=build_editor_kb(user_id),
             )
         elif "cluster_name" in data:
             cluster_name = data["cluster_name"]
             await create_key_on_cluster(
                 cluster_name,
-                tg_id,
+                user_id,
                 client_id,
                 email,
                 expiry_ms,
@@ -848,9 +851,9 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
                 menu_text(
                     "Подписка",
                     f"✅ Ключ создан в кластере <b>{cluster_name}</b> на {duration_days} дней.",
-                    markup=build_editor_kb(tg_id),
+                    markup=build_editor_kb(user_id),
                 ),
-                reply_markup=build_editor_kb(tg_id),
+                reply_markup=build_editor_kb(user_id),
             )
         else:
             await callback_query.message.edit_text(
@@ -859,6 +862,6 @@ async def handle_create_key_duration(callback_query: CallbackQuery, state: FSMCo
     except Exception as e:
         logger.error(f"[CreateKey] Ошибка при создании ключа: {e}")
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Не удалось создать ключ. Попробуйте позже.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Не удалось создать ключ. Попробуйте позже.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )

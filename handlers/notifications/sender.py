@@ -281,10 +281,7 @@ class FastNotificationSender:
                 await asyncio.sleep(wait)
             await self.queue.put(msg)
         except asyncio.CancelledError:
-            self.results.append(False)
             raise
-        except Exception:
-            self.results.append(False)
         finally:
             self.pending_retries -= 1
 
@@ -297,26 +294,21 @@ class FastNotificationSender:
                     return
                 continue
 
+            index = msg.get("_index")
             try:
                 result = await self._send_one(msg)
                 if result == "ok":
                     self.total_sent += 1
-                    self.results.append(True)
-                elif result == "retry":
-                    if msg.get("_attempts", 0) < self.max_attempts:
-                        try:
-                            spawn(self._schedule_retry(msg))
-                            self.pending_retries += 1
-                        except Exception as e:
-                            logger.error(f"Не удалось запланировать повтор для {msg.get('tg_id')}: {e}")
-                            self.results.append(False)
-                    else:
-                        self.results.append(False)
-                else:
-                    self.results.append(False)
+                    if index is not None:
+                        self.results[index] = True
+                elif result == "retry" and msg.get("_attempts", 0) < self.max_attempts:
+                    try:
+                        spawn(self._schedule_retry(msg))
+                        self.pending_retries += 1
+                    except Exception as e:
+                        logger.error(f"Не удалось запланировать повтор для {msg.get('tg_id')}: {e}")
             except Exception as e:
                 logger.error(f"Ошибка в воркере уведомлений: {e}")
-                self.results.append(False)
             finally:
                 self.queue.task_done()
 
@@ -332,19 +324,20 @@ class FastNotificationSender:
             logger.error(f"Ошибка сохранения заблокированных: {e}")
 
     async def send_all(self, messages: list[dict], workers: int = 15) -> list[bool]:
+        """Возвращает результат на каждое входное сообщение, в том же порядке."""
         if not messages:
             return []
 
         self.is_running = True
-        self.results = []
+        self.results = [False] * len(messages)
         self.total_sent = 0
         self.blocked_users = set()
         self.pending_retries = 0
         start = time.time()
 
-        for msg in messages:
+        for index, msg in enumerate(messages):
             if is_telegram_chat_id(msg.get("tg_id")):
-                await self.queue.put(msg)
+                await self.queue.put({**msg, "_index": index})
 
         worker_tasks = [asyncio.create_task(self._worker()) for _ in range(workers)]
 

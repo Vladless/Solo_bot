@@ -2,11 +2,13 @@ from aiogram import Router
 
 from filters.admin import HasPermission
 from filters.permissions import PERM_USERS
+from middlewares.legacy_ref import LegacyUserRefMiddleware
 
 
 router = Router()
 router.callback_query.filter(HasPermission(PERM_USERS))
 router.message.filter(HasPermission(PERM_USERS))
+router.callback_query.middleware(LegacyUserRefMiddleware())
 
 from . import (
     users_audit,

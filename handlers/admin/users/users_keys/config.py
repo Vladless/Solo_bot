@@ -16,14 +16,14 @@ async def handle_edit_config_start(
     session: AsyncSession,
 ):
     key_ref = str(callback_data.data)
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
 
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -58,7 +58,7 @@ async def handle_edit_config_start(
     await state.update_data(
         email=email,
         key_ref=key_ref,
-        tg_id=tg_id,
+        user_id=user_id,
         tariff_id=key_obj.tariff_id,
         cfg_base_devices=base_devices,
         cfg_extra_devices=extra_devices,
@@ -73,7 +73,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     data = await state.get_data()
     email = data.get("email")
     key_ref = data.get("key_ref")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     tariff_id = data.get("tariff_id")
 
     tariff = await get_tariff_by_id(session, tariff_id)
@@ -126,7 +126,7 @@ async def render_config_menu(callback_query: CallbackQuery, state: FSMContext, s
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", data=key_ref, tg_id=tg_id).pack(),
+            callback_data=AdminUserEditorCallback(action="users_key_edit", data=key_ref, user_id=user_id).pack(),
         )
     )
 
@@ -300,7 +300,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     param = data.get("cfg_param")
     email = data.get("email")
     key_ref = data.get("key_ref")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     tariff_id = data.get("tariff_id")
 
     if not message.text or not message.text.isdigit():
@@ -351,7 +351,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
     builder.row(
         InlineKeyboardButton(
             text=BACK,
-            callback_data=AdminUserEditorCallback(action="users_key_edit", data=key_ref, tg_id=tg_id).pack(),
+            callback_data=AdminUserEditorCallback(action="users_key_edit", data=key_ref, user_id=user_id).pack(),
         )
     )
 
@@ -362,7 +362,7 @@ async def handle_cfg_input_addon(message: Message, state: FSMContext, session: A
 async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
     email = data.get("email")
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     tariff_id = data.get("tariff_id")
 
     base_devices = data.get("cfg_base_devices") or 1
@@ -394,8 +394,8 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
 
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         await state.clear()
         return
@@ -427,7 +427,7 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
         await state.clear()
         await callback_query.answer("Конфигурация сохранена", show_alert=True)
 
-        callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, tg_id=tg_id)
+        callback_data_back = AdminUserEditorCallback(action="users_key_edit", data=email, user_id=user_id)
         await handle_key_edit(
             callback_query=callback_query,
             callback_data=callback_data_back,
@@ -439,9 +439,9 @@ async def handle_cfg_save(callback_query: CallbackQuery, state: FSMContext, sess
         logger.error(f"[EditConfig] Ошибка при сохранении конфигурации: {e}")
         await callback_query.message.edit_text(
             menu_text(
-                "Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже.", markup=build_editor_kb(tg_id)
+                "Подписка", "❌ Не удалось сохранить конфигурацию. Попробуйте позже.", markup=build_editor_kb(user_id)
             ),
-            reply_markup=build_editor_kb(tg_id),
+            reply_markup=build_editor_kb(user_id),
         )
         await state.clear()
 

@@ -6,7 +6,6 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
-    ForeignKey,
     Index,
     Integer,
     String,
@@ -21,7 +20,7 @@ from ._base import Base, DictLikeMixin
 class Notification(DictLikeMixin, Base):
     __tablename__ = "notifications"
 
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), nullable=True, index=True)
+    tg_id = Column(BigInteger, nullable=True, index=True)
     user_id = Column(BigInteger, nullable=False, primary_key=True)
     notification_type = Column(String, primary_key=True)
     last_notification_time = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -36,7 +35,7 @@ class ScheduledBroadcast(DictLikeMixin, Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     created_by_user_id = Column(BigInteger, nullable=True, index=True)
-    created_by_tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_tg_id = Column(BigInteger, nullable=True, index=True)
     status = Column(String(32), nullable=False, server_default=sql_text("'scheduled'"), index=True)
     send_to = Column(String(32), nullable=False, index=True)
     channel = Column(String(32), nullable=False, server_default=sql_text("'both'"))

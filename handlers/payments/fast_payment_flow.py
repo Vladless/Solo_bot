@@ -402,15 +402,17 @@ async def buy_confirm_balance(callback_query: CallbackQuery, state: FSMContext, 
         return
     await callback_query.answer()
     await state.set_state(None)
-    await _finish_from_balance(callback_query.message, session, str(temp_key), payload)
+    await _finish_from_balance(
+        callback_query.message, session, str(temp_key), payload, callback_query.from_user.id
+    )
 
 
-async def _finish_from_balance(message, session, temp_key: str, payload: dict) -> bool:
-    """Доплачивать нечего — закрываем покупку с баланса, а не показываем кассы."""
+async def _finish_from_balance(message, session, temp_key: str, payload: dict, user_ref: int) -> bool:
+    """Закрывает покупку с баланса без экрана касс."""
     from handlers.payments.utils import _handle_temp_state
 
     try:
-        done = await _handle_temp_state(session, message.from_user.id, temp_key, payload, 0)
+        done = await _handle_temp_state(session, user_ref, temp_key, payload, 0)
     except Exception as e:
         logger.error("[FastFlow] покупка с баланса не завершилась: {}", e)
         return False
@@ -528,7 +530,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
         await state.update_data(required_amount=left, temp_payload=payload_after)
         await state.set_state(None)
         if left == 0:
-            await _finish_from_balance(message, session, str(temp_key), payload_after)
+            await _finish_from_balance(message, session, str(temp_key), payload_after, message.from_user.id)
             return
         await message.answer(
             f"✅ Купон активирован, на баланс начислено {amount_raw}. Осталось доплатить {left}.",
@@ -571,7 +573,7 @@ async def fastflow_apply_coupon(message: Message, state: FSMContext, session: An
     await state.set_state(None)
 
     if required_amount_new == 0:
-        await _finish_from_balance(message, session, str(temp_key), temp_payload_updated)
+        await _finish_from_balance(message, session, str(temp_key), temp_payload_updated, message.from_user.id)
         return
 
     payment_config = await get_payment_providers_config()

@@ -12,12 +12,12 @@ async def handle_user_traffic(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    key_obj = await resolve_callback_key(session, tg_id, callback_data.data)
+    user_id = callback_data.user_id
+    key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Ключ не найден.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -26,12 +26,12 @@ async def handle_user_traffic(
         menu_text("Подписка", "⏳ Получаем данные о трафике, пожалуйста, подождите...")
     )
 
-    traffic_data = await get_user_traffic(session, tg_id, email)
+    traffic_data = await get_user_traffic(session, user_id, email)
 
     if traffic_data["status"] == "error":
         await callback_query.message.edit_text(
-            menu_text("Трафик подписки", traffic_data["message"], markup=build_editor_kb(tg_id, True)),
-            reply_markup=build_editor_kb(tg_id, True),
+            menu_text("Трафик подписки", traffic_data["message"], markup=build_editor_kb(user_id, True)),
+            reply_markup=build_editor_kb(user_id, True),
         )
         return
 
@@ -54,7 +54,7 @@ async def handle_user_traffic(
 
     await callback_query.message.edit_text(
         result_text,
-        reply_markup=build_editor_kb(tg_id, True),
+        reply_markup=build_editor_kb(user_id, True),
     )
 
 
@@ -67,12 +67,12 @@ async def handle_reset_traffic(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    key_obj = await resolve_callback_key(session, tg_id, callback_data.data)
+    user_id = callback_data.user_id
+    key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Ключ не найден в базе данных.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Ключ не найден в базе данных.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -83,15 +83,15 @@ async def handle_reset_traffic(
         await reset_traffic_in_cluster(cluster_id, email, session)
         await callback_query.message.edit_text(
             menu_text(
-                "Подписка", f"✅ Трафик для ключа <b>{email}</b> успешно сброшен.", markup=build_editor_kb(tg_id)
+                "Подписка", f"✅ Трафик для ключа <b>{email}</b> успешно сброшен.", markup=build_editor_kb(user_id)
             ),
-            reply_markup=build_editor_kb(tg_id),
+            reply_markup=build_editor_kb(user_id),
         )
     except Exception as e:
         logger.error(f"Ошибка при сбросе трафика: {e}")
         await callback_query.message.edit_text(
-            menu_text("Подписка", "❌ Не удалось сбросить трафик. Попробуйте позже.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            menu_text("Подписка", "❌ Не удалось сбросить трафик. Попробуйте позже.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
 
 
@@ -104,12 +104,12 @@ async def handle_admin_freeze_subscription(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    key_obj = await resolve_callback_key(session, tg_id, callback_data.data)
+    user_id = callback_data.user_id
+    key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -118,8 +118,8 @@ async def handle_admin_freeze_subscription(
         record = await get_key_details(session, email)
         if not record:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-                reply_markup=build_editor_kb(tg_id),
+                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -135,7 +135,7 @@ async def handle_admin_freeze_subscription(
             )
             await callback_query.message.edit_text(
                 text_error,
-                reply_markup=build_editor_kb(tg_id, True),
+                reply_markup=build_editor_kb(user_id, True),
             )
             return
 
@@ -144,7 +144,7 @@ async def handle_admin_freeze_subscription(
         if time_left < 0:
             time_left = 0
 
-        await mark_key_as_frozen(session, record["tg_id"], client_id, time_left)
+        await mark_key_as_frozen(session, record["user_id"], client_id, time_left)
         session.expire_all()
 
         await callback_query.answer(menu_text("Подписка", "✅ Подписка отключена"))
@@ -156,7 +156,7 @@ async def handle_admin_freeze_subscription(
             update=False,
         )
     except Exception as e:
-        await handle_error(tg_id, callback_query, f"Ошибка при отключении подписки: {e}")
+        await handle_error(user_id, callback_query, f"Ошибка при отключении подписки: {e}")
 
 
 @router.callback_query(
@@ -168,12 +168,12 @@ async def handle_admin_unfreeze_subscription(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    key_obj = await resolve_callback_key(session, tg_id, callback_data.data)
+    user_id = callback_data.user_id
+    key_obj = await resolve_callback_key(session, user_id, callback_data.data)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -182,8 +182,8 @@ async def handle_admin_unfreeze_subscription(
         record = await get_key_details(session, email)
         if not record:
             await callback_query.message.edit_text(
-                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-                reply_markup=build_editor_kb(tg_id),
+                text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+                reply_markup=build_editor_kb(user_id),
             )
             return
 
@@ -199,7 +199,7 @@ async def handle_admin_unfreeze_subscription(
             )
             await callback_query.message.edit_text(
                 text_error,
-                reply_markup=build_editor_kb(tg_id, True),
+                reply_markup=build_editor_kb(user_id, True),
             )
             return
 
@@ -222,7 +222,7 @@ async def handle_admin_unfreeze_subscription(
             leftover = 0
         new_expiry_time = leftover if leftover > now_ms else now_ms + leftover
 
-        await mark_key_as_unfrozen(session, record["tg_id"], client_id, new_expiry_time)
+        await mark_key_as_unfrozen(session, record["user_id"], client_id, new_expiry_time)
         session.expire_all()
         await release_session_early(session)
 
@@ -247,4 +247,4 @@ async def handle_admin_unfreeze_subscription(
             update=False,
         )
     except Exception as e:
-        await handle_error(tg_id, callback_query, f"Ошибка при включении подписки: {e}")
+        await handle_error(user_id, callback_query, f"Ошибка при включении подписки: {e}")

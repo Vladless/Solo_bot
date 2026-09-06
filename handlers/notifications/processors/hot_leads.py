@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.bootstrap import NOTIFICATIONS_CONFIG
-from database import add_notification, check_notification_time_bulk, get_hot_lead_notification_flags, get_hot_leads
+from database import add_notification, check_notification_time_bulk, get_hot_leads
 from database.access.resolution import notify_telegram_chat_id
+from database.notifications import get_hot_lead_notification_times
 from database.tariffs import get_tariffs
 from handlers.admin.sender.sender_utils import is_telegram_chat_id
 from handlers.notifications.keyboards import build_hot_lead_kb
@@ -29,20 +32,18 @@ async def process_hot_leads(bot: Bot, session: AsyncSession):
         if not leads:
             return
 
-        flags = await get_hot_lead_notification_flags(session, leads)
-        can_send_after_step1 = await check_notification_time_bulk(
-            session,
-            [(tid, "hot_lead_step_1") for tid in leads],
-            hot_lead_interval,
-        )
+        expiry_by_user = dict(leads)
+        lead_ids = list(expiry_by_user)
+        step_times = await get_hot_lead_notification_times(session, lead_ids)
+        now = datetime.now(UTC)
         step2_expired_can_send = await check_notification_time_bulk(
             session,
-            [(tid, "hot_lead_step_2") for tid in leads],
+            [(tid, "hot_lead_step_2") for tid in lead_ids],
             discount_active,
         )
         can_send_after_step2 = await check_notification_time_bulk(
             session,
-            [(tid, "hot_lead_step_2") for tid in leads],
+            [(tid, "hot_lead_step_2") for tid in lead_ids],
             hot_lead_interval,
         )
 
@@ -59,20 +60,17 @@ async def process_hot_leads(bot: Bot, session: AsyncSession):
                 return False
             return await send_notification(bot, chat_id, None, text, keyboard)
 
-        for user_id in leads:
-            step_flags = flags.get(user_id, set())
-            has_step_1 = "hot_lead_step_1" in step_flags
-            has_step_2 = "hot_lead_step_2" in step_flags
-            has_step_3 = "hot_lead_step_3" in step_flags
-            has_expired = "hot_lead_step_2_expired" in step_flags
+        for user_id in lead_ids:
+            expired_at = expiry_by_user[user_id]
+            times = step_times.get(user_id, {})
+            done = {step for step, sent_at in times.items() if sent_at is not None and sent_at >= expired_at}
 
-            if not has_step_1:
-                await add_notification(session, user_id, "hot_lead_step_1")
-                logger.info(f"[HotLeads] Шаг 1 зафиксирован: user_id={user_id}")
-                continue
+            has_step_2 = "hot_lead_step_2" in done
+            has_step_3 = "hot_lead_step_3" in done
+            has_expired = "hot_lead_step_2_expired" in done
 
             if not has_step_2:
-                if (user_id, "hot_lead_step_1") not in can_send_after_step1:
+                if now - expired_at < timedelta(hours=hot_lead_interval):
                     continue
                 if not active_discounts:
                     continue

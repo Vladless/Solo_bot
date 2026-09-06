@@ -12,7 +12,7 @@ from api.v1.routes.base_crud import (
     normalize_outgoing_object,
     to_schema,
 )
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import resolve_user_optional, user_id_from_legacy_ref
 
 
 def generate_crud_router(
@@ -25,6 +25,7 @@ def generate_crud_router(
     parameter_name: str = "tg_id",
     extra_get_by_email: bool = False,
     telegram_path_to_user_id: bool = False,
+    legacy_user_ref: bool = False,
     enabled_methods: list[str] = ("get_all", "get_one", "get_by_email", "create", "update", "delete"),
 ) -> APIRouter:
     router = APIRouter()
@@ -35,6 +36,9 @@ def generate_crud_router(
             if u is None:
                 return None
             return model.user_id, u.id
+        if legacy_user_ref:
+            uid = await user_id_from_legacy_ref(session, int(value))
+            return (model.id, uid) if uid is not None else None
         field = getattr(model, identifier_field)
         return field, cast_identifier_type(field, value)
 

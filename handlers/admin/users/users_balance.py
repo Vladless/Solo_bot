@@ -52,15 +52,15 @@ def format_gift_purchase(amount: float, created_at: datetime) -> str:
 async def _render_balance_page(
     callback_query: CallbackQuery,
     session: AsyncSession,
-    tg_id: int,
+    user_id: int,
     page: int = 0,
 ):
-    balance = await get_balance(session, tg_id)
+    balance = await get_balance(session, user_id)
     balance = int(balance or 0)
 
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_id)
     uid = u.id if u is not None else None
-    tg_ref = u.tg_id if u is not None else tg_id
+    tg_ref = u.tg_id if u is not None else user_id
 
     total = await count_balance_activity(session, uid=uid, tg_id=tg_ref)
 
@@ -78,12 +78,12 @@ async def _render_balance_page(
 
     text = menu_text(
         "Баланс",
-        f"Клиент <code>{tg_id}</code>",
+        f"Клиент <code>{user_id}</code>",
         quote(f"Баланс: {balance} ₽\nОпераций: {total}\nСтраница: {page + 1}/{total_pages}"),
         history or quote("Операций пока нет"),
     )
 
-    kb = await build_users_balance_kb(session, tg_id, page=page, total_pages=total_pages)
+    kb = await build_users_balance_kb(session, user_id, page=page, total_pages=total_pages)
     await callback_query.message.edit_text(text=text, reply_markup=kb)
 
 
@@ -97,7 +97,7 @@ async def handle_balance_change(
     session: AsyncSession,
 ):
     page = int(callback_data.data) if callback_data.data is not None else 0
-    await _render_balance_page(callback_query, session, callback_data.tg_id, page)
+    await _render_balance_page(callback_query, session, callback_data.user_id, page)
 
 
 @router.callback_query(
@@ -110,7 +110,7 @@ async def handle_balance_page(
     session: AsyncSession,
 ):
     page = int(callback_data.data) if callback_data.data is not None else 0
-    await _render_balance_page(callback_query, session, callback_data.tg_id, page)
+    await _render_balance_page(callback_query, session, callback_data.user_id, page)
 
 
 @router.callback_query(
@@ -122,8 +122,8 @@ async def handle_balance_export(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
-    csv_file = await export_user_all_payments_csv(tg_id=tg_id, session=session)
+    user_id = callback_data.user_id
+    csv_file = await export_user_all_payments_csv(user_id=user_id, session=session)
     await callback_query.message.answer_document(csv_file)
     await callback_query.answer()
 
@@ -138,32 +138,32 @@ async def handle_balance_add(
     state: FSMContext,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     amount = callback_data.data
 
     if amount is not None:
         amount = int(amount)
-        old_balance = await get_balance(session, tg_id)
+        old_balance = await get_balance(session, user_id)
 
         if amount >= 0:
-            await update_balance(session, tg_id, amount)
+            await update_balance(session, user_id, amount)
             new_balance = old_balance + amount
             if amount != 0:
                 await add_payment(
                     session=session,
-                    tg_id=tg_id,
+                    legacy_user_ref=user_id,
                     amount=amount,
                     payment_system="admin",
                     status="success",
                 )
         else:
             new_balance = max(0, old_balance + amount)
-            await set_user_balance(session, tg_id, new_balance)
+            await set_user_balance(session, user_id, new_balance)
             deducted = old_balance - new_balance
             if deducted > 0:
                 await add_payment(
                     session=session,
-                    tg_id=tg_id,
+                    legacy_user_ref=user_id,
                     amount=-deducted,
                     payment_system="admin",
                     status="success",
@@ -173,16 +173,16 @@ async def handle_balance_add(
             await handle_balance_change(callback_query, callback_data, session)
         return
 
-    await state.update_data(tg_id=tg_id, op_type="add")
+    await state.update_data(user_id=user_id, op_type="add")
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
         text=menu_text(
             "Баланс",
             "✍️ Сколько добавить на баланс?",
-            markup=build_users_balance_change_kb(tg_id),
+            markup=build_users_balance_change_kb(user_id),
         ),
-        reply_markup=build_users_balance_change_kb(tg_id),
+        reply_markup=build_users_balance_change_kb(user_id),
     )
 
 
@@ -195,18 +195,18 @@ async def handle_balance_take(
     callback_data: AdminUserEditorCallback,
     state: FSMContext,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
-    await state.update_data(tg_id=tg_id, op_type="take")
+    await state.update_data(user_id=user_id, op_type="take")
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
         text=menu_text(
             "Баланс",
             "✍️ Сколько списать с баланса?",
-            markup=build_users_balance_change_kb(tg_id),
+            markup=build_users_balance_change_kb(user_id),
         ),
-        reply_markup=build_users_balance_change_kb(tg_id),
+        reply_markup=build_users_balance_change_kb(user_id),
     )
 
 
@@ -219,31 +219,31 @@ async def handle_balance_set(
     callback_data: AdminUserEditorCallback,
     state: FSMContext,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
 
-    await state.update_data(tg_id=tg_id, op_type="set")
+    await state.update_data(user_id=user_id, op_type="set")
     await state.set_state(UserEditorState.waiting_for_balance)
 
     await callback_query.message.edit_text(
         text=menu_text(
             "Баланс",
             "✍️ Новый баланс клиента.",
-            markup=build_users_balance_change_kb(tg_id),
+            markup=build_users_balance_change_kb(user_id),
         ),
-        reply_markup=build_users_balance_change_kb(tg_id),
+        reply_markup=build_users_balance_change_kb(user_id),
     )
 
 
 @router.message(UserEditorState.waiting_for_balance, IsAdminFilter())
 async def handle_balance_input(message: Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     op_type = data.get("op_type")
 
     if not message.text.isdigit() or int(message.text) < 0:
         await message.answer(
-            text=menu_text("Баланс", "❌ Нужна сумма числом.", markup=build_users_balance_change_kb(tg_id)),
-            reply_markup=build_users_balance_change_kb(tg_id),
+            text=menu_text("Баланс", "❌ Нужна сумма числом.", markup=build_users_balance_change_kb(user_id)),
+            reply_markup=build_users_balance_change_kb(user_id),
         )
         return
 
@@ -251,42 +251,42 @@ async def handle_balance_input(message: Message, state: FSMContext, session: Asy
 
     if op_type == "add":
         text = menu_text("Баланс", f"✅ Баланс пополнен на <b>{amount}Р</b>")
-        await update_balance(session, tg_id, amount)
+        await update_balance(session, user_id, amount)
         if amount != 0:
             await add_payment(
                 session=session,
-                tg_id=tg_id,
+                legacy_user_ref=user_id,
                 amount=amount,
                 payment_system="admin",
                 status="success",
             )
     elif op_type == "take":
-        current_balance = await get_balance(session, tg_id)
+        current_balance = await get_balance(session, user_id)
         new_balance = max(0, current_balance - amount)
         deducted = current_balance if amount > current_balance else amount
         text = menu_text("Баланс", f"✅ С баланса списано <b>{deducted}Р</b>")
-        await set_user_balance(session, tg_id, new_balance)
+        await set_user_balance(session, user_id, new_balance)
         if deducted > 0:
             await add_payment(
                 session=session,
-                tg_id=tg_id,
+                legacy_user_ref=user_id,
                 amount=-deducted,
                 payment_system="admin",
                 status="success",
             )
     else:
-        current_balance = await get_balance(session, tg_id)
+        current_balance = await get_balance(session, user_id)
         text = menu_text("Баланс", f"✅ Баланс теперь <b>{amount}Р</b>")
-        await set_user_balance(session, tg_id, amount)
+        await set_user_balance(session, user_id, amount)
         delta = amount - current_balance
         if delta != 0:
             await add_payment(
                 session=session,
-                tg_id=tg_id,
+                legacy_user_ref=user_id,
                 amount=delta,
                 payment_system="admin",
                 status="success",
             )
 
     await state.clear()
-    await message.answer(text=text, reply_markup=build_users_balance_change_kb(tg_id))
+    await message.answer(text=text, reply_markup=build_users_balance_change_kb(user_id))

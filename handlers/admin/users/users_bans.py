@@ -28,11 +28,11 @@ router = Router()
 )
 async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     await state.clear()
-    await state.update_data(tg_id=callback_data.tg_id)
+    await state.update_data(user_id=callback_data.user_id)
 
     await callback.message.edit_text(
-        text=menu_text("Блокировка", "Выберите тип блокировки.", markup=build_user_ban_type_kb(callback_data.tg_id)),
-        reply_markup=build_user_ban_type_kb(callback_data.tg_id),
+        text=menu_text("Блокировка", "Выберите тип блокировки.", markup=build_user_ban_type_kb(callback_data.user_id)),
+        reply_markup=build_user_ban_type_kb(callback_data.user_id),
     )
 
 
@@ -42,10 +42,10 @@ async def handle_user_ban(callback: CallbackQuery, callback_data: AdminUserEdito
 )
 async def handle_ban_forever_start(callback: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     await state.set_state(BanUserStates.waiting_for_forever_reason)
-    await state.update_data(tg_id=callback_data.tg_id)
+    await state.update_data(user_id=callback_data.user_id)
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, user_id=callback_data.user_id, edit=True))
 
     await callback.message.edit_text(
         text=menu_text(
@@ -64,9 +64,9 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
         reason = None
 
     user_data = await state.get_data()
-    tg_id = user_data.get("tg_id")
+    user_id = user_data.get("user_id")
 
-    u = await resolve_user_optional(session, tg_id)
+    u = await resolve_user_optional(session, user_id)
     if u is None:
         await message.answer(menu_text("Блокировка", "❌ Клиент не найден."))
         await state.clear()
@@ -103,11 +103,11 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
         text=(
             menu_text(
                 "Блокировка",
-                f"✅ Клиент <code>{tg_id}</code> забанен навсегда.{(f'\n📄 Причина: {reason}' if reason else '')}",
-                markup=build_editor_kb(tg_id, edit=True),
+                f"✅ Клиент <code>{user_id}</code> забанен навсегда.{(f'\n📄 Причина: {reason}' if reason else '')}",
+                markup=build_editor_kb(user_id, edit=True),
             )
         ),
-        reply_markup=build_editor_kb(tg_id, edit=True),
+        reply_markup=build_editor_kb(user_id, edit=True),
     )
 
 
@@ -117,10 +117,10 @@ async def handle_ban_forever_reason_input(message: Message, state: FSMContext, s
 )
 async def handle_ban_temporary(callback: CallbackQuery, callback_data: AdminUserEditorCallback, state: FSMContext):
     await state.set_state(BanUserStates.waiting_for_reason)
-    await state.update_data(tg_id=callback_data.tg_id)
+    await state.update_data(user_id=callback_data.user_id)
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn(BACK, tg_id=callback_data.tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, user_id=callback_data.user_id, edit=True))
 
     await callback.message.edit_text(
         text=menu_text(
@@ -138,10 +138,10 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
     await state.set_state(BanUserStates.waiting_for_ban_duration)
 
     user_data = await state.get_data()
-    tg_id = user_data.get("tg_id")
+    user_id = user_data.get("user_id")
 
     kb = InlineKeyboardBuilder()
-    kb.row(build_editor_btn(BACK, tg_id=tg_id, edit=True))
+    kb.row(build_editor_btn(BACK, user_id=user_id, edit=True))
 
     await message.answer(
         menu_text("Блокировка", "⏳ Срок блокировки в днях. 0 — навсегда.", markup=kb.as_markup()),
@@ -152,7 +152,7 @@ async def handle_ban_reason_input(message: Message, state: FSMContext):
 @router.message(BanUserStates.waiting_for_ban_duration, IsAdminFilter())
 async def handle_ban_duration_input(message: Message, state: FSMContext, session: AsyncSession):
     user_data = await state.get_data()
-    tg_id = user_data.get("tg_id")
+    user_id = user_data.get("user_id")
     reason = user_data.get("reason")
     if reason == "-":
         reason = None
@@ -165,7 +165,7 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
 
         until = datetime.now(timezone.utc) + timedelta(days=days)
 
-        u = await resolve_user_optional(session, tg_id)
+        u = await resolve_user_optional(session, user_id)
         if u is None:
             await message.answer(menu_text("Блокировка", "❌ Клиент не найден."))
             return
@@ -198,11 +198,11 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
 
         text = menu_text(
             "Клиент забанен",
-            f"<code>{tg_id}</code>",
+            f"<code>{user_id}</code>",
             quote(f"До: <b>{until:%Y-%m-%d %H:%M}</b> UTC" + (f"\nПричина: {reason}" if reason else "")),
         )
 
-        await message.answer(text=text, reply_markup=build_editor_kb(tg_id, edit=True))
+        await message.answer(text=text, reply_markup=build_editor_kb(user_id, edit=True))
     except ValueError:
         await message.answer(menu_text("Блокировка", "❌ Введите корректное число дней."))
     finally:
@@ -215,7 +215,7 @@ async def handle_ban_duration_input(message: Message, state: FSMContext, session
     flags={"popup": True},
 )
 async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEditorCallback, session: AsyncSession):
-    u = await resolve_user_optional(session, callback_data.tg_id)
+    u = await resolve_user_optional(session, callback_data.user_id)
     if u is None:
         await callback.answer("Клиент не найден", show_alert=True)
         return
@@ -248,10 +248,10 @@ async def handle_ban_shadow(callback: CallbackQuery, callback_data: AdminUserEdi
     await callback.message.edit_text(
         text=menu_text(
             "Блокировка",
-            f"👻 Клиент <code>{callback_data.tg_id}</code> получил теневой бан.",
-            markup=build_editor_kb(callback_data.tg_id, edit=True),
+            f"👻 Клиент <code>{callback_data.user_id}</code> получил теневой бан.",
+            markup=build_editor_kb(callback_data.user_id, edit=True),
         ),
-        reply_markup=build_editor_kb(callback_data.tg_id, edit=True),
+        reply_markup=build_editor_kb(callback_data.user_id, edit=True),
     )
 
 
@@ -265,7 +265,7 @@ async def handle_user_unban(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    u = await resolve_user_optional(session, callback_data.tg_id)
+    u = await resolve_user_optional(session, callback_data.user_id)
     if u is None:
         await callback.answer("Клиент не найден", show_alert=True)
         return
@@ -276,7 +276,7 @@ async def handle_user_unban(
 
     text = menu_text(
         "Блокировка снята",
-        f"Клиент <code>{callback_data.tg_id}</code> снова может пользоваться ботом.",
+        f"Клиент <code>{callback_data.user_id}</code> снова может пользоваться ботом.",
     )
 
-    await callback.message.edit_text(text=text, reply_markup=build_editor_kb(callback_data.tg_id, edit=True))
+    await callback.message.edit_text(text=text, reply_markup=build_editor_kb(callback_data.user_id, edit=True))

@@ -85,16 +85,16 @@ async def handle_resync_after_import(callback: CallbackQuery, session: AsyncSess
     await callback.answer(menu_text("Импорт из 3x-ui", "🔁 Начинаю перевыпуск подписок..."))
 
     result = await session.execute(
-        select(User.tg_id, Key.email).select_from(Key).join(User, Key.user_id == User.id).where(User.tg_id.isnot(None))
+        select(Key.user_id, Key.email).select_from(Key).join(User, Key.user_id == User.id)
     )
     keys = result.all()
 
     success = 0
     failed = 0
 
-    for tg_id, email in keys:
+    for user_id, email in keys:
         try:
-            await update_subscription(tg_id=tg_id, email=email, session=session)
+            await update_subscription(user_id=user_id, email=email, session=session)
             success += 1
         except Exception as e:
             logger.error(f"[Resync] Ошибка при перевыпуске {email}: {e}")

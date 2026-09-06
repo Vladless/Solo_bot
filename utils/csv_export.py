@@ -8,7 +8,7 @@ from sqlalchemy import exists, func, join, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
-from database.access.resolution import resolve_user_optional
+from database.access.resolution import resolve_user_optional, user_id_from_legacy_ref
 from database.models import Key, Payment, Referral, Tariff, User
 
 
@@ -270,8 +270,12 @@ async def export_keys_csv(session: AsyncSession) -> BufferedInputFile:
     return BufferedInputFile(file=buffer.getvalue().encode("utf-8-sig"), filename="keys_export.csv")
 
 
-async def export_user_all_payments_csv(tg_id: int, session: AsyncSession) -> BufferedInputFile:
-    owner = await resolve_user_optional(session, tg_id)
+async def export_user_all_payments_csv(
+    user_id: int | None = None, session: AsyncSession = None, *, tg_id: int | None = None
+) -> BufferedInputFile:
+    """Выгружает все платежи клиента в CSV."""
+    user_id = await user_id_from_legacy_ref(session, user_id if user_id is not None else tg_id)
+    owner = await session.scalar(select(User).where(User.id == user_id)) if user_id is not None else None
     if owner is None:
         buffer = StringIO()
         writer = csv.writer(buffer)
@@ -289,7 +293,7 @@ async def export_user_all_payments_csv(tg_id: int, session: AsyncSession) -> Buf
         buffer.seek(0)
         return BufferedInputFile(
             file=buffer.getvalue().encode("utf-8-sig"),
-            filename=f"user_{tg_id}_payments_full.csv",
+            filename=f"user_{user_id}_payments_full.csv",
         )
 
     query = (
@@ -353,5 +357,5 @@ async def export_user_all_payments_csv(tg_id: int, session: AsyncSession) -> Buf
     buffer.seek(0)
     return BufferedInputFile(
         file=buffer.getvalue().encode("utf-8-sig"),
-        filename=f"user_{tg_id}_payments_full.csv",
+        filename=f"user_{user_id}_payments_full.csv",
     )

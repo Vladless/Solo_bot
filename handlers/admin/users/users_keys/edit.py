@@ -50,12 +50,12 @@ async def handle_key_edit(
     update: bool = False,
 ):
     key_ref = callback_data.data
-    key_obj = await resolve_callback_key(session, callback_data.tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, callback_data.user_id, key_ref)
 
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.tg_id)),
-            reply_markup=build_editor_kb(callback_data.tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(callback_data.user_id)),
+            reply_markup=build_editor_kb(callback_data.user_id),
         )
         return
 
@@ -170,6 +170,7 @@ async def handle_key_edit(
             email=email,
             session=session,
             client_id=key_obj.client_id,
+            user_id=key_obj.user_id,
             tg_id=key_obj.tg_id,
         )
         kb_builder = insert_hook_buttons(kb_builder, hook_buttons)
@@ -187,7 +188,7 @@ async def handle_key_edit(
                 text=text,
                 reply_markup=await build_users_key_expiry_kb(
                     session,
-                    callback_data.tg_id,
+                    callback_data.user_id,
                     email,
                     key_ref=str(key_ref),
                 ),
@@ -206,19 +207,19 @@ async def handle_change_expiry(
     callback_data: AdminUserEditorCallback,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
 
     await callback_query.message.edit_reply_markup(
-        reply_markup=await build_users_key_expiry_kb(session, tg_id, email, key_ref=key_ref)
+        reply_markup=await build_users_key_expiry_kb(session, user_id, email, key_ref=key_ref)
     )
 
 
@@ -232,13 +233,13 @@ async def handle_expiry_add(
     state: FSMContext,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -248,8 +249,8 @@ async def handle_expiry_add(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -258,16 +259,16 @@ async def handle_expiry_add(
         await handle_key_edit(callback_query, callback_data, session, True)
         return
 
-    await state.update_data(tg_id=tg_id, email=email, key_ref=key_ref, op_type="add")
+    await state.update_data(user_id=user_id, email=email, key_ref=key_ref, op_type="add")
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
         text=menu_text(
             "Подписка",
             "✍️ На сколько дней продлить?",
-            markup=build_users_key_show_kb(tg_id, key_ref),
+            markup=build_users_key_show_kb(user_id, key_ref),
         ),
-        reply_markup=build_users_key_show_kb(tg_id, key_ref),
+        reply_markup=build_users_key_show_kb(user_id, key_ref),
     )
 
 
@@ -281,27 +282,27 @@ async def handle_expiry_take(
     state: FSMContext,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
 
-    await state.update_data(tg_id=tg_id, email=email, key_ref=key_ref, op_type="take")
+    await state.update_data(user_id=user_id, email=email, key_ref=key_ref, op_type="take")
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     await callback_query.message.edit_text(
         text=menu_text(
             "Подписка",
             "✍️ На сколько дней сократить?",
-            markup=build_users_key_show_kb(tg_id, key_ref),
+            markup=build_users_key_show_kb(user_id, key_ref),
         ),
-        reply_markup=build_users_key_show_kb(tg_id, key_ref),
+        reply_markup=build_users_key_show_kb(user_id, key_ref),
     )
 
 
@@ -315,13 +316,13 @@ async def handle_expiry_set(
     state: FSMContext,
     session: AsyncSession,
 ):
-    tg_id = callback_data.tg_id
+    user_id = callback_data.user_id
     key_ref = str(callback_data.data)
-    key_obj = await resolve_callback_key(session, tg_id, key_ref)
+    key_obj = await resolve_callback_key(session, user_id, key_ref)
     if not key_obj:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
     email = key_obj.email
@@ -330,12 +331,12 @@ async def handle_expiry_set(
 
     if not key_details:
         await callback_query.message.edit_text(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
-    await state.update_data(tg_id=tg_id, email=email, key_ref=key_ref, op_type="set")
+    await state.update_data(user_id=user_id, email=email, key_ref=key_ref, op_type="set")
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
     text = menu_text(
@@ -349,14 +350,14 @@ async def handle_expiry_set(
 
     await callback_query.message.edit_text(
         text=text,
-        reply_markup=build_users_key_show_kb(tg_id, key_ref),
+        reply_markup=build_users_key_show_kb(user_id, key_ref),
     )
 
 
 @router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
 async def handle_expiry_time_input(message: Message, state: FSMContext, session: AsyncSession):
     data = await state.get_data()
-    tg_id = data.get("tg_id")
+    user_id = data.get("user_id")
     email = data.get("email")
     key_ref = data.get("key_ref")
     op_type = data.get("op_type")
@@ -364,7 +365,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
     if op_type != "set" and (not message.text.isdigit() or int(message.text) < 0):
         await message.answer(
             text=menu_text("Подписка", "❌ Нужно число дней."),
-            reply_markup=build_users_key_show_kb(tg_id, key_ref) if key_ref else build_editor_kb(tg_id),
+            reply_markup=build_users_key_show_kb(user_id, key_ref) if key_ref else build_editor_kb(user_id),
         )
         return
 
@@ -372,8 +373,8 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
 
     if not key_details:
         await message.answer(
-            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(tg_id)),
-            reply_markup=build_editor_kb(tg_id),
+            text=menu_text("Подписка", "❌ Подписка не найдена.", markup=build_editor_kb(user_id)),
+            reply_markup=build_editor_kb(user_id),
         )
         return
 
@@ -407,7 +408,7 @@ async def handle_expiry_time_input(message: Message, state: FSMContext, session:
 
     await message.answer(
         text=text,
-        reply_markup=build_users_key_show_kb(tg_id, key_ref) if key_ref else build_editor_kb(tg_id),
+        reply_markup=build_users_key_show_kb(user_id, key_ref) if key_ref else build_editor_kb(user_id),
     )
 
 

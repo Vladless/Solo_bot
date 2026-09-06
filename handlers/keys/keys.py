@@ -4,8 +4,8 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import delete_key, get_key_details
-from handlers.keys.view.router import process_callback_view_key
 from handlers.keys.utils import build_key_callback, key_owned_by_user, resolve_key
+from handlers.keys.view.router import process_callback_view_key
 from handlers.utils import edit_or_send_message, handle_error
 from logger import logger
 from middlewares.session import release_session_early
@@ -35,7 +35,7 @@ async def process_callback_update_subscription(callback_query: CallbackQuery, se
             if "message can't be deleted" not in str(e):
                 raise
 
-        await update_subscription(tg_id, email, session)
+        await update_subscription(record["user_id"], email, session)
         await process_callback_view_key(callback_query, session)
     except Exception as e:
         logger.error(f"Ошибка при обновлении ключа {email} пользователем: {e}")

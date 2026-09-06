@@ -1,6 +1,10 @@
 import unittest
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+
+import database  # noqa: F401
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,12 +32,12 @@ class ZeroLeftFinishesTests(unittest.TestCase):
     def test_нулевая_доплата_закрывает_покупку(self):
         block = _apply_block()
         self.assertIn("if required_amount_new == 0:", block)
-        self.assertIn("_finish_from_balance(message, session, str(temp_key), temp_payload_updated)", block)
+        self.assertIn("_finish_from_balance(message, session, str(temp_key), temp_payload_updated, message.from_user.id)", block)
 
     def test_завершение_идёт_через_общий_обработчик(self):
         helper = FLOW[FLOW.index("async def _finish_from_balance") :][:900]
         self.assertIn("from handlers.payments.utils import _handle_temp_state", helper)
-        self.assertIn("_handle_temp_state(session, message.from_user.id, temp_key, payload, 0)", helper)
+        self.assertIn("_handle_temp_state(session, user_ref, temp_key, payload, 0)", helper)
 
     def test_сбой_завершения_не_молчит(self):
         helper = FLOW[FLOW.index("async def _finish_from_balance") :][:900]
@@ -67,7 +71,7 @@ class CouponTypesTests(unittest.TestCase):
     def test_если_после_зачисления_платить_нечем_покупка_закрывается(self):
         block = _apply_block()
         self.assertIn("if left == 0:", block)
-        self.assertIn("_finish_from_balance(message, session, str(temp_key), payload_after)", block)
+        self.assertIn("_finish_from_balance(message, session, str(temp_key), payload_after, message.from_user.id)", block)
 
     def test_процентный_разбирается_после_остальных(self):
         block = _apply_block()
@@ -99,6 +103,68 @@ class OfferBeforeChargeTests(unittest.TestCase):
     def test_кнопка_оформления_обрабатывается(self):
         self.assertIn('@router.callback_query(F.data == "buy_confirm_balance")', FLOW)
         self.assertIn("async def buy_confirm_balance(", FLOW)
+
+
+class PurchaseFromBalanceTests(unittest.IsolatedAsyncioTestCase):
+    """Покупка с достаточным балансом доходит до списания."""
+
+    async def _offer(self) -> list[str]:
+        from handlers.tariffs.buy import purchase
+
+        sent = {}
+
+        async def capture(*, target_message, text, reply_markup, **kwargs: object):
+            sent["markup"] = reply_markup
+
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=777, language_code="ru"),
+            message=Mock(),
+            answer=AsyncMock(),
+        )
+        with (
+            patch.object(purchase, "edit_or_send_message", new=capture),
+            patch.object(purchase, "safe_answer_callback", new=AsyncMock()),
+            patch.object(purchase, "format_for_user", new=AsyncMock(return_value="300 ₽")),
+            patch("database.temporary_data.create_temporary_data", new=AsyncMock()),
+        ):
+            shown = await purchase._offer_coupon_before_charge(
+                callback,
+                AsyncMock(),
+                Mock(),
+                tariff={"id": 1},
+                price_rub=300,
+                duration_days=30,
+                selected_device_limit=None,
+                selected_traffic_gb=None,
+                balance=500,
+            )
+        self.assertTrue(shown)
+        return [b.text for row in sent["markup"].inline_keyboard for b in row]
+
+    async def test_кнопка_зовёт_оплатить_а_не_ждать(self):
+        labels = await self._offer()
+        self.assertNotIn("⏳ Подождите...", labels)
+        self.assertTrue(any("300 ₽" in label for label in labels), labels)
+
+    async def test_списание_идёт_на_покупателя_а_не_на_бота(self):
+        from handlers.payments import fast_payment_flow as flow
+
+        seen = {}
+
+        async def temp_state(session, user_id, state, data, amount):
+            seen["user_id"] = user_id
+            return True
+
+        callback = SimpleNamespace(
+            from_user=SimpleNamespace(id=777),
+            message=SimpleNamespace(from_user=SimpleNamespace(id=999), answer=AsyncMock()),
+            answer=AsyncMock(),
+        )
+        state = AsyncMock()
+        state.get_data = AsyncMock(return_value={"temp_key": "waiting_for_payment", "temp_payload": {"tariff_id": 1}})
+        with patch("handlers.payments.utils._handle_temp_state", new=temp_state):
+            await flow.buy_confirm_balance(callback, state, Mock())
+        self.assertEqual(seen.get("user_id"), 777)
 
 
 if __name__ == "__main__":
