@@ -28,6 +28,11 @@ NOTIFICATION_TITLES: Final[dict[str, str]] = {
     "RETURNING_ENABLED": "Возврат давно ушедших",
 }
 
+ADMIN_NOTIFICATION_TITLES: Final[dict[str, str]] = {
+    "ADMIN_NEW_USER_ENABLED": "Новый пользователь",
+    "ADMIN_PAYMENT_ENABLED": "Успешная оплата",
+}
+
 NOTIFICATION_TIME_FIELDS: Final[dict[str, str]] = {
     "BASE_NOTIFICATION_MINUTE": "Проверка (сек)",
     "INACTIVE_USER_ENABLED": "Неактивные (ч)",
@@ -124,6 +129,8 @@ WEB_TITLES: Final[dict[str, str]] = {
     "WEB_NOTIFY_KEY_CREATED_MESSAGE": "Подписка создана — текст",
     "WEB_NOTIFY_KEY_EXPIRY_TITLE": "Подписка истекает — заголовок",
     "WEB_NOTIFY_KEY_EXPIRY_MESSAGE": "Подписка истекает — текст",
+    "WEB_NOTIFY_KEY_RENEWED_TITLE": "Подписка продлена — заголовок",
+    "WEB_NOTIFY_KEY_RENEWED_MESSAGE": "Подписка продлена — текст",
     "WEB_NOTIFY_GIFT_TITLE": "Подарок получен — заголовок",
     "WEB_NOTIFY_GIFT_MESSAGE": "Подарок получен — текст",
     "EMAIL_LOGIN_SUBJECT": "Письмо входа — тема",

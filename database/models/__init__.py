@@ -1,6 +1,7 @@
 from ._base import Base, DictLikeMixin
 from .admin import Admin, Setting
 from .audit import AuditEvent
+from .bonuses import DailyBonusClaim
 from .coupons import Coupon, CouponUsage
 from .gifts import Gift, GiftUsage
 from .identity import Identity
@@ -56,6 +57,7 @@ __all__ = [
     "ServerSubgroup",
     "ServerSpecialgroup",
     "Payment",
+    "DailyBonusClaim",
     "Coupon",
     "CouponUsage",
     "Referral",

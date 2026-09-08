@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import client_origin
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_uid_cached, resolve_user_optional
 from database.models import Key, Tariff, User
@@ -157,7 +158,7 @@ async def store_key(
                 server_id=server_id,
                 price_rub=float(selected_price_rub) if selected_price_rub is not None else None,
                 expiry_time=expiry_time,
-                source="bot",
+                source=client_origin(),
             )
         except Exception:
             pass
@@ -528,7 +529,7 @@ async def update_key_expiry(
             server_id=ctx.server_id if ctx else None,
             price_rub=price_rub,
             expiry_time=new_expiry_time,
-            source="bot",
+            source=client_origin(),
         )
     except Exception:
         pass

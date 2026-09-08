@@ -13,6 +13,7 @@ from starlette.responses import Response as StarletteResponse
 from starlette.staticfiles import StaticFiles
 
 from audit import ensure_api_context, log_api_access, record_api_access_event_background
+from core.client_origin import ClientOriginMiddleware
 from core.executor import spawn
 from database import async_session_maker
 from logger import logger
@@ -56,6 +57,20 @@ app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 _shutting_down = False
 
 
+_api_server = None
+
+
+def set_api_server(server) -> None:
+    """Запоминает сервер uvicorn: у него спрашиваем, идёт ли остановка."""
+    global _api_server
+    _api_server = server
+
+
+def shutting_down() -> bool:
+    """Идёт ли остановка. Событие shutdown не приходит (lifespan выключен), поэтому спрашиваем uvicorn."""
+    return bool(_shutting_down or getattr(_api_server, "should_exit", False))
+
+
 class QuietShutdownMiddleware:
     """Гасит отмену запроса, если клиент уже отключился или идёт остановка."""
 
@@ -79,7 +94,7 @@ class QuietShutdownMiddleware:
         try:
             await self.app(scope, watch, send)
         except asyncio.CancelledError:
-            if _shutting_down or disconnected:
+            if shutting_down() or disconnected:
                 return
             raise
 
@@ -203,9 +218,7 @@ async def api_access_log_middleware(request: Request, call_next):
     except Exception as exc:
         duration_ms = int((perf_counter() - started) * 1000)
         if API_LOGGING:
-            logger.opt(exception=exc).error(
-                f"[API] {request.method} {request.url.path} → 500 ({type(exc).__name__})"
-            )
+            logger.opt(exception=exc).error(f"[API] {request.method} {request.url.path} → 500 ({type(exc).__name__})")
             log_api_access(
                 request,
                 status_code=500,
@@ -247,6 +260,7 @@ async def api_access_log_middleware(request: Request, call_next):
     return response
 
 
+app.add_middleware(ClientOriginMiddleware)
 app.add_middleware(QuietShutdownMiddleware)
 
 

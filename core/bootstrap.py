@@ -1,9 +1,10 @@
 from database import async_session_maker
-from database.db import warm_pool
+from database.db import bind_main_loop, warm_pool
 from database.settings_cache import settings_cache
 from database.tariffs import initialize_all_tariff_weights
 from logger import logger
 
+from .settings.bonus_config import BONUS_CONFIG, load_bonus_config, update_bonus_config
 from .settings.buttons_config import BUTTONS_CONFIG, load_buttons_config, update_buttons_config
 from .settings.legal_config import LEGAL_CONFIG, load_legal_config, update_legal_config
 from .settings.management_config import MANAGEMENT_CONFIG, load_management_config, update_management_config
@@ -20,6 +21,7 @@ from .settings.web_config import WEB_CONFIG, load_web_config, update_web_config
 
 
 async def bootstrap() -> None:
+    bind_main_loop()
     await warm_pool()
     async with async_session_maker() as session:
         await initialize_all_tariff_weights(session)
@@ -33,6 +35,7 @@ async def bootstrap() -> None:
         await load_management_config(session)
         await load_tariffs_config(session)
         await load_legal_config(session)
+        await load_bonus_config(session)
         await load_web_config(session)
         await load_remnawave_config(session)
         await session.commit()

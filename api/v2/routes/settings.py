@@ -7,6 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session, verify_identity_admin
 from api.v2.schemas import SettingResponse, SettingUpsert
+from core.settings.bonus_config import (
+    BONUS_CONFIG,
+    BONUS_HINTS,
+    BONUS_MODES,
+    BONUS_MODE_OPTIONS,
+    BONUS_SECTION_DESCRIPTION,
+    BONUS_SECTION_SLUG,
+    BONUS_SECTION_TITLE,
+    BONUS_TITLES,
+    update_bonus_config,
+)
 from core.settings.buttons_config import BUTTONS_CONFIG, update_buttons_config
 from core.settings.management_config import MANAGEMENT_CONFIG, update_management_config
 from core.settings.modes_config import MODES_CONFIG, update_modes_config
@@ -55,6 +66,7 @@ async def get_configs(identity=Depends(verify_identity_admin)):
     return {
         "payments": dict(PAYMENTS_CONFIG),
         "buttons": dict(BUTTONS_CONFIG),
+        BONUS_SECTION_SLUG: dict(BONUS_CONFIG),
         "notifications": dict(NOTIFICATIONS_CONFIG),
         "modes": dict(MODES_CONFIG),
         "money": dict(MONEY_CONFIG),
@@ -74,9 +86,12 @@ _SCHEMA_SECTIONS: list[tuple[str, str, dict, dict]] = [
     ("modes", "Режимы", MODES_CONFIG, MODES_TITLES),
     ("tariffs", "Тарификация", TARIFFS_CONFIG, TARIFFS_TITLES),
     ("web", "Сайт", WEB_CONFIG, WEB_TITLES),
+    (BONUS_SECTION_SLUG, BONUS_SECTION_TITLE, BONUS_CONFIG, BONUS_TITLES),
     ("remnawave", "Remnawave", REMNAWAVE_CONFIG, REMNAWAVE_TITLES),
     ("management", "Управление", MANAGEMENT_CONFIG, MANAGEMENT_TITLES),
 ]
+
+_EXTRA_SECTION_DESCRIPTIONS: dict[str, str] = {BONUS_SECTION_SLUG: BONUS_SECTION_DESCRIPTION}
 
 _SCHEMA_HIDDEN_KEYS = {
     "NODE_HEALTH_LAST_STATES",
@@ -107,6 +122,7 @@ _FIELD_OPTIONS: dict[str, list[dict[str, str]]] = {
         {"value": "full", "label": "Полный сайт"},
         {"value": "cabinet_only", "label": "Только кабинет"},
     ],
+    "DAILY_BONUS_MODE": BONUS_MODE_OPTIONS,
 }
 
 
@@ -141,7 +157,7 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
                 "type": field_type,
                 "value": value,
             }
-            hint = SETTING_HINTS.get(key)
+            hint = SETTING_HINTS.get(key) or BONUS_HINTS.get(key)
             if hint:
                 field["hint"] = hint
             if options:
@@ -150,7 +166,7 @@ async def get_settings_schema(identity=Depends(verify_identity_admin)):
         sections.append({
             "scope": scope,
             "title": title,
-            "description": SECTION_DESCRIPTIONS.get(scope, ""),
+            "description": SECTION_DESCRIPTIONS.get(scope) or _EXTRA_SECTION_DESCRIPTIONS.get(scope, ""),
             "fields": fields,
         })
     return {"sections": sections}
@@ -204,6 +220,15 @@ async def update_config_scope(
             cleaned["KEY_ADDONS_PACK_MODE"] = mode if mode in {"", "traffic", "devices", "all"} else ""
         await update_tariffs_config(session, cleaned)
         return {"tariffs": dict(TARIFFS_CONFIG)}
+    if normalized == BONUS_SECTION_SLUG:
+        merged = dict(BONUS_CONFIG)
+        merged.update(data)
+        merged["DAILY_BONUS_ENABLED"] = bool(merged.get("DAILY_BONUS_ENABLED"))
+        merged["DAILY_BONUS_REQUIRE_SUBSCRIPTION"] = bool(merged.get("DAILY_BONUS_REQUIRE_SUBSCRIPTION"))
+        mode = str(merged.get("DAILY_BONUS_MODE") or "fixed").strip().lower()
+        merged["DAILY_BONUS_MODE"] = mode if mode in BONUS_MODES else "fixed"
+        await update_bonus_config(session, merged)
+        return {BONUS_SECTION_SLUG: dict(BONUS_CONFIG)}
     if normalized == "web":
         merged = dict(WEB_CONFIG)
         merged.update(data)

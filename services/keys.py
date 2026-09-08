@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from math import ceil
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from core.settings.tariffs_config import normalize_tariff_config
 from database import (
@@ -710,6 +711,8 @@ async def execute_renewal(
 
     new_balance = float(await get_balance(session, billing_user_id))
 
+    await _notify_web_renewal(session, billing_user_id, key_email, effective_client_id, new_expiry_time)
+
     return RenewalResult(
         ok=True,
         client_id=effective_client_id,
@@ -720,6 +723,33 @@ async def execute_renewal(
         base_price_rub=int(selected_price_rub or cost),
         final_price_rub=int(cost),
     )
+
+
+async def _notify_web_renewal(
+    session: AsyncSession,
+    billing_user_id: int,
+    key_email: str,
+    client_id: str,
+    new_expiry_time: int,
+) -> None:
+    """Пишет в кабинет «подписка продлена» со ссылкой на эту подписку."""
+    try:
+        from database.web_notifications import notify_web
+
+        expiry = datetime.fromtimestamp(new_expiry_time / 1000, tz=UTC).strftime("%d.%m.%Y")
+        await notify_web(
+            session,
+            tg_id=billing_user_id,
+            type="key_renewed",
+            template_vars={"email": key_email, "expiry": expiry},
+            data={
+                "email": key_email,
+                "client_id": client_id,
+                "href": f"/dashboard?tab=keys&subKey={quote(str(client_id))}",
+            },
+        )
+    except Exception as e:
+        logger.warning("[Keys] Ошибка web-уведомления о продлении {}: {}", key_email, e)
 
 
 def _try_int(v: Any) -> int | None:

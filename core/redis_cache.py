@@ -32,6 +32,27 @@ def _drop_client(client_key: tuple[int, int]) -> None:
     _REDIS_CLIENTS.pop(client_key, None)
 
 
+async def close_loop_client() -> None:
+    """Закрывает redis-клиент текущего цикла.
+
+    Клиенты живут по ключу (pid, loop). У отдельного цикла — поток рассылки, разовая задача —
+    он свой, и уйти должен вместе с циклом: иначе соединения остаются открытыми навсегда,
+    а сборщик мусора потом ругается `Event loop is closed`.
+    """
+    client = _REDIS_CLIENTS.pop(_client_key(), None)
+    if client is None:
+        return
+    closer = getattr(client, "aclose", None) or getattr(client, "close", None)
+    try:
+        if closer is not None:
+            await closer()
+        pool = getattr(client, "connection_pool", None)
+        if pool is not None:
+            await pool.disconnect(inuse_connections=True)
+    except Exception as exc:
+        logger.debug(f"[Redis] Клиент цикла закрыт с ошибкой: {exc}")
+
+
 async def _get_redis() -> Any | None:
     global _REDIS_UNAVAILABLE_UNTIL
 

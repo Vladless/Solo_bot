@@ -88,12 +88,10 @@ async def get_notifications_for_identity(
     cached = await cache_get(ckey)
     if isinstance(cached, list):
         return [
-            SimpleNamespace(
-                **{
-                    **d,
-                    "created_at": datetime.fromisoformat(d["created_at"]) if d.get("created_at") else None,
-                }
-            )
+            SimpleNamespace(**{
+                **d,
+                "created_at": datetime.fromisoformat(d["created_at"]) if d.get("created_at") else None,
+            })
             for d in cached
         ]
     result = await session.execute(
@@ -263,6 +261,14 @@ def _get_web_config_str(key: str, default: str) -> str:
         return default
 
 
+def _push_url(data: dict | None) -> str:
+    """Push ведёт туда же, куда клик по уведомлению в кабинете; внешние ссылки service worker не откроет."""
+    href = str((data or {}).get("href") or "").strip()
+    if href.startswith("/") and not href.startswith("//"):
+        return href
+    return "/dashboard/notifications"
+
+
 async def notify_web(
     session: AsyncSession,
     *,
@@ -291,6 +297,7 @@ async def notify_web(
             "payment": ("WEB_NOTIFY_PAYMENT_TITLE", "WEB_NOTIFY_PAYMENT_MESSAGE"),
             "key_created": ("WEB_NOTIFY_KEY_CREATED_TITLE", "WEB_NOTIFY_KEY_CREATED_MESSAGE"),
             "key_expiry": ("WEB_NOTIFY_KEY_EXPIRY_TITLE", "WEB_NOTIFY_KEY_EXPIRY_MESSAGE"),
+            "key_renewed": ("WEB_NOTIFY_KEY_RENEWED_TITLE", "WEB_NOTIFY_KEY_RENEWED_MESSAGE"),
             "gift_received": ("WEB_NOTIFY_GIFT_TITLE", "WEB_NOTIFY_GIFT_MESSAGE"),
         }
         title_key, msg_key = type_key_map.get(type, (None, None))
@@ -326,7 +333,7 @@ async def notify_web(
                         sub_infos,
                         title=resolved_title,
                         body=resolved_message,
-                        url="/dashboard/notifications",
+                        url=_push_url(data),
                     )
                     for endpoint in dead:
                         await delete_push_subscription_by_endpoint(session, endpoint)

@@ -1,9 +1,3 @@
-"""User-facing key endpoints (/api/keys/*).
-
-Регистрирует эндпоинты на ``user_router`` из ``_common``. Импорт этого модуля
-из ``__init__.py`` запускает регистрацию декораторов.
-"""
-
 import time
 
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
@@ -120,7 +114,10 @@ async def user_key_connection(
             from panels.remnawave_runtime import get_remnawave_profile
 
             profile = await get_remnawave_profile(
-                session, server_name, client_id, fallback_any=True,
+                session,
+                server_name,
+                client_id,
+                fallback_any=True,
                 username=str(getattr(key, "email", "") or "") or None,
             )
             if profile:

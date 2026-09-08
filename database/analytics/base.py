@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED as INTERNAL_SYSTEMS
 from database.models import Payment, User
-from database.subscription_events import _INTERNAL_PAYMENT_SYSTEMS as INTERNAL_SYSTEMS
 from database.users import exclude_shadow_placeholders
 
 

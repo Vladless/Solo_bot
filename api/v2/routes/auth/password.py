@@ -19,6 +19,7 @@ from api.v2.schemas.identities import (
     RegisterResponse,
     SendLoginCodeRequest,
 )
+from core.client_origin import INVITE_REFERRAL, set_client_invite
 from database import (
     add_referral,
     get_referral_by_referred_id,
@@ -76,7 +77,7 @@ async def register_by_email(
     )
     ip = _client_ip(request)
     try:
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
 
         count, redis_ok = await cache_incr_checked(f"register_rate:{ip}", 3600)
@@ -115,6 +116,8 @@ async def register_by_email(
         referrer_user = await resolve_user_optional(session, referrer_legacy)
         if referrer_user is None:
             raise HTTPException(status_code=400, detail="Код приглашения недействителен")
+    if referrer_user is not None:
+        set_client_invite(INVITE_REFERRAL, referrer_user.tg_id or referrer_user.id)
     identity, token = await idb.create_identity_with_token(
         session, email=email, password=body.password, request=request
     )
@@ -162,7 +165,7 @@ async def login(
         raise HTTPException(status_code=400, detail="Email обязателен")
     ip = _client_ip(request)
     try:
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_get, cache_incr_checked
 
         lockout_key = f"login_lockout:{email}"
@@ -227,7 +230,7 @@ async def send_login_code(
     """Отправить код входа на email (SMTP + Redis)."""
     ip = _client_ip(request)
     try:
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
 
         count, redis_ok = await cache_incr_checked(f"send_code_rate:{ip}", 3600)

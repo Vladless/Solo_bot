@@ -20,6 +20,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy import and_, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database import (
     async_session_maker,
     update_trial,
@@ -655,7 +656,7 @@ async def process_user_search(
     ).where(
         Payment.status == "success",
         Payment.user_id == uid,
-        Payment.payment_system != "admin",
+        Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
     )
     result = await session.execute(stmt)
     topups_amount, topups_sum = result.one_or_none() or (0, 0)
@@ -728,7 +729,12 @@ async def process_user_search(
         legacy_tg_id=real_tg_id,
     )
 
-    screen = menu_text("Клиент", f"@{username}" if username else f"<code>{real_tg_id if real_tg_id is not None else uid}</code>", text, markup=kb)
+    screen = menu_text(
+        "Клиент",
+        f"@{username}" if username else f"<code>{real_tg_id if real_tg_id is not None else uid}</code>",
+        text,
+        markup=kb,
+    )
 
     if edit:
         try:

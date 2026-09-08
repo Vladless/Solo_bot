@@ -67,6 +67,11 @@ class _NestedTransaction:
 
 
 class WebEmailRegistrationFlowTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        patcher = patch("core.redis_cache.cache_incr_checked", new=AsyncMock(return_value=(1, True)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     async def test_register_by_email_creates_identity_and_binds_actor(self):
         request = _make_request()
         response = Response()

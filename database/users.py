@@ -4,6 +4,7 @@ from sqlalchemy import and_, delete, func, not_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.executor import spawn
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_uid_cached, resolve_user_optional
 from database.models import (
@@ -23,7 +24,6 @@ from database.models import (
     WebNotification,
     WebPushSubscription,
 )
-from core.executor import spawn
 from logger import logger
 from settings.cache_config import (
     BALANCE_CACHE_TTL_SEC,
@@ -90,6 +90,12 @@ async def add_user(
     await invalidate_uid_cache(tg_id, inserted_id)
     await cache_set(cache_key("user_exists", tg_id), True, USER_EXISTS_CACHE_TTL_SEC)
     logger.info(f"[DB] Новый пользователь добавлен: tg_id={tg_id} id={inserted_id} (source: {source_code})")
+    try:
+        from services.admin_notify import notify_new_client
+
+        await notify_new_client(session, int(inserted_id))
+    except Exception as exc:
+        logger.warning("[DB] Уведомление админам о новом клиенте не ушло: {}", exc)
     return int(inserted_id)
 
 
@@ -408,7 +414,11 @@ async def delete_user_data(session: AsyncSession, legacy_user_ref: int):
     from database.cache_purge import defer_purge
 
     refs = [uid] if tg_ref is None else [uid, tg_ref]
-    keys = [cache_key(name, ref) for ref in refs for name in ("uref", "user_exists", "profile_data", "user_snapshot", "balance")]
+    keys = [
+        cache_key(name, ref)
+        for ref in refs
+        for name in ("uref", "user_exists", "profile_data", "user_snapshot", "balance")
+    ]
     if not defer_purge(session, *keys):
         await invalidate_uid_cache(*refs)
         for ref in refs:

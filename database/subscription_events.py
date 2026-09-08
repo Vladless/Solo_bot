@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import (
     DailySubscriptionMetric,
     Key,
@@ -19,7 +20,7 @@ from database.users import exclude_shadow_placeholders
 from logger import logger
 
 
-_INTERNAL_PAYMENT_SYSTEMS = ("referral", "cashback", "coupon", "admin")
+_INTERNAL_PAYMENT_SYSTEMS = PAYMENT_SYSTEMS_EXCLUDED
 
 
 _DEDUP_EVENT_TYPES = ("renewed", "created")

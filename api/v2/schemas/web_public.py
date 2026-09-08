@@ -522,3 +522,38 @@ class PartnerPayoutMethodState(BaseModel):
 class PartnerPayoutMethodUpdate(BaseModel):
     method: str = Field(..., min_length=1, max_length=20)
     requisites: str = Field(..., min_length=1, max_length=128)
+
+
+class DailyBonusStateResponse(BaseModel):
+    enabled: bool = False
+    can_claim: bool = False
+    reason: str = ""
+    mode: str = "fixed"
+    amount_next: float = 0.0
+    amount_min: float = 0.0
+    amount_max: float = 0.0
+    ladder: list[float] = []
+    streak: int = 0
+    streak_next: int = 1
+    cooldown_hours: int = 24
+    period_hours: int = 24
+    claims_per_period: int = 1
+    claims_left: int = 0
+    seconds_left: int = 0
+    next_available_at: str | None = None
+    claimed_total: float = 0.0
+    last_claim_at: str | None = None
+    page_slug: str | None = None
+    tab_group: str | None = None
+    tab_id: str | None = None
+    attention_dot: bool = False
+    attention_dot_color: str = ""
+
+
+class DailyBonusClaimResponse(BaseModel):
+    ok: bool = False
+    reason: str = ""
+    amount: float = 0.0
+    balance: float = 0.0
+    streak: int = 0
+    state: DailyBonusStateResponse

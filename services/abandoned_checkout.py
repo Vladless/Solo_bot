@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import and_, select
@@ -28,6 +29,45 @@ _MIN_AGE_MINUTES = 30
 _MAX_AGE_HOURS = 48
 _DEDUP_HOURS = 24
 _NOTIF_TYPE = "abandoned_checkout"
+
+
+def _resume_href(state: str, data: dict | None) -> str:
+    """Ссылка «докончить оплату» для web-уведомления: тот же тариф и те же опции."""
+    payload = data if isinstance(data, dict) else {}
+    client_id = str(payload.get("client_id") or "").strip()
+    tariff_id = payload.get("tariff_id")
+    params: dict[str, str] = {}
+
+    if state == "waiting_for_renewal_payment" and client_id:
+        params = {"flow": "renew", "subKey": client_id}
+        if tariff_id:
+            params["tariff_id"] = str(int(tariff_id))
+    elif state == "waiting_for_addons_payment" and client_id:
+        params = {"flow": "addons", "subKey": client_id}
+        for key, param in (
+            ("selected_device_limit", "selected_device_limit"),
+            ("selected_traffic_gb", "selected_traffic_gb"),
+        ):
+            value = payload.get(key)
+            if value is not None:
+                params[param] = str(value)
+    elif tariff_id:
+        params = {"tariff_id": str(int(tariff_id))}
+        for key, param in (
+            ("selected_device_limit", "selected_device_limit"),
+            ("selected_traffic_limit_gb", "selected_traffic_gb"),
+        ):
+            value = payload.get(key)
+            if value is not None:
+                params[param] = str(value)
+    else:
+        required_amount = payload.get("required_amount")
+        if required_amount:
+            params = {"flow": "topup", "amount": str(int(required_amount))}
+
+    if not params:
+        return "/dashboard?tab=keys"
+    return "/checkout?" + urlencode(params)
 
 
 def _compose(state: str) -> tuple[str, str]:
@@ -92,10 +132,10 @@ async def send_abandoned_checkout_reminders(session: AsyncSession) -> int:
             await notify_web(
                 session,
                 tg_id=tg_id,
-                type="payment",
+                type="payment_pending",
                 title=title,
                 message=body,
-                data={"href": "/dashboard?cabinetTab=keys"},
+                data={"href": _resume_href(str(row.state or ""), row.data)},
             )
         except Exception:
             pass

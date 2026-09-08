@@ -14,12 +14,23 @@ cat > "$HOOKS_DIR/pre-commit" <<'HOOK'
 #!/usr/bin/env bash
 set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
+"$REPO_ROOT/scripts/pre-commit-format.sh"
 exec "$REPO_ROOT/scripts/pre-commit-secrets.sh"
 HOOK
 
-chmod +x "$HOOKS_DIR/pre-commit"
+cat > "$HOOKS_DIR/pre-push" <<'HOOK'
+#!/usr/bin/env bash
+set -e
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec "$REPO_ROOT/scripts/pre-push-format.sh"
+HOOK
+
+chmod +x "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-push"
 echo "✓ pre-commit hook установлен"
 echo "  → $HOOKS_DIR/pre-commit"
+echo "✓ pre-push hook установлен"
+echo "  → $HOOKS_DIR/pre-push"
 echo ""
-echo "Проверка секретов при каждом git commit."
-echo "Если нужно пропустить (осознанно): git commit --no-verify"
+echo "commit: автоформат staged-файлов (ruff format + автофиксы) и проверка секретов."
+echo "push:   проверка, что в уходящих коммитах нет неотформатированного кода."
+echo "Если нужно пропустить (осознанно): git commit --no-verify / git push --no-verify"

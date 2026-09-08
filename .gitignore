@@ -93,3 +93,31 @@ api-*.json
 
 # личные черновики новостей (не коммитить)
 новость_*.md
+
+# Тесты, дописанные в ходе задач — в репозиторий не идут.
+# Исключение: tests/__init__.py остаётся, без него `make test` (discover -t) не запускается.
+tests/test_daily_bonus.py
+tests/test_db_loop_affinity.py
+tests/test_security_perf_hardening.py
+tests/test_no_telegram_side_effects.py
+tests/test_notification_links.py
+web-app/tests/unit/admin/adminShellViewport.test.ts
+web-app/tests/unit/admin/bonusAnalytics.test.tsx
+web-app/tests/unit/blockContent/dailyBonus.test.tsx
+web-app/tests/unit/blockContent/defaultOptionRow.test.tsx
+web-app/tests/unit/blockContent/notifFeedOpen.test.tsx
+web-app/tests/unit/blockContent/notificationTarget.test.ts
+web-app/tests/unit/blockContent/settingsBlocks.test.tsx
+web-app/tests/unit/constructor/blockEditability.test.ts
+web-app/tests/unit/constructor/blockMotion.test.tsx
+web-app/tests/unit/constructor/blockSwitchAnimations.test.ts
+web-app/tests/unit/constructor/contentSwitchFade.test.tsx
+web-app/tests/unit/constructor/defaultContentGrid.test.tsx
+web-app/tests/unit/constructor/defaultPackRadius.test.ts
+web-app/tests/unit/constructor/editorMenus.test.ts
+web-app/tests/unit/constructor/packPanelRadius.test.ts
+web-app/tests/unit/constructor/payoutSplit.test.ts
+web-app/tests/unit/lib/cabinetAttention.test.tsx
+web-app/tests/unit/lib/cabinetNavTabIds.test.ts
+web-app/tests/unit/lib/formatDatePlural.test.ts
+web-app/tests/unit/lib/headerActions.test.ts

@@ -28,6 +28,7 @@ class IdentitySession(DictLikeMixin, Base):
     )
     token_hash = Column(String(64), nullable=False, unique=True)
     device_label = Column(String(128), nullable=True)
+    origin = Column(String(16), nullable=True)
     user_agent = Column(Text, nullable=True)
     ip = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

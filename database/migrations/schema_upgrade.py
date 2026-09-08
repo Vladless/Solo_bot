@@ -1885,6 +1885,84 @@ async def _migration_v53_drop_self_referrals(conn: AsyncConnection) -> None:
         _mig_out(f"[schema_upgrade] v53: снято лишних пригласителей: {result.rowcount}", "green")
 
 
+async def _migration_v54_daily_bonus_claims(conn: AsyncConnection) -> None:
+    _mig_out("[schema_upgrade] v54: таблица daily_bonus_claims (выдачи ежедневного бонуса)")
+    await _exec_ignore(
+        conn,
+        """
+        CREATE TABLE IF NOT EXISTS daily_bonus_claims (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            tg_id BIGINT,
+            amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+            streak INTEGER NOT NULL DEFAULT 1,
+            source VARCHAR(16) NOT NULL DEFAULT 'web',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+    )
+    await _exec_ignore(
+        conn,
+        "CREATE INDEX IF NOT EXISTS ix_daily_bonus_claims_user_created ON daily_bonus_claims (user_id, created_at)",
+    )
+
+
+async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
+    """Снимает индексы, которые дублируют уже существующие.
+
+    `users` пишется почти на каждом апдейте, `audit_events` — на каждое событие, и каждый
+    лишний btree обслуживается при каждой записи. Здесь только доказуемые дубли: индекс по
+    той же колонке, что у первичного ключа или уникального ограничения, и одноколоночный
+    индекс, который является префиксом существующего составного.
+    """
+    _mig_out("[schema_upgrade] v55: снятие дублирующих индексов")
+    duplicates = (
+        ("users", "ix_users_id"),
+        ("users", "ix_users_tg_id"),
+        ("audit_events", "ix_audit_events_actor_identity_id"),
+        ("audit_events", "ix_audit_events_actor_tg_id"),
+    )
+    for table, index_name in duplicates:
+        if not await _table_exists(conn, table):
+            continue
+        if not await _index_exists(conn, table, index_name):
+            continue
+        await conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+        _mig_out(f"[schema_upgrade] v55: снят {index_name} ({table})")
+
+
+async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> None:
+    """Снимает индексы audit_events по колонкам с несколькими значениями.
+
+    `channel`, `event_type`, `entity_type` принимают единицы разных значений: выборка по
+    такому условию задевает слишком большую долю таблицы, и планировщик берёт seq scan.
+    Пользы на чтении нет, а на каждую запись в журнал тратится обслуживание трёх btree.
+    """
+    _mig_out("[schema_upgrade] v56: снятие индексов audit_events по низкой кардинальности")
+    if not await _table_exists(conn, "audit_events"):
+        return
+    for index_name in ("ix_audit_events_channel", "ix_audit_events_event_type", "ix_audit_events_entity_type"):
+        if not await _index_exists(conn, "audit_events", index_name):
+            continue
+        await conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
+        _mig_out(f"[schema_upgrade] v56: снят {index_name}")
+
+
+async def _migration_v57_client_origin(conn: AsyncConnection) -> None:
+    """Канал клиента: откуда зарегистрировались и откуда вошли.
+
+    Раньше канал знал только фронт (в `web_page_views.source`), а у аккаунта и сессии его не было:
+    отличить сайт от Telegram WebApp по факту было нечем.
+    """
+    _mig_out("[schema_upgrade] v57: канал регистрации и входа")
+    if await _table_exists(conn, "identities") and not await _column_exists(conn, "identities", "signup_origin"):
+        await conn.execute(text("ALTER TABLE identities ADD COLUMN IF NOT EXISTS signup_origin VARCHAR(16)"))
+        _mig_out("[schema_upgrade] v57: identities.signup_origin добавлен")
+    if await _table_exists(conn, "identity_sessions") and not await _column_exists(conn, "identity_sessions", "origin"):
+        await conn.execute(text("ALTER TABLE identity_sessions ADD COLUMN IF NOT EXISTS origin VARCHAR(16)"))
+        _mig_out("[schema_upgrade] v57: identity_sessions.origin добавлен")
+
+
 _MIGRATIONS = [
     (1, "Добавление users.id", _migration_v1_add_users_id),
     (2, "Добавление user_id колонок", _migration_v2_add_user_id_columns),
@@ -1939,6 +2017,14 @@ _MIGRATIONS = [
     (51, "Снятие внешних ключей на users.tg_id", _migration_v51_drop_tg_id_foreign_keys),
     (52, "Индексы payments (status, created_at)", _migration_v52_payments_status_created_index),
     (53, "Очистка самореферальных связей", _migration_v53_drop_self_referrals),
+    (54, "Таблица daily_bonus_claims (ежедневный бонус)", _migration_v54_daily_bonus_claims),
+    (55, "Снятие дублирующих индексов users/audit_events", _migration_v55_drop_duplicate_indexes),
+    (56, "Снятие индексов audit_events по низкой кардинальности", _migration_v56_drop_low_cardinality_indexes),
+    (
+        57,
+        "Канал регистрации и входа (identities.signup_origin, identity_sessions.origin)",
+        _migration_v57_client_origin,
+    ),
 ]
 
 

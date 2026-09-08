@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from api.v2.routes import (
     analytics,
     auth,
+    bonuses,
     coupons,
     flows,
     gifts,
@@ -41,6 +42,7 @@ router.include_router(keys.user_router, prefix="/api/keys", tags=["Keys"])
 router.include_router(keys.stats_router, prefix="/api/admin/keys", tags=["AdminKeys"])
 router.include_router(keys.subs_router, prefix="/api/admin/subscriptions", tags=["AdminSubscriptions"])
 router.include_router(keys.router, prefix="/api/admin/keys", tags=["AdminKeys"])
+router.include_router(bonuses.router, prefix="/api/bonus", tags=["Bonus"])
 router.include_router(coupons.admin_list_router, prefix="/api/coupons", tags=["Coupons"])
 router.include_router(coupons.router, prefix="/api/coupons", tags=["Coupons"])
 router.include_router(

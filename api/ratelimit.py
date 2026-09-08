@@ -44,7 +44,7 @@ async def enforce_rate_limit(
     identity_aware: bool = True,
 ) -> None:
     try:
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
     except Exception:
         return

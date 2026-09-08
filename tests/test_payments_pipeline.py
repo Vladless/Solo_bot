@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from database.payments import register_pending_payment
 from services.payments.pipeline import (
     ParsedPayment,
     PipelineResult,
@@ -253,6 +254,29 @@ class ProcessSuccessPaymentTests(unittest.IsolatedAsyncioTestCase):
         upd_mock.assert_awaited_once()
         self.assertEqual(upd_mock.await_args.kwargs["metadata_patch"], {"fx": {"rate": 90.5}})
 
+    async def test_success_takes_client_from_pending_cache(self):
+        """Провайдер не прислал клиента: он читается из pending-записи, баланс зачисляется."""
+        session = _FakeLockedSession(None)
+        parsed = ParsedPayment(payment_id="p9", tg_id=None, amount=300.0)
+
+        with (
+            patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
+            patch(
+                "services.payments.pipeline.get_payment_by_payment_id",
+                new=AsyncMock(return_value={"id": None, "status": "pending", "tg_id": 77, "amount": 300.0}),
+            ),
+            patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add_mock,
+            patch("services.payments.pipeline.update_balance", new=AsyncMock()) as balance_mock,
+            patch("services.payments.pipeline.send_payment_success_notification", new=AsyncMock()),
+            patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
+        ):
+            result = await process_success_payment("yookassa", parsed)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(add_mock.await_args.kwargs["tg_id"], 77)
+        balance_mock.assert_awaited_once()
+        self.assertEqual(balance_mock.await_args.args[1], 77)
+
 
 class ProcessCancelledPaymentTests(unittest.IsolatedAsyncioTestCase):
     async def test_idempotent_when_already_cancelled(self):
@@ -309,6 +333,7 @@ class ProcessCancelledPaymentTests(unittest.IsolatedAsyncioTestCase):
                 new=AsyncMock(return_value=None),
             ),
             patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add,
+            patch("services.payments.pipeline.resolve_user_optional", new=AsyncMock(return_value=object())),
             patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
         ):
             result = await process_cancelled_payment("heleket", parsed, new_status="failed")
@@ -317,6 +342,83 @@ class ProcessCancelledPaymentTests(unittest.IsolatedAsyncioTestCase):
         add.assert_awaited_once()
         self.assertEqual(add.await_args.kwargs["status"], "failed")
         session.commit.assert_awaited_once()
+
+    async def test_cancelled_without_registration_is_acked(self):
+        session = SimpleNamespace(commit=AsyncMock())
+        parsed = ParsedPayment(payment_id="p1", tg_id=None, amount=0.0)
+
+        with (
+            patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
+            patch(
+                "services.payments.pipeline.get_payment_by_payment_id",
+                new=AsyncMock(return_value=None),
+            ),
+            patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add,
+            patch("services.payments.pipeline.resolve_user_optional", new=AsyncMock(return_value=object())),
+            patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
+        ):
+            result = await process_cancelled_payment("yookassa", parsed)
+
+        self.assertTrue(result.ok)
+        add.assert_not_awaited()
+        session.commit.assert_not_awaited()
+
+    async def test_cancelled_takes_client_from_pending_cache(self):
+        session = SimpleNamespace(commit=AsyncMock())
+        parsed = ParsedPayment(payment_id="p1", tg_id=None, amount=500.0)
+
+        with (
+            patch("services.payments.pipeline.async_session_maker", _sessionmaker_returning(session)),
+            patch(
+                "services.payments.pipeline.get_payment_by_payment_id",
+                new=AsyncMock(return_value={"id": None, "status": "pending", "tg_id": 42}),
+            ),
+            patch("services.payments.pipeline.add_payment", new=AsyncMock()) as add,
+            patch("services.payments.pipeline.resolve_user_optional", new=AsyncMock(return_value=object())),
+            patch("services.payments.pipeline.invalidate_payment_cache", new=AsyncMock()),
+        ):
+            result = await process_cancelled_payment("yookassa", parsed)
+
+        self.assertTrue(result.ok)
+        add.assert_awaited_once()
+        self.assertEqual(add.await_args.kwargs["tg_id"], 42)
+        session.commit.assert_awaited_once()
+
+
+class RegisterPendingPaymentTests(unittest.IsolatedAsyncioTestCase):
+    """Ожидающий платёж обязан оставлять в БД строку с владельцем: отмена приходит и через сутки,
+    когда Redis-записи уже нет, а провайдер клиента не присылает."""
+
+    async def test_pending_is_persisted_with_owner(self):
+        session = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=None))
+
+        with (
+            patch("database.payments.async_session_maker", _sessionmaker_returning(session)),
+            patch("database.payments.add_payment", new=AsyncMock()) as add_mock,
+            patch("database.payments.cache_set", new=AsyncMock(return_value=True)),
+        ):
+            ok = await register_pending_payment("p20", 42, 500.0, "kassai")
+
+        self.assertTrue(ok)
+        add_mock.assert_awaited_once()
+        kwargs = add_mock.await_args.kwargs
+        self.assertEqual(kwargs["tg_id"], 42)
+        self.assertEqual(kwargs["payment_id"], "p20")
+        self.assertEqual(kwargs["status"], "pending")
+        session.commit.assert_awaited_once()
+
+    async def test_pending_is_not_duplicated(self):
+        session = SimpleNamespace(commit=AsyncMock(), scalar=AsyncMock(return_value=7))
+
+        with (
+            patch("database.payments.async_session_maker", _sessionmaker_returning(session)),
+            patch("database.payments.add_payment", new=AsyncMock()) as add_mock,
+            patch("database.payments.cache_set", new=AsyncMock(return_value=True)),
+        ):
+            await register_pending_payment("p20", 42, 500.0, "kassai")
+
+        add_mock.assert_not_awaited()
+        session.commit.assert_not_awaited()
 
 
 if __name__ == "__main__":

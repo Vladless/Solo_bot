@@ -1,9 +1,3 @@
-"""User-facing key endpoints (/api/keys/*).
-
-Регистрирует эндпоинты на ``user_router`` из ``_common``. Импорт этого модуля
-из ``__init__.py`` запускает регистрацию декораторов.
-"""
-
 from .._common import *  # noqa: F401,F403 — подтягиваем все имена для endpoints
 from .._common import (
     _key_actions_config,

@@ -125,6 +125,36 @@ async def _webpush_agents(session: AsyncSession, agent_tgs: list[int], title: st
         pass
 
 
+async def _client_ticket_href(session: AsyncSession, ticket_id: str) -> str:
+    """Адрес переписки в кабинете: считается на месте, блок поддержки админ мог поставить куда угодно."""
+    try:
+        from database.web_layout import SUPPORT_BLOCK_TYPES, block_location_href, find_block_locations
+
+        locations = await find_block_locations(session, list(SUPPORT_BLOCK_TYPES))
+        if locations:
+            return block_location_href(locations[0], {"ticket": ticket_id})
+    except Exception:
+        pass
+    return "/dashboard/notifications"
+
+
+async def _webpush_client(session: AsyncSession, identity_id: str, title: str, body: str, url: str) -> None:
+    try:
+        from services.web_push import push_enabled, send_push_to_many
+
+        if not push_enabled():
+            return
+        from database.web_notifications import get_push_subscriptions_by_identity
+
+        subs = await get_push_subscriptions_by_identity(session, identity_id)
+        if not subs:
+            return
+        sub_infos = [{"endpoint": s.endpoint, "keys": s.keys_json} for s in subs]
+        await send_push_to_many(sub_infos, title=title, body=body, url=url, tag="ticket-reply")
+    except Exception:
+        pass
+
+
 async def _email_client_reply(client: Identity, ticket: Ticket, body: str) -> None:
     email = (getattr(client, "email", None) or "").strip()
     if not email or not getattr(client, "email_verified", False):
@@ -153,6 +183,13 @@ async def notify_client_of_reply(session: AsyncSession, *, ticket: Ticket, msg: 
         title=f"{support_persona()} ответила",
         message=preview,
         data={"ticket_id": ticket.id},
+    )
+    await _webpush_client(
+        session,
+        client.id,
+        f"{support_persona()} ответила",
+        preview,
+        await _client_ticket_href(session, ticket.id),
     )
     await publish_client_ticket_changed(client.id)
     tg_id = client.tg_id or 0

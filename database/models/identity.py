@@ -31,6 +31,7 @@ class Identity(DictLikeMixin, Base):
     is_admin = Column(Boolean, nullable=False, server_default=sql_text("false"))
     onboarding_completed_at = Column(DateTime, nullable=True)
     onboarding_stage = Column(String(32), nullable=True)
+    signup_origin = Column(String(16), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

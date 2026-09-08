@@ -1,5 +1,3 @@
-"""Key config editor (base/addon devices + traffic limits)."""
-
 from ...panel.headers import card, menu_text, quote, section
 from ._common import *  # noqa: F401,F403
 from .edit import handle_key_edit

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,12 @@ from settings.config import REMNAWAVE_LOGIN, REMNAWAVE_PASSWORD, REMNAWAVE_TOKEN
 
 
 DAY_MS = 86400 * 1000
+
+
+def _subscription_href(client_id: str | None) -> str:
+    """Куда ведёт клик по уведомлению в кабинете — карточка этой подписки."""
+    key = str(client_id or "").strip()
+    return f"/dashboard?tab=keys&subKey={quote(key)}" if key else "/dashboard?tab=keys"
 
 
 def _find_cluster_servers(servers: dict, server_id: str) -> list:
@@ -48,7 +55,9 @@ async def bulk_reissue(session: AsyncSession, keys: list[Key]) -> tuple[int, int
     return ok, fail, skipped
 
 
-async def _notify_reissue(bot, session: AsyncSession, user_id: int, email: str, new_link: str) -> bool:
+async def _notify_reissue(
+    bot, session: AsyncSession, user_id: int, email: str, new_link: str, client_id: str | None = None
+) -> bool:
     """Сообщает о новой ссылке и в Telegram, и в кабинет: у веб-клиента чата нет.
 
     Уведомление пишется отдельной сессией: сбой не должен ронять остаток пачки.
@@ -79,7 +88,7 @@ async def _notify_reissue(bot, session: AsyncSession, user_id: int, email: str, 
                 type="system",
                 title="Подписка перевыпущена",
                 message="Ссылка подписки обновлена, старая больше не работает.",
-                data={"email": email, "link": new_link},
+                data={"email": email, "link": new_link, "client_id": client_id, "href": _subscription_href(client_id)},
             )
             await notify_session.commit()
         delivered = delivered or notification is not None
@@ -115,7 +124,7 @@ async def bulk_reissue_link(session: AsyncSession, keys: list[Key], bot) -> tupl
                     continue
                 await update_key_subscription_links(session, email, new_link)
                 ok += 1
-                if await _notify_reissue(bot, session, user_id, email, new_link):
+                if await _notify_reissue(bot, session, user_id, email, new_link, client_id):
                     notified += 1
             else:
                 if not user_id:

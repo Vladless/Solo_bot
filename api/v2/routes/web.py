@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import _identity_from_cookie, get_session, verify_identity_designer
@@ -23,6 +23,9 @@ from api.v2.schemas.web import (
     WebPageVariantsResponse,
     WebUploadResponse,
 )
+from core.client_origin import WEB_ORIGINS
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
+from core.executor import run_io
 from database.models import (
     WebBlock,
     WebCustomElementBuild,
@@ -36,8 +39,8 @@ from database.models import (
     WebTheme as WebThemeModel,
 )
 from database.site_revision import bump_site_revision
+from database.web_layout import find_block_locations
 from logger import logger
-from core.executor import run_io
 
 
 UPLOAD_DIR = Path("static/web_uploads")
@@ -210,6 +213,17 @@ async def _audit_web_admin(
         pass
 
 
+class BlockLocationItem(BaseModel):
+    type: str
+    slug: str
+    tab_group: str | None = None
+    tab_id: str | None = None
+
+
+class BlockLocationsResponse(BaseModel):
+    locations: list[BlockLocationItem]
+
+
 class WebPagesListResponse(BaseModel):
     slugs: list[str]
 
@@ -280,6 +294,40 @@ async def list_web_pages(
     from_db = {row[0] for row in result.fetchall()}
     slugs = sorted(from_db | set(KNOWN_PAGE_SLUGS))
     return WebPagesListResponse(slugs=slugs)
+
+
+@router.get("/api/web/block-locations", response_model=BlockLocationsResponse)
+async def get_block_locations(
+    types: str = Query(..., max_length=512),
+    session: AsyncSession = Depends(get_session),
+):
+    """Где на сайте стоят блоки указанных типов: страница и вкладка кабинета.
+
+    Нужен клиенту, чтобы вести по ссылке в блок, который админ мог поставить куда угодно
+    (например, переписку тикета — в блок поддержки).
+    """
+    wanted = [item.strip() for item in types.split(",") if item.strip()][:20]
+    if not wanted:
+        return BlockLocationsResponse(locations=[])
+
+    from core.redis_cache import cache_get, cache_key, cache_set
+    from database.site_revision import get_site_revision
+
+    rev = await get_site_revision(session)
+    ckey = cache_key("web_block_locations", ",".join(sorted(wanted)), rev)
+    cached = await cache_get(ckey)
+    if isinstance(cached, dict):
+        return BlockLocationsResponse.model_validate(cached)
+
+    locations = await find_block_locations(session, wanted)
+    response = BlockLocationsResponse(
+        locations=[
+            BlockLocationItem(type=item.type, slug=item.slug, tab_group=item.tab_group, tab_id=item.tab_id)
+            for item in locations
+        ]
+    )
+    await cache_set(ckey, response.model_dump(mode="json"), 300)
+    return response
 
 
 @router.post("/api/web/pages", response_model=WebPagesListResponse)
@@ -953,9 +1001,6 @@ async def upload_media(
     return WebUploadResponse(url=url)
 
 
-# ── Custom Element Builds ──
-
-
 class CustomElementBuildCreate(BaseModel):
     label: str = ""
     slug: str = ""
@@ -1093,9 +1138,6 @@ async def delete_custom_element_build(
     return {"ok": True}
 
 
-# ── Flow Analytics ──
-
-
 _SENSITIVE_KEY_RE = re.compile(
     r"(token|password|secret|api[_-]?key|authorization|cookie|session|auth|credential|bearer|pass|passwd|access[_-]?token|refresh[_-]?token|phone|email|hash|private|pin)",
     re.IGNORECASE,
@@ -1132,7 +1174,7 @@ async def ingest_flow_events(
 ):
     try:
         from api.v2.routes.auth._common import _client_ip
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
 
         ip = _client_ip(request) or "unknown"
@@ -1257,7 +1299,7 @@ async def ingest_page_views(
 ):
     try:
         from api.v2.routes.auth._common import _client_ip
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
 
         ip = _client_ip(request) or "unknown"
@@ -1344,9 +1386,7 @@ async def get_analytics_overview(
     since = datetime.now(timezone.utc) - timedelta(days=days)
     since_naive = since.replace(tzinfo=None)
 
-    # Внутренние «платежи» (бонусы/ручная выдача) — не реальный доход, исключаем из выручки.
-    internal_systems = ("referral", "cashback", "coupon", "admin")
-    real_income = Payment.payment_system.notin_(internal_systems)
+    real_income = Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED)
 
     day_col = func.date_trunc("day", WebPageView.created_at).label("day")
     daily_rows = (
@@ -1530,7 +1570,13 @@ async def get_analytics_overview(
     ) or 0
     registrations_web = int(registrations) - int(registrations_tg)
 
-    web_payment_marker = Payment.metadata_["payment_flow"].astext.isnot(None)
+    web_payment_marker = or_(
+        Payment.metadata_["origin"].astext.in_(WEB_ORIGINS),
+        and_(
+            Payment.metadata_["origin"].astext.is_(None),
+            Payment.metadata_["payment_flow"].astext.isnot(None),
+        ),
+    )
     payments_row = (
         await session.execute(
             select(
@@ -1811,9 +1857,6 @@ async def get_analytics_overview(
     }
 
 
-# ── Error aggregation (in-house Sentry) ──
-
-
 def _error_signature(name: str, message: str, stack: str | None, url: str | None) -> str:
     """Группировочная подпись: name + первая stack-frame + pathname."""
     first_frame = ""
@@ -1862,12 +1905,12 @@ _NEW_ERROR_ALERTS_PER_HOUR = 6
 
 
 async def _alert_web_error(name: str, message: str, url: str | None, count: int, is_new: bool) -> None:
-    """Шлёт админам уведомление о новой ошибке сайта или о всплеске по счётчику.
+    """Отправляет админам уведомление о новой ошибке сайта или о всплеске по счётчику.
     Новые ошибки троттлятся глобально, чтобы не заспамить при запуске."""
     try:
         if is_new:
             try:
-                from api.v2.routes.auth._fallback_limiter import check_and_increment
+                from core.rate_limit import check_and_increment
                 from core.redis_cache import cache_incr_checked
 
                 fired, redis_ok = await cache_incr_checked("web_err_new_alert:hour", 3600)
@@ -1901,7 +1944,7 @@ async def ingest_error_report(
 ):
     try:
         from api.v2.routes.auth._common import _client_ip
-        from api.v2.routes.auth._fallback_limiter import check_and_increment
+        from core.rate_limit import check_and_increment
         from core.redis_cache import cache_incr_checked
 
         ip = _client_ip(request) or "unknown"
@@ -1946,7 +1989,7 @@ async def ingest_error_report(
 
     try:
         from api.v2.routes.auth._common import _client_ip
-        from api.v2.routes.auth._fallback_limiter import check_and_increment as _sig_check
+        from core.rate_limit import check_and_increment as _sig_check
         from core.redis_cache import cache_incr_checked as _sig_cache
 
         ip = _client_ip(request) or "unknown"
@@ -2120,17 +2163,15 @@ async def list_available_packs_route(_identity=Depends(verify_identity_designer)
         info = meta.get(pack_id) or {}
         available_version = str(info.get("version") or "").strip()
         local_version = installed_pack_version(pack_id)
-        packs.append(
-            {
-                "id": pack_id,
-                "name": str(info.get("name") or pack_id),
-                "description": str(info.get("description") or ""),
-                "installed": bool(local_version),
-                "installedVersion": local_version,
-                "version": available_version,
-                "updateAvailable": bool(local_version and available_version and available_version != local_version),
-            }
-        )
+        packs.append({
+            "id": pack_id,
+            "name": str(info.get("name") or pack_id),
+            "description": str(info.get("description") or ""),
+            "installed": bool(local_version),
+            "installedVersion": local_version,
+            "version": available_version,
+            "updateAvailable": bool(local_version and available_version and available_version != local_version),
+        })
     return {"packs": packs}
 
 
@@ -2185,9 +2226,7 @@ async def list_packs(
     custom = await list_custom_pack_designs(session, _BUILTIN_PACK_IDS)
     builtin_saved: dict[str, bool] = {}
     for pid in ("cyber-mono", "capybara"):
-        builtin_saved[pid] = (
-            bool(await load_pack_design(session, pid)) or has_builtin_pack_file(pid) or pid in entitled
-        )
+        builtin_saved[pid] = bool(await load_pack_design(session, pid)) or has_builtin_pack_file(pid) or pid in entitled
     return {"custom": custom, "builtinSaved": builtin_saved}
 
 

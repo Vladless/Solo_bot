@@ -1,9 +1,36 @@
 from sqlalchemy import and_, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import normalize_campaign
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
+from core.redis_cache import cache_get, cache_key, cache_set
 from database.models import Payment, TrackingSource, User
+from database.users import upsert_source_if_empty
 from logger import logger
+from settings.cache_config import START_UTM_EXISTS_TTL_SEC as UTM_EXISTS_TTL_SEC
+
+
+async def is_known_tracking_source(session: AsyncSession, code: str) -> bool:
+    """Есть ли такой код источника. Ответ кешируется: проверка идёт на каждом входе клиента."""
+    if not code:
+        return False
+    key = cache_key("utm_exists", code)
+    cached = await cache_get(key)
+    if cached is not None:
+        return bool(cached)
+    exists = (
+        await session.execute(select(1).select_from(TrackingSource).where(TrackingSource.code == code).limit(1))
+    ).scalar_one_or_none() is not None
+    await cache_set(key, bool(exists), UTM_EXISTS_TTL_SEC)
+    return exists
+
+
+async def attribute_source_if_known(session: AsyncSession, tg_id: int, code: str | None) -> bool:
+    """Ставит источник клиенту, если код известен и источник ещё не заполнен."""
+    normalized = normalize_campaign(code)
+    if not normalized or not await is_known_tracking_source(session, normalized):
+        return False
+    return await upsert_source_if_empty(session, tg_id, normalized)
 
 
 async def create_tracking_source(session: AsyncSession, name: str, code: str, type_: str, created_by: int):

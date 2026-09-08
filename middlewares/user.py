@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from time import monotonic
+from time import time
 from typing import Any
 
 from aiogram import BaseMiddleware
@@ -46,7 +46,7 @@ class UserMiddleware(BaseMiddleware):
     async def _process_user(self, user: User, session: AsyncSession) -> dict | None:
         uid = user.id
         fingerprint = self._fingerprint(user)
-        now = monotonic()
+        now = time()
         key = cache_key("user_middleware", uid)
 
         cached = await cache_get(key)

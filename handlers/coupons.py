@@ -34,6 +34,7 @@ from middlewares.session import release_session_early
 from services.operations import renew_key_in_cluster
 from services.payments.currency_rates import format_for_user
 from settings.buttons import MAIN_MENU
+from settings.cache_config import COUPON_ATTEMPTS_PER_MINUTE
 from settings.config import ADMIN_ID
 from settings.texts import (
     COUPONS_DAYS_HINT,
@@ -90,18 +91,15 @@ async def activate_coupon(
     logger.info(f"Активация купона: {coupon_code}")
 
     if not admin:
-        try:
-            from core.redis_cache import cache_incr
+        from core.rate_limit import rate_limit_hit
 
-            _u = user_data or message.from_user or message.chat
-            _uid = _u["tg_id"] if isinstance(_u, dict) else getattr(_u, "id", 0)
-            attempts = await cache_incr(f"coupon_try:{_uid}", 60)
-            if attempts > 8:
-                await message.answer("❌ Слишком много попыток. Попробуйте через минуту.")
-                await state.clear()
-                return
-        except Exception:
-            pass
+        _u = user_data or message.from_user or message.chat
+        _uid = _u["tg_id"] if isinstance(_u, dict) else getattr(_u, "id", 0)
+        _, exceeded = await rate_limit_hit(f"coupon_try:{_uid}", COUPON_ATTEMPTS_PER_MINUTE, 60)
+        if exceeded:
+            await message.answer("❌ Слишком много попыток. Попробуйте через минуту.")
+            await state.clear()
+            return
 
     coupon = await get_coupon_by_code(session, coupon_code)
 

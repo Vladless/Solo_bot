@@ -1,5 +1,3 @@
-// WCAG-аудит контраста по блокам. Запуск: node tools-dev/contrast-audit.mjs <url> [light|dark]
-// Кабинетные страницы требуют cookie auth_token (см. как поднимается temp identity_session).
 import { chromium } from "playwright";
 const URL = process.argv[2] || "http://localhost:3000/";
 const SCHEME = process.argv[3] || "light";

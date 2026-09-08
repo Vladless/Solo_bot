@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import client_origin
 from core.redis_cache import cache_delete, cache_key
 from database.models import Identity, IdentitySession
 from settings.config import API_TOKEN_TTL_DAYS
@@ -57,6 +58,7 @@ async def create_identity_session(
     device_label: str | None = None,
 ) -> IdentitySession:
     """Создаёт/переиспользует сессию: один и тот же device (identity + user_agent) не плодит дубли."""
+    origin = client_origin()
     now = datetime.utcnow()
     expires_at = now + timedelta(days=API_TOKEN_TTL_DAYS) if API_TOKEN_TTL_DAYS else None
     label = device_label or _device_label_from_user_agent(user_agent)
@@ -91,6 +93,7 @@ async def create_identity_session(
             )
             existing.token_hash = token_hash
             existing.device_label = label
+            existing.origin = origin
             existing.ip = ip
             existing.last_seen_at = now
             existing.expires_at = expires_at
@@ -102,6 +105,7 @@ async def create_identity_session(
         identity_id=identity.id,
         token_hash=token_hash,
         device_label=label,
+        origin=origin,
         user_agent=user_agent,
         ip=ip,
         created_at=now,

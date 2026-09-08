@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import client_campaign, client_origin
 from core.executor import run_cpu, run_io
 from database import identity_sessions as _idsess
 from database.access.tg_mirror import refresh_tg_mirrors_for_user, release_tg_mirrors
@@ -48,7 +49,11 @@ async def create_identity(
     tg_id: int | None = None,
 ) -> Identity:
     """Создаёт идентичность; можно задать email и/или tg_id."""
-    identity = Identity(email=email.strip().lower() if email else None, tg_id=tg_id)
+    identity = Identity(
+        email=email.strip().lower() if email else None,
+        tg_id=tg_id,
+        signup_origin=client_origin(),
+    )
     session.add(identity)
     await session.flush()
     if tg_id:
@@ -379,6 +384,16 @@ async def _assign_synthetic_tg_id(session: AsyncSession, uid: int) -> None:
         logger.warning("[ensure_billing_user] синтетический tg_id для user {} не присвоен: {}", uid, exc)
 
 
+async def _attribute_client_campaign(session: AsyncSession, tg_id: int | None) -> None:
+    """Первое касание рекламы с сайта: в боте источник ставит диплинк, здесь — метка клиента."""
+    campaign = client_campaign()
+    if not campaign or tg_id is None:
+        return
+    from database.tracking_sources import attribute_source_if_known
+
+    await attribute_source_if_known(session, int(tg_id), campaign)
+
+
 async def ensure_billing_user_for_identity(session: AsyncSession, identity: Identity) -> int:
     from database.users import add_user, check_user_exists
 
@@ -390,17 +405,26 @@ async def ensure_billing_user_for_identity(session: AsyncSession, identity: Iden
         u = ur.scalar_one()
         if u.identity_id != identity.id:
             await session.execute(update(User).where(User.id == u.id).values(identity_id=identity.id))
+        await _attribute_client_campaign(session, u.tg_id)
         return int(u.id)
     res = await session.execute(select(User).where(User.identity_id == identity.id))
     row = res.scalars().first()
     if row is not None:
         if row.tg_id is None:
             await _assign_synthetic_tg_id(session, row.id)
+        await _attribute_client_campaign(session, row.tg_id if row.tg_id is not None else -int(row.id))
         return int(row.id)
     new_u = User(identity_id=identity.id, tg_id=None)
     session.add(new_u)
     await session.flush()
     await _assign_synthetic_tg_id(session, new_u.id)
+    await _attribute_client_campaign(session, -int(new_u.id))
+    try:
+        from services.admin_notify import notify_new_client
+
+        await notify_new_client(session, int(new_u.id))
+    except Exception as exc:
+        logger.warning("[Identity] Уведомление админам о новом клиенте не ушло: {}", exc)
     return int(new_u.id)
 
 
@@ -727,8 +751,10 @@ async def detach_telegram(session: AsyncSession, identity_id: str) -> Identity |
         return None
     old_tg = int(identity.tg_id)
     affected = (
-        await session.execute(select(User.id).where(User.identity_id == identity_id, User.tg_id == old_tg))
-    ).scalars().all()
+        (await session.execute(select(User.id).where(User.identity_id == identity_id, User.tg_id == old_tg)))
+        .scalars()
+        .all()
+    )
 
     identity.tg_id = None
     identity.is_admin = False
@@ -751,7 +777,7 @@ async def get_or_create_identity_for_tg(session: AsyncSession, tg_id: int) -> Id
             await session.flush()
             await session.refresh(identity)
         return identity
-    identity = Identity(tg_id=tg_id, is_admin=is_admin)
+    identity = Identity(tg_id=tg_id, is_admin=is_admin, signup_origin=client_origin())
     session.add(identity)
     await session.flush()
     await session.execute(User.__table__.update().where(User.tg_id == tg_id).values(identity_id=identity.id))

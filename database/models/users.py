@@ -21,7 +21,7 @@ class User(DictLikeMixin, Base):
     __tablename__ = "users"
 
     id = Column(BigInteger, SAIdentity(always=False), primary_key=True)
-    tg_id = Column(BigInteger, nullable=True, unique=True, index=True)
+    tg_id = Column(BigInteger, nullable=True, unique=True)
     identity_id = Column(
         String(36),
         ForeignKey("identities.id", ondelete="SET NULL", onupdate="CASCADE"),

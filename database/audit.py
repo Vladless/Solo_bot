@@ -15,13 +15,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from database.models import AuditEvent, Payment
-
-
-try:
-    from core.constants import PAYMENT_SYSTEMS_EXCLUDED
-except ImportError:
-    PAYMENT_SYSTEMS_EXCLUDED = ("referral", "coupon", "cashback", "admin")
 
 
 _AUDIT_TABLE_READY = False

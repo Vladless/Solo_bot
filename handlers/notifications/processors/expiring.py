@@ -184,7 +184,11 @@ async def _send_simple_warnings(ctx: NotificationContext, items: list[tuple], ph
 
         try:
             await notify_web(
-                ctx.session, tg_id=tg_id, type="key_expiry", template_vars={"email": email}, data={"email": email}
+                ctx.session,
+                tg_id=tg_id,
+                type="key_expiry",
+                template_vars={"email": email},
+                data={"email": email, "client_id": getattr(key, "client_id", None)},
             )
         except Exception as e:
             logger.warning(f"[Notifications] web-уведомление key_expiry tg_id={tg_id}: {e}")

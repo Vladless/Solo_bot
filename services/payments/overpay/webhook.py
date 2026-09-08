@@ -28,7 +28,12 @@ _STATUS_FAILED = {"declined", "rejected", "reversed", "error", "expired", "cance
 
 
 def _webhook_auth_configured() -> bool:
-    return bool((OVERPAY_WEBHOOK_USERNAME or "").strip()) or bool((OVERPAY_WEBHOOK_PASSWORD or "").strip())
+    """Basic Auth считается настроенным только при обоих полях.
+
+    При одном заполненном поле сравнение не совпадёт никогда: настоящие вебхуки получали 401,
+    а подтверждение платежа через API провайдера (ветка ниже) при этом не выполнялось.
+    """
+    return bool((OVERPAY_WEBHOOK_USERNAME or "").strip()) and bool((OVERPAY_WEBHOOK_PASSWORD or "").strip())
 
 
 def _verify_basic_auth(request: web.Request) -> bool:

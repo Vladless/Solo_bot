@@ -10,13 +10,14 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardMarkup
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.executor import spawn
 from core.settings.modes_config import resolve_protect_content
 from database import async_session_maker, save_blocked_user_ids
+from database.db import isolated_sessionmaker
 from handlers.admin.sender.sender_utils import get_recipient_emails, is_telegram_chat_id, parse_channels
 from logger import logger
-from core.executor import spawn
 
 
 DEFAULT_MESSAGES_PER_SECOND = 25
@@ -48,21 +49,28 @@ def run_broadcast_in_thread(
         )
         keyboard = InlineKeyboardMarkup.model_validate(keyboard_data) if keyboard_data else None
         messages = [{"tg_id": tg_id, "text": text_message, "photo": photo, "keyboard": keyboard} for tg_id in tg_ids]
-        service = BroadcastService(bot=bot, session=None, messages_per_second=DEFAULT_MESSAGES_PER_SECOND)
 
         async def on_progress(completed: int, total: int, sent: int, failed: int, pending: int) -> None:
             if progress_cb:
                 progress_cb(completed, total, sent, failed, pending)
 
-        return loop.run_until_complete(
-            service.broadcast(
-                messages,
-                workers=5,
-                on_progress=on_progress,
-                progress_interval=2.0,
-                channel=channel,
-            )
-        )
+        async def run() -> dict:
+            async with isolated_sessionmaker() as sessionmaker:
+                service = BroadcastService(
+                    bot=bot,
+                    session=None,
+                    messages_per_second=DEFAULT_MESSAGES_PER_SECOND,
+                    sessionmaker=sessionmaker,
+                )
+                return await service.broadcast(
+                    messages,
+                    workers=5,
+                    on_progress=on_progress,
+                    progress_interval=2.0,
+                    channel=channel,
+                )
+
+        return loop.run_until_complete(run())
     finally:
         if bot is not None and bot.session is not None:
             try:
@@ -70,6 +78,19 @@ def run_broadcast_in_thread(
             except Exception:
                 pass
         loop.close()
+
+
+def _keyboard_url(keyboard: Any) -> str | None:
+    """Первая ссылка из клавиатуры рассылки — «полная новость», куда ведёт уведомление."""
+    rows = getattr(keyboard, "inline_keyboard", None)
+    if not rows:
+        return None
+    for row in rows:
+        for button in row or []:
+            url = str(getattr(button, "url", "") or "").strip()
+            if url.startswith(("http", "tg:")):
+                return url
+    return None
 
 
 class BroadcastMessage:
@@ -121,9 +142,11 @@ class BroadcastService:
         session: AsyncSession | None = None,
         messages_per_second: int = DEFAULT_MESSAGES_PER_SECOND,
         max_attempts: int = MAX_RETRY_ATTEMPTS,
+        sessionmaker: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self.bot = bot
         self._session = session
+        self._sessionmaker = sessionmaker or async_session_maker
         self.rate_limiter = RateLimiter(max_rate=messages_per_second)
         self.max_attempts = max_attempts
         self.blocked_users: set[int] = set()
@@ -133,6 +156,7 @@ class BroadcastService:
         self.pending_retries = 0
         self.start_time: float | None = None
         self.is_running = False
+        self._bot_chat_url_cache: str | None = None
 
     async def _send_single_message(self, msg: BroadcastMessage) -> str:
         try:
@@ -243,7 +267,7 @@ class BroadcastService:
             if self._session is not None:
                 await save_blocked_user_ids(self._session, list(self.blocked_users))
             else:
-                async with async_session_maker() as session:
+                async with self._sessionmaker() as session:
                     await save_blocked_user_ids(session, list(self.blocked_users))
                     await session.commit()
         except Exception as e:
@@ -411,7 +435,7 @@ class BroadcastService:
             if self._session is not None:
                 email_map = await get_recipient_emails(self._session, tg_ids)
             else:
-                async with async_session_maker() as session:
+                async with self._sessionmaker() as session:
                     email_map = await get_recipient_emails(session, tg_ids)
 
             addresses = sorted(set(email_map.values()))
@@ -452,6 +476,21 @@ class BroadcastService:
             logger.warning(f"[Broadcast] Ошибка email-рассылки: {e}")
             return (0, 0)
 
+    async def _bot_chat_url(self) -> str | None:
+        """Ссылка на чат с ботом — там лежит полный текст рассылки."""
+        if self.bot is None:
+            return None
+        if self._bot_chat_url_cache is not None:
+            return self._bot_chat_url_cache or None
+        try:
+            me = await self.bot.get_me()
+            username = (me.username or "").strip()
+        except Exception as e:
+            logger.warning(f"[Broadcast] Не удалось получить username бота: {e}")
+            username = ""
+        self._bot_chat_url_cache = f"https://t.me/{username}" if username else ""
+        return self._bot_chat_url_cache or None
+
     async def _create_web_notifications(self, messages: list[dict]) -> None:
         """Создаёт web-уведомления для всех получателей рассылки."""
         if not messages:
@@ -475,18 +514,27 @@ class BroadcastService:
                 from utils.web_media import host_telegram_photo
 
                 image_url = await host_telegram_photo(self.bot, photo_id)
-            notif_data = {"image_url": image_url} if image_url else None
+
+            notif_data: dict[str, str] = {}
+            if image_url:
+                notif_data["image_url"] = image_url
+            full_post_url = _keyboard_url(messages[0].get("keyboard")) or await self._bot_chat_url()
+            if full_post_url:
+                notif_data["href"] = full_post_url
 
             session = self._session
             if session is None:
-                from database import async_session_maker
-
-                async with async_session_maker() as session:
+                async with self._sessionmaker() as session:
                     for msg in messages:
                         tg_id = msg.get("tg_id")
                         if tg_id and tg_id not in self.blocked_users:
                             await notify_web(
-                                session, tg_id=tg_id, type="broadcast", title=title, message=body, data=notif_data
+                                session,
+                                tg_id=tg_id,
+                                type="broadcast",
+                                title=title,
+                                message=body,
+                                data=notif_data or None,
                             )
                     await session.commit()
             else:
@@ -494,7 +542,12 @@ class BroadcastService:
                     tg_id = msg.get("tg_id")
                     if tg_id and tg_id not in self.blocked_users:
                         await notify_web(
-                            session, tg_id=tg_id, type="broadcast", title=title, message=body, data=notif_data
+                            session,
+                            tg_id=tg_id,
+                            type="broadcast",
+                            title=title,
+                            message=body,
+                            data=notif_data or None,
                         )
         except Exception as e:
             logger.warning(f"[Broadcast] Ошибка создания web-уведомлений: {e}")

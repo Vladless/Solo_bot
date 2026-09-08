@@ -13,14 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import bot
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG
+from core.client_origin import INVITE_REFERRAL, INVITE_UTM, set_client_invite
 from core.redis_cache import cache_get, cache_key, cache_set
 from database import (
     add_user,
     check_user_exists,
     get_user_snapshot,
-    upsert_source_if_empty,
 )
-from database.models import TrackingSource
+from database.tracking_sources import attribute_source_if_known, is_known_tracking_source
 from handlers.captcha import generate_captcha
 from handlers.coupons import activate_coupon
 from handlers.instructions.instructions import send_instructions
@@ -45,7 +45,6 @@ from settings.buttons import (
     SUPPORT,
     TRIAL_SUB,
 )
-from settings.cache_config import START_UTM_EXISTS_TTL_SEC
 from settings.config import (
     CAPTCHA_ENABLE,
     CHANNEL_EXISTS,
@@ -341,6 +340,7 @@ def _split_start_payload(text: str | None) -> list[str]:
 async def handle_referral_link_safe(part, message, state, session, user_data):
     try:
         referrer_id = int(part.split("referral")[1].strip("_"))
+        set_client_invite(INVITE_REFERRAL, referrer_id)
         results = await run_hooks(
             "referral_link",
             referrer_id=referrer_id,
@@ -365,18 +365,11 @@ async def prompt_subscription(callback: CallbackQuery):
 
 
 async def handle_utm_link(utm_code: str, message: Message, state: FSMContext, session: AsyncSession, user_data: dict):
-    key = cache_key("utm_exists", utm_code)
-    is_known = await cache_get(key)
-    if is_known is None:
-        stmt = select(1).select_from(TrackingSource).where(TrackingSource.code == utm_code).limit(1)
-        res = await session.execute(stmt)
-        is_known = res.scalar_one_or_none() is not None
-        await cache_set(key, bool(is_known), START_UTM_EXISTS_TTL_SEC)
-
-    if not is_known:
+    if not await is_known_tracking_source(session, utm_code):
         await message.answer("❌ UTM ссылка не найдена.")
         return
-    await upsert_source_if_empty(session, user_data["tg_id"], utm_code)
+    set_client_invite(INVITE_UTM, utm_code)
+    await attribute_source_if_known(session, user_data["tg_id"], utm_code)
 
 
 async def show_webapp_only_start(message: Message, image_path: str) -> bool:

@@ -4,8 +4,11 @@ from pytz import timezone
 from sqlalchemy import Float, and_, cast, func, insert, literal, or_, select, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.client_origin import client_origin
+from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from core.redis_cache import cache_delete, cache_get, cache_key, cache_set
 from database.access.resolution import resolve_user_optional
+from database.db import async_session_maker
 from database.models import Gift, Payment, SubscriptionEvent
 from logger import logger
 from settings.cache_config import PAYMENT_PENDING_CACHE_TTL_SEC
@@ -18,6 +21,37 @@ def _payment_cache_key(pid: str) -> str:
     return cache_key("payment_pending", pid)
 
 
+async def _notify_admins_payment(
+    session: AsyncSession,
+    uid: int,
+    amount: float,
+    payment_system: str,
+    metadata: dict | None,
+) -> None:
+    """Уведомление админам об оплате. Начисления и бонусы к оплатам не относятся."""
+    if str(payment_system or "").lower() in PAYMENT_SYSTEMS_EXCLUDED:
+        return
+    try:
+        from services.admin_notify import notify_payment
+
+        await notify_payment(
+            session,
+            uid,
+            amount=float(amount or 0),
+            payment_system=payment_system,
+            origin=(metadata or {}).get("origin"),
+        )
+    except Exception as exc:
+        logger.warning("[DB] Уведомление админам об оплате не ушло: {}", exc)
+
+
+def _with_client_origin(metadata: dict | None) -> dict:
+    """Канал в метаданных платежа: один ключ на все провайдеры, бота и сайт."""
+    data = dict(metadata or {})
+    data.setdefault("origin", client_origin())
+    return data
+
+
 async def register_pending_payment(
     payment_id: str,
     tg_id: int,
@@ -28,7 +62,29 @@ async def register_pending_payment(
     metadata: dict | None = None,
     original_amount: float | None = None,
 ) -> bool:
-    """Регистрирует ожидающий платёж только в Redis. В БД пишем при success/fail из вебхука."""
+    """Регистрирует ожидающий платёж: строка в БД плюс запись в Redis для быстрого пути вебхука.
+
+    Строка в БД обязательна. Вебхук об отмене приходит и через сутки, когда Redis-записи уже нет,
+    и владельца платежа тогда взять негде: провайдер клиента не присылает. Своя сессия и свой
+    commit — регистрация счёта это отдельная единица работы, а сессия хендлера к этому моменту
+    может быть уже отпущена.
+    """
+    async with async_session_maker() as session:
+        exists = await session.scalar(select(Payment.id).where(Payment.payment_id == payment_id).limit(1))
+        if exists is None:
+            await add_payment(
+                session=session,
+                tg_id=tg_id,
+                amount=amount,
+                payment_system=payment_system,
+                status="pending",
+                currency=currency,
+                payment_id=payment_id,
+                metadata=metadata,
+                original_amount=original_amount,
+            )
+            await session.commit()
+
     data = {
         "tg_id": tg_id,
         "amount": amount,
@@ -65,6 +121,7 @@ async def add_payment(
     original_amount: float | None = None,
 ) -> int:
     """Записывает платёж на users.id; tg_id и legacy_user_ref — совместимость."""
+    metadata = _with_client_origin(metadata)
     ref = next((v for v in (user_id, tg_id, legacy_user_ref) if v is not None), None)
     if ref is None:
         raise ValueError("add_payment: не указан клиент")
@@ -96,6 +153,8 @@ async def add_payment(
     logger.info(
         f"Добавлен платёж id={internal_id}: user_id={u.id}, amount={amount}, system={payment_system}, status={status}"
     )
+    if status == "success":
+        await _notify_admins_payment(session, int(u.id), amount, payment_system, metadata)
     return internal_id
 
 
@@ -257,6 +316,14 @@ async def update_payment_status(
 
     await session.flush()
     logger.info(f"Статус платежа id={internal_id} изменён на {new_status}")
+    if new_status == "success":
+        await _notify_admins_payment(
+            session,
+            int(payment.user_id),
+            float(payment.amount or 0),
+            str(payment.payment_system or ""),
+            payment.metadata_,
+        )
     return True
 
 
@@ -283,9 +350,14 @@ async def get_payment_from_db_by_payment_id(session: AsyncSession, pid: str) -> 
 
 
 async def get_payment_by_payment_id(session: AsyncSession, pid: str) -> dict | None:
-    """Сначала Redis (pending), затем БД. Из кэша возвращается запись без id — вебхук делает add_payment."""
-    cached = await cache_get(_payment_cache_key(pid))
-    if cached is not None:
+    """Сначала БД (источник истины), затем Redis. Запись из кэша идёт без id — по ней вебхук
+    делает add_payment; строка из БД даёт id, и вебхук просто меняет статус."""
+    result = await session.execute(select(Payment).where(Payment.payment_id == pid).limit(1))
+    payment = result.scalar_one_or_none()
+    if payment is None:
+        cached = await cache_get(_payment_cache_key(pid))
+        if cached is None:
+            return None
         return {
             "id": None,
             "tg_id": cached["tg_id"],
@@ -298,10 +370,6 @@ async def get_payment_by_payment_id(session: AsyncSession, pid: str) -> dict | N
             "metadata": cached.get("metadata"),
             "original_amount": cached.get("original_amount"),
         }
-    result = await session.execute(select(Payment).where(Payment.payment_id == pid).limit(1))
-    payment = result.scalar_one_or_none()
-    if not payment:
-        return None
     return {
         "id": payment.id,
         "tg_id": payment.user_id,
@@ -325,7 +393,11 @@ async def count_successful_payments(session: AsyncSession, user_id: int) -> int:
     result = await session.execute(
         select(func.count())
         .select_from(Payment)
-        .where(Payment.user_id == int(user_id), func.lower(Payment.status) == "success")
+        .where(
+            Payment.user_id == int(user_id),
+            func.lower(Payment.status) == "success",
+            Payment.payment_system.notin_(PAYMENT_SYSTEMS_EXCLUDED),
+        )
     )
     return int(result.scalar() or 0)
 

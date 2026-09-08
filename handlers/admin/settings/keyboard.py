@@ -7,10 +7,8 @@ from core.settings.money_config import get_currency_mode
 from settings.buttons import BACK
 
 from ..panel.keyboard import AdminPanelCallback, build_admin_back_btn
-
-
-REMNAWAVE_HOSTS_PER_PAGE = 6
 from .settings_config import (
+    ADMIN_NOTIFICATION_TITLES,
     BUTTON_TITLES,
     MODES_TITLES,
     MONEY_FIELDS,
@@ -18,6 +16,9 @@ from .settings_config import (
     NOTIFICATION_TITLES,
     PAYMENT_PROVIDER_TITLES,
 )
+
+
+REMNAWAVE_HOSTS_PER_PAGE = 6
 
 
 def build_toggle_section_keyboard(
@@ -185,6 +186,10 @@ def build_settings_notifications_kb(notifications_state: dict[str, object]) -> I
         text="Интервалы",
         callback_data=AdminPanelCallback(action="settings_notifications_intervals").pack(),
     )
+    admin_button = InlineKeyboardButton(
+        text="Админу",
+        callback_data=AdminPanelCallback(action="settings_notifications_admin").pack(),
+    )
 
     return build_toggle_section_keyboard(
         titles=NOTIFICATION_TITLES,
@@ -192,7 +197,17 @@ def build_settings_notifications_kb(notifications_state: dict[str, object]) -> I
         action="settings_notification_toggle",
         columns=1,
         back_action="settings",
-        extra_rows=[[intervals_button]],
+        extra_rows=[[intervals_button, admin_button]],
+    )
+
+
+def build_settings_notifications_admin_kb(notifications_state: dict[str, object]) -> InlineKeyboardMarkup:
+    return build_toggle_section_keyboard(
+        titles=ADMIN_NOTIFICATION_TITLES,
+        state={k: bool(notifications_state.get(k, False)) for k in ADMIN_NOTIFICATION_TITLES},
+        action="settings_notification_admin_toggle",
+        columns=1,
+        back_action="settings_notifications",
     )
 
 

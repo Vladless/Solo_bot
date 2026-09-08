@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.bootstrap import NOTIFICATIONS_CONFIG, update_notifications_config
 from filters.admin import IsAdminFilter
 
-from ..panel.headers import menu_text, quote
+from ..panel.headers import menu_text, quote, section
 from ..panel.keyboard import AdminPanelCallback
 from .keyboard import (
+    ADMIN_NOTIFICATION_TITLES,
     NOTIFICATION_TIME_FIELDS,
     NOTIFICATION_TITLES,
+    build_settings_notifications_admin_kb,
     build_settings_notifications_intervals_kb,
     build_settings_notifications_kb,
 )
@@ -54,6 +56,53 @@ async def open_settings_notifications_intervals_menu(callback: CallbackQuery, se
         reply_markup=build_settings_notifications_intervals_kb(notifications_state),
     )
     await callback.answer()
+
+
+@router.callback_query(AdminPanelCallback.filter(F.action == "settings_notifications_admin"))
+async def open_settings_notifications_admin_menu(callback: CallbackQuery, session: AsyncSession) -> None:
+    notifications_state = await load_notification_settings()
+    markup = build_settings_notifications_admin_kb(notifications_state)
+    text = menu_text(
+        "Уведомления админу",
+        "Что бот пишет админам о клиентах.",
+        section(
+            "🔔 В уведомлении",
+            "клиент: ник или почта",
+            "канал: бот, сайт, webapp",
+            "переход: в бот и на сайт",
+        ),
+        quote("Нажмите на уведомление, чтобы включить или выключить его."),
+        markup=markup,
+    )
+    await callback.message.edit_text(text=text, reply_markup=markup)
+    await callback.answer()
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "settings_notification_admin_toggle"), flags={"popup": True}
+)
+async def toggle_admin_notification_setting(
+    callback: CallbackQuery,
+    callback_data: AdminPanelCallback,
+    session: AsyncSession,
+) -> None:
+    keys = list(ADMIN_NOTIFICATION_TITLES.keys())
+    idx = callback_data.page
+
+    if not 1 <= idx <= len(keys):
+        await callback.answer("Неизвестная настройка", show_alert=True)
+        return
+
+    key = keys[idx - 1]
+    config = dict(NOTIFICATIONS_CONFIG or {})
+    config[key] = not bool(config.get(key, False))
+    await update_notifications_config(session, config)
+
+    notifications_state = await load_notification_settings()
+    await callback.message.edit_reply_markup(
+        reply_markup=build_settings_notifications_admin_kb(notifications_state),
+    )
+    await callback.answer(menu_text("Уведомления админу", "Настройка обновлена"))
 
 
 @router.callback_query(AdminPanelCallback.filter(F.action == "settings_notification_toggle"), flags={"popup": True})

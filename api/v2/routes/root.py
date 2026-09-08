@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.depends import get_session
 from core.bootstrap import BUTTONS_CONFIG, MODES_CONFIG, MONEY_CONFIG, PAYMENTS_CONFIG
+from core.settings.bonus_config import is_daily_bonus_enabled
 from core.settings.money_config import get_currency_mode
 from core.settings.web_config import WEB_CONFIG
 from services.payments.providers import (
@@ -220,6 +221,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             ),
             "partner_enabled": partner_enabled,
             "support_tickets_enabled": bool(MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED", False)),
+            "daily_bonus_enabled": is_daily_bonus_enabled(),
         },
         "payments": {
             "any_enabled": any_pay,

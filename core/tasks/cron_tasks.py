@@ -1,5 +1,7 @@
 import asyncio
 
+from collections.abc import Callable, Coroutine
+
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -37,16 +39,29 @@ async def sweep_stale_payments_job() -> None:
         await session.commit()
 
 
+def run_in_own_loop(job: Callable[[], Coroutine[object, object, object]]) -> None:
+    """Точка входа процессного cron: свой движок и свой event loop.
+
+    APScheduler запускает такие задачи форком, и дочерний процесс наследует пул соединений
+    родителя. Работать с ними нельзя: сокеты общие, а цикл, в котором их открыли, чужой.
+    Старый движок не диспоузим — его сокеты принадлежат родителю.
+    """
+    from database.db import reset_async_db_engine
+
+    reset_async_db_engine()
+    asyncio.run(job())
+
+
 def scheduled_audit_drain_process_runner() -> None:
-    asyncio.run(scheduled_audit_drain())
+    run_in_own_loop(scheduled_audit_drain)
 
 
 def scheduled_stats_report_process_runner() -> None:
-    asyncio.run(scheduled_stats_report())
+    run_in_own_loop(scheduled_stats_report)
 
 
 def sweep_stale_payments_process_runner() -> None:
-    asyncio.run(sweep_stale_payments_job())
+    run_in_own_loop(sweep_stale_payments_job)
 
 
 async def cleanup_expired_gifts_job() -> None:
@@ -70,7 +85,7 @@ async def cleanup_expired_gifts_job() -> None:
 
 
 def cleanup_expired_gifts_process_runner() -> None:
-    asyncio.run(cleanup_expired_gifts_job())
+    run_in_own_loop(cleanup_expired_gifts_job)
 
 
 async def autoclose_stale_tickets_job() -> None:
@@ -87,13 +102,11 @@ async def autoclose_stale_tickets_job() -> None:
 
 
 def autoclose_stale_tickets_process_runner() -> None:
-    asyncio.run(autoclose_stale_tickets_job())
+    run_in_own_loop(autoclose_stale_tickets_job)
 
 
 WEB_ANALYTICS_RETENTION_DAYS = 90
 WEB_ERROR_RETENTION_DAYS = 30
-# Журнал доступа пишется на каждый запрос к API, включая внешние сканы.
-# Удаление для него было написано, но не вызывалось — таблица росла без предела.
 AUDIT_RETENTION_DAYS = 90
 
 
@@ -154,7 +167,7 @@ async def cleanup_web_analytics_job() -> None:
 
 
 def cleanup_web_analytics_process_runner() -> None:
-    asyncio.run(cleanup_web_analytics_job())
+    run_in_own_loop(cleanup_web_analytics_job)
 
 
 async def abandoned_checkout_reminder_job() -> None:
@@ -172,7 +185,7 @@ async def abandoned_checkout_reminder_job() -> None:
 
 
 def abandoned_checkout_reminder_process_runner() -> None:
-    asyncio.run(abandoned_checkout_reminder_job())
+    run_in_own_loop(abandoned_checkout_reminder_job)
 
 
 async def snapshot_key_traffic_job() -> None:
@@ -190,7 +203,7 @@ async def snapshot_key_traffic_job() -> None:
 
 
 def snapshot_key_traffic_process_runner() -> None:
-    asyncio.run(snapshot_key_traffic_job())
+    run_in_own_loop(snapshot_key_traffic_job)
 
 
 async def snapshot_key_traffic_hourly_job() -> None:
@@ -208,7 +221,7 @@ async def snapshot_key_traffic_hourly_job() -> None:
 
 
 def snapshot_key_traffic_hourly_process_runner() -> None:
-    asyncio.run(snapshot_key_traffic_hourly_job())
+    run_in_own_loop(snapshot_key_traffic_hourly_job)
 
 
 async def snapshot_subscription_metrics_job() -> None:
@@ -227,7 +240,7 @@ async def snapshot_subscription_metrics_job() -> None:
 
 
 def snapshot_subscription_metrics_process_runner() -> None:
-    asyncio.run(snapshot_subscription_metrics_job())
+    run_in_own_loop(snapshot_subscription_metrics_job)
 
 
 async def anomaly_check_job() -> None:
@@ -298,7 +311,7 @@ async def anomaly_check_job() -> None:
 
 
 def anomaly_check_process_runner() -> None:
-    asyncio.run(anomaly_check_job())
+    run_in_own_loop(anomaly_check_job)
 
 
 async def log_db_pool_status() -> None:

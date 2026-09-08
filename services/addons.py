@@ -5,6 +5,7 @@ from math import ceil
 from typing import TYPE_CHECKING, Any
 
 from core.bootstrap import TARIFFS_CONFIG
+from core.client_origin import client_origin
 from core.settings.tariffs_config import get_override_value, normalize_tariff_config
 from database import get_balance, get_key_details, get_tariff_by_id, save_key_config_with_mode
 from database.coupons import mark_coupon_used
@@ -140,9 +141,7 @@ def resolve_carried_addons(
     return CarriedAddons(
         device_limit=carried_devices,
         traffic_gb=carried_traffic,
-        price_rub=calc_carried_addons_price_rub(
-            tariff, base_devices, base_traffic, current_devices, current_traffic
-        ),
+        price_rub=calc_carried_addons_price_rub(tariff, base_devices, base_traffic, current_devices, current_traffic),
     )
 
 
@@ -325,7 +324,7 @@ async def apply_addons(
                 tariff_id=tariff_id,
                 price_rub=float(extra_price_rub),
                 expiry_time=expiry_ms,
-                source="bot",
+                source=client_origin(),
             )
         except Exception:
             pass

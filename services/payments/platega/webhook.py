@@ -1,4 +1,5 @@
 import json
+import secrets
 
 from aiohttp import web
 
@@ -33,7 +34,7 @@ def _validate_credentials(request: web.Request) -> bool:
     received_mid = (request.headers.get("X-MerchantId") or "").strip()
     received_secret = (request.headers.get("X-Secret") or "").strip()
 
-    return received_mid == merchant_id and received_secret == secret
+    return secrets.compare_digest(received_mid, merchant_id) and secrets.compare_digest(received_secret, secret)
 
 
 async def platega_webhook(request: web.Request):

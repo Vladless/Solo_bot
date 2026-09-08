@@ -26,17 +26,16 @@ class AuditEvent(DictLikeMixin, Base):
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    event_type = Column(String(64), nullable=False, index=True)
-    channel = Column(String(32), nullable=False, index=True)
+    event_type = Column(String(64), nullable=False)
+    channel = Column(String(32), nullable=False)
     actor_identity_id = Column(
         String(36),
         ForeignKey("identities.id", ondelete="SET NULL", onupdate="CASCADE"),
         nullable=True,
-        index=True,
     )
-    actor_tg_id = Column(BigInteger, nullable=True, index=True)
+    actor_tg_id = Column(BigInteger, nullable=True)
     path_or_handler = Column(String(255), nullable=False)
-    entity_type = Column(String(64), nullable=True, index=True)
+    entity_type = Column(String(64), nullable=True)
     entity_id = Column(String(255), nullable=True, index=True)
     result = Column(String(32), nullable=False, server_default=sql_text("'success'"))
     reason = Column(Text, nullable=True)
