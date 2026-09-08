@@ -1907,6 +1907,39 @@ async def _migration_v54_daily_bonus_claims(conn: AsyncConnection) -> None:
     )
 
 
+async def _index_dependents(conn: AsyncConnection, index: str) -> list[str]:
+    """Ограничения, которые опираются на индекс: их наличие запрещает снятие индекса."""
+    r = await conn.execute(
+        text(
+            """
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class i ON i.oid = c.conindid
+            JOIN pg_namespace n ON n.oid = i.relnamespace
+            WHERE n.nspname = 'public'
+              AND i.relname = :i
+            ORDER BY c.conname
+            """
+        ),
+        {"i": index},
+    )
+    return [row[0] for row in r.fetchall()]
+
+
+async def _drop_index_if_free(conn: AsyncConnection, table: str, index: str) -> bool:
+    """Снимает индекс, если от него ничего не зависит. Занятый оставляет и сообщает об этом."""
+    if not await _table_exists(conn, table):
+        return False
+    if not await _index_exists(conn, table, index):
+        return False
+    dependents = await _index_dependents(conn, index)
+    if dependents:
+        _mig_out(f"[schema_upgrade] {index} ({table}) оставлен: на него опираются {', '.join(dependents)}")
+        return False
+    await conn.execute(text(f"DROP INDEX IF EXISTS {index}"))
+    return True
+
+
 async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
     """Снимает индексы, которые дублируют уже существующие.
 
@@ -1923,12 +1956,8 @@ async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
         ("audit_events", "ix_audit_events_actor_tg_id"),
     )
     for table, index_name in duplicates:
-        if not await _table_exists(conn, table):
-            continue
-        if not await _index_exists(conn, table, index_name):
-            continue
-        await conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
-        _mig_out(f"[schema_upgrade] v55: снят {index_name} ({table})")
+        if await _drop_index_if_free(conn, table, index_name):
+            _mig_out(f"[schema_upgrade] v55: снят {index_name} ({table})")
 
 
 async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> None:
@@ -1942,10 +1971,8 @@ async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> 
     if not await _table_exists(conn, "audit_events"):
         return
     for index_name in ("ix_audit_events_channel", "ix_audit_events_event_type", "ix_audit_events_entity_type"):
-        if not await _index_exists(conn, "audit_events", index_name):
-            continue
-        await conn.execute(text(f"DROP INDEX IF EXISTS {index_name}"))
-        _mig_out(f"[schema_upgrade] v56: снят {index_name}")
+        if await _drop_index_if_free(conn, "audit_events", index_name):
+            _mig_out(f"[schema_upgrade] v56: снят {index_name}")
 
 
 async def _migration_v57_client_origin(conn: AsyncConnection) -> None:
