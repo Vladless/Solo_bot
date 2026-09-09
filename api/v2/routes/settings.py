@@ -225,6 +225,7 @@ async def update_config_scope(
         merged.update(data)
         merged["DAILY_BONUS_ENABLED"] = bool(merged.get("DAILY_BONUS_ENABLED"))
         merged["DAILY_BONUS_REQUIRE_SUBSCRIPTION"] = bool(merged.get("DAILY_BONUS_REQUIRE_SUBSCRIPTION"))
+        merged["DAILY_BONUS_STREAK_RESTART"] = bool(merged.get("DAILY_BONUS_STREAK_RESTART"))
         mode = str(merged.get("DAILY_BONUS_MODE") or "fixed").strip().lower()
         merged["DAILY_BONUS_MODE"] = mode if mode in BONUS_MODES else "fixed"
         await update_bonus_config(session, merged)

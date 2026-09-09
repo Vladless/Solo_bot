@@ -32,6 +32,7 @@ BONUS_TITLES: dict[str, str] = {
     "DAILY_BONUS_MIN_AMOUNT": "Случайная сумма: от, ₽",
     "DAILY_BONUS_MAX_AMOUNT": "Случайная сумма: до, ₽",
     "DAILY_BONUS_STREAK_LADDER": "Суммы за серию дней, ₽",
+    "DAILY_BONUS_STREAK_RESTART": "Начинать серию заново после последней суммы",
     "DAILY_BONUS_STREAK_KEEP_HOURS": "Серия не рвётся, часов",
     "DAILY_BONUS_COOLDOWN_HOURS": "Ждать между бонусами, часов",
     "DAILY_BONUS_CLAIMS_PER_PERIOD": "Бонусов за период",
@@ -58,6 +59,11 @@ BONUS_HINTS: dict[str, str] = {
         "Через запятую: сколько дать в 1-й день серии, во 2-й, в 3-й и так далее. "
         "Например «5, 7, 10, 15»: на четвёртый день и дальше будет по 15 ₽. "
         "Нужно только для размера «растёт за серию»."
+    ),
+    "DAILY_BONUS_STREAK_RESTART": (
+        "Включено — после последней суммы серия начинается с первого дня, и клиент снова идёт по лестнице снизу. "
+        "Выключено — дойдя до конца, клиент получает последнюю сумму сколько угодно раз. "
+        "Работает только для размера «растёт за серию»."
     ),
     "DAILY_BONUS_STREAK_KEEP_HOURS": (
         "Сколько времени после бонуса у клиента есть, чтобы забрать следующий и продолжить серию. "
@@ -98,6 +104,7 @@ class DailyBonusRules:
     min_amount: float
     max_amount: float
     ladder: tuple[float, ...]
+    streak_restart: bool
     streak_keep_hours: int
     cooldown_hours: int
     claims_per_period: int
@@ -160,6 +167,7 @@ def resolve_daily_bonus_rules() -> DailyBonusRules:
         min_amount=round(min_amount, 2),
         max_amount=round(max_amount, 2),
         ladder=ladder,
+        streak_restart=bool(BONUS_CONFIG.get("DAILY_BONUS_STREAK_RESTART", True)),
         streak_keep_hours=_to_int(BONUS_CONFIG.get("DAILY_BONUS_STREAK_KEEP_HOURS"), 48),
         cooldown_hours=max(1, _to_int(BONUS_CONFIG.get("DAILY_BONUS_COOLDOWN_HOURS"), 24)),
         claims_per_period=max(1, _to_int(BONUS_CONFIG.get("DAILY_BONUS_CLAIMS_PER_PERIOD"), 1)),

@@ -55,15 +55,21 @@ class DailyBonusClaimResult:
     state: DailyBonusState
 
 
+def _ladder_length(rules: DailyBonusRules) -> int:
+    return len(rules.ladder) if rules.mode == "streak" else 0
+
+
 def next_streak(last_claim_at: datetime | None, streak: int, rules: DailyBonusRules, now: datetime) -> int:
-    """Номер дня серии для следующей выдачи: серия рвётся, если перерыв дольше окна удержания."""
+    """Номер дня серии для следующей выдачи: серия рвётся при перерыве и начинается заново после последней ступени."""
     if last_claim_at is None:
         return 1
-    if rules.streak_keep_hours <= 0:
-        return max(1, streak) + 1
-    if now - last_claim_at > timedelta(hours=rules.streak_keep_hours):
+    if rules.streak_keep_hours > 0 and now - last_claim_at > timedelta(hours=rules.streak_keep_hours):
         return 1
-    return max(1, streak) + 1
+    following = max(1, streak) + 1
+    length = _ladder_length(rules)
+    if rules.streak_restart and length > 0 and following > length:
+        return 1
+    return following
 
 
 def amount_for_streak(rules: DailyBonusRules, streak_day: int) -> float:
