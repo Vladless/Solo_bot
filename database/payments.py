@@ -27,6 +27,8 @@ async def _notify_admins_payment(
     amount: float,
     payment_system: str,
     metadata: dict | None,
+    payment_id: str | None = None,
+    internal_id: int | None = None,
 ) -> None:
     """Уведомление админам об оплате. Начисления и бонусы к оплатам не относятся."""
     if str(payment_system or "").lower() in PAYMENT_SYSTEMS_EXCLUDED:
@@ -40,6 +42,8 @@ async def _notify_admins_payment(
             amount=float(amount or 0),
             payment_system=payment_system,
             origin=(metadata or {}).get("origin"),
+            payment_id=payment_id,
+            internal_id=internal_id,
         )
     except Exception as exc:
         logger.warning("[DB] Уведомление админам об оплате не ушло: {}", exc)
@@ -154,7 +158,15 @@ async def add_payment(
         f"Добавлен платёж id={internal_id}: user_id={u.id}, amount={amount}, system={payment_system}, status={status}"
     )
     if status == "success":
-        await _notify_admins_payment(session, int(u.id), amount, payment_system, metadata)
+        await _notify_admins_payment(
+            session,
+            int(u.id),
+            amount,
+            payment_system,
+            metadata,
+            payment_id=payment_id,
+            internal_id=int(internal_id),
+        )
     return internal_id
 
 
@@ -323,6 +335,8 @@ async def update_payment_status(
             float(payment.amount or 0),
             str(payment.payment_system or ""),
             payment.metadata_,
+            payment_id=payment.payment_id,
+            internal_id=int(payment.id),
         )
     return True
 

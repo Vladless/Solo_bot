@@ -66,7 +66,7 @@ from settings.texts import (
 
 from .admin.panel.keyboard import AdminPanelCallback
 from .refferal import handle_referral_link
-from .utils import build_support_button, edit_or_send_message, extract_user_data, safe_answer_callback
+from .utils import build_support_button, edit_or_send_message, resolve_actor_data, safe_answer_callback
 
 
 router = Router()
@@ -111,9 +111,7 @@ async def start_entry(
 
     text = getattr(event, "data", None) or message.text
 
-    user_data = None
-    if isinstance(event, CallbackQuery):
-        user_data = extract_user_data(event.from_user)
+    user_data = resolve_actor_data(message, actor=event.from_user)
 
     await process_start_logic(message, state, session, admin, text, user_data, user_snapshot=user_snapshot)
 
@@ -133,7 +131,7 @@ async def check_subscription_callback(callback: CallbackQuery, state: FSMContext
         await safe_answer_callback(callback, SUBSCRIPTION_CONFIRMED_MSG)
         data = await state.get_data()
         original_text = data.get("original_text") or callback.message.text
-        user_data = data.get("user_data") or extract_user_data(callback.from_user)
+        user_data = resolve_actor_data(callback.message, actor=callback.from_user, saved=data.get("user_data"))
         await state.update_data(user_data=user_data)
         await process_start_logic(callback.message, state, session, admin, original_text, user_data)
     except Exception as e:
@@ -150,7 +148,7 @@ async def process_start_logic(
     user_data: dict | None = None,
     user_snapshot: tuple[int, int] | None = None,
 ):
-    user_data = user_data or extract_user_data(message.from_user or message.chat)
+    user_data = resolve_actor_data(message, saved=user_data)
     text = text_to_process or message.text or message.caption
 
     if text and text.startswith("/start "):

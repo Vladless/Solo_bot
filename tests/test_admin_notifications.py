@@ -113,6 +113,53 @@ class AdminNotificationKeyboardTests(unittest.TestCase):
         self.assertIn("219", data)
 
 
+class AdminNotificationDetailTests(unittest.TestCase):
+    """Админ должен опознать событие по уведомлению: кто, когда и по какому счёту."""
+
+    def test_новый_клиент_показывает_номер_и_время(self):
+        text = build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None)
+        self.assertIn("номер", text)
+        self.assertIn("219", text)
+        self.assertIn("время", text)
+        self.assertRegex(text, r"\d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}")
+
+    def test_оплата_показывает_оба_номера_и_время(self):
+        text = build_payment_text(
+            CARD,
+            amount=548,
+            payment_system="YOOKASSA",
+            origin="web",
+            site_enabled=True,
+            payment_id="2f1a9c7b-0001",
+            internal_id=1114,
+        )
+        self.assertIn("1114", text)
+        self.assertIn("2f1a9c7b-0001", text)
+        self.assertIn("219", text)
+        self.assertRegex(text, r"\d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}")
+
+    def test_без_номера_счёта_блок_не_пустой(self):
+        text = build_payment_text(
+            CARD, amount=100, payment_system="stars", origin="bot", site_enabled=False, internal_id=7
+        )
+        self.assertIn("Счёт кассы", text)
+        self.assertIn("—", text)
+
+    def test_длинный_номер_счёта_не_ломает_таблицу(self):
+        text = build_payment_text(
+            CARD,
+            amount=548,
+            payment_system="YOOKASSA",
+            origin="web",
+            site_enabled=True,
+            payment_id="2f1a9c7b-0001-5000-8000-1d2e3f4a5b6c",
+            internal_id=1114,
+        )
+        payment_block = text.split("<b>\U0001f4b3 Платёж</b>")[1].split("</blockquote>")[0]
+        self.assertIn("├ сумма", payment_block)
+        self.assertIn("└ время", payment_block)
+
+
 class AdminNotificationGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_выключенный_тумблер_ничего_не_шлёт(self):
         with patch("services.admin_notify._notifications_enabled", return_value=False):

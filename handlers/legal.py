@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.settings.legal_config import LEGAL_CONFIG, is_legal_enabled, legal_doc_url
 from database.models import User
-from handlers.utils import edit_or_send_message
+from handlers.utils import edit_or_send_message, resolve_actor_data
 from logger import logger
 from settings.buttons import LEGAL_ACCEPT, LEGAL_OFFER, LEGAL_PRIVACY, LEGAL_TERMS
 
@@ -85,11 +85,12 @@ async def accept_legal(callback: CallbackQuery, state: FSMContext, session: Asyn
 
     await callback.answer()
     data = await state.get_data()
+    user_data = resolve_actor_data(callback.message, actor=callback.from_user, saved=data.get("user_data"))
     await process_start_logic(
         callback.message,
         state,
         session,
         admin,
         data.get("original_text"),
-        data.get("user_data"),
+        user_data,
     )

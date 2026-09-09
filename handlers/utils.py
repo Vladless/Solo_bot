@@ -577,6 +577,30 @@ def extract_user_data(user) -> dict:
     }
 
 
+def resolve_actor_data(message, *, actor=None, saved: dict | None = None) -> dict:
+    """Данные клиента для сценария старта: явный автор, затем сохранённые, затем автор сообщения.
+
+    У сообщения, отправленного ботом, `from_user` — сам бот, поэтому такой автор отбрасывается:
+    иначе сценарий уходит на клиента с номером бота.
+    """
+    if actor is not None and not getattr(actor, "is_bot", False):
+        return extract_user_data(actor)
+    if saved and saved.get("tg_id") and not saved.get("is_bot"):
+        return dict(saved)
+    author = getattr(message, "from_user", None)
+    if author is not None and not getattr(author, "is_bot", False):
+        return extract_user_data(author)
+    chat = getattr(message, "chat", None)
+    return {
+        "tg_id": getattr(chat, "id", None),
+        "username": getattr(chat, "username", None),
+        "first_name": getattr(chat, "first_name", None),
+        "last_name": getattr(chat, "last_name", None),
+        "language_code": None,
+        "is_bot": False,
+    }
+
+
 async def build_support_button(text: str | None = None) -> "InlineKeyboardButton | None":
     from aiogram.types import InlineKeyboardButton
 

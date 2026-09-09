@@ -11,7 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from logger import logger
 from settings.texts import CAPTCHA_EMOJIS, CAPTCHA_PROMPT_MSG
 
-from .utils import edit_or_send_message
+from .utils import edit_or_send_message, resolve_actor_data
 
 
 router = Router()
@@ -80,14 +80,13 @@ async def check_captcha(callback: CallbackQuery, state: FSMContext, session: Any
 
     if selected_emoji == correct_emoji:
         logger.info(f"Пользователь {callback.from_user.id} успешно прошел капчу")
-        logger.debug(f"[CAPTCHA] user_data передано в process_start_logic: {user_data}")
         await process_start_logic(
             message=target_message,
             state=state,
             session=session,
             admin=admin,
             text_to_process=original_text,
-            user_data=user_data,
+            user_data=resolve_actor_data(target_message, actor=callback.from_user, saved=user_data),
         )
     else:
         logger.warning(f"Пользователь {callback.from_user.id} неверно ответил на капчу")

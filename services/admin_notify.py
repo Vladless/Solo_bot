@@ -1,4 +1,7 @@
+from datetime import datetime
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pytz import timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,9 +19,17 @@ from core.client_origin import (
 )
 from core.executor import spawn
 from database.models import Identity, Referral, User
-from handlers.admin.panel.headers import menu_text, section
+from handlers.admin.panel.headers import menu_text, note, section
 from handlers.admin.users.keyboard import AdminUserEditorCallback
 from logger import logger
+
+
+MOSCOW_TZ = timezone("Europe/Moscow")
+
+
+def _now_label() -> str:
+    """Момент события по московскому времени: дата и время до секунд."""
+    return datetime.now(MOSCOW_TZ).strftime("%d.%m.%y %H:%M:%S")
 
 
 ORIGIN_LABELS = {
@@ -178,16 +189,16 @@ async def load_client_card(session: AsyncSession, user_id: int) -> dict[str, obj
 
 
 def _client_lines(card: dict[str, object], *, site_enabled: bool) -> list[str]:
-    """Строки о клиенте: ник или почта. Без сайта почты у клиента быть не может."""
-    lines: list[str] = []
+    """Строки о клиенте: номер, ник или почта и telegram. Без сайта почты у клиента быть не может."""
+    lines: list[str] = [f"номер: {card.get('id')}"]
     username = str(card.get("username") or "").strip().lstrip("@")
     email = str(card.get("email") or "").strip()
     if username:
         lines.append(f"ник: @{username}")
+    else:
+        lines.append("ник: —")
     if site_enabled and email:
         lines.append(f"почта: {email}")
-    if not lines:
-        lines.append("ник: —")
     tg_id = card.get("tg_id")
     lines.append(f"telegram: {tg_id if tg_id else '—'}")
     return lines
@@ -223,6 +234,7 @@ def _origin_lines(card: dict[str, object], *, origin: object, attribution: dict[
     if who:
         lines.append(f"пригласил: {who}")
     lines.append(f"метка: {card.get('source_code') or '—'}")
+    lines.append(f"время: {_now_label()}")
     return lines
 
 
@@ -243,6 +255,26 @@ def build_new_client_text(
     )
 
 
+def _payment_lines(
+    *,
+    amount: float,
+    payment_system: str,
+    origin: object,
+    payment_id: str | None,
+    internal_id: int | None,
+) -> list[str]:
+    """Строки о платеже: сумма, касса, канал, номера у нас и у кассы, время."""
+    lines = [
+        f"сумма: {amount:.0f} ₽",
+        f"касса: {payment_system or '—'}",
+        f"канал: {origin_label(origin)}",
+    ]
+    if internal_id is not None:
+        lines.append(f"номер: {internal_id}")
+    lines.append(f"время: {_now_label()}")
+    return lines
+
+
 def build_payment_text(
     card: dict[str, object],
     *,
@@ -250,6 +282,8 @@ def build_payment_text(
     payment_system: str,
     origin: object,
     site_enabled: bool,
+    payment_id: str | None = None,
+    internal_id: int | None = None,
     markup=None,
 ) -> str:
     """Экран уведомления об успешной оплате по дизайн-коду админки."""
@@ -257,11 +291,16 @@ def build_payment_text(
         "Успешная оплата",
         section(
             "💳 Платёж",
-            f"сумма: {amount:.0f} ₽",
-            f"касса: {payment_system or '—'}",
-            f"канал: {origin_label(origin)}",
+            *_payment_lines(
+                amount=amount,
+                payment_system=payment_system,
+                origin=origin,
+                payment_id=payment_id,
+                internal_id=internal_id,
+            ),
         ),
         section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
+        note("🧾 Счёт кассы", str(payment_id or "").strip() or "—"),
         markup=markup,
     )
 
@@ -290,6 +329,8 @@ async def notify_payment(
     amount: float,
     payment_system: str,
     origin: object = None,
+    payment_id: str | None = None,
+    internal_id: int | None = None,
 ) -> None:
     """Уведомление админам об успешной оплате с каналом, откуда платили."""
     if not _notifications_enabled("ADMIN_PAYMENT_ENABLED"):
@@ -303,6 +344,8 @@ async def notify_payment(
         payment_system=payment_system,
         origin=origin or client_origin(),
         site_enabled=site_enabled,
+        payment_id=payment_id,
+        internal_id=internal_id,
         markup=markup,
     )
     spawn(_send_to_admins(text, markup))

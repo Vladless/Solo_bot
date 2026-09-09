@@ -51,6 +51,15 @@ async def fetch_url_content(url: str, identifier: str) -> tuple[list[str], dict[
         return [], {}
 
 
+def _config_identity(line: str) -> str:
+    """Что делает строку подписки отдельным сервером: адрес и параметры без подписи.
+
+    В подписи панель отдаёт название и остаток трафика — они меняются между запросами,
+    поэтому сравнение целых строк одну и ту же точку считает разными.
+    """
+    return line.split("#", 1)[0].strip()
+
+
 async def combine_unique_lines(
     urls: list[str], identifier: str, query_string: str
 ) -> tuple[list[str], list[dict[str, str]]]:
@@ -67,14 +76,31 @@ async def combine_unique_lines(
     results = await asyncio.gather(*tasks, return_exceptions=True)
     all_lines = []
     all_headers = []
+    seen: set[str] = set()
     for result in results:
         if isinstance(result, tuple):
             lines, headers = result
             for line in filter(None, lines):
-                if line not in all_lines:
-                    all_lines.append(line)
+                identity = _config_identity(line)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                all_lines.append(line)
             all_headers.append(headers)
     return all_lines, all_headers
+
+
+def _unique_keep_order(values: list[str]) -> list[str]:
+    """Один адрес подписки запрашиваем один раз: у соседних inbound одной панели он общий."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        normalized = value.rstrip("/")
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(value)
+    return result
 
 
 async def get_subscription_urls(
@@ -86,16 +112,18 @@ async def get_subscription_urls(
     if use_country_selection:
         server_data = await get_enabled_server_subscription_url(session, server_id)
         if server_data:
-            urls.append(f"{server_data}/{email}")
+            urls.append(f"{str(server_data).rstrip('/')}/{email}")
     else:
         servers = await get_servers(session)
         cluster_servers = servers.get(server_id, [])
         for server in cluster_servers:
             if url := server.get("subscription_url"):
-                urls.append(f"{url}/{email}")
+                urls.append(f"{str(url).rstrip('/')}/{email}")
 
     if include_remnawave_key:
         urls.append(include_remnawave_key)
+
+    urls = _unique_keep_order(urls)
 
     if bool(MODES_CONFIG.get("RANDOM_SUBSCRIPTIONS_ENABLED", RANDOM_SUBSCRIPTIONS)):
         random.shuffle(urls)
