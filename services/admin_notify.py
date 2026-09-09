@@ -238,6 +238,23 @@ def _origin_lines(card: dict[str, object], *, origin: object, attribution: dict[
     return lines
 
 
+def _contact_link(card: dict[str, object]) -> str:
+    """Строка связи под заголовком: ник ведёт в Telegram, почта — в почтовый клиент.
+
+    Ник у клиента есть не всегда, а почта — только когда включён сайт: без обоих строки нет.
+    """
+    username = str(card.get("username") or "").strip().lstrip("@")
+    if username:
+        return f'<a href="https://t.me/{username}">@{username}</a>'
+    email = str(card.get("email") or "").strip()
+    if email:
+        return f'<a href="mailto:{email}">{email}</a>'
+    tg_id = card.get("tg_id")
+    if tg_id:
+        return f'<a href="tg://user?id={tg_id}">Открыть в Telegram</a>'
+    return ""
+
+
 def build_new_client_text(
     card: dict[str, object],
     *,
@@ -249,6 +266,7 @@ def build_new_client_text(
     """Экран уведомления о новом клиенте по дизайн-коду админки."""
     return menu_text(
         "Новый пользователь",
+        _contact_link(card),
         section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
         section("🧭 Откуда", *_origin_lines(card, origin=origin, attribution=attribution)),
         markup=markup,
@@ -289,6 +307,7 @@ def build_payment_text(
     """Экран уведомления об успешной оплате по дизайн-коду админки."""
     return menu_text(
         "Успешная оплата",
+        _contact_link(card),
         section(
             "💳 Платёж",
             *_payment_lines(

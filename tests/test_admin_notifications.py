@@ -160,6 +160,38 @@ class AdminNotificationDetailTests(unittest.TestCase):
         self.assertIn("└ время", payment_block)
 
 
+class AdminNotificationContactTests(unittest.TestCase):
+    """Связаться с клиентом — одно нажатие из уведомления, поэтому контакт стоит под заголовком."""
+
+    def test_ник_ведёт_в_telegram(self):
+        text = build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None)
+        self.assertIn('<a href="https://t.me/vasya">@vasya</a>', text)
+        head = text.split("<b>\U0001f464 Клиент</b>")[0]
+        self.assertIn("t.me/vasya", head)
+
+    def test_без_ника_ведёт_на_почту(self):
+        card = {**CARD, "username": None}
+        text = build_new_client_text(card, origin="web", site_enabled=True, attribution=None)
+        self.assertIn('<a href="mailto:vasya@mail.ru">vasya@mail.ru</a>', text)
+
+    def test_без_ника_и_почты_ведёт_по_номеру_telegram(self):
+        card = {**CARD, "username": None, "email": None}
+        text = build_new_client_text(card, origin="bot", site_enabled=False, attribution=None)
+        self.assertIn('<a href="tg://user?id=6611278769">', text)
+
+    def test_совсем_без_контактов_строки_нет(self):
+        card = {**CARD, "username": None, "email": None, "tg_id": None}
+        text = build_new_client_text(card, origin="web", site_enabled=True, attribution=None)
+        self.assertNotIn("<a href=", text)
+
+    def test_в_уведомлении_об_оплате_контакт_тоже_есть(self):
+        text = build_payment_text(
+            CARD, amount=100, payment_system="stars", origin="bot", site_enabled=True, internal_id=7
+        )
+        head = text.split("<b>\U0001f4b3 Платёж</b>")[0]
+        self.assertIn('<a href="https://t.me/vasya">@vasya</a>', head)
+
+
 class AdminNotificationGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_выключенный_тумблер_ничего_не_шлёт(self):
         with patch("services.admin_notify._notifications_enabled", return_value=False):
