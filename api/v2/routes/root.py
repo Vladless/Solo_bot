@@ -158,6 +158,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
     webapp_return_base = _telegram_web_app_return_base()
 
     from api.v2.routes.partners import partners_table_exists
+    from services.web_notify_rules import load_rules as load_notify_rules
 
     partner_enabled = bool(_partner_feature_enabled()) and await partners_table_exists(session)
 
@@ -222,6 +223,7 @@ async def site_config(session: AsyncSession = Depends(get_session)):
             "partner_enabled": partner_enabled,
             "support_tickets_enabled": bool(MODES_CONFIG.get("SUPPORT_TICKETS_ENABLED", False)),
             "daily_bonus_enabled": is_daily_bonus_enabled(),
+            "custom_notifications_enabled": any(rule["enabled"] for rule in await load_notify_rules(session)),
         },
         "payments": {
             "any_enabled": any_pay,

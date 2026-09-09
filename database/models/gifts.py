@@ -12,8 +12,8 @@ class Gift(DictLikeMixin, Base):
     __tablename__ = "gifts"
 
     gift_id = Column(String, primary_key=True, default=lambda: uuid.uuid4().hex)
-    sender_user_id = Column(BigInteger, nullable=True)
-    recipient_user_id = Column(BigInteger, nullable=True)
+    sender_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    recipient_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sender_tg_id = Column(BigInteger, nullable=True, index=True)
     recipient_tg_id = Column(BigInteger, nullable=True, index=True)
     selected_months = Column(Integer)
@@ -34,6 +34,6 @@ class GiftUsage(DictLikeMixin, Base):
     __tablename__ = "gift_usages"
 
     gift_id = Column(String, ForeignKey("gifts.gift_id"), primary_key=True)
-    user_id = Column(BigInteger, nullable=False, primary_key=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, primary_key=True)
     tg_id = Column(BigInteger, nullable=True, index=True)
     used_at = Column(DateTime, default=datetime.utcnow)

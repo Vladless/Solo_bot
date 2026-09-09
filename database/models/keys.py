@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 
 from ._base import Base, DictLikeMixin
@@ -59,7 +60,9 @@ class KeyTrafficHistory(DictLikeMixin, Base):
     used_gb = Column(Float, nullable=True)
     limit_gb = Column(Float, nullable=True)
     snapshot_date = Column(Date, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class KeyTrafficHourly(DictLikeMixin, Base):

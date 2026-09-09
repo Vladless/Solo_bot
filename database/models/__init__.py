@@ -11,6 +11,7 @@ from .keys import Key, KeyTrafficHistory, KeyTrafficHourly
 from .notifications import Notification, ScheduledBroadcast
 from .payments import Payment
 from .polls import Poll, PollMessage, PollVote
+from .rate_limit import RateLimitCounter
 from .referrals import Referral
 from .servers import Server, ServerSpecialgroup, ServerSubgroup
 from .subscription_events import DailySubscriptionMetric, SubscriptionEvent
@@ -64,6 +65,7 @@ __all__ = [
     "Notification",
     "ScheduledBroadcast",
     "Poll",
+    "RateLimitCounter",
     "PollMessage",
     "PollVote",
     "Gift",

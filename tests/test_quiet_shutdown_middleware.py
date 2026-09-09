@@ -5,6 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
+_LOGGER_STUB = SimpleNamespace(debug=lambda *args, **kwargs: None)
+
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = (ROOT / "api" / "main.py").read_text(encoding="utf-8")
 
@@ -13,7 +16,7 @@ def _load(shutting_down: bool):
     """Берёт глушитель отмены из api/main.py вместе с его определением состояния остановки."""
     start = SOURCE.index("_api_server = None")
     end = SOURCE.index('@app.on_event("shutdown")')
-    namespace = {"asyncio": asyncio, "_shutting_down": shutting_down}
+    namespace = {"asyncio": asyncio, "_shutting_down": shutting_down, "logger": _LOGGER_STUB}
     exec(SOURCE[start:end], namespace)
     return namespace["QuietShutdownMiddleware"]
 
@@ -22,7 +25,7 @@ def _load_with_server_exit():
     """Тот же глушитель, но остановку сообщает сам сервер uvicorn: событие shutdown выключено."""
     start = SOURCE.index("_api_server = None")
     end = SOURCE.index('@app.on_event("shutdown")')
-    namespace = {"asyncio": asyncio, "_shutting_down": False}
+    namespace = {"asyncio": asyncio, "_shutting_down": False, "logger": _LOGGER_STUB}
     exec(SOURCE[start:end], namespace)
     namespace["set_api_server"](SimpleNamespace(should_exit=True))
     return namespace["QuietShutdownMiddleware"]
@@ -35,6 +38,23 @@ async def _cancelling_app(scope, receive, send):
 
 async def _noop_send(message):
     return None
+
+
+class Sent:
+    """Собирает то, что приложение отправило клиенту."""
+
+    def __init__(self) -> None:
+        self.messages: list[dict] = []
+
+    async def __call__(self, message: dict) -> None:
+        self.messages.append(message)
+
+
+async def _answering_app(scope, receive, send):
+    """Успел ответить и только потом был отменён."""
+    await receive()
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    raise asyncio.CancelledError()
 
 
 class QuietShutdownMiddlewareTests(unittest.TestCase):
@@ -66,6 +86,40 @@ class QuietShutdownMiddlewareTests(unittest.TestCase):
 
         middleware = _load_with_server_exit()(_cancelling_app)
         asyncio.run(middleware({"type": "http"}, receive, _noop_send))
+
+    def test_оборванный_запрос_закрывается_ответом(self):
+        """Без ответа uvicorn пишет «ASGI callable returned without completing response»."""
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent = Sent()
+        middleware = _load(True)(_cancelling_app)
+        asyncio.run(middleware({"type": "http"}, receive, sent))
+
+        self.assertEqual([m["type"] for m in sent.messages], ["http.response.start", "http.response.body"])
+        self.assertEqual(sent.messages[0]["status"], 503)
+
+    def test_уже_начатый_ответ_не_дополняется(self):
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent = Sent()
+        middleware = _load(True)(_answering_app)
+        asyncio.run(middleware({"type": "http"}, receive, sent))
+
+        self.assertEqual([m["type"] for m in sent.messages], ["http.response.start"])
+        self.assertEqual(sent.messages[0]["status"], 200)
+
+    def test_отключившемуся_клиенту_ответ_не_ломает_остановку(self):
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def broken_send(message):
+            raise RuntimeError("соединение закрыто")
+
+        middleware = _load(False)(_cancelling_app)
+        asyncio.run(middleware({"type": "http"}, receive, broken_send))
 
     def test_lifespan_проходит_насквозь(self):
         seen = []

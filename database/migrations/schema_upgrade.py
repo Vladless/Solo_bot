@@ -5,22 +5,9 @@ import re
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from database.migrations.errors import is_dependency_error
+from database.migrations.output import mig_out
 from logger import logger
-
-
-def _mig_out(msg: str, color: str | None = None) -> None:
-    """Вывод миграций схемы: успешное завершение подсвечиваем зелёным."""
-    if color:
-        try:
-            from rich.console import Console
-
-            Console().print(msg, style=color, markup=False, highlight=False)
-            return
-        except Exception:
-            pass
-    print(msg, flush=True)
-
-
 from settings.config import DATABASE_URL
 
 
@@ -214,17 +201,19 @@ async def _safe_set_not_null(conn: AsyncConnection, table: str, column: str) -> 
 
 
 async def _index_exists(conn: AsyncConnection, table: str, index: str) -> bool:
+    """Есть ли индекс с таким именем. Имена индексов в схеме общие, поэтому таблица здесь не условие:
+    занятое имя не даст создать индекс даже на другой таблице.
+    """
     r = await conn.execute(
         text(
             """
             SELECT 1
             FROM pg_indexes
             WHERE schemaname = 'public'
-              AND tablename = :t
               AND indexname = :i
             """
         ),
-        {"t": table, "i": index},
+        {"i": index},
     )
     return r.first() is not None
 
@@ -284,7 +273,7 @@ async def _migration_v1_add_users_id(conn: AsyncConnection) -> None:
         logger.warning(f"[schema_upgrade] users PK неожиданен {pk}, пропуск v1")
         return
 
-    _mig_out("[schema_upgrade] v1: Добавление users.id")
+    logger.debug("[schema_upgrade] v1: Добавление users.id")
 
     if not await _column_exists(conn, "users", "id"):
         await conn.execute(
@@ -299,7 +288,7 @@ async def _migration_v1_add_users_id(conn: AsyncConnection) -> None:
 
 
 async def _migration_v2_add_user_id_columns(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v2: Добавление user_id колонок в связанные таблицы")
+    logger.debug("[schema_upgrade] v2: Добавление user_id колонок в связанные таблицы")
 
     tables_columns = [
         ("keys", "user_id"),
@@ -369,12 +358,12 @@ async def _backfill_users_from_table(conn: AsyncConnection, table: str, tg_col: 
     )
     created = result.rowcount or 0
     if created > 0:
-        _mig_out(f"[schema_upgrade] users backfill: создано {created} юзеров из orphan {table}.{tg_col}")
+        logger.debug(f"[schema_upgrade] users backfill: создано {created} юзеров из orphan {table}.{tg_col}")
     return created
 
 
 async def _migration_v3_populate_user_ids(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v3: Заполнение user_id из tg_id")
+    logger.debug("[schema_upgrade] v3: Заполнение user_id из tg_id")
 
     if not await _table_exists(conn, "users") or not await _column_exists(conn, "users", "id"):
         return
@@ -482,7 +471,7 @@ async def _migration_v3_populate_user_ids(conn: AsyncConnection) -> None:
 
 
 async def _migration_v4_add_tg_id_mirrors(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v4: Добавление tg_id mirror колонок")
+    logger.debug("[schema_upgrade] v4: Добавление tg_id mirror колонок")
 
     mirrors = [
         ("referrals", "referred_tg_id"),
@@ -506,7 +495,7 @@ async def _migration_v4_add_tg_id_mirrors(conn: AsyncConnection) -> None:
 
 
 async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v5: Переключение PK на user_id где возможно")
+    logger.debug("[schema_upgrade] v5: Переключение PK на user_id где возможно")
 
     await _drop_fkeys_to_users(conn)
     await _ensure_users_id_referenceable(conn)
@@ -557,7 +546,7 @@ async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
             continue
         if not await _column_exists(conn, tbl, "user_id"):
             continue
-        _mig_out(f"[schema_upgrade] {tbl} оставлен на legacy PK по tg_id")
+        logger.debug(f"[schema_upgrade] {tbl} оставлен на legacy PK по tg_id")
 
     if await _table_exists(conn, "users"):
         await _drop_pk(conn, "users")
@@ -567,7 +556,7 @@ async def _migration_v5_switch_pks_to_user_id(conn: AsyncConnection) -> None:
 
 
 async def _migration_v6_add_foreign_keys(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v6: Добавление foreign key constraints")
+    logger.debug("[schema_upgrade] v6: Добавление foreign key constraints")
 
     if await _table_exists(conn, "referrals"):
         await _add_constraint_if_missing(
@@ -783,52 +772,12 @@ async def _run_tg_mirror_backfill(conn: AsyncConnection, *, nulls_only: bool) ->
 
 
 async def _migration_v7_backfill_tg_mirrors(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v7: Backfill tg_id mirrors")
+    logger.debug("[schema_upgrade] v7: Backfill tg_id mirrors")
     await _run_tg_mirror_backfill(conn, nulls_only=False)
 
 
-async def _migration_v8_fix_notification_timezone(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v8: Исправление timezone для last_notification_time")
-
-    if not await _table_exists(conn, "notifications"):
-        return
-
-    r = await conn.execute(
-        text(
-            """
-            SELECT data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'notifications'
-              AND column_name = 'last_notification_time'
-            """
-        )
-    )
-    row = r.first()
-    if not row:
-        return
-
-    current_type = row[0]
-    if current_type == "timestamp with time zone":
-        return
-
-    try:
-        await conn.execute(
-            text(
-                """
-                ALTER TABLE notifications
-                ALTER COLUMN last_notification_time
-                TYPE TIMESTAMP WITH TIME ZONE
-                USING last_notification_time AT TIME ZONE 'UTC'
-                """
-            )
-        )
-    except Exception as e:
-        logger.warning(f"[schema_upgrade] v8: не удалось изменить тип колонки: {e}")
-
-
 async def _migration_v9_cleanup_orphaned_records(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v5: Мягкий backfill user_id для legacy таблиц")
+    logger.debug("[schema_upgrade] v5: Мягкий backfill user_id для legacy таблиц")
 
     tables_to_clean = [
         ("blocked_users", "user_id"),
@@ -857,15 +806,11 @@ async def _migration_v9_cleanup_orphaned_records(conn: AsyncConnection) -> None:
         )
         updated = result.rowcount
         if updated > 0:
-            _mig_out(f"[schema_upgrade] v5: заполнено {updated} записей в {table}")
-
-
-async def _migration_v10_finalize_user_id_not_null(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v10: legacy таблицы сохраняют nullable user_id и PK по tg_id")
+            logger.debug(f"[schema_upgrade] v5: заполнено {updated} записей в {table}")
 
 
 async def _migration_v11_finalize_legacy_tables(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v11: финализация legacy таблиц на user_id")
+    logger.debug("[schema_upgrade] v11: финализация legacy таблиц на user_id")
 
     for table in ("blocked_users", "manual_bans", "temporary_data"):
         if not await _table_exists(conn, table):
@@ -901,75 +846,11 @@ async def _migration_v11_finalize_legacy_tables(conn: AsyncConnection) -> None:
         if not await _safe_set_not_null(conn, table, "user_id"):
             continue
         await _exec_ignore(conn, f'ALTER TABLE "{table}" ADD PRIMARY KEY ("user_id")')
-        await _exec_ignore(conn, f'DROP INDEX IF EXISTS "ix_{table}_user_id"')
+        await _drop_index_if_free(conn, table, f"ix_{table}_user_id")
 
         tg_index_name = f"ix_{table}_tg_id"
         if await _column_exists(conn, table, "tg_id") and not await _index_exists(conn, table, tg_index_name):
             await conn.execute(text(f'CREATE INDEX "{tg_index_name}" ON "{table}" ("tg_id")'))
-
-
-async def _migration_v12_relax_legacy_tg_id_nullability(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v12: приведение tg_id к nullable в legacy таблицах")
-
-    for table in ("blocked_users", "manual_bans", "temporary_data"):
-        if not await _table_exists(conn, table):
-            continue
-        if not await _column_exists(conn, table, "tg_id"):
-            continue
-        await _exec_ignore(conn, f'ALTER TABLE "{table}" ALTER COLUMN "tg_id" DROP NOT NULL')
-
-
-async def _migration_v13_add_web_page_variants(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v13: добавление таблиц вариантов web-страниц")
-
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_page_variants (
-            id VARCHAR(36) PRIMARY KEY,
-            page_slug VARCHAR(64) NOT NULL REFERENCES web_pages(slug) ON DELETE CASCADE,
-            variant_key VARCHAR(64) NOT NULL,
-            name VARCHAR(255) NOT NULL DEFAULT 'Default',
-            is_active BOOLEAN NOT NULL DEFAULT FALSE,
-            theme_tokens JSONB NOT NULL DEFAULT '{}'::jsonb,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        """
-        CREATE UNIQUE INDEX IF NOT EXISTS uq_web_page_variants_page_slug_variant_key
-        ON web_page_variants (page_slug, variant_key)
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        """
-        CREATE INDEX IF NOT EXISTS ix_web_page_variants_page_slug_is_active
-        ON web_page_variants (page_slug, is_active)
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_page_variant_blocks (
-            id VARCHAR(36) PRIMARY KEY,
-            variant_id VARCHAR(36) NOT NULL REFERENCES web_page_variants(id) ON DELETE CASCADE,
-            "order" INTEGER NOT NULL DEFAULT 0,
-            type VARCHAR(64) NOT NULL,
-            data JSONB NOT NULL DEFAULT '{}'::jsonb
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        """
-        CREATE INDEX IF NOT EXISTS ix_web_page_variant_blocks_variant_id_order
-        ON web_page_variant_blocks (variant_id, "order")
-        """,
-    )
 
 
 async def _migration_v14_web_flow_graph_model(conn: AsyncConnection) -> None:
@@ -1031,7 +912,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
     Обходит все таблицы, где может быть orphan tg_id, создаёт недостающих юзеров
     и повторно заполняет user_id. Идемпотентно: если orphan'ов нет — no-op.
     """
-    _mig_out("[schema_upgrade] v15: Восстановление orphan tg_ids в users")
+    logger.debug("[schema_upgrade] v15: Восстановление orphan tg_ids в users")
 
     if not await _table_exists(conn, "users") or not await _column_exists(conn, "users", "id"):
         return
@@ -1056,7 +937,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
         total_created += await _backfill_users_from_table(conn, table, tg_col)
 
     if total_created > 0:
-        _mig_out(f"[schema_upgrade] v15: всего создано {total_created} orphan-юзеров")
+        logger.debug(f"[schema_upgrade] v15: всего создано {total_created} orphan-юзеров")
 
     repopulate = [
         ("keys", "user_id", "tg_id"),
@@ -1093,112 +974,7 @@ async def _migration_v15_recover_orphan_users(conn: AsyncConnection) -> None:
             )
         )
         if result.rowcount and result.rowcount > 0:
-            _mig_out(f"[schema_upgrade] v15: повторно заполнено {result.rowcount} записей {table}.{user_col}")
-
-
-async def _migration_v18_web_error_reports(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v18: таблица web_error_reports")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_error_reports (
-            id VARCHAR(36) PRIMARY KEY,
-            signature VARCHAR(128) NOT NULL UNIQUE,
-            error_name VARCHAR(255) NOT NULL DEFAULT '',
-            error_message TEXT NOT NULL DEFAULT '',
-            stack TEXT,
-            url TEXT,
-            user_agent TEXT,
-            tag VARCHAR(64),
-            last_identity_id VARCHAR(36),
-            last_context JSONB,
-            count INTEGER NOT NULL DEFAULT 1,
-            resolved BOOLEAN NOT NULL DEFAULT FALSE,
-            first_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_error_reports_signature ON web_error_reports (signature)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_error_reports_resolved_last ON web_error_reports (resolved, last_seen_at)",
-    )
-
-
-async def _migration_v16b_web_flow_events(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v17: таблица web_flow_events")
-
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_flow_events (
-            id VARCHAR(36) PRIMARY KEY,
-            flow_id VARCHAR(64) NOT NULL,
-            node_id VARCHAR(64) NOT NULL,
-            node_type VARCHAR(32) NOT NULL DEFAULT '',
-            event_type VARCHAR(32) NOT NULL,
-            ab_variant VARCHAR(16),
-            device VARCHAR(16),
-            locale VARCHAR(8),
-            authenticated BOOLEAN,
-            metadata JSONB,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_flow_events_flow_node ON web_flow_events (flow_id, node_id)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_flow_events_created ON web_flow_events (created_at)",
-    )
-
-
-async def _migration_v16_custom_element_builds(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v16: таблица web_custom_element_builds")
-
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_custom_element_builds (
-            id VARCHAR(36) PRIMARY KEY,
-            label VARCHAR(255) NOT NULL DEFAULT '',
-            slug VARCHAR(128) NOT NULL DEFAULT '',
-            runtime VARCHAR(32) NOT NULL DEFAULT 'react-component',
-            source_kind VARCHAR(32) NOT NULL DEFAULT 'inline-code',
-            source_value TEXT NOT NULL DEFAULT '',
-            export_name VARCHAR(128) NOT NULL DEFAULT 'default',
-            props_schema_text TEXT NOT NULL DEFAULT '',
-            sample_props_text TEXT NOT NULL DEFAULT '',
-            events_text TEXT NOT NULL DEFAULT '',
-            notes TEXT NOT NULL DEFAULT '',
-            status VARCHAR(32) NOT NULL DEFAULT 'queued',
-            summary TEXT NOT NULL DEFAULT '',
-            next_steps JSONB NOT NULL DEFAULT '[]'::jsonb,
-            artifact JSONB,
-            upload_meta JSONB,
-            worker_id VARCHAR(64),
-            worker_claimed_at TIMESTAMPTZ,
-            completed_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_custom_element_builds_status ON web_custom_element_builds (status)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_custom_element_builds_created ON web_custom_element_builds (created_at)",
-    )
+            logger.debug(f"[schema_upgrade] v15: повторно заполнено {result.rowcount} записей {table}.{user_col}")
 
 
 async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
@@ -1208,7 +984,7 @@ async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
     пользователей, у которых tg_id=NULL. user_id у ключа есть всегда (FK на
     users.id), поэтому делаем его новым компонентом PK.
     """
-    _mig_out("[schema_upgrade] v19: keys.tg_id nullable, PK на (user_id, client_id)")
+    logger.debug("[schema_upgrade] v19: keys.tg_id nullable, PK на (user_id, client_id)")
 
     if not await _table_exists(conn, "keys"):
         return
@@ -1237,70 +1013,8 @@ async def _migration_v19_keys_tg_id_nullable(conn: AsyncConnection) -> None:
     await _exec_ignore(conn, 'CREATE INDEX IF NOT EXISTS ix_keys_tg_id ON "keys" (tg_id)')
 
 
-async def _migration_v20_add_identity_google_sub(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v20: identities.google_sub")
-    if not await _table_exists(conn, "identities"):
-        return
-    if not await _column_exists(conn, "identities", "google_sub"):
-        await _exec_ignore(conn, "ALTER TABLE identities ADD COLUMN google_sub VARCHAR(64)")
-    await _exec_ignore(
-        conn,
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_identities_google_sub ON identities (google_sub) WHERE google_sub IS NOT NULL",
-    )
-
-
-async def _migration_v21_add_identity_yandex_sub(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v21: identities.yandex_sub")
-    if not await _table_exists(conn, "identities"):
-        return
-    if not await _column_exists(conn, "identities", "yandex_sub"):
-        await _exec_ignore(conn, "ALTER TABLE identities ADD COLUMN yandex_sub VARCHAR(64)")
-    await _exec_ignore(
-        conn,
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_identities_yandex_sub ON identities (yandex_sub) WHERE yandex_sub IS NOT NULL",
-    )
-
-
-async def _migration_v22_add_identity_onboarding_completed_at(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v22: identities.onboarding_completed_at")
-    if not await _table_exists(conn, "identities"):
-        return
-    if not await _column_exists(conn, "identities", "onboarding_completed_at"):
-        await _exec_ignore(conn, "ALTER TABLE identities ADD COLUMN onboarding_completed_at TIMESTAMP")
-
-
-async def _migration_v23_add_identity_onboarding_stage(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v23: identities.onboarding_stage")
-    if not await _table_exists(conn, "identities"):
-        return
-    if not await _column_exists(conn, "identities", "onboarding_stage"):
-        await _exec_ignore(conn, "ALTER TABLE identities ADD COLUMN onboarding_stage VARCHAR(32)")
-
-
-async def _migration_v26_add_keys_indexes(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v26: индексы keys(expiry_time/server_id/tariff_id)")
-    if not await _table_exists(conn, "keys"):
-        return
-    if not await _index_exists(conn, "keys", "ix_keys_expiry_time"):
-        await _exec_ignore(conn, "CREATE INDEX ix_keys_expiry_time ON keys(expiry_time)")
-    if not await _index_exists(conn, "keys", "ix_keys_server_id"):
-        await _exec_ignore(conn, "CREATE INDEX ix_keys_server_id ON keys(server_id)")
-    if not await _index_exists(conn, "keys", "ix_keys_tariff_id"):
-        await _exec_ignore(conn, "CREATE INDEX ix_keys_tariff_id ON keys(tariff_id)")
-
-
-async def _migration_v25_add_partners_indexes(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v25: индексы на partners(partner_tg_id/joined_tg_id)")
-    if not await _table_exists(conn, "partners"):
-        return
-    if not await _index_exists(conn, "partners", "ix_partners_partner_tg_id"):
-        await _exec_ignore(conn, "CREATE INDEX ix_partners_partner_tg_id ON partners(partner_tg_id)")
-    if not await _index_exists(conn, "partners", "ix_partners_joined_tg_id"):
-        await _exec_ignore(conn, "CREATE INDEX ix_partners_joined_tg_id ON partners(joined_tg_id)")
-
-
 async def _migration_v27_add_admins_permissions(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v27: admins.permissions (JSONB)")
+    logger.debug("[schema_upgrade] v27: admins.permissions (JSONB)")
     if not await _table_exists(conn, "admins"):
         return
     if not await _column_exists(conn, "admins", "permissions"):
@@ -1318,27 +1032,8 @@ async def _migration_v27_add_admins_permissions(conn: AsyncConnection) -> None:
         )
 
 
-async def _migration_v28_add_identity_notif_prefs(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v28: таблица identity_notif_prefs (toggle каналов уведомлений)")
-    if not await _table_exists(conn, "identities"):
-        return
-    if not await _table_exists(conn, "identity_notif_prefs"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE identity_notif_prefs (
-                identity_id VARCHAR(36) NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
-                channel VARCHAR(32) NOT NULL,
-                enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (identity_id, channel)
-            )
-            """,
-        )
-
-
 async def _migration_v24_add_identity_sessions(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v24: таблица identity_sessions + перенос существующих токенов")
+    logger.debug("[schema_upgrade] v24: таблица identity_sessions + перенос существующих токенов")
     if not await _table_exists(conn, "identities"):
         return
     if not await _table_exists(conn, "identity_sessions"):
@@ -1389,35 +1084,6 @@ async def _migration_v24_add_identity_sessions(conn: AsyncConnection) -> None:
         )
 
 
-async def _migration_v29_add_scheduled_broadcasts_channel(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v29: scheduled_broadcasts.channel (bot/site/both)")
-    if not await _table_exists(conn, "scheduled_broadcasts"):
-        return
-    if not await _column_exists(conn, "scheduled_broadcasts", "channel"):
-        await conn.execute(
-            text("ALTER TABLE scheduled_broadcasts ADD COLUMN channel VARCHAR(8) NOT NULL DEFAULT 'both'")
-        )
-
-
-async def _migration_v49_widen_scheduled_broadcasts_channel(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v49: scheduled_broadcasts.channel → VARCHAR(32)")
-    if not await _table_exists(conn, "scheduled_broadcasts"):
-        return
-    await _exec_ignore(
-        conn,
-        "ALTER TABLE scheduled_broadcasts ALTER COLUMN channel TYPE VARCHAR(32)",
-    )
-
-
-async def _migration_v50_users_legal_accepted_at(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v50: users.legal_accepted_at (согласие с документами)")
-    if not await _table_exists(conn, "users"):
-        return
-    if await _column_exists(conn, "users", "legal_accepted_at"):
-        return
-    await _exec_ignore(conn, "ALTER TABLE users ADD COLUMN legal_accepted_at TIMESTAMP")
-
-
 async def _migration_v51_drop_tg_id_foreign_keys(conn: AsyncConnection) -> None:
     """Снимает внешние ключи, смотрящие на users.tg_id.
 
@@ -1425,7 +1091,7 @@ async def _migration_v51_drop_tg_id_foreign_keys(conn: AsyncConnection) -> None:
     обнулить users.tg_id при отвязке Telegram база не давала, пока на него
     ссылались, — приходилось руками гасить зеркала во всех таблицах.
     """
-    _mig_out("[schema_upgrade] v51: снятие внешних ключей на users.tg_id")
+    logger.debug("[schema_upgrade] v51: снятие внешних ключей на users.tg_id")
     if not await _table_exists(conn, "users"):
         return
     result = await conn.execute(
@@ -1450,428 +1116,25 @@ async def _migration_v51_drop_tg_id_foreign_keys(conn: AsyncConnection) -> None:
     )
     rows = result.all()
     for conname, src_table in rows:
-        _mig_out(f"[schema_upgrade] v51: снимаю {src_table}.{conname}")
+        logger.debug(f"[schema_upgrade] v51: снимаю {src_table}.{conname}")
         await _exec_ignore(conn, f'ALTER TABLE "{src_table}" DROP CONSTRAINT IF EXISTS "{conname}"')
     if not rows:
-        _mig_out("[schema_upgrade] v51: таких ключей нет, пропускаю")
-
-
-async def _migration_v30_add_users_created_at_index(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v30: индекс users(created_at)")
-    if not await _table_exists(conn, "users"):
-        return
-    if not await _column_exists(conn, "users", "created_at"):
-        return
-    if not await _index_exists(conn, "users", "ix_users_created_at"):
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_users_created_at ON users (created_at)")
+        logger.debug("[schema_upgrade] v51: таких ключей нет, пропускаю")
 
 
 async def _migration_v31_repair_tg_mirror_nulls(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v31: Repair NULL tg_id mirrors")
+    logger.debug("[schema_upgrade] v31: Repair NULL tg_id mirrors")
     await _run_tg_mirror_backfill(conn, nulls_only=True)
-
-
-async def _migration_v32_add_polls(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v32: таблицы опросов (polls + poll_messages + poll_votes)")
-    if not await _table_exists(conn, "polls"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE polls (
-                id VARCHAR(36) PRIMARY KEY,
-                question TEXT NOT NULL,
-                options JSONB NOT NULL,
-                allows_multiple BOOLEAN NOT NULL DEFAULT FALSE,
-                is_anonymous BOOLEAN NOT NULL DEFAULT FALSE,
-                status VARCHAR(16) NOT NULL DEFAULT 'open',
-                sent_count INTEGER NOT NULL DEFAULT 0,
-                created_by_tg_id BIGINT REFERENCES users(tg_id) ON DELETE SET NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                closed_at TIMESTAMP
-            )
-            """,
-        )
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_polls_status ON polls (status)")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_polls_created_by_tg_id ON polls (created_by_tg_id)")
-    if not await _table_exists(conn, "poll_messages"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE poll_messages (
-                telegram_poll_id VARCHAR(64) PRIMARY KEY,
-                poll_id VARCHAR(36) NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-                tg_id BIGINT,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        )
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_poll_messages_poll_id ON poll_messages (poll_id)")
-    if not await _table_exists(conn, "poll_votes"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE poll_votes (
-                poll_id VARCHAR(36) NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
-                tg_id BIGINT NOT NULL,
-                option_ids JSONB NOT NULL,
-                voted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (poll_id, tg_id)
-            )
-            """,
-        )
-
-
-async def _migration_v33_web_page_views(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v33: таблица web_page_views")
-
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS web_page_views (
-            id VARCHAR(36) PRIMARY KEY,
-            visitor_id VARCHAR(36) NOT NULL,
-            page_slug VARCHAR(64) NOT NULL,
-            referrer VARCHAR(255),
-            utm_source VARCHAR(64),
-            utm_medium VARCHAR(64),
-            utm_campaign VARCHAR(64),
-            device VARCHAR(16),
-            locale VARCHAR(8),
-            authenticated BOOLEAN,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_page_views_created ON web_page_views (created_at)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_page_views_slug_created ON web_page_views (page_slug, created_at)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_web_page_views_visitor ON web_page_views (visitor_id)",
-    )
-
-
-async def _migration_v34_web_page_views_source(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v34: web_page_views.source (web/webapp)")
-    if not await _table_exists(conn, "web_page_views"):
-        return
-    if not await _column_exists(conn, "web_page_views", "source"):
-        await _exec_ignore(conn, "ALTER TABLE web_page_views ADD COLUMN source VARCHAR(16)")
-
-
-async def _migration_v36_web_page_views_ab_variant(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v36: web_page_views.ab_variant (A/B)")
-    if not await _table_exists(conn, "web_page_views"):
-        return
-    if not await _column_exists(conn, "web_page_views", "ab_variant"):
-        await _exec_ignore(conn, "ALTER TABLE web_page_views ADD COLUMN ab_variant VARCHAR(16)")
-
-
-async def _migration_v37_rate_limit_counters(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v37: таблица rate_limit_counters (распределённый fallback)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS rate_limit_counters (
-            bucket VARCHAR(255) NOT NULL,
-            window_start BIGINT NOT NULL,
-            count INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (bucket, window_start)
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_rate_limit_counters_window ON rate_limit_counters (window_start)",
-    )
-
-
-async def _migration_v35_key_traffic_history(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v35: таблица key_traffic_history (история использования)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS key_traffic_history (
-            id SERIAL PRIMARY KEY,
-            client_id VARCHAR(128) NOT NULL,
-            tg_id BIGINT,
-            used_gb DOUBLE PRECISION,
-            limit_gb DOUBLE PRECISION,
-            snapshot_date DATE NOT NULL,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            CONSTRAINT uq_key_traffic_history_client_date UNIQUE (client_id, snapshot_date)
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_key_traffic_history_client_date ON key_traffic_history (client_id, snapshot_date)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_key_traffic_history_date ON key_traffic_history (snapshot_date)",
-    )
-
-
-async def _migration_v38_subscription_events(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v38: таблица subscription_events (журнал жизненного цикла подписок)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS subscription_events (
-            id BIGSERIAL PRIMARY KEY,
-            event_type VARCHAR(24) NOT NULL,
-            user_id BIGINT,
-            tg_id BIGINT,
-            client_id VARCHAR(128),
-            tariff_id INTEGER,
-            server_id VARCHAR,
-            price_rub DOUBLE PRECISION,
-            duration_days INTEGER,
-            expiry_time BIGINT,
-            was_expired BOOLEAN,
-            source VARCHAR(32),
-            metadata JSONB,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_subscription_events_type_created ON subscription_events (event_type, created_at)",
-    )
-    await _exec_ignore(
-        conn, "CREATE INDEX IF NOT EXISTS ix_subscription_events_created ON subscription_events (created_at)"
-    )
-    await _exec_ignore(
-        conn, "CREATE INDEX IF NOT EXISTS ix_subscription_events_client ON subscription_events (client_id)"
-    )
-    await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_subscription_events_user ON subscription_events (user_id)")
-
-
-async def _migration_v39_daily_subscription_metrics(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v39: таблица daily_subscription_metrics (дневные снапшоты подписок)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS daily_subscription_metrics (
-            snapshot_date DATE PRIMARY KEY,
-            active INTEGER NOT NULL DEFAULT 0,
-            created INTEGER NOT NULL DEFAULT 0,
-            renewed INTEGER NOT NULL DEFAULT 0,
-            expired INTEGER NOT NULL DEFAULT 0,
-            deleted INTEGER NOT NULL DEFAULT 0,
-            revenue_rub DOUBLE PRECISION NOT NULL DEFAULT 0,
-            by_tariff JSONB,
-            by_server JSONB,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-
-
-async def _migration_v40_tariff_cooldown_days(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v40: tariffs.cooldown_days (задержка между покупками тарифа, дней)")
-    await _exec_ignore(
-        conn,
-        "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS cooldown_days INTEGER NOT NULL DEFAULT 0",
-    )
-
-
-async def _migration_v41_tariff_visibility_rules(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v41: tariffs.visibility_rules (условная видимость тарифа по признаку юзера)")
-    await _exec_ignore(
-        conn,
-        "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS visibility_rules JSONB",
-    )
-
-
-async def _migration_v42_tariff_description(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v42: tariffs.description (описание состава тарифа)")
-    await _exec_ignore(
-        conn,
-        "ALTER TABLE tariffs ADD COLUMN IF NOT EXISTS description VARCHAR",
-    )
-
-
-async def _migration_v43_tariff_subgroup_settings(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v43: tariff_subgroup_settings (текст подгруппы на экране выбора)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS tariff_subgroup_settings (
-            id SERIAL PRIMARY KEY,
-            group_code VARCHAR NOT NULL,
-            subgroup_title VARCHAR NOT NULL,
-            description VARCHAR,
-            updated_at TIMESTAMP DEFAULT now(),
-            CONSTRAINT uq_tariff_subgroup_setting UNIQUE (group_code, subgroup_title)
-        )
-        """,
-    )
-
-
-async def _migration_v44_key_traffic_hourly(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v44: key_traffic_hourly (почасовая история трафика)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS key_traffic_hourly (
-            id SERIAL PRIMARY KEY,
-            client_id VARCHAR(128) NOT NULL,
-            tg_id BIGINT,
-            used_gb DOUBLE PRECISION,
-            snapshot_hour TIMESTAMP NOT NULL,
-            CONSTRAINT uq_key_traffic_hourly_client_hour UNIQUE (client_id, snapshot_hour)
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_key_traffic_hourly_client_hour ON key_traffic_hourly(client_id, snapshot_hour)",
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_key_traffic_hourly_hour ON key_traffic_hourly(snapshot_hour)",
-    )
-
-
-async def _migration_v45_add_tickets(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v45: таблицы тикетов (tickets + ticket_messages)")
-    if not await _table_exists(conn, "tickets"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE tickets (
-                id VARCHAR(36) PRIMARY KEY,
-                identity_id VARCHAR(36) NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
-                subject VARCHAR(255),
-                category VARCHAR(64),
-                priority VARCHAR(16) NOT NULL DEFAULT 'normal',
-                status VARCHAR(16) NOT NULL DEFAULT 'open',
-                source VARCHAR(16) NOT NULL DEFAULT 'web',
-                assigned_agent_tg_id BIGINT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                last_message_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        )
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_identity_id ON tickets (identity_id)")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_status ON tickets (status)")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_category ON tickets (category)")
-        await _exec_ignore(
-            conn, "CREATE INDEX IF NOT EXISTS ix_tickets_assigned_agent_tg_id ON tickets (assigned_agent_tg_id)"
-        )
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_last_message_at ON tickets (last_message_at)")
-    if not await _table_exists(conn, "ticket_messages"):
-        await _exec_ignore(
-            conn,
-            """
-            CREATE TABLE ticket_messages (
-                id VARCHAR(36) PRIMARY KEY,
-                ticket_id VARCHAR(36) NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-                author VARCHAR(16) NOT NULL,
-                agent_tg_id BIGINT,
-                body TEXT NOT NULL DEFAULT '',
-                attachments JSONB,
-                read_by_client BOOLEAN NOT NULL DEFAULT FALSE,
-                read_by_agent BOOLEAN NOT NULL DEFAULT FALSE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """,
-        )
-        await _exec_ignore(
-            conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_ticket_id ON ticket_messages (ticket_id)"
-        )
-        await _exec_ignore(
-            conn, "CREATE INDEX IF NOT EXISTS ix_ticket_messages_created_at ON ticket_messages (created_at)"
-        )
-
-
-async def _migration_v46_ticket_extras(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v46: tickets.rating/tags/ref_type/ref_id")
-    if not await _table_exists(conn, "tickets"):
-        return
-    if not await _column_exists(conn, "tickets", "rating"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN rating SMALLINT")
-    if not await _column_exists(conn, "tickets", "tags"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN tags JSONB")
-    if not await _column_exists(conn, "tickets", "ref_type"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN ref_type VARCHAR(16)")
-    if not await _column_exists(conn, "tickets", "ref_id"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN ref_id VARCHAR(64)")
-    if not await _column_exists(conn, "tickets", "topic_id"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN topic_id BIGINT")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_topic_id ON tickets (topic_id)")
-
-
-async def _migration_v47_ticket_topic_id(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v47: tickets.topic_id (форум-темы)")
-    if not await _table_exists(conn, "tickets"):
-        return
-    if not await _column_exists(conn, "tickets", "topic_id"):
-        await _exec_ignore(conn, "ALTER TABLE tickets ADD COLUMN topic_id BIGINT")
-        await _exec_ignore(conn, "CREATE INDEX IF NOT EXISTS ix_tickets_topic_id ON tickets (topic_id)")
-
-
-async def _migration_v48_ticket_timestamptz(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v48: tickets/ticket_messages timestamp → timestamptz (UTC)")
-    targets = (
-        ("tickets", ("created_at", "updated_at", "last_message_at")),
-        ("ticket_messages", ("created_at",)),
-    )
-    for table, cols in targets:
-        if not await _table_exists(conn, table):
-            continue
-        for col in cols:
-            dtype = await conn.scalar(
-                text(
-                    "SELECT data_type FROM information_schema.columns "
-                    "WHERE table_schema='public' AND table_name=:t AND column_name=:c"
-                ),
-                {"t": table, "c": col},
-            )
-            if dtype == "timestamp without time zone":
-                await _exec_ignore(
-                    conn,
-                    f"ALTER TABLE {table} ALTER COLUMN {col} TYPE TIMESTAMPTZ USING {col} AT TIME ZONE 'UTC'",
-                )
-
-
-async def _migration_v52_payments_status_created_index(conn: AsyncConnection) -> None:
-    """Индексы на payments.status/created_at.
-
-    По этой паре фильтруют и аналитика выручки, и уборка зависших платежей,
-    а таблица растёт с каждой попыткой оплаты — без индекса каждый такой
-    запрос читал её целиком.
-    """
-    _mig_out("[schema_upgrade] v52: индексы payments (status, created_at)")
-    if not await _table_exists(conn, "payments"):
-        return
-    for index_name, columns in (
-        ("ix_payments_status_created", "status, created_at"),
-        ("ix_payments_created", "created_at"),
-    ):
-        if await _index_exists(conn, "payments", index_name):
-            continue
-        await conn.execute(text(f"CREATE INDEX {index_name} ON payments ({columns})"))
-        _mig_out(f"[schema_upgrade] v52: создан {index_name}")
 
 
 async def _migration_v53_drop_self_referrals(conn: AsyncConnection) -> None:
     """Снимает саморефералов и вторых пригласителей."""
-    _mig_out("[schema_upgrade] v53: очистка самореферальных связей")
+    logger.debug("[schema_upgrade] v53: очистка самореферальных связей")
     if not await _table_exists(conn, "referrals"):
         return
     result = await conn.execute(text("DELETE FROM referrals WHERE referred_user_id = referrer_user_id"))
     if result.rowcount:
-        _mig_out(f"[schema_upgrade] v53: снято самореферальных связей: {result.rowcount}", "green")
+        logger.debug(f"[schema_upgrade] v53: снято самореферальных связей: {result.rowcount}", "green")
     result = await conn.execute(
         text(
             "DELETE FROM referrals r USING ("
@@ -1882,29 +1145,7 @@ async def _migration_v53_drop_self_referrals(conn: AsyncConnection) -> None:
         )
     )
     if result.rowcount:
-        _mig_out(f"[schema_upgrade] v53: снято лишних пригласителей: {result.rowcount}", "green")
-
-
-async def _migration_v54_daily_bonus_claims(conn: AsyncConnection) -> None:
-    _mig_out("[schema_upgrade] v54: таблица daily_bonus_claims (выдачи ежедневного бонуса)")
-    await _exec_ignore(
-        conn,
-        """
-        CREATE TABLE IF NOT EXISTS daily_bonus_claims (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            tg_id BIGINT,
-            amount DOUBLE PRECISION NOT NULL DEFAULT 0,
-            streak INTEGER NOT NULL DEFAULT 1,
-            source VARCHAR(16) NOT NULL DEFAULT 'web',
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    await _exec_ignore(
-        conn,
-        "CREATE INDEX IF NOT EXISTS ix_daily_bonus_claims_user_created ON daily_bonus_claims (user_id, created_at)",
-    )
+        logger.debug(f"[schema_upgrade] v53: снято лишних пригласителей: {result.rowcount}", "green")
 
 
 async def _index_dependents(conn: AsyncConnection, index: str) -> list[str]:
@@ -1934,9 +1175,16 @@ async def _drop_index_if_free(conn: AsyncConnection, table: str, index: str) -> 
         return False
     dependents = await _index_dependents(conn, index)
     if dependents:
-        _mig_out(f"[schema_upgrade] {index} ({table}) оставлен: на него опираются {', '.join(dependents)}")
+        logger.debug(f"[schema_upgrade] {index} ({table}) оставлен: на него опираются {', '.join(dependents)}")
         return False
-    await conn.execute(text(f"DROP INDEX IF EXISTS {index}"))
+    try:
+        async with conn.begin_nested():
+            await conn.execute(text(f"DROP INDEX IF EXISTS {index}"))
+    except Exception as exc:
+        if not is_dependency_error(exc):
+            raise
+        logger.debug(f"[schema_upgrade] {index} ({table}) оставлен: на объект опираются другие объекты")
+        return False
     return True
 
 
@@ -1948,7 +1196,7 @@ async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
     той же колонке, что у первичного ключа или уникального ограничения, и одноколоночный
     индекс, который является префиксом существующего составного.
     """
-    _mig_out("[schema_upgrade] v55: снятие дублирующих индексов")
+    logger.debug("[schema_upgrade] v55: снятие дублирующих индексов")
     duplicates = (
         ("users", "ix_users_id"),
         ("users", "ix_users_tg_id"),
@@ -1957,7 +1205,7 @@ async def _migration_v55_drop_duplicate_indexes(conn: AsyncConnection) -> None:
     )
     for table, index_name in duplicates:
         if await _drop_index_if_free(conn, table, index_name):
-            _mig_out(f"[schema_upgrade] v55: снят {index_name} ({table})")
+            logger.debug(f"[schema_upgrade] v55: снят {index_name} ({table})")
 
 
 async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> None:
@@ -1967,27 +1215,12 @@ async def _migration_v56_drop_low_cardinality_indexes(conn: AsyncConnection) -> 
     такому условию задевает слишком большую долю таблицы, и планировщик берёт seq scan.
     Пользы на чтении нет, а на каждую запись в журнал тратится обслуживание трёх btree.
     """
-    _mig_out("[schema_upgrade] v56: снятие индексов audit_events по низкой кардинальности")
+    logger.debug("[schema_upgrade] v56: снятие индексов audit_events по низкой кардинальности")
     if not await _table_exists(conn, "audit_events"):
         return
     for index_name in ("ix_audit_events_channel", "ix_audit_events_event_type", "ix_audit_events_entity_type"):
         if await _drop_index_if_free(conn, "audit_events", index_name):
-            _mig_out(f"[schema_upgrade] v56: снят {index_name}")
-
-
-async def _migration_v57_client_origin(conn: AsyncConnection) -> None:
-    """Канал клиента: откуда зарегистрировались и откуда вошли.
-
-    Раньше канал знал только фронт (в `web_page_views.source`), а у аккаунта и сессии его не было:
-    отличить сайт от Telegram WebApp по факту было нечем.
-    """
-    _mig_out("[schema_upgrade] v57: канал регистрации и входа")
-    if await _table_exists(conn, "identities") and not await _column_exists(conn, "identities", "signup_origin"):
-        await conn.execute(text("ALTER TABLE identities ADD COLUMN IF NOT EXISTS signup_origin VARCHAR(16)"))
-        _mig_out("[schema_upgrade] v57: identities.signup_origin добавлен")
-    if await _table_exists(conn, "identity_sessions") and not await _column_exists(conn, "identity_sessions", "origin"):
-        await conn.execute(text("ALTER TABLE identity_sessions ADD COLUMN IF NOT EXISTS origin VARCHAR(16)"))
-        _mig_out("[schema_upgrade] v57: identity_sessions.origin добавлен")
+            logger.debug(f"[schema_upgrade] v56: снят {index_name}")
 
 
 _MIGRATIONS = [
@@ -1999,59 +1232,17 @@ _MIGRATIONS = [
     (6, "Переключение PK на user_id", _migration_v5_switch_pks_to_user_id),
     (7, "Добавление foreign keys", _migration_v6_add_foreign_keys),
     (8, "Backfill tg_id mirrors", _migration_v7_backfill_tg_mirrors),
-    (9, "Исправление timezone для notifications", _migration_v8_fix_notification_timezone),
-    (10, "Финальная установка NOT NULL на user_id", _migration_v10_finalize_user_id_not_null),
     (11, "Финализация legacy таблиц на user_id", _migration_v11_finalize_legacy_tables),
-    (12, "Снятие NOT NULL с tg_id в legacy таблицах", _migration_v12_relax_legacy_tg_id_nullability),
-    (13, "Таблицы вариантов web-страниц", _migration_v13_add_web_page_variants),
     (14, "WebFlow граф-модель (nodes + edges)", _migration_v14_web_flow_graph_model),
     (15, "Восстановление orphan tg_ids в users", _migration_v15_recover_orphan_users),
-    (16, "Таблица custom element builds", _migration_v16_custom_element_builds),
-    (17, "Таблица flow analytics events", _migration_v16b_web_flow_events),
-    (18, "Таблица web_error_reports", _migration_v18_web_error_reports),
     (19, "keys.tg_id nullable, PK на (user_id, client_id)", _migration_v19_keys_tg_id_nullable),
-    (20, "identities.google_sub", _migration_v20_add_identity_google_sub),
-    (21, "identities.yandex_sub", _migration_v21_add_identity_yandex_sub),
-    (22, "identities.onboarding_completed_at", _migration_v22_add_identity_onboarding_completed_at),
-    (23, "identities.onboarding_stage", _migration_v23_add_identity_onboarding_stage),
     (24, "таблица identity_sessions (мультидевайс)", _migration_v24_add_identity_sessions),
-    (25, "индексы на partners(partner_tg_id/joined_tg_id)", _migration_v25_add_partners_indexes),
-    (26, "индексы keys(expiry_time/server_id/tariff_id)", _migration_v26_add_keys_indexes),
     (27, "admins.permissions (JSONB per-admin permissions)", _migration_v27_add_admins_permissions),
-    (28, "таблица identity_notif_prefs (toggle каналов)", _migration_v28_add_identity_notif_prefs),
-    (29, "scheduled_broadcasts.channel (bot/site/both)", _migration_v29_add_scheduled_broadcasts_channel),
-    (30, "индекс users(created_at)", _migration_v30_add_users_created_at_index),
     (31, "Repair NULL tg_id mirrors", _migration_v31_repair_tg_mirror_nulls),
-    (32, "Таблицы опросов (polls/poll_messages/poll_votes)", _migration_v32_add_polls),
-    (33, "Таблица web_page_views (аналитика посещений)", _migration_v33_web_page_views),
-    (34, "web_page_views.source (web/webapp)", _migration_v34_web_page_views_source),
-    (35, "Таблица key_traffic_history (история трафика)", _migration_v35_key_traffic_history),
-    (36, "web_page_views.ab_variant (A/B)", _migration_v36_web_page_views_ab_variant),
-    (37, "Таблица rate_limit_counters (распределённый fallback лимитера)", _migration_v37_rate_limit_counters),
-    (38, "Таблица subscription_events (журнал жизненного цикла подписок)", _migration_v38_subscription_events),
-    (39, "Таблица daily_subscription_metrics (дневные снапшоты)", _migration_v39_daily_subscription_metrics),
-    (40, "tariffs.cooldown_days (задержка между покупками тарифа)", _migration_v40_tariff_cooldown_days),
-    (41, "tariffs.visibility_rules (условная видимость тарифа)", _migration_v41_tariff_visibility_rules),
-    (42, "tariffs.description (описание состава тарифа)", _migration_v42_tariff_description),
-    (43, "tariff_subgroup_settings (текст подгруппы)", _migration_v43_tariff_subgroup_settings),
-    (44, "key_traffic_hourly (почасовая история трафика)", _migration_v44_key_traffic_hourly),
-    (45, "Таблицы тикетов (tickets/ticket_messages)", _migration_v45_add_tickets),
-    (46, "tickets.rating/tags/ref (CSAT, теги, контекст)", _migration_v46_ticket_extras),
-    (47, "tickets.topic_id (форум-темы)", _migration_v47_ticket_topic_id),
-    (48, "tickets/ticket_messages → timestamptz (UTC)", _migration_v48_ticket_timestamptz),
-    (49, "scheduled_broadcasts.channel → VARCHAR(32) (мультиканал)", _migration_v49_widen_scheduled_broadcasts_channel),
-    (50, "users.legal_accepted_at (согласие с документами)", _migration_v50_users_legal_accepted_at),
     (51, "Снятие внешних ключей на users.tg_id", _migration_v51_drop_tg_id_foreign_keys),
-    (52, "Индексы payments (status, created_at)", _migration_v52_payments_status_created_index),
     (53, "Очистка самореферальных связей", _migration_v53_drop_self_referrals),
-    (54, "Таблица daily_bonus_claims (ежедневный бонус)", _migration_v54_daily_bonus_claims),
     (55, "Снятие дублирующих индексов users/audit_events", _migration_v55_drop_duplicate_indexes),
     (56, "Снятие индексов audit_events по низкой кардинальности", _migration_v56_drop_low_cardinality_indexes),
-    (
-        57,
-        "Канал регистрации и входа (identities.signup_origin, identity_sessions.origin)",
-        _migration_v57_client_origin,
-    ),
 ]
 
 
@@ -2061,24 +1252,26 @@ async def apply_all_migrations(conn: AsyncConnection) -> None:
 
     await _ensure_migrations_table(conn)
     current_version = await _get_current_version(conn)
+    first_install = not await _table_exists(conn, "users")
 
+    applied = 0
     for version, description, migration_func in _MIGRATIONS:
         if version <= current_version:
             continue
 
-        _mig_out(f"[schema_upgrade] Применение миграции v{version}: {description}")
+        logger.debug(f"[schema_upgrade] перенос v{version}: {description}")
         try:
             await migration_func(conn)
             await _mark_migration_applied(conn, version, description)
-            _mig_out(f"[schema_upgrade] Миграция v{version} применена успешно")
+            applied += 1
         except Exception as e:
             logger.error(f"[schema_upgrade] Ошибка при применении миграции v{version}: {e}")
             raise
 
-    _mig_out(
-        f"[schema_upgrade] Все миграции применены, текущая версия: {await _get_current_version(conn)}",
-        "green",
-    )
+    if applied and not first_install:
+        mig_out(f"[schema_upgrade] перенос данных старой базы выполнен: шагов {applied}", "green")
+    else:
+        logger.debug(f"[schema_upgrade] переносить нечего, версия схемы: {await _get_current_version(conn)}")
 
 
 async def apply_account_schema_if_needed(conn: AsyncConnection) -> None:

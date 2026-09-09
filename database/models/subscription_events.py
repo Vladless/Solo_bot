@@ -33,7 +33,9 @@ class SubscriptionEvent(DictLikeMixin, Base):
     was_expired = Column(Boolean, nullable=True)
     source = Column(String(32), nullable=True)
     metadata_ = Column("metadata", JSONB, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(
+        DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"), index=True
+    )
 
 
 class DailySubscriptionMetric(DictLikeMixin, Base):
@@ -50,4 +52,4 @@ class DailySubscriptionMetric(DictLikeMixin, Base):
     revenue_rub = Column(Float, nullable=False, server_default=text("0"))
     by_tariff = Column(JSONB, nullable=True)
     by_server = Column(JSONB, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP"))

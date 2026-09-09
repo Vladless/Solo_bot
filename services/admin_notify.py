@@ -19,7 +19,6 @@ from core.client_origin import (
 )
 from core.executor import spawn
 from database.models import Identity, Referral, User
-from handlers.admin.panel.headers import menu_text, note, section
 from handlers.admin.users.keyboard import AdminUserEditorCallback
 from logger import logger
 
@@ -188,20 +187,31 @@ async def load_client_card(session: AsyncSession, user_id: int) -> dict[str, obj
     }
 
 
-def _client_lines(card: dict[str, object], *, site_enabled: bool) -> list[str]:
-    """Строки о клиенте: номер, ник или почта и telegram. Без сайта почты у клиента быть не может."""
-    lines: list[str] = [f"номер: {card.get('id')}"]
+def _money(amount: float) -> str:
+    """Сумма без лишних нулей: 609 ₽, 609.50 ₽."""
+    value = float(amount)
+    return f"{value:.0f} ₽" if value == int(value) else f"{value:.2f} ₽"
+
+
+def _row(*parts: str) -> str:
+    """Строка уведомления: заполненные части через точку-разделитель."""
+    return " · ".join(part for part in parts if part)
+
+
+def _client_row(card: dict[str, object], *, site_enabled: bool) -> str:
+    """Кто клиент: ник, наш номер, telegram и почта — каждый контакт кликабельный.
+
+    Почта бывает только у клиента с сайта, поэтому без сайта её в строке нет.
+    """
     username = str(card.get("username") or "").strip().lstrip("@")
     email = str(card.get("email") or "").strip()
-    if username:
-        lines.append(f"ник: @{username}")
-    else:
-        lines.append("ник: —")
-    if site_enabled and email:
-        lines.append(f"почта: {email}")
     tg_id = card.get("tg_id")
-    lines.append(f"telegram: {tg_id if tg_id else '—'}")
-    return lines
+    return "👤 " + _row(
+        f'<a href="https://t.me/{username}">@{username}</a>' if username else "",
+        f"клиент №{card.get('id')}",
+        f'<a href="tg://user?id={tg_id}">tg {tg_id}</a>' if tg_id else "",
+        f'<a href="mailto:{email}">{email}</a>' if site_enabled and email else "",
+    )
 
 
 async def _send_to_admins(text: str, markup: InlineKeyboardMarkup) -> None:
@@ -223,36 +233,18 @@ async def _send_to_admins(text: str, markup: InlineKeyboardMarkup) -> None:
             logger.warning("[AdminNotify] не отправлено админу {}: {}", admin_id, exc)
 
 
-def _origin_lines(card: dict[str, object], *, origin: object, attribution: dict[str, object] | None) -> list[str]:
-    """Строки о происхождении: канал, привлечение, кто пригласил и рекламная метка."""
-    kind = (attribution or {}).get("kind")
-    who = (attribution or {}).get("who")
-    lines = [
-        f"канал: {origin_label(origin)}",
-        f"привлечение: {INVITE_LABELS.get(str(kind), INVITE_DIRECT)}",
-    ]
-    if who:
-        lines.append(f"пригласил: {who}")
-    lines.append(f"метка: {card.get('source_code') or '—'}")
-    lines.append(f"время: {_now_label()}")
-    return lines
-
-
-def _contact_link(card: dict[str, object]) -> str:
-    """Строка связи под заголовком: ник ведёт в Telegram, почта — в почтовый клиент.
-
-    Ник у клиента есть не всегда, а почта — только когда включён сайт: без обоих строки нет.
-    """
-    username = str(card.get("username") or "").strip().lstrip("@")
-    if username:
-        return f'<a href="https://t.me/{username}">@{username}</a>'
-    email = str(card.get("email") or "").strip()
-    if email:
-        return f'<a href="mailto:{email}">{email}</a>'
-    tg_id = card.get("tg_id")
-    if tg_id:
-        return f'<a href="tg://user?id={tg_id}">Открыть в Telegram</a>'
-    return ""
+def _origin_row(card: dict[str, object], *, origin: object, attribution: dict[str, object] | None) -> str:
+    """Откуда клиент: вид привлечения с пригласившим или меткой и канал входа."""
+    kind = str((attribution or {}).get("kind") or "")
+    who = str((attribution or {}).get("who") or "")
+    source = str(card.get("source_code") or "").strip()
+    label = INVITE_LABELS.get(kind, INVITE_DIRECT)
+    detail = who if who else (source if kind == INVITE_UTM else "")
+    return "🧭 " + _row(
+        f"{label} {detail}" if detail else label,
+        f"метка {source}" if source and kind != INVITE_UTM else "",
+        origin_label(origin),
+    )
 
 
 def build_new_client_text(
@@ -261,36 +253,15 @@ def build_new_client_text(
     origin: object,
     site_enabled: bool,
     attribution: dict[str, object] | None = None,
-    markup=None,
 ) -> str:
-    """Экран уведомления о новом клиенте по дизайн-коду админки."""
-    return menu_text(
-        "Новый пользователь",
-        _contact_link(card),
-        section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
-        section("🧭 Откуда", *_origin_lines(card, origin=origin, attribution=attribution)),
-        markup=markup,
-    )
-
-
-def _payment_lines(
-    *,
-    amount: float,
-    payment_system: str,
-    origin: object,
-    payment_id: str | None,
-    internal_id: int | None,
-) -> list[str]:
-    """Строки о платеже: сумма, касса, канал, номера у нас и у кассы, время."""
-    lines = [
-        f"сумма: {amount:.0f} ₽",
-        f"касса: {payment_system or '—'}",
-        f"канал: {origin_label(origin)}",
-    ]
-    if internal_id is not None:
-        lines.append(f"номер: {internal_id}")
-    lines.append(f"время: {_now_label()}")
-    return lines
+    """Уведомление о новом клиенте: кто, откуда и когда — по строке на факт."""
+    return "\n".join([
+        "🆕 <b>Новый пользователь</b>",
+        "",
+        _client_row(card, site_enabled=site_enabled),
+        _origin_row(card, origin=origin, attribution=attribution),
+        f"🕐 {_now_label()}",
+    ])
 
 
 def build_payment_text(
@@ -302,26 +273,23 @@ def build_payment_text(
     site_enabled: bool,
     payment_id: str | None = None,
     internal_id: int | None = None,
-    markup=None,
 ) -> str:
-    """Экран уведомления об успешной оплате по дизайн-коду админки."""
-    return menu_text(
-        "Успешная оплата",
-        _contact_link(card),
-        section(
-            "💳 Платёж",
-            *_payment_lines(
-                amount=amount,
-                payment_system=payment_system,
-                origin=origin,
-                payment_id=payment_id,
-                internal_id=internal_id,
-            ),
-        ),
-        section("👤 Клиент", *_client_lines(card, site_enabled=site_enabled)),
-        note("🧾 Счёт кассы", str(payment_id or "").strip() or "—"),
-        markup=markup,
+    """Уведомление об оплате: сумма и касса первой строкой, ниже клиент, время и счёт кассы."""
+    invoice = str(payment_id or "").strip()
+    numbers = _row(
+        f"платёж №{internal_id}" if internal_id is not None else "",
+        f"<code>{invoice}</code>" if invoice else "",
     )
+    rows = [
+        "💰 <b>Успешная оплата</b>",
+        "",
+        "💵 " + _row(f"<b>{_money(amount)}</b>", payment_system or "касса неизвестна", origin_label(origin)),
+        _client_row(card, site_enabled=site_enabled),
+        f"🕐 {_now_label()}",
+    ]
+    if numbers:
+        rows.append(f"🧾 {numbers}")
+    return "\n".join(rows)
 
 
 async def notify_new_client(session: AsyncSession, user_id: int) -> None:
@@ -336,7 +304,6 @@ async def notify_new_client(session: AsyncSession, user_id: int) -> None:
         origin=card.get("signup_origin") or client_origin(),
         site_enabled=site_enabled,
         attribution=await resolve_attribution(session, card),
-        markup=markup,
     )
     spawn(_send_to_admins(text, markup))
 
@@ -365,6 +332,5 @@ async def notify_payment(
         site_enabled=site_enabled,
         payment_id=payment_id,
         internal_id=internal_id,
-        markup=markup,
     )
     spawn(_send_to_admins(text, markup))

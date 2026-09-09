@@ -30,7 +30,7 @@ class LegalDocsTests(unittest.TestCase):
         self.assertIn('if not bool(LEGAL_CONFIG.get("LEGAL_DOCS_ENABLED", False)):\n        return False', CONFIG)
 
     def test_без_ссылок_раздел_не_показывается(self):
-        self.assertIn("return any(str(LEGAL_CONFIG.get(key) or \"\").strip() for key in LEGAL_DOC_KEYS)", CONFIG)
+        self.assertIn('return any(str(LEGAL_CONFIG.get(key) or "").strip() for key in LEGAL_DOC_KEYS)', CONFIG)
 
     def test_кнопки_строятся_только_для_заполненных_ссылок(self):
         self.assertIn("if not is_legal_enabled():\n        return []", LEGAL)
@@ -59,14 +59,10 @@ class LegalDocsTests(unittest.TestCase):
         self.assertIn("values(legal_accepted_at=datetime.utcnow())", LEGAL)
         self.assertIn("await process_start_logic(", LEGAL)
 
-    def test_колонка_и_миграция_на_месте(self):
+    def test_колонка_объявлена_моделью(self):
+        """Колонку заводит сравнение моделей со схемой, ручного шага в цепочке нет."""
         self.assertIn("legal_accepted_at = Column(DateTime, nullable=True)", MODELS)
-        self.assertIn("_migration_v50_users_legal_accepted_at", MIGRATIONS)
-        self.assertIn("ALTER TABLE users ADD COLUMN legal_accepted_at TIMESTAMP", MIGRATIONS)
-
-    def test_миграция_идемпотентна(self):
-        segment = MIGRATIONS[MIGRATIONS.index("async def _migration_v50_users_legal_accepted_at") :][:600]
-        self.assertIn('if await _column_exists(conn, "users", "legal_accepted_at"):\n        return', segment)
+        self.assertNotIn("legal_accepted_at", MIGRATIONS)
 
     def test_админ_задаёт_ссылки_на_все_три_документа(self):
         for key in ("LEGAL_PRIVACY_URL", "LEGAL_TERMS_URL", "LEGAL_OFFER_URL"):

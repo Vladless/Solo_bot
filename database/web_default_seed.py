@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.admin import Setting
 from database.models.web import WebFlow, WebPage, WebPageVariant, WebPageVariantBlock
+from database.web_layout import KNOWN_PAGE_SLUGS
 from logger import logger
 
 
@@ -242,6 +243,17 @@ async def _apply_site(
     return seeded
 
 
+def seed_worthy_slug(slug: str, has_blocks: bool) -> bool:
+    """Идёт ли страница в сид: свои блоки или известный маршрут сайта.
+
+    Сайт заводит запись для любого запрошенного пути, поэтому в базе оседают следы
+    сканеров вроде `phpinfo` или `wordpress` — в поставку дизайна они попадать не должны.
+    """
+    if has_blocks:
+        return True
+    return slug in set(KNOWN_PAGE_SLUGS)
+
+
 async def capture_current_site(session: AsyncSession) -> dict:
     """Снимок текущего сайта в формате seed: {_theme, _flows, _page_themes, <slug>: [{type,data}]}.
     Тему берём по каждой странице отдельно (_page_themes), глобальную (_theme) — со страницы landing."""
@@ -260,10 +272,6 @@ async def capture_current_site(session: AsyncSession) -> dict:
         ).scalar_one_or_none()
         if variant is None:
             continue
-        tokens = dict(variant.theme_tokens or {})
-        page_themes[page.slug] = tokens
-        if page.slug == "landing":
-            global_theme = tokens
         blocks = (
             (
                 await session.execute(
@@ -275,6 +283,12 @@ async def capture_current_site(session: AsyncSession) -> dict:
             .scalars()
             .all()
         )
+        if not seed_worthy_slug(page.slug, bool(blocks)):
+            continue
+        tokens = dict(variant.theme_tokens or {})
+        page_themes[page.slug] = tokens
+        if page.slug == "landing":
+            global_theme = tokens
         out[page.slug] = [{"type": b.type, "data": dict(b.data or {})} for b in blocks]
     out["_theme"] = global_theme or (next(iter(page_themes.values()), {}) if page_themes else {})
     out["_page_themes"] = page_themes

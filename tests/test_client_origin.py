@@ -100,7 +100,8 @@ class OriginMiddlewareTests(unittest.TestCase):
         source = (ROOT / "api" / "main.py").read_text(encoding="utf-8")
         self.assertIn("def shutting_down() -> bool:", source)
         self.assertIn('getattr(_api_server, "should_exit", False)', source)
-        self.assertIn("if shutting_down() or disconnected:", source)
+        self.assertIn("if not (shutting_down() or disconnected):", source)
+        self.assertIn("_close_unanswered(send)", source)
         app_source = (ROOT / "core" / "app.py").read_text(encoding="utf-8")
         self.assertIn("set_api_server(server)", app_source)
 
@@ -174,27 +175,11 @@ class SignupOriginTests(unittest.TestCase):
         sessions = (ROOT / "database" / "identity_sessions.py").read_text(encoding="utf-8")
         self.assertIn("origin = client_origin()", sessions)
 
-    def test_миграция_добавляет_колонки(self):
+    def test_колонки_приходят_из_моделей_а_не_из_цепочки(self):
+        """Колонки заводит сравнение моделей со схемой: ручного шага для них больше нет."""
         migrations = (ROOT / "database" / "migrations" / "schema_upgrade.py").read_text(encoding="utf-8")
-        self.assertIn("_migration_v57_client_origin", migrations)
-        registered = {
-            (
-                int(el.elts[0].value),
-                getattr(el.elts[2], "id", ""),
-            )
-            for node in ast.walk(ast.parse(migrations))
-            if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "_MIGRATIONS" for t in node.targets)
-            for el in node.value.elts
-            if isinstance(el, ast.Tuple) and len(el.elts) == 3 and isinstance(el.elts[0], ast.Constant)
-        }
-        self.assertIn((57, "_migration_v57_client_origin"), registered)
-        self.assertIn("identities ADD COLUMN IF NOT EXISTS signup_origin", migrations)
-        self.assertIn("identity_sessions ADD COLUMN IF NOT EXISTS origin", migrations)
-        self.assertLess(
-            migrations.index("async def _migration_v57_client_origin"),
-            migrations.index("_MIGRATIONS = ["),
-            "миграция должна быть определена до списка, иначе NameError при импорте",
-        )
+        self.assertNotIn("signup_origin", migrations)
+        self.assertNotIn("identity_sessions ADD COLUMN IF NOT EXISTS origin", migrations)
 
 
 class CampaignAttributionTests(unittest.IsolatedAsyncioTestCase):

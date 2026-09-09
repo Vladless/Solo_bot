@@ -6,6 +6,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models import WebPageVariant, WebPageVariantBlock
 
 
+KNOWN_PAGE_SLUGS: tuple[str, ...] = (
+    "landing",
+    "tariffs",
+    "faq",
+    "login",
+    "register",
+    "forgot-password",
+    "login-telegram-callback",
+    "dashboard",
+    "dashboard-keys",
+    "dashboard-profile",
+    "dashboard-instructions",
+    "dashboard-referrals",
+    "dashboard-partners",
+    "dashboard-gifts",
+    "dashboard-notifications",
+    "checkout",
+    "gift-entry",
+    "referral-entry",
+    "partner-entry",
+    "payment-success",
+    "payment-failure",
+    "custom-elements",
+    "info",
+)
+
 SUPPORT_BLOCK_TYPES = ("defaultSupport", "cyberMonoSupport", "capybaraSupport")
 DAILY_BONUS_BLOCK_TYPES = ("defaultDailyBonus",)
 

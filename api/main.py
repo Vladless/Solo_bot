@@ -83,6 +83,7 @@ class QuietShutdownMiddleware:
             return
 
         disconnected = False
+        started = False
 
         async def watch(*args, **kwargs):
             nonlocal disconnected
@@ -91,12 +92,33 @@ class QuietShutdownMiddleware:
                 disconnected = True
             return message
 
+        async def track(message):
+            nonlocal started
+            if message.get("type") == "http.response.start":
+                started = True
+            await send(message)
+
         try:
-            await self.app(scope, watch, send)
+            await self.app(scope, watch, track)
         except asyncio.CancelledError:
-            if shutting_down() or disconnected:
+            if not (shutting_down() or disconnected):
+                raise
+            if started or scope["type"] != "http":
                 return
-            raise
+            await self._close_unanswered(send)
+
+    @staticmethod
+    async def _close_unanswered(send) -> None:
+        """Закрывает оборванный запрос ответом 503: иначе uvicorn пишет «returned without completing response»."""
+        try:
+            await send({
+                "type": "http.response.start",
+                "status": 503,
+                "headers": [(b"content-length", b"0"), (b"connection", b"close")],
+            })
+            await send({"type": "http.response.body", "body": b""})
+        except Exception as exc:
+            logger.debug("[API] оборванный запрос закрыть не удалось: {}", exc)
 
 
 @app.on_event("shutdown")

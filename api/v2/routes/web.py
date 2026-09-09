@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.depends import _identity_from_cookie, get_session, verify_identity_designer
+from api.depends import _identity_from_cookie, get_session, verify_identity_designer, verify_identity_token
 from api.v2.routes._data_uri_migration import migrate_json_data_uris
 from api.v2.schemas import WebBlockResponse, WebPageResponse, WebPageUpdate, WebTheme
 from api.v2.schemas.web import (
@@ -27,6 +27,8 @@ from core.client_origin import WEB_ORIGINS
 from core.constants import PAYMENT_SYSTEMS_EXCLUDED
 from core.executor import run_io
 from database.models import (
+    Key,
+    User,
     WebBlock,
     WebCustomElementBuild,
     WebErrorReport,
@@ -39,7 +41,7 @@ from database.models import (
     WebTheme as WebThemeModel,
 )
 from database.site_revision import bump_site_revision
-from database.web_layout import find_block_locations
+from database.web_layout import KNOWN_PAGE_SLUGS, find_block_locations
 from logger import logger
 
 
@@ -241,24 +243,6 @@ CORE_PAGE_SLUGS = frozenset({
     "tariffs",
 })
 
-
-KNOWN_PAGE_SLUGS = [
-    "landing",
-    "tariffs",
-    "faq",
-    "login",
-    "dashboard",
-    "checkout",
-    "gift-entry",
-    "referral-entry",
-    "partner-entry",
-    "payment-success",
-    "payment-failure",
-    "dashboard-keys",
-    "dashboard-profile",
-    "dashboard-instructions",
-    "dashboard-referrals",
-]
 
 DEFAULT_VARIANT_KEY = "default"
 DEFAULT_VARIANT_NAME = "Основной"
@@ -579,6 +563,77 @@ async def get_web_page(
     response = await _build_page_response(session, slug, current, variants)
     await cache_set(ckey, response.model_dump(mode="json"), 300)
     return response
+
+
+class WebNotifyRulesPayload(BaseModel):
+    rules: list[dict] = []
+
+
+FIRST_LOGIN_WINDOW = timedelta(hours=24)
+
+
+def _identity_is_new(identity) -> bool:
+    """Первый вход — клиент зарегистрировался меньше суток назад."""
+    created_at = getattr(identity, "created_at", None)
+    if created_at is None:
+        return True
+    created = created_at.replace(tzinfo=None) if created_at.tzinfo is not None else created_at
+    return datetime.now(timezone.utc).replace(tzinfo=None) - created <= FIRST_LOGIN_WINDOW
+
+
+@router.get("/api/web/notify-rules")
+async def get_web_notify_rules(
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_designer),
+):
+    """Свои уведомления сайта: правила, которые админ задал в облаке оформления."""
+    from services.web_notify_rules import load_rules
+
+    return {"rules": await load_rules(session)}
+
+
+@router.put("/api/web/notify-rules")
+async def update_web_notify_rules(
+    body: WebNotifyRulesPayload,
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_designer),
+):
+    """Сохраняет правила своих уведомлений."""
+    from services.web_notify_rules import save_rules
+
+    rules = await save_rules(session, body.rules)
+    await _audit_web_admin(
+        session,
+        identity,
+        "notify.rules.update",
+        entity_type="settings",
+        entity_id="WEB_NOTIFY_RULES",
+        metadata={"count": len(rules)},
+    )
+    return {"rules": rules}
+
+
+@router.post("/api/web/notify-rules/apply")
+async def apply_web_notify_rules(
+    session: AsyncSession = Depends(get_session),
+    identity=Depends(verify_identity_token),
+):
+    """Прогоняет правила своих уведомлений для текущего клиента: вызывается страницей при открытии."""
+    from database import identities as idb
+    from services.web_notify_rules import apply_rules_on_login
+
+    user_id = await idb.ensure_billing_user_for_identity(session, identity)
+    keys_count = await session.scalar(select(func.count()).select_from(Key).where(Key.user_id == user_id))
+    source_code = await session.scalar(select(User.source_code).where(User.id == user_id))
+    fired = await apply_rules_on_login(
+        session,
+        user_id=int(user_id),
+        identity_id=str(identity.id),
+        first_login=_identity_is_new(identity),
+        has_subscription=bool(keys_count),
+        source_code=source_code,
+    )
+    return {"fired": fired}
 
 
 @router.get("/api/web/pages/{slug}/theme", response_model=WebPageThemeResponse)

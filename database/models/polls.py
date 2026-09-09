@@ -29,7 +29,12 @@ class Poll(DictLikeMixin, Base):
     status = Column(String(16), nullable=False, server_default=sql_text("'open'"), index=True)
     sent_count = Column(Integer, nullable=False, server_default=sql_text("0"))
     created_by_tg_id = Column(BigInteger, nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=sql_text("now()"))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("now()"),
+    )
     closed_at = Column(DateTime(timezone=True), nullable=True)
 
 
@@ -39,7 +44,12 @@ class PollMessage(DictLikeMixin, Base):
     telegram_poll_id = Column(String(64), primary_key=True)
     poll_id = Column(String(36), ForeignKey("polls.id", ondelete="CASCADE"), nullable=False, index=True)
     tg_id = Column(BigInteger, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=sql_text("now()"))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("now()"),
+    )
 
 
 class PollVote(DictLikeMixin, Base):
@@ -48,4 +58,9 @@ class PollVote(DictLikeMixin, Base):
     poll_id = Column(String(36), ForeignKey("polls.id", ondelete="CASCADE"), primary_key=True)
     tg_id = Column(BigInteger, primary_key=True)
     option_ids = Column(JSONB, nullable=False)
-    voted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=sql_text("now()"))
+    voted_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("now()"),
+    )

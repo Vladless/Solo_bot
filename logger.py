@@ -104,6 +104,11 @@ for name in (
     "async_api_client",
     "charset_normalizer",
     "asyncio",
+    "alembic",
+    "alembic.autogenerate",
+    "alembic.autogenerate.compare",
+    "alembic.runtime.migration",
+    "alembic.ddl.postgresql",
 ):
     lg = logging.getLogger(name)
     lg.setLevel(logging.ERROR)

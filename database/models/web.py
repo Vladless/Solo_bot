@@ -111,19 +111,28 @@ class WebErrorReport(DictLikeMixin, Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     signature = Column(String(128), nullable=False, unique=True)
-    error_name = Column(String(255), nullable=False, default="")
-    error_message = Column(Text, nullable=False, default="")
+    error_name = Column(String(255), nullable=False, default="", server_default=sql_text("''"))
+    error_message = Column(Text, nullable=False, default="", server_default=sql_text("''"))
     stack = Column(Text, nullable=True)
     url = Column(Text, nullable=True)
     user_agent = Column(Text, nullable=True)
     tag = Column(String(64), nullable=True)
     last_identity_id = Column(String(36), nullable=True)
     last_context = Column(JSONB, nullable=True)
-    count = Column(Integer, nullable=False, default=1)
-    resolved = Column(Boolean, nullable=False, default=False)
-    first_seen_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    count = Column(Integer, nullable=False, default=1, server_default=sql_text("1"))
+    resolved = Column(Boolean, nullable=False, default=False, server_default=sql_text("false"))
+    first_seen_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
+    )
     last_seen_at = Column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -137,14 +146,19 @@ class WebFlowEvent(DictLikeMixin, Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     flow_id = Column(String(64), nullable=False)
     node_id = Column(String(64), nullable=False)
-    node_type = Column(String(32), nullable=False, default="")
+    node_type = Column(String(32), nullable=False, default="", server_default=sql_text("''"))
     event_type = Column(String(32), nullable=False)
     ab_variant = Column(String(16), nullable=True)
     device = Column(String(16), nullable=True)
     locale = Column(String(8), nullable=True)
     authenticated = Column(Boolean, nullable=True)
     event_metadata = Column("metadata", JSONB, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
+    )
 
 
 class WebPageView(DictLikeMixin, Base):
@@ -167,7 +181,12 @@ class WebPageView(DictLikeMixin, Base):
     authenticated = Column(Boolean, nullable=True)
     source = Column(String(16), nullable=True)
     ab_variant = Column(String(16), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
+    )
 
 
 class WebCustomElementBuild(DictLikeMixin, Base):
@@ -178,26 +197,39 @@ class WebCustomElementBuild(DictLikeMixin, Base):
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    label = Column(String(255), nullable=False, default="")
-    slug = Column(String(128), nullable=False, default="")
-    runtime = Column(String(32), nullable=False, default="react-component")
-    source_kind = Column(String(32), nullable=False, default="inline-code")
-    source_value = Column(Text, nullable=False, default="")
-    export_name = Column(String(128), nullable=False, default="default")
-    props_schema_text = Column(Text, nullable=False, default="")
-    sample_props_text = Column(Text, nullable=False, default="")
-    events_text = Column(Text, nullable=False, default="")
-    notes = Column(Text, nullable=False, default="")
-    status = Column(String(32), nullable=False, default="queued")
-    summary = Column(Text, nullable=False, default="")
-    next_steps = Column(JSONB, nullable=False, default=list)
+    label = Column(String(255), nullable=False, default="", server_default=sql_text("''"))
+    slug = Column(String(128), nullable=False, default="", server_default=sql_text("''"))
+    runtime = Column(
+        String(32), nullable=False, default="react-component", server_default=sql_text("'react-component'")
+    )
+    source_kind = Column(String(32), nullable=False, default="inline-code", server_default=sql_text("'inline-code'"))
+    source_value = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    export_name = Column(String(128), nullable=False, default="default", server_default=sql_text("'default'"))
+    props_schema_text = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    sample_props_text = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    events_text = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    notes = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    status = Column(String(32), nullable=False, default="queued", server_default=sql_text("'queued'"))
+    summary = Column(Text, nullable=False, default="", server_default=sql_text("''"))
+    next_steps = Column(JSONB, nullable=False, default=list, server_default=sql_text("'[]'::jsonb"))
     artifact = Column(JSONB, nullable=True)
     upload_meta = Column(JSONB, nullable=True)
     worker_id = Column(String(64), nullable=True)
     worker_claimed_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        server_default=sql_text("CURRENT_TIMESTAMP"),
+    )
 
 
 class WebFlow(DictLikeMixin, Base):
