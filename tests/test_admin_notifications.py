@@ -1,6 +1,7 @@
 import unittest
 
 from dataclasses import dataclass
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from core.client_origin import INVITE_PARTNER, INVITE_REFERRAL, INVITE_UTM, set_client_invite
@@ -20,6 +21,8 @@ from services.admin_notify import (
     resolve_attribution,
 )
 
+
+ROOT = Path(__file__).resolve().parent.parent
 
 CARD = {
     "id": 219,
@@ -52,7 +55,7 @@ class AdminNotificationSettingsTests(unittest.TestCase):
 
 class AdminNotificationTextTests(unittest.TestCase):
     def test_канал_подписан_словами(self):
-        self.assertEqual(origin_label("webapp"), "Telegram WebApp")
+        self.assertEqual(origin_label("webapp"), "WebApp")
         self.assertEqual(origin_label("bot"), "бот")
         self.assertEqual(origin_label("web"), "сайт")
         self.assertEqual(origin_label("api"), "неизвестно")
@@ -61,7 +64,7 @@ class AdminNotificationTextTests(unittest.TestCase):
     def test_новый_клиент_с_каналом_и_меткой(self):
         text = build_new_client_text(CARD, origin="webapp", site_enabled=True)
         self.assertIn("Новый пользователь", text)
-        self.assertIn("Telegram WebApp", text)
+        self.assertIn("WebApp", text)
         self.assertIn("@vasya", text)
         self.assertIn("promo_1", text)
 
@@ -81,11 +84,11 @@ class AdminNotificationTextTests(unittest.TestCase):
 
     def test_клиент_без_ника_и_почты_не_остаётся_пустым(self):
         text = build_new_client_text({"id": 5, "tg_id": None}, origin="web", site_enabled=True)
-        self.assertIn("👤 клиент №5", text)
-        self.assertNotIn(" ·  · ", text)
+        self.assertIn("номер", text)
+        self.assertIn("—", text)
 
-    def test_уведомление_читается_сразу_и_не_раздуто(self):
-        """Сумма и касса — первой строкой после заголовка, а всё уведомление короткое."""
+    def test_экран_собран_по_дизайн_коду(self):
+        """Одна шапка от menu_text, секции с деревом, ручной разметки в данных нет."""
         text = build_payment_text(
             CARD,
             amount=609,
@@ -95,17 +98,72 @@ class AdminNotificationTextTests(unittest.TestCase):
             payment_id="3233a85c-000f",
             internal_id=5944,
         )
-        lines = [line for line in text.split("\n") if line]
-        self.assertTrue(lines[0].startswith("💰 <b>Успешная оплата</b>"))
-        self.assertEqual(lines[1], "💵 <b>609 ₽</b> · YOOKASSA · бот")
-        self.assertLessEqual(len(lines), 5)
-        self.assertNotIn("<blockquote>", text)
-        self.assertNotIn("├", text)
+        self.assertTrue(text.startswith("<b>Успешная оплата</b>"))
+        self.assertEqual(len([line for line in text.split("\n") if line and set(line) == {"_"}]), 1)
+        self.assertIn("<b>💳 Платёж</b>", text)
+        self.assertIn("<b>👤 Клиент</b>", text)
+        self.assertIn("├ сумма", text)
+        self.assertIn("└ касса", text)
 
-    def test_новый_клиент_тоже_короткий(self):
+    def test_время_стоит_последней_строкой(self):
+        """Время — подпись под экраном, а не поле среди данных."""
+        for text in (
+            build_payment_text(
+                CARD, amount=100, payment_system="stars", origin="bot", site_enabled=False, internal_id=7
+            ),
+            build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None),
+        ):
+            lines = [line for line in text.split("\n") if line]
+            self.assertRegex(lines[-1], r"^🕐 \d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}$")
+            self.assertNotIn("время:", text)
+
+    def test_кнопки_ведут_в_бота_и_на_сайт(self):
+        """Экран собирается вместе с клавиатурой: по дизайн-коду шапка равняется по её ширине."""
+        source = (ROOT / "services" / "admin_notify.py").read_text(encoding="utf-8")
+        for builder in ("build_new_client_text(", "build_payment_text("):
+            call = source[source.index(f"text = {builder}") :]
+            self.assertIn("markup=markup,", call[: call.index(")\n")], builder)
+        with patch("services.admin_notify._site", return_value=(True, "https://solonet.ru")):
+            rows = [[b.text for b in row] for row in build_client_keyboard(219, 6611278769).inline_keyboard]
+        self.assertEqual(rows, [["Открыть в боте"], ["Открыть на сайте"]])
+
+    def test_сумма_и_касса_первой_секцией(self):
+        """Первое, что видит админ после шапки и контакта, — сколько и через какую кассу."""
+        text = build_payment_text(
+            CARD, amount=609, payment_system="YOOKASSA", origin="bot", site_enabled=True, internal_id=1
+        )
+        self.assertLess(text.index("<b>💳 Платёж</b>"), text.index("<b>👤 Клиент</b>"))
+        payment_block = text.split("<b>💳 Платёж</b>")[1].split("</blockquote>")[0]
+        self.assertLess(payment_block.index("сумма"), payment_block.index("касса"))
+        self.assertIn("609 ₽", payment_block)
+        self.assertIn("YOOKASSA", payment_block)
+
+    def test_ник_не_повторяется_в_секции_клиента(self):
+        """Ник стоит в лиде кликабельным, дублировать его в таблице незачем."""
         text = build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None)
-        self.assertLessEqual(len([line for line in text.split("\n") if line]), 4)
-        self.assertNotIn("<blockquote>", text)
+        client_block = text.split("<b>👤 Клиент</b>")[1].split("</blockquote>")[0]
+        self.assertNotIn("@vasya", client_block)
+        self.assertIn("номер", client_block)
+
+
+class AdminNotificationPreviewTests(unittest.TestCase):
+    """Ссылка на клиента не должна тянуть за собой карточку профиля на пол-сообщения."""
+
+    def test_превью_ссылки_выключено(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parent.parent / "services" / "admin_notify.py").read_text(encoding="utf-8")
+        send = source[source.index("async def _send_to_admins") :]
+        self.assertIn("disable_web_page_preview=True", send)
+
+    def test_ссылка_в_экране_ровно_одна(self):
+        for text in (
+            build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None),
+            build_payment_text(
+                CARD, amount=100, payment_system="stars", origin="bot", site_enabled=True, internal_id=7
+            ),
+        ):
+            self.assertEqual(text.count("<a href="), 1)
 
 
 class AdminNotificationKeyboardTests(unittest.TestCase):
@@ -135,8 +193,8 @@ class AdminNotificationDetailTests(unittest.TestCase):
 
     def test_новый_клиент_показывает_номер_и_время(self):
         text = build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None)
-        self.assertIn("клиент №219", text)
-        self.assertRegex(text, r"🕐 \d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}")
+        self.assertIn("219", text)
+        self.assertRegex(text, r"🕐 \d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}$")
 
     def test_оплата_показывает_оба_номера_и_время(self):
         text = build_payment_text(
@@ -153,18 +211,28 @@ class AdminNotificationDetailTests(unittest.TestCase):
         self.assertIn("219", text)
         self.assertRegex(text, r"\d{2}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}")
 
-    def test_без_счёта_кассы_остаётся_только_наш_номер(self):
+    def test_деньги_и_канал_разными_секциями(self):
+        """Сумма с кассой отдельно, канал с номером платежа отдельно."""
         text = build_payment_text(
             CARD, amount=100, payment_system="stars", origin="bot", site_enabled=False, internal_id=7
         )
-        self.assertIn("🧾 платёж №7", text)
-        self.assertNotIn("—", text)
+        money = text.split("<b>💳 Платёж</b>")[1].split("</blockquote>")[0]
+        self.assertIn("сумма", money)
+        self.assertIn("касса", money)
+        self.assertNotIn("канал", money)
+        self.assertNotIn("номер", money)
+        origin_block = text.split("<b>🧭 Откуда</b>")[1].split("</blockquote>")[0]
+        self.assertIn("канал", origin_block)
+        self.assertIn("номер", origin_block)
+        self.assertIn("7", origin_block)
 
-    def test_совсем_без_номеров_строки_счёта_нет(self):
+    def test_без_номеров_поля_не_прячутся(self):
+        """Дизайн-код: пустое поле пишем прочерком, а не убираем строку."""
         text = build_payment_text(CARD, amount=100, payment_system="stars", origin="bot", site_enabled=False)
-        self.assertNotIn("🧾", text)
+        self.assertIn("Счёт кассы", text)
+        self.assertIn("—", text)
 
-    def test_длинный_счёт_кассы_копируется_целиком(self):
+    def test_длинный_счёт_кассы_показан_целиком(self):
         text = build_payment_text(
             CARD,
             amount=548,
@@ -174,11 +242,12 @@ class AdminNotificationDetailTests(unittest.TestCase):
             payment_id="2f1a9c7b-0001-5000-8000-1d2e3f4a5b6c",
             internal_id=1114,
         )
-        self.assertIn("🧾 платёж №1114 · <code>2f1a9c7b-0001-5000-8000-1d2e3f4a5b6c</code>", text)
+        self.assertIn("<b>🧾 Счёт кассы</b>", text)
+        self.assertIn("2f1a9c7b-0001-5000-8000-1d2e3f4a5b6c", text)
 
     def test_дробная_сумма_не_теряет_копейки(self):
         text = build_payment_text(CARD, amount=609.5, payment_system="stars", origin="bot", site_enabled=False)
-        self.assertIn("<b>609.50 ₽</b>", text)
+        self.assertIn("609.50 ₽", text)
 
 
 class AdminNotificationContactTests(unittest.TestCase):
@@ -186,9 +255,9 @@ class AdminNotificationContactTests(unittest.TestCase):
 
     def test_ник_ведёт_в_telegram(self):
         text = build_new_client_text(CARD, origin="bot", site_enabled=True, attribution=None)
-        client_row = next(line for line in text.split("\n") if line.startswith("👤"))
-        self.assertIn('<a href="https://t.me/vasya">@vasya</a>', client_row)
-        self.assertIn('<a href="tg://user?id=6611278769">tg 6611278769</a>', client_row)
+        head = text.split("<b>👤 Клиент</b>")[0]
+        self.assertIn('<a href="https://t.me/vasya">@vasya</a>', head)
+        self.assertEqual(text.count("<a href="), 1, "ссылка ровно одна: лишние ссылки Telegram тянет карточкой")
 
     def test_без_ника_ведёт_на_почту(self):
         card = {**CARD, "username": None}
@@ -198,7 +267,7 @@ class AdminNotificationContactTests(unittest.TestCase):
     def test_без_ника_и_почты_ведёт_по_номеру_telegram(self):
         card = {**CARD, "username": None, "email": None}
         text = build_new_client_text(card, origin="bot", site_enabled=False, attribution=None)
-        self.assertIn('<a href="tg://user?id=6611278769">tg 6611278769</a>', text)
+        self.assertIn('<a href="tg://user?id=6611278769">Открыть в Telegram</a>', text)
 
     def test_совсем_без_контактов_строки_нет(self):
         card = {**CARD, "username": None, "email": None, "tg_id": None}
@@ -322,10 +391,14 @@ class AdminNotificationAttributionTests(unittest.IsolatedAsyncioTestCase):
             site_enabled=True,
             attribution={"kind": INVITE_REFERRAL, "who": "@petrov"},
         )
-        self.assertIn("🧭 реферал @petrov · метка promo_1 · бот", text)
+        origin_block = text.split("<b>🧭 Откуда</b>")[1]
+        self.assertIn("привлечение", origin_block)
+        self.assertIn("реферал", origin_block)
+        self.assertIn("@petrov", origin_block)
 
     def test_прямой_запуск_подписан_словами(self):
         text = build_new_client_text(
             {**CARD, "source_code": None}, origin="bot", site_enabled=True, attribution={"kind": None, "who": None}
         )
-        self.assertIn("🧭 прямой запуск · бот", text)
+        self.assertIn("прямой запуск", text)
+        self.assertNotIn("пригласил", text)
